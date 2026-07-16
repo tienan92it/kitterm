@@ -1,0 +1,33 @@
+# Swift / SPM
+.build/
+.swiftpm/
+Packages/
+Package.resolved
+*.xcodeproj
+*.xcworkspace
+DerivedData/
+xcuserdata/
+
+# macOS
+.DS_Store
+*.swp
+*~
+.Spotlight-V100
+.Trashes
+
+# IDE
+.idea/
+.vscode/
+*.code-workspace
+
+# Logs / local state (daemon writes to ~/.kitterm/)
+*.log
+
+# Node (web client, phase 4)
+node_modules/
+dist/
+.vite/
+
+# Secrets / env
+.env
+.env.*
