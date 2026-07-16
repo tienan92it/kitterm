@@ -85,9 +85,17 @@ public final class DaemonServer: @unchecked Sendable {
             "kitterm MVP binds loopback only"
         )
 
-        channel = try bootstrap.bind(host: host, port: config.port).wait()
+        do {
+            channel = try bootstrap.bind(host: host, port: config.port).wait()
+        } catch {
+            throw DaemonError.bindFailed(
+                host: host,
+                port: config.port,
+                reason: error.localizedDescription
+            )
+        }
         guard let channel else {
-            throw DaemonError.bindFailed
+            throw DaemonError.bindFailed(host: host, port: config.port, reason: "no channel")
         }
         let port = channel.localAddress?.port ?? config.port
         FileHandle.standardError.write(
@@ -118,13 +126,15 @@ public final class DaemonServer: @unchecked Sendable {
 }
 
 public enum DaemonError: Error, LocalizedError {
-    case bindFailed
+    case bindFailed(host: String, port: Int, reason: String)
     case rejected(String)
 
     public var errorDescription: String? {
         switch self {
-        case .bindFailed: return "failed to bind"
-        case .rejected(let reason): return reason
+        case .bindFailed(let host, let port, let reason):
+            return "failed to bind \(host):\(port) — \(reason)"
+        case .rejected(let reason):
+            return reason
         }
     }
 }

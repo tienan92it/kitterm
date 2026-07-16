@@ -303,6 +303,12 @@ public final class PtySession: @unchecked Sendable {
         env["TERM"] = KittermConstants.termType
         env["COLORTERM"] = KittermConstants.colortermValue
         env["KITTERM_DAEMON_CHILD"] = "1"
+        if env["CLICOLOR"] == nil {
+            env["CLICOLOR"] = KittermConstants.clicolorDefault
+        }
+        if env["LSCOLORS"] == nil {
+            env["LSCOLORS"] = KittermConstants.lscolorsDefault
+        }
         return env.map { "\($0.key)=\($0.value)" }
     }
 }

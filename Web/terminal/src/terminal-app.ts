@@ -16,6 +16,7 @@ import {
   extractKeyboardModifiers,
 } from "./kitty";
 import { KittermSession } from "./session";
+import { githubDarkTheme } from "./theme-github-dark";
 
 export type TerminalAppOptions = {
   container: HTMLElement;
@@ -44,12 +45,7 @@ export class TerminalApp {
       fontFamily: "Menlo, Monaco, 'Courier New', monospace",
       fontSize: 13,
       scrollback: 10_000,
-      theme: {
-        background: "#0d1117",
-        foreground: "#e6edf3",
-        cursor: "#e6edf3",
-        selectionBackground: "#264f78",
-      },
+      theme: githubDarkTheme,
       macOptionIsMeta: true,
       rightClickSelectsWord: true,
     });

@@ -94,6 +94,10 @@ enum KittermMain {
             return
         }
 
+        if let occupant = portListenerDescription(port: port) {
+            throw CLIError.portInUse(port: port, occupant: occupant)
+        }
+
         let executable = ResolveExecutable.path()
         // Prefer posix_spawn-style detach: serve redirects its own logs.
         // Avoid wiring parent FileHandles into the child — that has broken
@@ -119,6 +123,12 @@ enum KittermMain {
         }
 
         if !healthy, !process.isRunning {
+            if let occupant = portListenerDescription(port: port) {
+                throw CLIError.portInUse(port: port, occupant: occupant)
+            }
+            throw CLIError.daemonExited
+        }
+        if !healthy {
             throw CLIError.daemonExited
         }
 
@@ -233,15 +243,52 @@ enum KittermMain {
             close(fd)
         }
     }
+
+    /// Best-effort `lsof` summary of whoever is listening on the port.
+    private static func portListenerDescription(port: Int) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        process.arguments = ["-nP", "-iTCP:\(port)", "-sTCP:LISTEN"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return nil
+        }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let text = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !text.isEmpty
+        else {
+            return nil
+        }
+        let lines = text.split(separator: "\n")
+        guard lines.count >= 2 else { return text }
+        // COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
+        let cols = lines[1].split(whereSeparator: { $0.isWhitespace })
+        if cols.count >= 2 {
+            return "\(cols[0]) (pid \(cols[1]))"
+        }
+        return String(lines[1])
+    }
 }
 
 enum CLIError: Error, LocalizedError {
     case daemonExited
+    case portInUse(port: Int, occupant: String)
 
     var errorDescription: String? {
         switch self {
         case .daemonExited:
             return "daemon exited before becoming healthy; see ~/.kitterm/server.log"
+        case .portInUse(let port, let occupant):
+            return """
+            port \(port) is already in use by \(occupant). \
+            Stop that process, or run: kitterm start --port <other>
+            """
         }
     }
 }

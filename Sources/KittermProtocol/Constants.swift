@@ -12,6 +12,10 @@ public enum KittermConstants: Sendable {
     public static let termType: String = "xterm-256color"
     public static let colortermValue: String = "truecolor"
 
+    /// macOS `ls` color defaults when the parent environment does not set them.
+    public static let clicolorDefault: String = "1"
+    public static let lscolorsDefault: String = "exfxcxdxbxegedabagacad"
+
     public static let maxInputBytes: Int = 64 * 1024
     public static let maxOutputBytes: Int = 1 * 1024 * 1024
     public static let maxTitleLength: Int = 4 * 1024
