@@ -15,11 +15,10 @@ import {
   buildKittyKeySequence,
   extractKeyboardModifiers,
 } from "./kitty";
-import { resolveFontFamily, type TerminalFontId } from "./fonts";
+import { LOCAL_FONT_ID, resolveFontFamily, type TerminalFontId } from "./fonts";
 import { KittermSession } from "./session";
 import { SettingsPanel } from "./settings-panel";
 import {
-  LOCAL_FONT_ID,
   loadSettings,
   saveFontId,
   saveFontSize,
@@ -113,6 +112,7 @@ export class TerminalApp {
     if (this.disposed) return;
     this.disposed = true;
     this.resizeObserver?.disconnect();
+    this.settingsPanel?.dispose();
     this.session.close();
     this.terminal.dispose();
   }

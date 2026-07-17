@@ -1,8 +1,10 @@
-import { LOCAL_FONT_ID, TERMINAL_FONTS, type TerminalFontId } from "./fonts";
 import {
-  isLocalFontAccessSupported,
-  queryLocalFonts,
-} from "./local-fonts";
+  LOCAL_FONT_ID,
+  TERMINAL_FONTS,
+  escapeCssFontFamily,
+  type TerminalFontId,
+} from "./fonts";
+import { isLocalFontAccessSupported, queryLocalFonts } from "./local-fonts";
 import {
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
@@ -33,6 +35,10 @@ export class SettingsPanel {
   private localStatus: HTMLElement | null = null;
   private localFamilies: readonly string[] = [];
   private localFontFamily: string | null;
+  /** Applied font id, as last confirmed by settings sync. */
+  private currentFontId: TerminalFontId;
+  /** True while the user is picking a local font that is not applied yet. */
+  private browsingLocalFonts = false;
   private open = false;
   private loadingLocal = false;
 
@@ -40,6 +46,7 @@ export class SettingsPanel {
     this.root = root;
     this.callbacks = callbacks;
     this.localFontFamily = initial.localFontFamily;
+    this.currentFontId = initial.fontId;
     this.root.innerHTML = "";
     this.root.className = "settings-host";
 
@@ -116,7 +123,7 @@ export class SettingsPanel {
       }
       this.themeSelect.value = initial.themeId;
       this.themeSelect.addEventListener("change", () => {
-        this.callbacks.onThemeChange(this.themeSelect!.value);
+        this.callbacks.onThemeChange(this.themeSelect!.value as TerminalThemeId);
       });
     }
 
@@ -140,9 +147,13 @@ export class SettingsPanel {
           void this.ensureLocalFontsLoaded();
           if (this.localFontFamily) {
             this.callbacks.onFontChange(LOCAL_FONT_ID);
+          } else {
+            // Nothing applied yet — keep picker open across other setting changes.
+            this.browsingLocalFonts = true;
           }
           return;
         }
+        this.browsingLocalFonts = false;
         this.showLocalSection(false);
         this.callbacks.onFontChange(id);
       });
@@ -181,21 +192,12 @@ export class SettingsPanel {
 
     this.showLocalSection(initial.fontId === LOCAL_FONT_ID);
 
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && this.open) {
-        event.preventDefault();
-        this.close();
-      }
-      if (
-        event.key === "," &&
-        (event.metaKey || event.ctrlKey) &&
-        !event.altKey &&
-        !event.shiftKey
-      ) {
-        event.preventDefault();
-        this.toggle();
-      }
-    });
+    document.addEventListener("keydown", this.onDocumentKeydown);
+  }
+
+  dispose(): void {
+    document.removeEventListener("keydown", this.onDocumentKeydown);
+    this.root.innerHTML = "";
   }
 
   toggle(): void {
@@ -217,22 +219,49 @@ export class SettingsPanel {
     this.open = false;
     this.backdrop.hidden = true;
     this.dialog.hidden = true;
+    if (this.browsingLocalFonts) {
+      // Nothing was applied — revert the select to the applied font.
+      this.browsingLocalFonts = false;
+      if (this.fontSelect) this.fontSelect.value = this.currentFontId;
+      this.showLocalSection(this.currentFontId === LOCAL_FONT_ID);
+    }
   }
 
   sync(settings: KittermSettings): void {
     this.localFontFamily = settings.localFontFamily;
+    this.currentFontId = settings.fontId;
+    if (settings.fontId === LOCAL_FONT_ID) this.browsingLocalFonts = false;
     if (this.themeSelect) this.themeSelect.value = settings.themeId;
     if (this.fontSelect) {
       this.updateLocalOptionLabel(settings.localFontFamily);
-      this.fontSelect.value = settings.fontId;
+      if (!this.browsingLocalFonts) this.fontSelect.value = settings.fontId;
     }
     if (this.sizeInput) this.sizeInput.value = String(settings.fontSize);
     if (this.localManual && settings.localFontFamily) {
       this.localManual.value = settings.localFontFamily;
     }
-    this.showLocalSection(settings.fontId === LOCAL_FONT_ID);
+    this.showLocalSection(
+      this.browsingLocalFonts || settings.fontId === LOCAL_FONT_ID,
+    );
     this.renderLocalList();
   }
+
+  private readonly onDocumentKeydown = (event: KeyboardEvent): void => {
+    if (event.key === "Escape" && this.open) {
+      event.preventDefault();
+      this.close();
+    }
+    // ⌘, / Ctrl+,
+    if (
+      event.key === "," &&
+      (event.metaKey || event.ctrlKey) &&
+      !event.altKey &&
+      !event.shiftKey
+    ) {
+      event.preventDefault();
+      this.toggle();
+    }
+  };
 
   private localFontLabel(family: string | null): string {
     return family?.trim() ? `Local: ${family.trim()}` : "Local font…";
@@ -303,7 +332,7 @@ export class SettingsPanel {
       button.className = "settings-local-item";
       button.setAttribute("role", "option");
       button.textContent = family;
-      button.style.fontFamily = `"${family.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}", monospace`;
+      button.style.fontFamily = `"${escapeCssFontFamily(family)}", monospace`;
       if (family === this.localFontFamily) {
         button.classList.add("is-selected");
         button.setAttribute("aria-selected", "true");
@@ -325,6 +354,7 @@ export class SettingsPanel {
     const trimmed = family.trim();
     if (!trimmed) return;
     this.localFontFamily = trimmed;
+    this.browsingLocalFonts = false;
     if (this.localManual) this.localManual.value = trimmed;
     this.updateLocalOptionLabel(trimmed);
     if (this.fontSelect) this.fontSelect.value = LOCAL_FONT_ID;

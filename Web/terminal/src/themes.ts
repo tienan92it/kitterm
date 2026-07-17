@@ -1,19 +1,11 @@
 import type { ITheme } from "@xterm/xterm";
 import { githubDarkTheme } from "./theme-github-dark";
 
-export interface TerminalTheme {
-  id: string;
-  label: string;
-  colors: ITheme;
-}
-
-export const DEFAULT_THEME_ID = "github-dark";
-
-const theme = (
-  id: string,
-  label: string,
-  colors: ITheme,
-): TerminalTheme => ({ id, label, colors });
+const theme = <Id extends string>(id: Id, label: string, colors: ITheme) => ({
+  id,
+  label,
+  colors,
+});
 
 const solarizedDark: ITheme = {
   background: "#002b36",
@@ -399,7 +391,7 @@ const rosePine: ITheme = {
   brightWhite: "#e0def4",
 };
 
-export const TERMINAL_THEMES: TerminalTheme[] = [
+const THEME_LIST = [
   theme("github-dark", "GitHub Dark", githubDarkTheme),
   theme("github-dark-dimmed", "GitHub Dark Dimmed", githubDarkDimmed),
   theme("vesper", "Vesper", vesper),
@@ -419,7 +411,17 @@ export const TERMINAL_THEMES: TerminalTheme[] = [
   theme("rose-pine", "Rosé Pine", rosePine),
 ];
 
-export type TerminalThemeId = string;
+export type TerminalThemeId = (typeof THEME_LIST)[number]["id"];
+
+export interface TerminalTheme {
+  id: TerminalThemeId;
+  label: string;
+  colors: ITheme;
+}
+
+export const TERMINAL_THEMES: readonly TerminalTheme[] = THEME_LIST;
+
+export const DEFAULT_THEME_ID: TerminalThemeId = "github-dark";
 
 export const findThemeById = (id: string): TerminalTheme =>
   TERMINAL_THEMES.find((entry) => entry.id === id) ??

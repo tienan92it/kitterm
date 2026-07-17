@@ -1,9 +1,4 @@
-import {
-  DEFAULT_FONT_ID,
-  LOCAL_FONT_ID,
-  type TerminalFontId,
-  findFontById,
-} from "./fonts";
+import { DEFAULT_FONT_ID, type TerminalFontId, findFontById } from "./fonts";
 import { DEFAULT_THEME_ID, type TerminalThemeId, findThemeById } from "./themes";
 
 export const FONT_SIZE_MIN = 9;
@@ -54,24 +49,15 @@ const removeRaw = (key: string): void => {
 export const loadSettings = (): KittermSettings => {
   const themeId = findThemeById(readRaw(KEY_THEME) ?? DEFAULT_THEME_ID).id;
   const fontId = findFontById(readRaw(KEY_FONT) ?? DEFAULT_FONT_ID).id;
-  const parsedSize = Number(readRaw(KEY_FONT_SIZE));
-  const fontSize = clampFontSize(
-    Number.isFinite(parsedSize) ? parsedSize : FONT_SIZE_DEFAULT,
-  );
+  const rawSize = readRaw(KEY_FONT_SIZE);
+  // Missing key must fall back to the default, not clamp Number(null) === 0 to the minimum.
+  const fontSize =
+    rawSize === null || rawSize.trim() === ""
+      ? FONT_SIZE_DEFAULT
+      : clampFontSize(Number(rawSize));
   const rawLocal = readRaw(KEY_LOCAL_FONT)?.trim() ?? "";
   const localFontFamily = rawLocal.length > 0 ? rawLocal : null;
   return { themeId, fontId, fontSize, localFontFamily };
-};
-
-export const saveSettings = (settings: KittermSettings): void => {
-  writeRaw(KEY_THEME, settings.themeId);
-  writeRaw(KEY_FONT, settings.fontId);
-  writeRaw(KEY_FONT_SIZE, String(clampFontSize(settings.fontSize)));
-  if (settings.localFontFamily?.trim()) {
-    writeRaw(KEY_LOCAL_FONT, settings.localFontFamily.trim());
-  } else {
-    removeRaw(KEY_LOCAL_FONT);
-  }
 };
 
 export const saveThemeId = (themeId: TerminalThemeId): void => {
@@ -91,5 +77,3 @@ export const saveLocalFontFamily = (family: string | null): void => {
   if (trimmed) writeRaw(KEY_LOCAL_FONT, trimmed);
   else removeRaw(KEY_LOCAL_FONT);
 };
-
-export { LOCAL_FONT_ID };

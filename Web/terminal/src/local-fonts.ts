@@ -11,27 +11,8 @@ declare global {
   }
 }
 
-export type LocalFontPermissionState = "granted" | "denied" | "prompt" | "unsupported";
-
 export const isLocalFontAccessSupported = (): boolean =>
   typeof window !== "undefined" && typeof window.queryLocalFonts === "function";
-
-export const loadLocalFontPermissionState = async (): Promise<LocalFontPermissionState> => {
-  if (!isLocalFontAccessSupported()) return "unsupported";
-  if (!navigator.permissions?.query) return "unsupported";
-  try {
-    // Chrome exposes "local-fonts"; typings may not include it yet.
-    const status = await navigator.permissions.query({
-      name: "local-fonts" as PermissionName,
-    });
-    if (status.state === "granted" || status.state === "denied" || status.state === "prompt") {
-      return status.state;
-    }
-    return "prompt";
-  } catch {
-    return "unsupported";
-  }
-};
 
 /**
  * Triggers the browser permission prompt on first call (must be from a user
