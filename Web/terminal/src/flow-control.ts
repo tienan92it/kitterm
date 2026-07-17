@@ -52,4 +52,10 @@ export class OutputFlowControl {
       this.callbacks.onResume();
     }
   }
+
+  /** New connection: server-side pause state is fresh, so mirror it. */
+  reset(): void {
+    this.pending = 0;
+    this.paused = false;
+  }
 }

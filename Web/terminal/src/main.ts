@@ -11,6 +11,14 @@ const searchRoot = document.getElementById("search");
 const settingsRoot = document.getElementById("settings-root");
 const app = new TerminalApp({ container, statusEl, searchRoot, settingsRoot });
 
+// Debug handle (devtools): inspect or drive the app, e.g. simulate disconnects.
+declare global {
+  interface Window {
+    __kitterm?: TerminalApp;
+  }
+}
+window.__kitterm = app;
+
 window.addEventListener("beforeunload", () => {
   app.dispose();
 });

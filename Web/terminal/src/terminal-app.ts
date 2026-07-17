@@ -17,7 +17,7 @@ import {
 } from "./kitty";
 import { OutputFlowControl } from "./flow-control";
 import { LOCAL_FONT_ID, resolveFontFamily, type TerminalFontId } from "./fonts";
-import { KittermSession } from "./session";
+import { KittermSession, defaultWsUrl } from "./session";
 import { SettingsPanel } from "./settings-panel";
 import {
   loadSettings,
@@ -54,6 +54,11 @@ export class TerminalApp {
     onPause: () => this.session.sendPause(),
     onResume: () => this.session.sendResume(),
   });
+  private sessionId: string | null = readStoredSessionId();
+  private reconnectTimer: number | null = null;
+  private reconnectAttempt = 0;
+  private lastConnectAt = 0;
+  private statusClearTimer: number | null = null;
   private disposed = false;
   private exited = false;
   constructor(options: TerminalAppOptions) {
@@ -85,18 +90,19 @@ export class TerminalApp {
 
     this.session = new KittermSession({
       onOpen: () => {
+        this.reconnectAttempt = 0;
+        this.clearReconnectTimer();
+        this.flowControl.reset();
         this.setStatus(null);
         this.fitAndResize();
         this.terminal.focus();
       },
       onFrame: (frame) => this.handleFrame(frame),
       onClose: () => {
-        if (!this.exited) {
-          this.setStatus("Disconnected — reload for a new shell");
-        }
+        this.handleDisconnect();
       },
       onError: () => {
-        this.setStatus("Connection error");
+        // onClose follows and drives the reconnect; no separate handling.
       },
     });
 
@@ -109,17 +115,72 @@ export class TerminalApp {
     this.wireSearch();
     this.wireSettings();
     this.wireResize(options.container);
+    this.wireReconnectTriggers();
 
-    this.session.connect();
+    this.connect();
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.clearReconnectTimer();
     this.resizeObserver?.disconnect();
     this.settingsPanel?.dispose();
     this.session.close();
     this.terminal.dispose();
+  }
+
+  // MARK: Reconnect
+
+  private connect(): void {
+    this.lastConnectAt = Date.now();
+    const url = this.sessionId
+      ? `${defaultWsUrl()}?session=${encodeURIComponent(this.sessionId)}`
+      : defaultWsUrl();
+    this.session.connect(url);
+  }
+
+  private handleDisconnect(): void {
+    if (this.disposed || this.exited) return;
+    this.setStatus("Reconnecting…");
+    this.scheduleReconnect();
+  }
+
+  private scheduleReconnect(): void {
+    if (this.reconnectTimer !== null) return;
+    const delay = Math.min(10_000, 500 * 2 ** this.reconnectAttempt);
+    this.reconnectAttempt += 1;
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.disposed && !this.exited && !this.session.ready) {
+        // A failed attempt fires onClose, which schedules the next retry.
+        this.connect();
+      }
+    }, delay);
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer !== null) {
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  /** Focus / tab visibility / network-online reconnect immediately. */
+  private wireReconnectTriggers(): void {
+    const tryNow = () => {
+      if (this.disposed || this.exited || this.session.ready) return;
+      if (Date.now() - this.lastConnectAt < 500) return;
+      this.clearReconnectTimer();
+      this.reconnectAttempt = 0;
+      this.setStatus("Reconnecting…");
+      this.connect();
+    };
+    window.addEventListener("focus", tryNow);
+    window.addEventListener("online", tryNow);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") tryNow();
+    });
   }
 
   private attachWebgl(): void {
@@ -425,6 +486,15 @@ export class TerminalApp {
         this.terminal.write(frame.data, () => this.flowControl.dequeue(bytes));
         break;
       }
+      case "sessionId": {
+        const replaced = this.sessionId !== null && this.sessionId !== frame.id;
+        this.sessionId = frame.id;
+        storeSessionId(frame.id);
+        if (replaced) {
+          this.flashStatus("Previous shell ended — started a new shell");
+        }
+        break;
+      }
       case "title":
         if (frame.title.trim()) {
           document.title = `${frame.title} — kitterm`;
@@ -442,6 +512,7 @@ export class TerminalApp {
         break;
       case "exit":
         this.exited = true;
+        clearStoredSessionId();
         this.setStatus(`Shell exited (${frame.code}) — reload for a new shell`);
         this.session.close();
         break;
@@ -450,6 +521,10 @@ export class TerminalApp {
 
   private setStatus(message: string | null): void {
     if (!this.statusEl) return;
+    if (this.statusClearTimer !== null) {
+      window.clearTimeout(this.statusClearTimer);
+      this.statusClearTimer = null;
+    }
     if (message) {
       this.statusEl.textContent = message;
       this.statusEl.hidden = false;
@@ -457,6 +532,41 @@ export class TerminalApp {
       this.statusEl.textContent = "";
       this.statusEl.hidden = true;
     }
+  }
+
+  private flashStatus(message: string, durationMs = 4000): void {
+    this.setStatus(message);
+    this.statusClearTimer = window.setTimeout(() => {
+      this.statusClearTimer = null;
+      this.setStatus(null);
+    }, durationMs);
+  }
+}
+
+const SESSION_ID_KEY = "kitterm:session-id";
+
+/** sessionStorage is per-tab: it preserves "tab = shell" across reloads. */
+function readStoredSessionId(): string | null {
+  try {
+    return sessionStorage.getItem(SESSION_ID_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function storeSessionId(id: string): void {
+  try {
+    sessionStorage.setItem(SESSION_ID_KEY, id);
+  } catch {
+    // private mode — reattach still works within this page's lifetime
+  }
+}
+
+function clearStoredSessionId(): void {
+  try {
+    sessionStorage.removeItem(SESSION_ID_KEY);
+  } catch {
+    // ignore
   }
 }
 

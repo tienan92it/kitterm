@@ -36,8 +36,12 @@ public final class PtySession: @unchecked Sendable {
     private var terminated = false
     private var exitNotified = false
 
-    public var onOutput: ((Data) -> Void)?
-    public var onExit: ((Int32) -> Void)?
+    /// While no client is attached (startup gap, transient disconnect),
+    /// output accumulates here, bounded by pausing PTY reads at the cap.
+    private var detachedBuffer = Data()
+    private var attached = false
+    private var onOutput: ((Data) -> Void)?
+    private var onExit: ((Int32) -> Void)?
 
     private init(
         pid: pid_t,
@@ -203,20 +207,59 @@ public final class PtySession: @unchecked Sendable {
         }
     }
 
-    public func pauseReading() {
+    public var isRunning: Bool {
+        syncQueue.sync { !terminated }
+    }
+
+    /// Wire a client to this session. Replays output buffered while detached,
+    /// then streams live. Safe for both first attach and reattach.
+    public func attach(
+        onOutput: @escaping (Data) -> Void,
+        onExit: @escaping (Int32) -> Void
+    ) {
         syncQueue.sync {
-            guard !readingPaused, let source = readSource else { return }
-            readingPaused = true
-            source.suspend()
+            self.onOutput = onOutput
+            self.onExit = onExit
+            attached = true
+            if !detachedBuffer.isEmpty {
+                let replay = detachedBuffer
+                detachedBuffer = Data()
+                onOutput(replay)
+            }
+            resumeReadingLocked()
         }
     }
 
-    public func resumeReading() {
+    /// Disconnect the client but keep the shell alive; output buffers until
+    /// the next `attach` (bounded — reads pause at the cap).
+    public func detach(onExitWhileDetached: ((Int32) -> Void)? = nil) {
         syncQueue.sync {
-            guard readingPaused, let source = readSource else { return }
-            readingPaused = false
-            source.resume()
+            attached = false
+            onOutput = nil
+            onExit = onExitWhileDetached
+            // A client-requested pause must not outlive the client.
+            resumeReadingLocked()
         }
+    }
+
+    public func pauseReading() {
+        syncQueue.sync { pauseReadingLocked() }
+    }
+
+    public func resumeReading() {
+        syncQueue.sync { resumeReadingLocked() }
+    }
+
+    private func pauseReadingLocked() {
+        guard !readingPaused, let source = readSource else { return }
+        readingPaused = true
+        source.suspend()
+    }
+
+    private func resumeReadingLocked() {
+        guard readingPaused, let source = readSource else { return }
+        readingPaused = false
+        source.resume()
     }
 
     public func terminate() {
@@ -259,7 +302,15 @@ public final class PtySession: @unchecked Sendable {
             let n = Darwin.read(masterFD, &buffer, buffer.count)
             if n > 0 {
                 let chunk = Data(buffer[0..<Int(n)])
-                onOutput?(chunk)
+                if attached, let onOutput {
+                    onOutput(chunk)
+                } else {
+                    detachedBuffer.append(chunk)
+                    if detachedBuffer.count >= KittermConstants.sessionDetachBufferMaxBytes {
+                        pauseReadingLocked()
+                        return
+                    }
+                }
                 continue
             }
             if n == 0 {
@@ -289,7 +340,8 @@ public final class PtySession: @unchecked Sendable {
             DispatchQueue.main.async {
                 guard let self, !self.exitNotified else { return }
                 self.exitNotified = true
-                self.onExit?(code)
+                let handler = self.syncQueue.sync { self.onExit }
+                handler?(code)
             }
         }
     }

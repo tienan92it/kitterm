@@ -17,7 +17,8 @@ swift run kitterm start
 | Tab | Effect |
 |-----|--------|
 | Open | New shell |
-| Close / reload | Shell dies |
+| Sleep / brief disconnect / reload | Auto-reconnects to the same shell |
+| Close (or no reattach in 5 min) | Shell dies |
 
 ```bash
 kitterm status | stop | restart

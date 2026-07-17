@@ -13,6 +13,7 @@ export const ServerOpcode = {
   sessionMeta: 2,
   cwd: 3,
   exit: 4,
+  sessionId: 5,
 } as const;
 
 export type SessionMeta = {
@@ -26,7 +27,8 @@ export type ServerFrame =
   | { type: "title"; title: string }
   | { type: "sessionMeta"; meta: SessionMeta }
   | { type: "cwd"; cwd: string }
-  | { type: "exit"; code: number };
+  | { type: "exit"; code: number }
+  | { type: "sessionId"; id: string };
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -122,6 +124,8 @@ export function decodeServerFrame(buffer: ArrayBuffer): ServerFrame {
       const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
       return { type: "exit", code: view.getInt32(0, false) };
     }
+    case ServerOpcode.sessionId:
+      return { type: "sessionId", id: textDecoder.decode(payload) };
     default:
       throw new Error(`unknown server opcode ${opcode}`);
   }

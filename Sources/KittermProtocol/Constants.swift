@@ -34,6 +34,13 @@ public enum KittermConstants: Sendable {
     public static let wsHeartbeatIntervalMs: Int = 20_000
     public static let wsHeartbeatTimeoutMs: Int = 60_000
 
+    /// Detached sessions (transient disconnect: sleep/wake, network blip) are
+    /// kept alive this long awaiting reattach, then reaped. Uses a suspending
+    /// clock so machine sleep does not consume the window.
+    public static let sessionDetachLingerSeconds: Int = 300
+    /// PTY output buffered while detached; reads pause beyond this cap.
+    public static let sessionDetachBufferMaxBytes: Int = 1 * 1024 * 1024
+
     public static let serverStopGraceMs: Int = 1_500
 
     public static let stateDirectoryName: String = ".kitterm"

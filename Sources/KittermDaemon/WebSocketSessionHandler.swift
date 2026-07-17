@@ -8,18 +8,23 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     typealias OutboundOut = WebSocketFrame
 
     private let registry: SessionRegistry
+    private let reattachID: UUID?
     private var sessionID: UUID?
     private var pty: PtySession?
     private var batcher: OutputBatcher?
+    /// Client frames that arrive before the PTY is wired (claim is async).
+    private var pendingClientFrames: [Data] = []
     private var outboundBuffered = 0
     private var clientPaused = false
     private var ptyReadPaused = false
+    private var ptyExited = false
     private var awaitingPong = false
     private var heartbeatTask: RepeatedTask?
     private var closed = false
 
-    init(registry: SessionRegistry) {
+    init(registry: SessionRegistry, reattachID: UUID? = nil) {
         self.registry = registry
+        self.reattachID = reattachID
     }
 
     func handlerAdded(context: ChannelHandlerContext) {
@@ -31,42 +36,27 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
             )
         ).whenFailure { _ in }
 
-        do {
-            let session = try PtySession.spawn()
-            self.pty = session
-            let idPromise = context.eventLoop.makePromise(of: UUID.self)
-            idPromise.completeWithTask {
-                await self.registry.register(session)
-            }
-            idPromise.futureResult.whenSuccess { [weak self] id in
-                self?.sessionID = id
-            }
-
-            let batcher = OutputBatcher(eventLoop: context.eventLoop) { [weak self, weak context] buffer in
-                guard let self, let context else { return }
-                self.sendOutput(buffer, context: context)
-            }
-            self.batcher = batcher
-
-            session.onOutput = { [weak self, weak context] data in
-                guard let context else { return }
-                context.eventLoop.execute {
-                    self?.batcher?.append(data)
+        let claimPromise = context.eventLoop.makePromise(of: PtySession?.self)
+        let registry = self.registry
+        let reattachID = self.reattachID
+        claimPromise.completeWithTask {
+            guard let reattachID else { return nil }
+            return await registry.claim(reattachID)
+        }
+        claimPromise.futureResult.whenSuccess { [weak self] claimed in
+            guard let self, !self.closed else {
+                // Channel died before the claim resolved — put the session back.
+                if let claimed, let reattachID {
+                    claimed.detach()
+                    Task { await registry.markDetached(reattachID) }
                 }
+                return
             }
-            session.onExit = { [weak self, weak context] code in
-                guard let context else { return }
-                context.eventLoop.execute {
-                    self?.handlePtyExit(code, context: context)
-                }
+            if let claimed, let reattachID {
+                self.adopt(session: claimed, id: reattachID, context: context)
+            } else {
+                self.spawnNew(context: context)
             }
-
-            sendMeta(context: context, session: session)
-            startHeartbeat(context: context)
-        } catch {
-            let reason = (error as? LocalizedError)?.errorDescription ?? "pty spawn failed"
-            FileHandle.standardError.write(Data("kitterm: \(reason)\n".utf8))
-            closePolicy(context: context, reason: reason)
         }
     }
 
@@ -99,9 +89,82 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         case .binary, .text:
             var payload = frame.unmaskedData
             guard let bytes = payload.readBytes(length: payload.readableBytes) else { return }
-            handleClientPayload(Data(bytes), context: context)
+            let data = Data(bytes)
+            if pty == nil {
+                pendingClientFrames.append(data)
+                return
+            }
+            handleClientPayload(data, context: context)
         default:
             break
+        }
+    }
+
+    // MARK: - Session wiring
+
+    private func adopt(session: PtySession, id: UUID, context: ChannelHandlerContext) {
+        sessionID = id
+        pty = session
+        sendSessionId(id, context: context)
+        sendMeta(context: context, session: session)
+        wire(session: session, context: context)
+    }
+
+    private func spawnNew(context: ChannelHandlerContext) {
+        do {
+            let session = try PtySession.spawn()
+            self.pty = session
+            let idPromise = context.eventLoop.makePromise(of: UUID.self)
+            idPromise.completeWithTask {
+                await self.registry.register(session)
+            }
+            let registry = self.registry
+            idPromise.futureResult.whenSuccess { [weak self, weak context] id in
+                guard let self, let context, !self.closed else {
+                    // Channel died before registration resolved — reap the entry.
+                    Task { await registry.remove(id) }
+                    return
+                }
+                self.sessionID = id
+                self.sendSessionId(id, context: context)
+            }
+            sendMeta(context: context, session: session)
+            wire(session: session, context: context)
+        } catch {
+            let reason = (error as? LocalizedError)?.errorDescription ?? "pty spawn failed"
+            FileHandle.standardError.write(Data("kitterm: \(reason)\n".utf8))
+            closePolicy(context: context, reason: reason)
+        }
+    }
+
+    private func wire(session: PtySession, context: ChannelHandlerContext) {
+        let batcher = OutputBatcher(eventLoop: context.eventLoop) { [weak self, weak context] buffer in
+            guard let self, let context else { return }
+            self.sendOutput(buffer, context: context)
+        }
+        self.batcher = batcher
+
+        session.attach(
+            onOutput: { [weak self, weak context] data in
+                guard let context else { return }
+                context.eventLoop.execute {
+                    self?.batcher?.append(data)
+                }
+            },
+            onExit: { [weak self, weak context] code in
+                guard let context else { return }
+                context.eventLoop.execute {
+                    self?.handlePtyExit(code, context: context)
+                }
+            }
+        )
+
+        startHeartbeat(context: context)
+
+        let queued = pendingClientFrames
+        pendingClientFrames = []
+        for data in queued {
+            handleClientPayload(data, context: context)
         }
     }
 
@@ -127,6 +190,14 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
             }
         } catch {
             // Ignore malformed frames; keep session alive.
+        }
+    }
+
+    // MARK: - Outbound
+
+    private func sendSessionId(_ id: UUID, context: ChannelHandlerContext) {
+        if let encoded = try? ServerFrame.sessionId(id.uuidString).encode() {
+            writeBinary(encoded, context: context)
         }
     }
 
@@ -213,7 +284,10 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         }
     }
 
+    // MARK: - Teardown
+
     private func handlePtyExit(_ code: Int32, context: ChannelHandlerContext) {
+        ptyExited = true
         batcher?.flushNow()
         if let encoded = try? ServerFrame.exit(code).encode() {
             writeBinary(encoded, context: context)
@@ -243,6 +317,9 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         teardown()
     }
 
+    /// Connection is gone. If the shell still runs, detach it — the client may
+    /// reattach (sleep/wake, reload). The registry reaps it after the linger
+    /// window. Only an exited shell is terminated immediately.
     private func teardown() {
         guard !closed else { return }
         closed = true
@@ -250,15 +327,24 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         heartbeatTask = nil
         batcher?.close()
         batcher = nil
-        pty?.terminate()
-        pty = nil
-        if let sessionID {
-            let registry = registry
-            let id = sessionID
-            Task {
-                await registry.remove(id)
+        pendingClientFrames = []
+
+        let registry = registry
+        if let pty, let sessionID {
+            if ptyExited {
+                pty.terminate()
+                Task { await registry.remove(sessionID) }
+            } else {
+                pty.detach(onExitWhileDetached: { _ in
+                    Task { await registry.remove(sessionID) }
+                })
+                Task { await registry.markDetached(sessionID) }
             }
+        } else if let pty {
+            // Never registered (spawn raced teardown) — kill it.
+            pty.terminate()
         }
+        pty = nil
         sessionID = nil
     }
 }

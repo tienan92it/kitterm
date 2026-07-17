@@ -15,6 +15,7 @@ public enum ServerOpcode: UInt8, Sendable {
     case sessionMeta = 2
     case cwd = 3
     case exit = 4
+    case sessionId = 5
 }
 
 public enum FrameError: Error, Equatable, Sendable {
@@ -157,6 +158,7 @@ public enum ServerFrame: Equatable, Sendable {
     case sessionMeta(SessionMeta)
     case cwd(String)
     case exit(Int32)
+    case sessionId(String)
 
     public static func decode(_ data: Data) throws -> ServerFrame {
         guard let opcodeByte = data.first else {
@@ -191,6 +193,11 @@ public enum ServerFrame: Equatable, Sendable {
                 | (Int32(payload[payload.startIndex + 2]) << 8)
                 | Int32(payload[payload.startIndex + 3])
             return .exit(code)
+        case .sessionId:
+            guard let id = String(data: Data(payload), encoding: .utf8) else {
+                throw FrameError.invalidUTF8
+            }
+            return .sessionId(id)
         }
     }
 
@@ -216,6 +223,10 @@ public enum ServerFrame: Equatable, Sendable {
             var out = Data([ServerOpcode.exit.rawValue])
             var be = code.bigEndian
             withUnsafeBytes(of: &be) { out.append(contentsOf: $0) }
+            return out
+        case .sessionId(let id):
+            var out = Data([ServerOpcode.sessionId.rawValue])
+            out.append(contentsOf: id.utf8)
             return out
         }
     }

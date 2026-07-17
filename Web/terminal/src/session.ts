@@ -87,6 +87,12 @@ export class KittermSession {
 
   close(): void {
     if (this.ws) {
+      // Detach handlers first: an intentional close (dispose, reconnect)
+      // must not fire onClose and trigger the reconnect path.
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      this.ws.onclose = null;
+      this.ws.onerror = null;
       this.ws.close();
       this.ws = null;
     }

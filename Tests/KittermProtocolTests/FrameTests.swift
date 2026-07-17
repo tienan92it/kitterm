@@ -31,6 +31,13 @@ final class FrameTests: XCTestCase {
         XCTAssertEqual(try ServerFrame.decode(encoded), frame)
     }
 
+    func testServerSessionIdRoundTrip() throws {
+        let id = "6B29FC40-CA47-1067-B31D-00DD010662DA"
+        let encoded = try ServerFrame.sessionId(id).encode()
+        XCTAssertEqual(encoded.first, ServerOpcode.sessionId.rawValue)
+        XCTAssertEqual(try ServerFrame.decode(encoded), .sessionId(id))
+    }
+
     func testServerTitleAndCwd() throws {
         let title = try ServerFrame.title("vim — file.swift").encode()
         XCTAssertEqual(try ServerFrame.decode(title), .title("vim — file.swift"))

@@ -54,8 +54,11 @@ public final class DaemonServer: @unchecked Sendable {
                 }
                 return channel.eventLoop.makeSucceededFuture(HTTPHeaders())
             },
-            upgradePipelineHandler: { channel, _ in
-                channel.pipeline.addHandler(WebSocketSessionHandler(registry: registry))
+            upgradePipelineHandler: { channel, head in
+                let reattachID = Self.reattachSessionID(fromRequestURI: head.uri)
+                return channel.pipeline.addHandler(
+                    WebSocketSessionHandler(registry: registry, reattachID: reattachID)
+                )
             }
         )
 
@@ -107,6 +110,16 @@ public final class DaemonServer: @unchecked Sendable {
 
     public func waitUntilClosed() throws {
         try channel?.closeFuture.wait()
+    }
+
+    /// Extracts `?session=<uuid>` from the WS request URI (reattach request).
+    static func reattachSessionID(fromRequestURI uri: String) -> UUID? {
+        guard let components = URLComponents(string: uri),
+              let raw = components.queryItems?.first(where: { $0.name == "session" })?.value
+        else {
+            return nil
+        }
+        return UUID(uuidString: raw)
     }
 
     public func stop() throws {
