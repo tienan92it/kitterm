@@ -1,7 +1,7 @@
 # Bench harness
 
 Runnable regression scenarios against a live `kittermd` binary WebSocket (`KittermProtocol`).
-Measures daemon I/O behavior (batching, interactive flush, backpressure survival) — not Metal glyph latency (use Instruments for that).
+Measures daemon I/O behavior (batching, interactive flush, backpressure survival) — not browser paint latency.
 
 ## Prerequisites
 
@@ -44,7 +44,7 @@ Exit code `0` = all gated checks passed; `1` = failure or daemon unreachable.
 
 - Reports latency summary in milliseconds.
 - Soft gate: `p95 < 50ms` on a quiet machine. Higher values usually mean shell noise, CPU contention, or the batcher delaying quiet echoes (should be rare — quiet path flushes immediately).
-- This is daemon+PTY RTT, not native Metal input→glyph latency.
+- This is daemon+PTY RTT, not browser input→glyph latency.
 
 **TUI-redraw**
 
@@ -62,4 +62,4 @@ Exit code `0` = all gated checks passed; `1` = failure or daemon unreachable.
 
 - Harness uses `URLSessionWebSocketTask` with loopback `Host`/`Origin`.
 - Scenarios drive a login shell over the protocol; they send shell commands (`exec cat`, `python3`, `dd`).
-- Keep Instruments / Metal frame timing as a separate native-only pass when optimizing the app renderer.
+- For UI latency, profile the browser client (Chrome Performance / WebGL) separately.

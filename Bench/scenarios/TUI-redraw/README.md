@@ -2,7 +2,7 @@
 
 ## Goal
 
-Stress full-screen redraw throughput through the daemon (native Metal frame time is a separate Instruments pass).
+Stress full-screen redraw throughput through the daemon (browser paint is a separate profile pass).
 
 ## Method
 

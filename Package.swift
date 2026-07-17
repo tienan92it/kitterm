@@ -10,12 +10,10 @@ let package = Package(
         .library(name: "KittermProtocol", targets: ["KittermProtocol"]),
         .library(name: "KittermDaemon", targets: ["KittermDaemon"]),
         .executable(name: "kitterm", targets: ["KittermCLI"]),
-        .executable(name: "KittermApp", targets: ["KittermApp"]),
         .executable(name: "KittermBench", targets: ["KittermBench"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.76.0"),
-        .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", from: "1.14.0"),
     ],
     targets: [
         .target(
@@ -37,14 +35,6 @@ let package = Package(
                 "KittermDaemon",
                 "KittermProtocol",
             ]
-        ),
-        .executableTarget(
-            name: "KittermApp",
-            dependencies: [
-                "KittermProtocol",
-                .product(name: "SwiftTerm", package: "SwiftTerm"),
-            ],
-            path: "Apps/Kitterm"
         ),
         .executableTarget(
             name: "KittermBench",

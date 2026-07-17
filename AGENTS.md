@@ -4,10 +4,10 @@ Guidance for coding agents working in this repo.
 
 ## Product shape
 
-- **Native primary:** SwiftUI + SwiftTerm Metal tabs (phase 2+)
-- **Daemon:** Swift loopback HTTP + binary WebSocket; tab open = new shell; tab close = kill PTY
-- **Browser secondary:** xterm.js on the same protocol (phase 4)
-- **No Node on the hot path**
+- **Browser terminal only** — xterm.js client served by a Swift loopback daemon
+- Tab open = new shell; tab close / reload = kill PTY (no session reattach)
+- **No Node on the hot path** (daemon is Swift + NIO)
+- No native Mac app
 
 ## Binary protocol (`KittermProtocol`)
 
@@ -22,19 +22,17 @@ Guidance for coding agents working in this repo.
 | S→C | `3` | cwd UTF-8 |
 | S→C | `4` | exit code `i32` BE |
 
-Flow-control defaults (inspired by localterm numbers, reimplemented): ~2ms / 64KB batching, PTY pause at 4MB buffered outbound, resume at 1MB, hard close at 64MB. Immediate flush on quiet interactive echo.
+Flow-control defaults: ~2ms / 64KB batching, PTY pause at 4MB buffered outbound, resume at 1MB, hard close at 64MB.
 
 ## Security
 
 - Bind `127.0.0.1` only
 - Enforce Host / Origin against loopback hostnames
-- Reject non-loopback; no TLS / remote bind in MVP
+- No TLS / remote bind in MVP
 
 ## State
 
-`~/.kitterm/{pid,port,server.log}` — CLI start/stop/status/restart.
-
-Default port: **3418** (avoids localterm’s 3417).
+`~/.kitterm/{pid,port,server.log}` — default port **3418**.
 
 ## Coding standards
 
@@ -48,16 +46,7 @@ Default port: **3418** (avoids localterm’s 3417).
 ```bash
 swift build
 swift test
+cd Web/terminal && pnpm install && pnpm build
 swift run kitterm start|stop|status|restart
-swift run KittermBench              # needs daemon; see Bench/README.md
+swift run KittermBench
 ```
-
-## Mac integration (phase 3)
-
-- Optional LaunchAgent: `launchd/com.kitterm.daemon.plist` → `kitterm serve` (foreground). See `launchd/README.md`.
-- App Intents stub: `NewKittermTabIntent` in `Apps/Kitterm`. Shortcuts need an Xcode-packaged `.app` (SPM executable has no intents metadata).
-- Security: loopback-only; document in README — do not add remote bind/TLS in MVP.
-
-## Phases
-
-0 Bootstrap · 1 Daemon core · 2 Native app · 3 launchd/App Intents · 4 Web client · 5 Perf polish
