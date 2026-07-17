@@ -63,6 +63,8 @@ public final class DaemonServer: @unchecked Sendable {
             .serverChannelOption(ChannelOptions.backlog, value: 256)
             .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             .childChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
+            // Interactive echo is many tiny writes — never let Nagle delay them.
+            .childChannelOption(ChannelOptions.socketOption(.tcp_nodelay), value: 1)
             .childChannelInitializer { channel in
                 let httpHandler = HTTPAPIHandler(registry: registry)
                 let config = NIOHTTPServerUpgradeConfiguration(

@@ -15,6 +15,7 @@ import {
   buildKittyKeySequence,
   extractKeyboardModifiers,
 } from "./kitty";
+import { OutputFlowControl } from "./flow-control";
 import { LOCAL_FONT_ID, resolveFontFamily, type TerminalFontId } from "./fonts";
 import { KittermSession } from "./session";
 import { SettingsPanel } from "./settings-panel";
@@ -49,6 +50,10 @@ export class TerminalApp {
   private webglAddon: WebglAddon | null = null;
   private searchInput: HTMLInputElement | null = null;
   private resizeObserver: ResizeObserver | null = null;
+  private readonly flowControl = new OutputFlowControl({
+    onPause: () => this.session.sendPause(),
+    onResume: () => this.session.sendResume(),
+  });
   private disposed = false;
   private exited = false;
   constructor(options: TerminalAppOptions) {
@@ -414,9 +419,12 @@ export class TerminalApp {
 
   private handleFrame(frame: import("./protocol").ServerFrame): void {
     switch (frame.type) {
-      case "output":
-        this.terminal.write(frame.data);
+      case "output": {
+        const bytes = frame.data.byteLength;
+        this.flowControl.enqueue(bytes);
+        this.terminal.write(frame.data, () => this.flowControl.dequeue(bytes));
         break;
+      }
       case "title":
         if (frame.title.trim()) {
           document.title = `${frame.title} — kitterm`;
