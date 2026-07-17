@@ -144,16 +144,42 @@ export class TerminalApp {
         return true;
       }
 
-      const meta = event.metaKey || event.ctrlKey;
+      const key = event.key.toLowerCase();
 
-      if (meta && !event.shiftKey && event.key.toLowerCase() === "f") {
+      // Ctrl+C → always send ETX (\x03) ourselves. Returning true and relying on
+      // xterm is unreliable when a selection exists or the browser/OS interferes;
+      // explicit send matches a real terminal's SIGINT path (verified via WS).
+      // Copy remains ⌘C / Ctrl+Shift+C only — never bare Ctrl+C.
+      if (
+        event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        !event.shiftKey &&
+        (key === "c" || event.code === "KeyC")
+      ) {
+        event.preventDefault();
+        this.terminal.clearSelection();
+        if (!this.exited) {
+          this.session.sendInput("\x03");
+        }
+        return false;
+      }
+
+      // Find: ⌘F on macOS, Ctrl+Shift+F elsewhere (avoid stealing Ctrl+F from apps).
+      const isFind =
+        (event.metaKey && !event.ctrlKey && !event.shiftKey && key === "f") ||
+        (event.ctrlKey && event.shiftKey && !event.metaKey && key === "f");
+      if (isFind) {
         event.preventDefault();
         this.openSearch();
         return false;
       }
 
-      // Copy selection: ⌘/Ctrl+C or ⌘/Ctrl+Shift+C when text is selected.
-      if (meta && event.key.toLowerCase() === "c") {
+      // Copy selection: ⌘C, or Ctrl+Shift+C — never bare Ctrl+C.
+      const isCopy =
+        (event.metaKey && !event.ctrlKey && key === "c") ||
+        (event.ctrlKey && event.shiftKey && !event.metaKey && key === "c");
+      if (isCopy) {
         const selection = this.terminal.getSelection();
         if (selection) {
           event.preventDefault();
@@ -161,8 +187,12 @@ export class TerminalApp {
           return false;
         }
       }
-      // Explicit paste: ⌘/Ctrl+Shift+V (plain ⌘V still uses the browser paste → onData path).
-      if (meta && event.shiftKey && event.key.toLowerCase() === "v") {
+
+      // Paste: ⌘V / Ctrl+Shift+V (plain Ctrl+V left to the browser/xterm path).
+      const isPaste =
+        (event.metaKey && !event.ctrlKey && key === "v") ||
+        (event.ctrlKey && event.shiftKey && !event.metaKey && key === "v");
+      if (isPaste) {
         event.preventDefault();
         void navigator.clipboard
           .readText()

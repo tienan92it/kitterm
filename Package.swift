@@ -10,6 +10,7 @@ let package = Package(
         .library(name: "KittermProtocol", targets: ["KittermProtocol"]),
         .library(name: "KittermDaemon", targets: ["KittermDaemon"]),
         .executable(name: "kitterm", targets: ["KittermCLI"]),
+        .executable(name: "kitterm-spawn-helper", targets: ["KittermSpawnHelper"]),
         .executable(name: "KittermBench", targets: ["KittermBench"]),
     ],
     dependencies: [
@@ -18,6 +19,10 @@ let package = Package(
     targets: [
         .target(
             name: "KittermProtocol"
+        ),
+        .executableTarget(
+            name: "KittermSpawnHelper",
+            path: "Sources/KittermSpawnHelper"
         ),
         .target(
             name: "KittermDaemon",

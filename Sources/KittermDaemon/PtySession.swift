@@ -19,8 +19,9 @@ public enum PtyError: Error, LocalizedError {
 
 /// One login-shell PTY. Kill on session teardown (WS close).
 ///
-/// Uses `openpty` + `posix_spawn` (not `forkpty`) so spawning stays safe inside the
-/// multi-threaded NIO daemon process.
+/// Uses `openpty` + `posix_spawn` of `kitterm-spawn-helper` (not `forkpty`) so
+/// spawning stays safe inside the multi-threaded NIO daemon. The helper acquires
+/// a controlling TTY (`TIOCSCTTY`) so ISIG delivers SIGINT on Ctrl+C / VINTR.
 public final class PtySession: @unchecked Sendable {
     public let pid: pid_t
     public let shellPath: String
@@ -99,7 +100,7 @@ public final class PtySession: @unchecked Sendable {
             _ = Darwin.close(slave)
         }
 
-        // New session so the PTY can become the controlling terminal.
+        // New session so the helper can acquire a controlling terminal.
         posix_spawnattr_setflags(&attrs, Int16(POSIX_SPAWN_SETSID))
 
         posix_spawn_file_actions_adddup2(&actions, slave, STDIN_FILENO)
@@ -111,18 +112,28 @@ public final class PtySession: @unchecked Sendable {
         if slave != STDIN_FILENO && slave != STDOUT_FILENO && slave != STDERR_FILENO {
             posix_spawn_file_actions_addclose(&actions, slave)
         }
-        // macOS extension — set child cwd without fork/chdir races.
-        let chdirRC = startCwd.withCString { posix_spawn_file_actions_addchdir_np(&actions, $0) }
-        guard chdirRC == 0 else {
-            _ = Darwin.close(master)
-            throw PtyError.forkFailed(errno: chdirRC)
-        }
 
+        let helperPath = try SpawnHelperPath.resolve()
         let shellName = URL(fileURLWithPath: shell).lastPathComponent
         let argv0 = "-" + shellName
-        let argv0Ptr = strdup(argv0)
-        defer { free(argv0Ptr) }
-        var argv: [UnsafeMutablePointer<CChar>?] = [argv0Ptr, nil]
+
+        // helper <cwd> <shellPath> <argv0>
+        func dupCString(_ string: String) -> UnsafeMutablePointer<CChar> {
+            string.withCString { strdup($0)! }
+        }
+        let helperPtrs: [UnsafeMutablePointer<CChar>?] = [
+            dupCString(helperPath),
+            dupCString(startCwd),
+            dupCString(shell),
+            dupCString(argv0),
+        ]
+        defer {
+            for ptr in helperPtrs where ptr != nil {
+                free(ptr)
+            }
+        }
+        var argv: [UnsafeMutablePointer<CChar>?] = helperPtrs
+        argv.append(nil)
 
         let envPairs = buildChildEnvironment()
         var envPointers: [UnsafeMutablePointer<CChar>?] = envPairs.map { strdup($0) }
@@ -134,7 +145,7 @@ public final class PtySession: @unchecked Sendable {
         }
 
         var childPid: pid_t = 0
-        let spawnRC = shell.withCString { path in
+        let spawnRC = helperPath.withCString { path in
             posix_spawn(&childPid, path, &actions, &attrs, &argv, &envPointers)
         }
         guard spawnRC == 0, childPid > 0 else {
@@ -220,12 +231,13 @@ public final class PtySession: @unchecked Sendable {
                 readSource = nil
             }
             _ = Darwin.close(masterFD)
+            // Kill the whole session process group (shell + kubectl children).
             if kill(pid, 0) == 0 {
-                kill(pid, SIGHUP)
+                kill(-pid, SIGHUP)
                 let child = pid
                 DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
                     if kill(child, 0) == 0 {
-                        kill(child, SIGKILL)
+                        kill(-child, SIGKILL)
                     }
                 }
             }

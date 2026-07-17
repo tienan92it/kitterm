@@ -48,7 +48,7 @@ cd Web/terminal && pnpm dev
 ## Browser features
 
 - xterm.js + WebGL, GitHub Dark ANSI palette
-- ⌘/Ctrl+F search, copy selection, paste (⌘/Ctrl+Shift+V or middle-click)
+- ⌘F / Ctrl+Shift+F search; ⌘C / Ctrl+Shift+C copy; ⌘V / Ctrl+Shift+V paste (Ctrl+C = interrupt)
 - Kitty keyboard helpers for modern TUIs
 - Document title: OSC title → cwd basename → shell name
 
@@ -80,13 +80,16 @@ Do not expose kitterm on the public internet without adding auth/TLS yourself.
 ## Layout
 
 ```
-Sources/KittermProtocol/   # binary WS frames
-Sources/KittermDaemon/     # HTTP + WS + PTY
-Sources/KittermCLI/        # kitterm start|stop|status|restart
-Sources/KittermBench/      # regression harness
-Web/terminal/              # browser client
-launchd/                   # optional LaunchAgent
+Sources/KittermProtocol/      # binary WS frames
+Sources/KittermDaemon/        # HTTP + WS + PTY
+Sources/KittermCLI/           # kitterm start|stop|status|restart
+Sources/KittermSpawnHelper/   # acquires controlling TTY (Ctrl+C / SIGINT)
+Sources/KittermBench/         # regression harness
+Web/terminal/                 # browser client
+launchd/                      # optional LaunchAgent
 ```
+
+`swift build` produces both `kitterm` and `kitterm-spawn-helper` (must sit next to each other).
 
 ## License
 

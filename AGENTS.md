@@ -8,6 +8,7 @@ Guidance for coding agents working in this repo.
 - Tab open = new shell; tab close / reload = kill PTY (no session reattach)
 - **No Node on the hot path** (daemon is Swift + NIO)
 - No native Mac app
+- PTY spawn uses `kitterm-spawn-helper` (must be beside `kitterm`) so the shell gets a controlling TTY — required for Ctrl+C → SIGINT
 
 ## Binary protocol (`KittermProtocol`)
 
