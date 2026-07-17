@@ -15,13 +15,25 @@ import {
   buildKittyKeySequence,
   extractKeyboardModifiers,
 } from "./kitty";
+import { resolveFontFamily, type TerminalFontId } from "./fonts";
 import { KittermSession } from "./session";
-import { githubDarkTheme } from "./theme-github-dark";
+import { SettingsPanel } from "./settings-panel";
+import {
+  LOCAL_FONT_ID,
+  loadSettings,
+  saveFontId,
+  saveFontSize,
+  saveLocalFontFamily,
+  saveThemeId,
+  type KittermSettings,
+} from "./settings-store";
+import { findThemeById, type TerminalThemeId } from "./themes";
 
 export type TerminalAppOptions = {
   container: HTMLElement;
   statusEl?: HTMLElement | null;
   searchRoot?: HTMLElement | null;
+  settingsRoot?: HTMLElement | null;
 };
 
 export class TerminalApp {
@@ -32,6 +44,10 @@ export class TerminalApp {
   private readonly kitty = new KittyFlagStack();
   private readonly statusEl: HTMLElement | null;
   private readonly searchRoot: HTMLElement | null;
+  private readonly settingsRoot: HTMLElement | null;
+  private settings: KittermSettings;
+  private settingsPanel: SettingsPanel | null = null;
+  private webglAddon: WebglAddon | null = null;
   private searchInput: HTMLInputElement | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private disposed = false;
@@ -39,13 +55,20 @@ export class TerminalApp {
   constructor(options: TerminalAppOptions) {
     this.statusEl = options.statusEl ?? null;
     this.searchRoot = options.searchRoot ?? null;
+    this.settingsRoot = options.settingsRoot ?? null;
+    this.settings = loadSettings();
+    const theme = findThemeById(this.settings.themeId);
+
     this.terminal = new Terminal({
       allowProposedApi: true,
       cursorBlink: true,
-      fontFamily: "Menlo, Monaco, 'Courier New', monospace",
-      fontSize: 13,
+      fontFamily: resolveFontFamily(
+        this.settings.fontId,
+        this.settings.localFontFamily,
+      ),
+      fontSize: this.settings.fontSize,
       scrollback: 10_000,
-      theme: githubDarkTheme,
+      theme: theme.colors,
       macOptionIsMeta: true,
       rightClickSelectsWord: true,
     });
@@ -74,11 +97,13 @@ export class TerminalApp {
     });
 
     this.terminal.open(options.container);
+    this.applyPageBackground(theme.colors.background);
     this.attachWebgl();
     this.registerKittyHandlers();
     this.wireInput();
     this.wireClipboard();
     this.wireSearch();
+    this.wireSettings();
     this.wireResize(options.container);
 
     this.session.connect();
@@ -95,11 +120,85 @@ export class TerminalApp {
   private attachWebgl(): void {
     try {
       const webgl = new WebglAddon();
-      webgl.onContextLoss(() => webgl.dispose());
+      webgl.onContextLoss(() => {
+        webgl.dispose();
+        this.webglAddon = null;
+      });
       this.terminal.loadAddon(webgl);
+      this.webglAddon = webgl;
     } catch {
       // Canvas fallback.
     }
+  }
+
+  private wireSettings(): void {
+    if (!this.settingsRoot) return;
+    this.settingsPanel = new SettingsPanel(this.settingsRoot, this.settings, {
+      onThemeChange: (themeId) => this.applyTheme(themeId),
+      onFontChange: (fontId) => this.applyFont(fontId),
+      onLocalFontFamilyChange: (family) => this.applyLocalFont(family),
+      onFontSizeChange: (fontSize) => this.applyFontSize(fontSize),
+    });
+  }
+
+  private applyTheme(themeId: TerminalThemeId): void {
+    const theme = findThemeById(themeId);
+    this.settings = { ...this.settings, themeId: theme.id };
+    this.terminal.options.theme = theme.colors;
+    this.applyPageBackground(theme.colors.background);
+    saveThemeId(theme.id);
+    this.settingsPanel?.sync(this.settings);
+  }
+
+  private applyFont(fontId: TerminalFontId): void {
+    this.settings = { ...this.settings, fontId };
+    this.terminal.options.fontFamily = resolveFontFamily(
+      fontId,
+      this.settings.localFontFamily,
+    );
+    this.remeasureAndFit();
+    saveFontId(fontId);
+    this.settingsPanel?.sync(this.settings);
+  }
+
+  private applyLocalFont(family: string): void {
+    const trimmed = family.trim();
+    if (!trimmed) return;
+    this.settings = {
+      ...this.settings,
+      fontId: LOCAL_FONT_ID,
+      localFontFamily: trimmed,
+    };
+    this.terminal.options.fontFamily = resolveFontFamily(LOCAL_FONT_ID, trimmed);
+    this.remeasureAndFit();
+    saveFontId(LOCAL_FONT_ID);
+    saveLocalFontFamily(trimmed);
+    this.settingsPanel?.sync(this.settings);
+  }
+
+  private applyFontSize(fontSize: number): void {
+    this.settings = { ...this.settings, fontSize };
+    this.terminal.options.fontSize = fontSize;
+    this.remeasureAndFit();
+    saveFontSize(fontSize);
+    this.settingsPanel?.sync(this.settings);
+  }
+
+  private remeasureAndFit(): void {
+    try {
+      this.webglAddon?.clearTextureAtlas();
+    } catch {
+      /* addon may already be disposed */
+    }
+    this.fitAndResize();
+  }
+
+  private applyPageBackground(background: string | undefined): void {
+    const color = background ?? "#0d1117";
+    document.documentElement.style.background = color;
+    document.body.style.background = color;
+    const app = document.getElementById("app");
+    if (app) app.style.background = color;
   }
 
   private registerKittyHandlers(): void {

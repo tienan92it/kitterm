@@ -47,7 +47,8 @@ cd Web/terminal && pnpm dev
 
 ## Browser features
 
-- xterm.js + WebGL, GitHub Dark ANSI palette
+- xterm.js + WebGL
+- Settings (gear / ⌘,): themes, fonts (including system fonts via Local Font Access in Chrome/Edge), font size — stored in `localStorage` (`kitterm:*`)
 - ⌘F / Ctrl+Shift+F search; ⌘C / Ctrl+Shift+C copy; ⌘V / Ctrl+Shift+V paste (Ctrl+C = interrupt)
 - Kitty keyboard helpers for modern TUIs
 - Document title: OSC title → cwd basename → shell name

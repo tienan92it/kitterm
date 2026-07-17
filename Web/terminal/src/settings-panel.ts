@@ -1,0 +1,353 @@
+import { LOCAL_FONT_ID, TERMINAL_FONTS, type TerminalFontId } from "./fonts";
+import {
+  isLocalFontAccessSupported,
+  queryLocalFonts,
+} from "./local-fonts";
+import {
+  FONT_SIZE_MAX,
+  FONT_SIZE_MIN,
+  type KittermSettings,
+  clampFontSize,
+} from "./settings-store";
+import { TERMINAL_THEMES, type TerminalThemeId } from "./themes";
+
+export type SettingsPanelCallbacks = {
+  onThemeChange: (themeId: TerminalThemeId) => void;
+  onFontChange: (fontId: TerminalFontId) => void;
+  onLocalFontFamilyChange: (family: string) => void;
+  onFontSizeChange: (fontSize: number) => void;
+};
+
+export class SettingsPanel {
+  private readonly root: HTMLElement;
+  private readonly callbacks: SettingsPanelCallbacks;
+  private readonly dialog: HTMLElement;
+  private readonly backdrop: HTMLElement;
+  private themeSelect: HTMLSelectElement | null = null;
+  private fontSelect: HTMLSelectElement | null = null;
+  private sizeInput: HTMLInputElement | null = null;
+  private localSection: HTMLElement | null = null;
+  private localSearch: HTMLInputElement | null = null;
+  private localList: HTMLElement | null = null;
+  private localManual: HTMLInputElement | null = null;
+  private localStatus: HTMLElement | null = null;
+  private localFamilies: readonly string[] = [];
+  private localFontFamily: string | null;
+  private open = false;
+  private loadingLocal = false;
+
+  constructor(root: HTMLElement, initial: KittermSettings, callbacks: SettingsPanelCallbacks) {
+    this.root = root;
+    this.callbacks = callbacks;
+    this.localFontFamily = initial.localFontFamily;
+    this.root.innerHTML = "";
+    this.root.className = "settings-host";
+
+    const gear = document.createElement("button");
+    gear.type = "button";
+    gear.className = "settings-gear";
+    gear.setAttribute("aria-label", "Terminal settings");
+    gear.title = "Settings";
+    gear.textContent = "⚙";
+    gear.addEventListener("click", () => this.toggle());
+
+    this.backdrop = document.createElement("div");
+    this.backdrop.className = "settings-backdrop";
+    this.backdrop.hidden = true;
+    this.backdrop.addEventListener("click", () => this.close());
+
+    this.dialog = document.createElement("div");
+    this.dialog.className = "settings-dialog";
+    this.dialog.hidden = true;
+    this.dialog.setAttribute("role", "dialog");
+    this.dialog.setAttribute("aria-label", "Terminal settings");
+    this.dialog.innerHTML = `
+      <div class="settings-header">
+        <h2>Settings</h2>
+        <button type="button" class="settings-close" aria-label="Close">✕</button>
+      </div>
+      <label class="settings-field">
+        <span>Theme</span>
+        <select id="settings-theme"></select>
+      </label>
+      <label class="settings-field">
+        <span>Font</span>
+        <select id="settings-font"></select>
+      </label>
+      <div id="settings-local-font" class="settings-local-font" hidden>
+        <label class="settings-field">
+          <span>System fonts</span>
+          <input id="settings-local-search" type="search" placeholder="Search fonts…" autocomplete="off" />
+        </label>
+        <div id="settings-local-list" class="settings-local-list" role="listbox" aria-label="Installed fonts"></div>
+        <label class="settings-field">
+          <span>Or type a family name</span>
+          <input id="settings-local-manual" type="text" placeholder="e.g. JetBrains Mono" autocomplete="off" />
+        </label>
+        <p id="settings-local-status" class="settings-local-status" hidden></p>
+      </div>
+      <label class="settings-field">
+        <span>Font size</span>
+        <div class="settings-stepper">
+          <button type="button" id="settings-size-dec" aria-label="Decrease font size">−</button>
+          <input id="settings-size" type="number" min="${FONT_SIZE_MIN}" max="${FONT_SIZE_MAX}" step="1" />
+          <button type="button" id="settings-size-inc" aria-label="Increase font size">+</button>
+        </div>
+      </label>
+    `;
+
+    this.root.append(gear, this.backdrop, this.dialog);
+
+    this.themeSelect = this.dialog.querySelector("#settings-theme");
+    this.fontSelect = this.dialog.querySelector("#settings-font");
+    this.sizeInput = this.dialog.querySelector("#settings-size");
+    this.localSection = this.dialog.querySelector("#settings-local-font");
+    this.localSearch = this.dialog.querySelector("#settings-local-search");
+    this.localList = this.dialog.querySelector("#settings-local-list");
+    this.localManual = this.dialog.querySelector("#settings-local-manual");
+    this.localStatus = this.dialog.querySelector("#settings-local-status");
+
+    if (this.themeSelect) {
+      for (const theme of TERMINAL_THEMES) {
+        const option = document.createElement("option");
+        option.value = theme.id;
+        option.textContent = theme.label;
+        this.themeSelect.append(option);
+      }
+      this.themeSelect.value = initial.themeId;
+      this.themeSelect.addEventListener("change", () => {
+        this.callbacks.onThemeChange(this.themeSelect!.value);
+      });
+    }
+
+    if (this.fontSelect) {
+      for (const font of TERMINAL_FONTS) {
+        const option = document.createElement("option");
+        option.value = font.id;
+        option.textContent = font.label;
+        this.fontSelect.append(option);
+      }
+      const localOption = document.createElement("option");
+      localOption.value = LOCAL_FONT_ID;
+      localOption.textContent = this.localFontLabel(initial.localFontFamily);
+      this.fontSelect.append(localOption);
+
+      this.fontSelect.value = initial.fontId;
+      this.fontSelect.addEventListener("change", () => {
+        const id = this.fontSelect!.value as TerminalFontId;
+        if (id === LOCAL_FONT_ID) {
+          this.showLocalSection(true);
+          void this.ensureLocalFontsLoaded();
+          if (this.localFontFamily) {
+            this.callbacks.onFontChange(LOCAL_FONT_ID);
+          }
+          return;
+        }
+        this.showLocalSection(false);
+        this.callbacks.onFontChange(id);
+      });
+    }
+
+    this.localSearch?.addEventListener("input", () => this.renderLocalList());
+    this.localManual?.addEventListener("change", () => this.commitManualLocalFont());
+    this.localManual?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        this.commitManualLocalFont();
+      }
+    });
+    if (this.localManual && initial.localFontFamily) {
+      this.localManual.value = initial.localFontFamily;
+    }
+
+    if (this.sizeInput) {
+      this.sizeInput.value = String(initial.fontSize);
+      this.sizeInput.addEventListener("change", () => this.commitFontSize());
+      this.sizeInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          this.commitFontSize();
+        }
+      });
+    }
+
+    this.dialog.querySelector("#settings-size-dec")?.addEventListener("click", () => {
+      this.bumpFontSize(-1);
+    });
+    this.dialog.querySelector("#settings-size-inc")?.addEventListener("click", () => {
+      this.bumpFontSize(1);
+    });
+    this.dialog.querySelector(".settings-close")?.addEventListener("click", () => this.close());
+
+    this.showLocalSection(initial.fontId === LOCAL_FONT_ID);
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && this.open) {
+        event.preventDefault();
+        this.close();
+      }
+      if (
+        event.key === "," &&
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey &&
+        !event.shiftKey
+      ) {
+        event.preventDefault();
+        this.toggle();
+      }
+    });
+  }
+
+  toggle(): void {
+    if (this.open) this.close();
+    else this.show();
+  }
+
+  show(): void {
+    this.open = true;
+    this.backdrop.hidden = false;
+    this.dialog.hidden = false;
+    this.themeSelect?.focus();
+    if (this.fontSelect?.value === LOCAL_FONT_ID) {
+      void this.ensureLocalFontsLoaded();
+    }
+  }
+
+  close(): void {
+    this.open = false;
+    this.backdrop.hidden = true;
+    this.dialog.hidden = true;
+  }
+
+  sync(settings: KittermSettings): void {
+    this.localFontFamily = settings.localFontFamily;
+    if (this.themeSelect) this.themeSelect.value = settings.themeId;
+    if (this.fontSelect) {
+      this.updateLocalOptionLabel(settings.localFontFamily);
+      this.fontSelect.value = settings.fontId;
+    }
+    if (this.sizeInput) this.sizeInput.value = String(settings.fontSize);
+    if (this.localManual && settings.localFontFamily) {
+      this.localManual.value = settings.localFontFamily;
+    }
+    this.showLocalSection(settings.fontId === LOCAL_FONT_ID);
+    this.renderLocalList();
+  }
+
+  private localFontLabel(family: string | null): string {
+    return family?.trim() ? `Local: ${family.trim()}` : "Local font…";
+  }
+
+  private updateLocalOptionLabel(family: string | null): void {
+    if (!this.fontSelect) return;
+    const option = [...this.fontSelect.options].find((entry) => entry.value === LOCAL_FONT_ID);
+    if (option) option.textContent = this.localFontLabel(family);
+  }
+
+  private showLocalSection(visible: boolean): void {
+    if (this.localSection) this.localSection.hidden = !visible;
+  }
+
+  private setLocalStatus(message: string | null): void {
+    if (!this.localStatus) return;
+    if (!message) {
+      this.localStatus.hidden = true;
+      this.localStatus.textContent = "";
+      return;
+    }
+    this.localStatus.hidden = false;
+    this.localStatus.textContent = message;
+  }
+
+  private async ensureLocalFontsLoaded(): Promise<void> {
+    if (this.loadingLocal) return;
+    if (!isLocalFontAccessSupported()) {
+      this.setLocalStatus(
+        "This browser cannot list system fonts. Type a family name below (Chrome/Edge recommended).",
+      );
+      this.localFamilies = [];
+      this.renderLocalList();
+      return;
+    }
+
+    this.loadingLocal = true;
+    this.setLocalStatus("Requesting access to system fonts…");
+    try {
+      const families = await queryLocalFonts();
+      this.localFamilies = families;
+      if (families.length === 0) {
+        this.setLocalStatus(
+          "No fonts returned (permission denied or empty). Type a family name below.",
+        );
+      } else {
+        this.setLocalStatus(`${families.length} font families`);
+      }
+      this.renderLocalList();
+    } finally {
+      this.loadingLocal = false;
+    }
+  }
+
+  private renderLocalList(): void {
+    if (!this.localList) return;
+    const query = (this.localSearch?.value ?? "").trim().toLowerCase();
+    const filtered = query
+      ? this.localFamilies.filter((family) => family.toLowerCase().includes(query))
+      : this.localFamilies;
+
+    this.localList.innerHTML = "";
+    const limit = 80;
+    for (const family of filtered.slice(0, limit)) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "settings-local-item";
+      button.setAttribute("role", "option");
+      button.textContent = family;
+      button.style.fontFamily = `"${family.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}", monospace`;
+      if (family === this.localFontFamily) {
+        button.classList.add("is-selected");
+        button.setAttribute("aria-selected", "true");
+      }
+      button.addEventListener("click", () => {
+        this.pickLocalFamily(family);
+      });
+      this.localList.append(button);
+    }
+    if (filtered.length > limit) {
+      const more = document.createElement("p");
+      more.className = "settings-local-more";
+      more.textContent = `Showing ${limit} of ${filtered.length} — refine search`;
+      this.localList.append(more);
+    }
+  }
+
+  private pickLocalFamily(family: string): void {
+    const trimmed = family.trim();
+    if (!trimmed) return;
+    this.localFontFamily = trimmed;
+    if (this.localManual) this.localManual.value = trimmed;
+    this.updateLocalOptionLabel(trimmed);
+    if (this.fontSelect) this.fontSelect.value = LOCAL_FONT_ID;
+    this.callbacks.onLocalFontFamilyChange(trimmed);
+    this.renderLocalList();
+  }
+
+  private commitManualLocalFont(): void {
+    const value = this.localManual?.value ?? "";
+    if (!value.trim()) return;
+    this.pickLocalFamily(value);
+  }
+
+  private bumpFontSize(delta: number): void {
+    const current = Number(this.sizeInput?.value ?? FONT_SIZE_MIN);
+    const next = clampFontSize(current + delta);
+    if (this.sizeInput) this.sizeInput.value = String(next);
+    this.callbacks.onFontSizeChange(next);
+  }
+
+  private commitFontSize(): void {
+    const next = clampFontSize(Number(this.sizeInput?.value));
+    if (this.sizeInput) this.sizeInput.value = String(next);
+    this.callbacks.onFontSizeChange(next);
+  }
+}

@@ -8,7 +8,8 @@ if (!container) {
 
 const statusEl = document.getElementById("status");
 const searchRoot = document.getElementById("search");
-const app = new TerminalApp({ container, statusEl, searchRoot });
+const settingsRoot = document.getElementById("settings-root");
+const app = new TerminalApp({ container, statusEl, searchRoot, settingsRoot });
 
 window.addEventListener("beforeunload", () => {
   app.dispose();
