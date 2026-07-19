@@ -1,6 +1,8 @@
 import Darwin
 import Foundation
 import KittermProtocol
+import NIOCore
+import NIOPosix
 
 public enum PtyError: Error, LocalizedError {
     case forkFailed(errno: Int32)
@@ -22,6 +24,9 @@ public enum PtyError: Error, LocalizedError {
 /// Uses `openpty` + `posix_spawn` of `kitterm-spawn-helper` (not `forkpty`) so
 /// spawning stays safe inside the multi-threaded NIO daemon. The helper acquires
 /// a controlling TTY (`TIOCSCTTY`) so ISIG delivers SIGINT on Ctrl+C / VINTR.
+///
+/// PTY reads are driven by an `NIOPipeBootstrap` channel on the daemon event
+/// loop; the master fd is kept for writes and `ioctl`.
 public final class PtySession: @unchecked Sendable {
     public let pid: pid_t
     public let shellPath: String
@@ -31,7 +36,8 @@ public final class PtySession: @unchecked Sendable {
 
     private let masterFD: Int32
     private let syncQueue = DispatchQueue(label: "kitterm.pty.sync")
-    private var readSource: DispatchSourceRead?
+    private var readChannel: Channel?
+    private weak var eventLoop: EventLoop?
     private var readingPaused = false
     private var terminated = false
     private var exitNotified = false
@@ -123,13 +129,9 @@ public final class PtySession: @unchecked Sendable {
         defer {
             posix_spawnattr_destroy(&attrs)
             posix_spawn_file_actions_destroy(&actions)
-            // Parent keeps master; always close slave here.
             _ = Darwin.close(slave)
         }
 
-        // New session so the helper can acquire a controlling terminal.
-        // CLOEXEC_DEFAULT: children must not inherit daemon FDs (notably the
-        // listening socket — it would keep the port bound after daemon exit).
         posix_spawnattr_setflags(
             &attrs,
             Int16(POSIX_SPAWN_SETSID | POSIX_SPAWN_CLOEXEC_DEFAULT)
@@ -149,7 +151,6 @@ public final class PtySession: @unchecked Sendable {
         let shellName = URL(fileURLWithPath: shell).lastPathComponent
         let argv0 = "-" + shellName
 
-        // helper <cwd> <shellPath> <argv0>
         func dupCString(_ string: String) -> UnsafeMutablePointer<CChar> {
             string.withCString { strdup($0)! }
         }
@@ -185,7 +186,6 @@ public final class PtySession: @unchecked Sendable {
             throw PtyError.forkFailed(errno: spawnRC == 0 ? errno : spawnRC)
         }
 
-        // Non-blocking master for DispatchSource reads.
         let flags = fcntl(master, F_GETFL)
         _ = fcntl(master, F_SETFL, flags | O_NONBLOCK)
 
@@ -197,9 +197,71 @@ public final class PtySession: @unchecked Sendable {
             cols: cols,
             rows: rows
         )
-        session.startReader()
         session.startExitWatcher()
         return session
+    }
+
+    /// Register the PTY master fd with the NIO event loop for reads.
+    func makeReader(group: EventLoopGroup, eventLoop: EventLoop) -> EventLoopFuture<Void> {
+        if eventLoop.inEventLoop {
+            return makeReaderOnEventLoop(group: group, eventLoop: eventLoop)
+        }
+        return eventLoop.flatSubmit {
+            self.makeReaderOnEventLoop(group: group, eventLoop: eventLoop)
+        }
+    }
+
+    private func makeReaderOnEventLoop(group: EventLoopGroup, eventLoop: EventLoop) -> EventLoopFuture<Void> {
+        eventLoop.preconditionInEventLoop()
+        guard readChannel == nil, !terminated else {
+            return eventLoop.makeSucceededFuture(())
+        }
+
+        let readFD = Darwin.dup(masterFD)
+        guard readFD >= 0 else {
+            return eventLoop.makeFailedFuture(PtyError.forkFailed(errno: errno))
+        }
+
+        self.eventLoop = eventLoop
+        let session = self
+        return NIOPipeBootstrap(group: group)
+            .channelOption(ChannelOptions.autoRead, value: true)
+            .channelInitializer { channel in
+                channel.pipeline.addHandler(PtyReadHandler(session: session))
+            }
+            .takingOwnershipOfDescriptor(inputOutput: readFD)
+            .map { channel in
+                self.readChannel = channel
+            }
+    }
+
+    /// Called on the event loop by `PtyReadHandler`.
+    func handleRead(_ buffer: inout ByteBuffer) {
+        guard let eventLoop, eventLoop.inEventLoop else { return }
+        guard !terminated, !readingPaused else { return }
+        guard buffer.readableBytes > 0 else { return }
+
+        let chunk = Data(buffer: buffer)
+        appendRecentOutputLocked(chunk)
+        recorder?.recordOutput(chunk)
+        for (_, observer) in observers {
+            observer.onOutput(chunk)
+        }
+        if attached, let onOutput {
+            onOutput(chunk)
+        } else {
+            detachedBuffer.append(chunk)
+            if detachedBuffer.count >= KittermConstants.sessionDetachBufferMaxBytes {
+                pauseReadingOnEventLoop()
+            }
+        }
+    }
+
+    func readChannelClosed() {
+        guard let eventLoop else { return }
+        eventLoop.execute {
+            self.readChannel = nil
+        }
     }
 
     public func write(_ data: Data) throws {
@@ -233,8 +295,17 @@ public final class PtySession: @unchecked Sendable {
             self.cols = c
             self.rows = r
             recorder?.recordResize(cols: c, rows: r)
-            for (_, observer) in observers {
-                observer.onResize(c, r)
+            let observerResizes = observers.values.map { ($0.onResize, c, r) }
+            if let eventLoop {
+                eventLoop.execute {
+                    for (handler, cols, rows) in observerResizes {
+                        handler(cols, rows)
+                    }
+                }
+            } else {
+                for (handler, cols, rows) in observerResizes {
+                    handler(cols, rows)
+                }
             }
         }
     }
@@ -247,85 +318,160 @@ public final class PtySession: @unchecked Sendable {
         syncQueue.sync { observers.count }
     }
 
-    /// Join as a read-only mirror. Returns the recent-output tail for replay.
     public func addObserver(_ id: UUID, handlers: ObserverHandlers) -> Data {
-        syncQueue.sync {
+        if let eventLoop {
+            if eventLoop.inEventLoop {
+                observers[id] = handlers
+                return recentOutput
+            }
+            do {
+                return try eventLoop.submit {
+                    self.observers[id] = handlers
+                    return self.recentOutput
+                }.wait()
+            } catch {
+                return syncQueue.sync {
+                    observers[id] = handlers
+                    return recentOutput
+                }
+            }
+        }
+        return syncQueue.sync {
             observers[id] = handlers
             return recentOutput
         }
     }
 
     public func removeObserver(_ id: UUID) {
-        syncQueue.sync {
-            observers.removeValue(forKey: id)
+        if let eventLoop {
+            eventLoop.execute {
+                self.observers.removeValue(forKey: id)
+            }
+        } else {
+            syncQueue.sync {
+                observers.removeValue(forKey: id)
+            }
         }
     }
 
     func attachRecorder(_ recorder: SessionRecorder) {
-        syncQueue.sync {
-            self.recorder = recorder
+        if let eventLoop {
+            eventLoop.execute {
+                self.recorder = recorder
+            }
+        } else {
+            syncQueue.sync {
+                self.recorder = recorder
+            }
         }
     }
 
-    /// Wire a client to this session and stream live output.
-    ///
-    /// Replay: a client that kept its screen (same-page reconnect) gets exactly
-    /// the bytes missed while detached. A fresh page (reload, adopted session
-    /// link) has no screen state, so it gets the recent-output tail instead —
-    /// otherwise an idle shell shows nothing until the user presses Enter.
     public func attach(
         onOutput: @escaping (Data) -> Void,
         onExit: @escaping (Int32) -> Void,
         replayRecentTail: Bool = false
     ) {
-        syncQueue.sync {
-            self.onOutput = onOutput
-            self.onExit = onExit
-            attached = true
-            if replayRecentTail {
-                detachedBuffer = Data()
-                if !recentOutput.isEmpty {
-                    onOutput(recentOutput)
-                }
-            } else if !detachedBuffer.isEmpty {
-                let replay = detachedBuffer
-                detachedBuffer = Data()
-                onOutput(replay)
+        if let eventLoop {
+            eventLoop.execute {
+                self.attachLocked(
+                    onOutput: onOutput,
+                    onExit: onExit,
+                    replayRecentTail: replayRecentTail
+                )
             }
-            resumeReadingLocked()
+        } else {
+            syncQueue.sync {
+                attachLocked(
+                    onOutput: onOutput,
+                    onExit: onExit,
+                    replayRecentTail: replayRecentTail
+                )
+            }
         }
     }
 
-    /// Disconnect the client but keep the shell alive; output buffers until
-    /// the next `attach` (bounded — reads pause at the cap).
-    public func detach(onExitWhileDetached: ((Int32) -> Void)? = nil) {
-        syncQueue.sync {
-            attached = false
-            onOutput = nil
-            onExit = onExitWhileDetached
-            // A client-requested pause must not outlive the client.
-            resumeReadingLocked()
+    private func attachLocked(
+        onOutput: @escaping (Data) -> Void,
+        onExit: @escaping (Int32) -> Void,
+        replayRecentTail: Bool
+    ) {
+        if let eventLoop {
+            eventLoop.preconditionInEventLoop()
         }
+        self.onOutput = onOutput
+        self.onExit = onExit
+        attached = true
+        if replayRecentTail {
+            detachedBuffer = Data()
+            if !recentOutput.isEmpty {
+                onOutput(recentOutput)
+            }
+        } else if !detachedBuffer.isEmpty {
+            let replay = detachedBuffer
+            detachedBuffer = Data()
+            onOutput(replay)
+        }
+        resumeReadingOnEventLoop()
+    }
+
+    public func detach(onExitWhileDetached: ((Int32) -> Void)? = nil) {
+        if let eventLoop {
+            eventLoop.execute {
+                self.detachLocked(onExitWhileDetached: onExitWhileDetached)
+            }
+        } else {
+            syncQueue.sync {
+                detachLocked(onExitWhileDetached: onExitWhileDetached)
+            }
+        }
+    }
+
+    private func detachLocked(onExitWhileDetached: ((Int32) -> Void)?) {
+        if let eventLoop {
+            eventLoop.preconditionInEventLoop()
+        }
+        attached = false
+        onOutput = nil
+        onExit = onExitWhileDetached
+        resumeReadingOnEventLoop()
     }
 
     public func pauseReading() {
-        syncQueue.sync { pauseReadingLocked() }
+        if let eventLoop {
+            eventLoop.execute {
+                self.pauseReadingOnEventLoop()
+            }
+        } else {
+            syncQueue.sync { pauseReadingOnEventLoop() }
+        }
     }
 
     public func resumeReading() {
-        syncQueue.sync { resumeReadingLocked() }
+        if let eventLoop {
+            eventLoop.execute {
+                self.resumeReadingOnEventLoop()
+            }
+        } else {
+            syncQueue.sync { resumeReadingOnEventLoop() }
+        }
     }
 
-    private func pauseReadingLocked() {
-        guard !readingPaused, let source = readSource else { return }
+    private func pauseReadingOnEventLoop() {
+        if let eventLoop {
+            eventLoop.preconditionInEventLoop()
+        }
+        guard !readingPaused else { return }
         readingPaused = true
-        source.suspend()
+        readChannel?.setOption(ChannelOptions.autoRead, value: false).whenFailure { _ in }
     }
 
-    private func resumeReadingLocked() {
-        guard readingPaused, let source = readSource else { return }
+    private func resumeReadingOnEventLoop() {
+        if let eventLoop {
+            eventLoop.preconditionInEventLoop()
+        }
+        guard readingPaused else { return }
         readingPaused = false
-        source.resume()
+        readChannel?.setOption(ChannelOptions.autoRead, value: true).whenFailure { _ in }
     }
 
     private func appendRecentOutputLocked(_ chunk: Data) {
@@ -342,15 +488,17 @@ public final class PtySession: @unchecked Sendable {
             terminated = true
             recorder?.close()
             recorder = nil
-            if let source = readSource {
-                if readingPaused {
-                    source.resume()
+            if let channel = readChannel, let eventLoop {
+                if eventLoop.inEventLoop {
+                    channel.close(promise: nil)
+                } else {
+                    try? eventLoop.flatSubmit {
+                        channel.close()
+                    }.wait()
                 }
-                source.cancel()
-                readSource = nil
             }
+            readChannel = nil
             _ = Darwin.close(masterFD)
-            // Kill the whole session process group (shell + kubectl children).
             if kill(pid, 0) == 0 {
                 kill(-pid, SIGHUP)
                 let child = pid
@@ -360,47 +508,6 @@ public final class PtySession: @unchecked Sendable {
                     }
                 }
             }
-        }
-    }
-
-    private func startReader() {
-        let source = DispatchSource.makeReadSource(fileDescriptor: masterFD, queue: syncQueue)
-        source.setEventHandler { [weak self] in
-            self?.drainAvailable()
-        }
-        readSource = source
-        source.resume()
-    }
-
-    private func drainAvailable() {
-        var buffer = [UInt8](repeating: 0, count: 64 * 1024)
-        while !terminated {
-            let n = Darwin.read(masterFD, &buffer, buffer.count)
-            if n > 0 {
-                let chunk = Data(buffer[0..<Int(n)])
-                appendRecentOutputLocked(chunk)
-                recorder?.recordOutput(chunk)
-                for (_, observer) in observers {
-                    observer.onOutput(chunk)
-                }
-                if attached, let onOutput {
-                    onOutput(chunk)
-                } else {
-                    detachedBuffer.append(chunk)
-                    if detachedBuffer.count >= KittermConstants.sessionDetachBufferMaxBytes {
-                        pauseReadingLocked()
-                        return
-                    }
-                }
-                continue
-            }
-            if n == 0 {
-                return
-            }
-            if errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR {
-                return
-            }
-            return
         }
     }
 
@@ -418,20 +525,30 @@ public final class PtySession: @unchecked Sendable {
             } else {
                 code = -1
             }
-            // Deliver on the session queue — the daemon's main thread blocks
-            // in closeFuture.wait() and never services the main queue, so
-            // DispatchQueue.main would silently drop this.
             guard let self else { return }
-            self.syncQueue.async {
-                guard !self.exitNotified else { return }
-                self.exitNotified = true
-                let handler = self.onExit
-                let observerExits = self.observers.values.map { $0.onExit }
-                handler?(code)
-                for observerExit in observerExits {
-                    observerExit(code)
+            if let eventLoop = self.eventLoop {
+                eventLoop.execute {
+                    self.deliverExit(code)
+                }
+            } else {
+                self.syncQueue.async {
+                    self.deliverExit(code)
                 }
             }
+        }
+    }
+
+    private func deliverExit(_ code: Int32) {
+        if let eventLoop {
+            eventLoop.preconditionInEventLoop()
+        }
+        guard !exitNotified else { return }
+        exitNotified = true
+        let handler = onExit
+        let observerExits = observers.values.map(\.onExit)
+        handler?(code)
+        for observerExit in observerExits {
+            observerExit(code)
         }
     }
 
@@ -468,4 +585,12 @@ public final class PtySession: @unchecked Sendable {
 
 private func _WSTATUS(_ status: Int32) -> Int32 {
     status & 0x7f
+}
+
+private extension Data {
+    init(buffer: ByteBuffer) {
+        self = buffer.withUnsafeReadableBytes { raw in
+            Data(raw)
+        }
+    }
 }

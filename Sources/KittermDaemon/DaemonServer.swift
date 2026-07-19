@@ -77,7 +77,7 @@ public final class DaemonServer: @unchecked Sendable {
                 }
                 return channel.eventLoop.makeSucceededFuture(HTTPHeaders())
             },
-            upgradePipelineHandler: { [config] channel, head in
+            upgradePipelineHandler: { [config, group] channel, head in
                 let reattachID = Self.reattachSessionID(fromRequestURI: head.uri)
                 let requestedCwd = Self.queryValue("cwd", fromRequestURI: head.uri)
                 let freshClient = Self.queryValue("fresh", fromRequestURI: head.uri) == "1"
@@ -87,7 +87,8 @@ public final class DaemonServer: @unchecked Sendable {
                         reattachID: reattachID,
                         requestedCwd: requestedCwd,
                         freshClient: freshClient,
-                        recordSessions: config.recordSessions
+                        recordSessions: config.recordSessions,
+                        eventLoopGroup: group
                     )
                 )
             }

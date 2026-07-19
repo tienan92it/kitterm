@@ -265,7 +265,7 @@ async function tuiRedraw(kind, port) {
   try {
     await client.connect();
     await awaitShellReady(client);
-    const done = "TUI_DONE_MARKER";
+    const done = "KITTERM_TUI_DONE";
     const script = `i=0
 while [ "$i" -lt ${TUI_FRAMES} ]; do
   printf '\\033[H\\033[J'
@@ -311,9 +311,9 @@ async function largeBurst(kind, port) {
     const before = fast.bytesReceived;
     const t0 = nowMs();
     fast.sendInput(
-      `dd if=/dev/zero bs=65536 count=${BURST_BYTES / 65536} status=none; printf 'BURST_DONE\\n'\n`,
+      `dd if=/dev/zero bs=65536 count=${BURST_BYTES / 65536} status=none; printf 'KITTERM_BURST_DONE\\n'\n`,
     );
-    await fast.waitFor("BURST_DONE", 90000);
+    await fast.waitFor("KITTERM_BURST_DONE", 90000);
     const elapsedSec = (nowMs() - t0) / 1000;
     const bytes = fast.bytesReceived - before;
     const mbps = elapsedSec > 0 ? bytes / 1_000_000 / elapsedSec : 0;
@@ -338,9 +338,9 @@ async function largeBurst(kind, port) {
     await awaitShellReady(slow);
     const before = slow.bytesReceived;
     slow.sendInput(
-      `dd if=/dev/zero bs=65536 count=${SLOW_BYTES / 65536} status=none; printf 'SLOW_DONE\\n'\n`,
+      `dd if=/dev/zero bs=65536 count=${SLOW_BYTES / 65536} status=none; printf 'KITTERM_SLOW_DONE\\n'\n`,
     );
-    await slow.waitFor("SLOW_DONE", 180000);
+    await slow.waitFor("KITTERM_SLOW_DONE", 180000);
     const bytes = slow.bytesReceived - before;
     const dropped =
       slow.closedReason?.includes("exited") ||

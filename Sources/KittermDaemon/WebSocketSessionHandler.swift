@@ -14,6 +14,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     /// replays the recent tail instead of only the detached bytes.
     private let freshClient: Bool
     private let recordSessions: Bool
+    private let eventLoopGroup: EventLoopGroup
     private var sessionID: UUID?
     private var pty: PtySession?
     private var batcher: OutputBatcher?
@@ -22,7 +23,6 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     private let observerID = UUID()
     /// Client frames that arrive before the PTY is wired (claim is async).
     private var pendingClientFrames: [Data] = []
-    private var outboundBuffered = 0
     private var clientPaused = false
     private var ptyReadPaused = false
     private var ptyExited = false
@@ -35,24 +35,18 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         reattachID: UUID? = nil,
         requestedCwd: String? = nil,
         freshClient: Bool = false,
-        recordSessions: Bool = false
+        recordSessions: Bool = false,
+        eventLoopGroup: EventLoopGroup
     ) {
         self.registry = registry
         self.reattachID = reattachID
         self.requestedCwd = requestedCwd
         self.freshClient = freshClient
         self.recordSessions = recordSessions
+        self.eventLoopGroup = eventLoopGroup
     }
 
     func handlerAdded(context: ChannelHandlerContext) {
-        context.channel.setOption(
-            ChannelOptions.writeBufferWaterMark,
-            value: ChannelOptions.Types.WriteBufferWaterMark(
-                low: KittermConstants.wsOutboundResumeLowWaterBytes,
-                high: KittermConstants.wsOutboundPauseHighWaterBytes
-            )
-        ).whenFailure { _ in }
-
         let claimPromise = context.eventLoop.makePromise(of: SessionRegistry.SessionResolution.self)
         let registry = self.registry
         let reattachID = self.reattachID
@@ -86,6 +80,10 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     }
 
     func channelWritabilityChanged(context: ChannelHandlerContext) {
+        if role == .observer, !context.channel.isWritable {
+            closeBackpressure(context: context)
+            return
+        }
         updateBackpressure(context: context)
         context.fireChannelWritabilityChanged()
     }
@@ -125,6 +123,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     private func adopt(session: PtySession, id: UUID, context: ChannelHandlerContext) {
         sessionID = id
         pty = session
+        applyWriteWatermarks(context: context, role: .controller)
         sendSessionId(id, context: context)
         sendRole(.controller, context: context)
         sendMeta(context: context, session: session)
@@ -136,6 +135,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         role = .observer
         sessionID = id
         pty = session
+        applyWriteWatermarks(context: context, role: .observer)
         sendSessionId(id, context: context)
         sendRole(.observer, context: context)
         sendMeta(context: context, session: session)
@@ -152,25 +152,17 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         let replay = session.addObserver(
             observerID,
             handlers: PtySession.ObserverHandlers(
-                onOutput: { [weak self, weak context] data in
-                    guard let context else { return }
-                    context.eventLoop.execute {
-                        self?.batcher?.append(data)
-                    }
+                onOutput: { [weak self] data in
+                    self?.batcher?.append(data)
                 },
                 onExit: { [weak self, weak context] code in
                     guard let context else { return }
-                    context.eventLoop.execute {
-                        self?.handlePtyExit(code, context: context)
-                    }
+                    self?.handlePtyExit(code, context: context)
                 },
                 onResize: { [weak self, weak context] cols, rows in
-                    guard let context else { return }
-                    context.eventLoop.execute {
-                        guard let self, !self.closed else { return }
-                        if let encoded = try? ServerFrame.resize(cols: cols, rows: rows).encode() {
-                            self.writeBinary(encoded, context: context)
-                        }
+                    guard let self, let context, !self.closed else { return }
+                    if let encoded = try? ServerFrame.resize(cols: cols, rows: rows).encode() {
+                        self.writeBinary(encoded, context: context)
                     }
                 }
             )
@@ -195,23 +187,31 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
                ) {
                 session.attachRecorder(recorder)
             }
-            let idPromise = context.eventLoop.makePromise(of: UUID.self)
-            idPromise.completeWithTask {
-                await self.registry.register(session)
-            }
             let registry = self.registry
-            idPromise.futureResult.whenSuccess { [weak self, weak context] id in
+            let setup = session.makeReader(group: eventLoopGroup, eventLoop: context.eventLoop).flatMap { () -> EventLoopFuture<UUID> in
+                let idPromise = context.eventLoop.makePromise(of: UUID.self)
+                idPromise.completeWithTask {
+                    await registry.register(session)
+                }
+                return idPromise.futureResult
+            }
+            setup.whenFailure { [weak self, weak context] error in
+                guard let self, let context else { return }
+                let reason = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                FileHandle.standardError.write(Data("kitterm: \(reason)\n".utf8))
+                self.closePolicy(context: context, reason: reason)
+            }
+            setup.whenSuccess { [weak self, weak context] id in
                 guard let self, let context, !self.closed else {
-                    // Channel died before registration resolved — reap the entry.
                     Task { await registry.remove(id) }
                     return
                 }
                 self.sessionID = id
                 self.sendSessionId(id, context: context)
+                self.sendRole(.controller, context: context)
+                self.sendMeta(context: context, session: session)
+                self.wire(session: session, context: context)
             }
-            sendRole(.controller, context: context)
-            sendMeta(context: context, session: session)
-            wire(session: session, context: context)
         } catch {
             let reason = (error as? LocalizedError)?.errorDescription ?? "pty spawn failed"
             FileHandle.standardError.write(Data("kitterm: \(reason)\n".utf8))
@@ -220,6 +220,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     }
 
     private func wire(session: PtySession, context: ChannelHandlerContext) {
+        applyWriteWatermarks(context: context, role: .controller)
         let batcher = OutputBatcher(eventLoop: context.eventLoop) { [weak self, weak context] buffer in
             guard let self, let context else { return }
             self.sendOutput(buffer, context: context)
@@ -227,17 +228,12 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         self.batcher = batcher
 
         session.attach(
-            onOutput: { [weak self, weak context] data in
-                guard let context else { return }
-                context.eventLoop.execute {
-                    self?.batcher?.append(data)
-                }
+            onOutput: { [weak self] data in
+                self?.batcher?.append(data)
             },
             onExit: { [weak self, weak context] code in
                 guard let context else { return }
-                context.eventLoop.execute {
-                    self?.handlePtyExit(code, context: context)
-                }
+                self?.handlePtyExit(code, context: context)
             },
             replayRecentTail: freshClient && reattachID != nil
         )
@@ -338,19 +334,8 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         payload.writeInteger(ServerOpcode.output.rawValue, as: UInt8.self)
         var copy = buffer
         payload.writeBuffer(&copy)
-        outboundBuffered += payload.readableBytes
-        if outboundBuffered >= KittermConstants.wsBackpressureThresholdBytes {
-            closeBackpressure(context: context)
-            return
-        }
         let frame = WebSocketFrame(fin: true, opcode: .binary, data: payload)
-        context.writeAndFlush(wrapOutboundOut(frame)).whenComplete { [weak self] _ in
-            guard let self else { return }
-            context.eventLoop.execute {
-                self.outboundBuffered = max(0, self.outboundBuffered - payload.readableBytes)
-                self.updateBackpressure(context: context)
-            }
-        }
+        context.writeAndFlush(wrapOutboundOut(frame), promise: nil)
         updateBackpressure(context: context)
     }
 
@@ -362,21 +347,33 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     }
 
     private func updateBackpressure(context: ChannelHandlerContext) {
-        // Observers never pause the shared PTY; slow ones are closed at the
-        // hard backpressure threshold instead.
+        // Observers never pause the shared PTY; slow ones are closed via writability.
         guard role == .controller else { return }
         guard !clientPaused else { return }
-        let shouldPause =
-            !context.channel.isWritable
-            || outboundBuffered >= KittermConstants.wsOutboundPauseHighWaterBytes
-        if shouldPause, !ptyReadPaused {
+        if !context.channel.isWritable, !ptyReadPaused {
             pty?.pauseReading()
             ptyReadPaused = true
-        } else if !shouldPause, ptyReadPaused,
-                  outboundBuffered <= KittermConstants.wsOutboundResumeLowWaterBytes {
+        } else if context.channel.isWritable, ptyReadPaused, !clientPaused {
             pty?.resumeReading()
             ptyReadPaused = false
         }
+    }
+
+    private func applyWriteWatermarks(context: ChannelHandlerContext, role: SessionRole) {
+        let mark: ChannelOptions.Types.WriteBufferWaterMark
+        switch role {
+        case .controller:
+            mark = ChannelOptions.Types.WriteBufferWaterMark(
+                low: KittermConstants.wsOutboundResumeLowWaterBytes,
+                high: KittermConstants.wsOutboundPauseHighWaterBytes
+            )
+        case .observer:
+            mark = ChannelOptions.Types.WriteBufferWaterMark(
+                low: KittermConstants.wsBackpressureThresholdBytes - (4 * 1024 * 1024),
+                high: KittermConstants.wsBackpressureThresholdBytes
+            )
+        }
+        context.channel.setOption(ChannelOptions.writeBufferWaterMark, value: mark).whenFailure { _ in }
     }
 
     private func startHeartbeat(context: ChannelHandlerContext) {
