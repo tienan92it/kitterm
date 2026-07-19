@@ -38,6 +38,17 @@ final class FrameTests: XCTestCase {
         XCTAssertEqual(try ServerFrame.decode(encoded), .sessionId(id))
     }
 
+    func testServerResizeAndRoleRoundTrip() throws {
+        let resize = try ServerFrame.resize(cols: 200, rows: 50).encode()
+        XCTAssertEqual(resize, Data([6, 0, 200, 0, 50]))
+        XCTAssertEqual(try ServerFrame.decode(resize), .resize(cols: 200, rows: 50))
+
+        let controller = try ServerFrame.role(.controller).encode()
+        XCTAssertEqual(try ServerFrame.decode(controller), .role(.controller))
+        let observer = try ServerFrame.role(.observer).encode()
+        XCTAssertEqual(try ServerFrame.decode(observer), .role(.observer))
+    }
+
     func testServerTitleAndCwd() throws {
         let title = try ServerFrame.title("vim — file.swift").encode()
         XCTAssertEqual(try ServerFrame.decode(title), .title("vim — file.swift"))

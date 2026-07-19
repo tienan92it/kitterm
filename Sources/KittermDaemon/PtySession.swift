@@ -17,7 +17,7 @@ public enum PtyError: Error, LocalizedError {
     }
 }
 
-/// One login-shell PTY. Kill on session teardown (WS close).
+/// One login-shell PTY with one controller and any number of observers.
 ///
 /// Uses `openpty` + `posix_spawn` of `kitterm-spawn-helper` (not `forkpty`) so
 /// spawning stays safe inside the multi-threaded NIO daemon. The helper acquires
@@ -42,6 +42,29 @@ public final class PtySession: @unchecked Sendable {
     private var attached = false
     private var onOutput: ((Data) -> Void)?
     private var onExit: ((Int32) -> Void)?
+
+    public struct ObserverHandlers {
+        let onOutput: (Data) -> Void
+        let onExit: (Int32) -> Void
+        let onResize: (UInt16, UInt16) -> Void
+
+        public init(
+            onOutput: @escaping (Data) -> Void,
+            onExit: @escaping (Int32) -> Void,
+            onResize: @escaping (UInt16, UInt16) -> Void
+        ) {
+            self.onOutput = onOutput
+            self.onExit = onExit
+            self.onResize = onResize
+        }
+    }
+
+    /// Read-only mirrors of this session (observer mode).
+    private var observers: [UUID: ObserverHandlers] = [:]
+    /// Rolling tail of recent output, replayed to observers when they join.
+    private var recentOutput = Data()
+    /// Optional asciinema recorder (daemon `--record`).
+    private var recorder: SessionRecorder?
 
     private init(
         pid: pid_t,
@@ -105,7 +128,12 @@ public final class PtySession: @unchecked Sendable {
         }
 
         // New session so the helper can acquire a controlling terminal.
-        posix_spawnattr_setflags(&attrs, Int16(POSIX_SPAWN_SETSID))
+        // CLOEXEC_DEFAULT: children must not inherit daemon FDs (notably the
+        // listening socket — it would keep the port bound after daemon exit).
+        posix_spawnattr_setflags(
+            &attrs,
+            Int16(POSIX_SPAWN_SETSID | POSIX_SPAWN_CLOEXEC_DEFAULT)
+        )
 
         posix_spawn_file_actions_adddup2(&actions, slave, STDIN_FILENO)
         posix_spawn_file_actions_adddup2(&actions, slave, STDOUT_FILENO)
@@ -204,6 +232,10 @@ public final class PtySession: @unchecked Sendable {
             }
             self.cols = c
             self.rows = r
+            recorder?.recordResize(cols: c, rows: r)
+            for (_, observer) in observers {
+                observer.onResize(c, r)
+            }
         }
     }
 
@@ -211,17 +243,51 @@ public final class PtySession: @unchecked Sendable {
         syncQueue.sync { !terminated }
     }
 
-    /// Wire a client to this session. Replays output buffered while detached,
-    /// then streams live. Safe for both first attach and reattach.
+    public var observerCount: Int {
+        syncQueue.sync { observers.count }
+    }
+
+    /// Join as a read-only mirror. Returns the recent-output tail for replay.
+    public func addObserver(_ id: UUID, handlers: ObserverHandlers) -> Data {
+        syncQueue.sync {
+            observers[id] = handlers
+            return recentOutput
+        }
+    }
+
+    public func removeObserver(_ id: UUID) {
+        syncQueue.sync {
+            observers.removeValue(forKey: id)
+        }
+    }
+
+    func attachRecorder(_ recorder: SessionRecorder) {
+        syncQueue.sync {
+            self.recorder = recorder
+        }
+    }
+
+    /// Wire a client to this session and stream live output.
+    ///
+    /// Replay: a client that kept its screen (same-page reconnect) gets exactly
+    /// the bytes missed while detached. A fresh page (reload, adopted session
+    /// link) has no screen state, so it gets the recent-output tail instead —
+    /// otherwise an idle shell shows nothing until the user presses Enter.
     public func attach(
         onOutput: @escaping (Data) -> Void,
-        onExit: @escaping (Int32) -> Void
+        onExit: @escaping (Int32) -> Void,
+        replayRecentTail: Bool = false
     ) {
         syncQueue.sync {
             self.onOutput = onOutput
             self.onExit = onExit
             attached = true
-            if !detachedBuffer.isEmpty {
+            if replayRecentTail {
+                detachedBuffer = Data()
+                if !recentOutput.isEmpty {
+                    onOutput(recentOutput)
+                }
+            } else if !detachedBuffer.isEmpty {
                 let replay = detachedBuffer
                 detachedBuffer = Data()
                 onOutput(replay)
@@ -262,10 +328,20 @@ public final class PtySession: @unchecked Sendable {
         source.resume()
     }
 
+    private func appendRecentOutputLocked(_ chunk: Data) {
+        recentOutput.append(chunk)
+        let cap = KittermConstants.sessionObserverReplayMaxBytes
+        if recentOutput.count > cap {
+            recentOutput = Data(recentOutput.suffix(cap))
+        }
+    }
+
     public func terminate() {
         syncQueue.sync {
             guard !terminated else { return }
             terminated = true
+            recorder?.close()
+            recorder = nil
             if let source = readSource {
                 if readingPaused {
                     source.resume()
@@ -302,6 +378,11 @@ public final class PtySession: @unchecked Sendable {
             let n = Darwin.read(masterFD, &buffer, buffer.count)
             if n > 0 {
                 let chunk = Data(buffer[0..<Int(n)])
+                appendRecentOutputLocked(chunk)
+                recorder?.recordOutput(chunk)
+                for (_, observer) in observers {
+                    observer.onOutput(chunk)
+                }
                 if attached, let onOutput {
                     onOutput(chunk)
                 } else {
@@ -337,11 +418,19 @@ public final class PtySession: @unchecked Sendable {
             } else {
                 code = -1
             }
-            DispatchQueue.main.async {
-                guard let self, !self.exitNotified else { return }
+            // Deliver on the session queue — the daemon's main thread blocks
+            // in closeFuture.wait() and never services the main queue, so
+            // DispatchQueue.main would silently drop this.
+            guard let self else { return }
+            self.syncQueue.async {
+                guard !self.exitNotified else { return }
                 self.exitNotified = true
-                let handler = self.syncQueue.sync { self.onExit }
+                let handler = self.onExit
+                let observerExits = self.observers.values.map { $0.onExit }
                 handler?(code)
+                for observerExit in observerExits {
+                    observerExit(code)
+                }
             }
         }
     }

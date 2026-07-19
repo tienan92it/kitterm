@@ -9,10 +9,19 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
 
     private let registry: SessionRegistry
     private let staticRoot: URL?
+    private let policy: AccessPolicy
+    private let port: Int
     private var pendingHead: HTTPRequestHead?
 
-    init(registry: SessionRegistry, staticRoot: URL? = StaticFileServer.resolveRoot()) {
+    init(
+        registry: SessionRegistry,
+        policy: AccessPolicy = .loopbackOnly,
+        port: Int = KittermConstants.defaultPort,
+        staticRoot: URL? = StaticFileServer.resolveRoot()
+    ) {
         self.registry = registry
+        self.policy = policy
+        self.port = port
         self.staticRoot = staticRoot
     }
 
@@ -30,8 +39,17 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     }
 
     private func handle(head: HTTPRequestHead, context: ChannelHandlerContext) {
-        let (host, origin) = LoopbackSecurity.hostAndOrigin(from: head.headers)
-        if let reason = LoopbackSecurity.rejectionReason(hostHeader: host, originHeader: origin) {
+        var setAuthCookie = false
+        switch policy.decide(
+            remote: context.channel.remoteAddress,
+            headers: head.headers,
+            uri: head.uri
+        ) {
+        case .allow:
+            break
+        case .allowSettingCookie:
+            setAuthCookie = true
+        case .reject(let reason):
             writeJSON(
                 status: .forbidden,
                 body: #"{"ok":false,"error":"\#(reason)"}"#,
@@ -67,6 +85,26 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                     keepAlive: head.isKeepAlive
                 )
             }
+        case (.GET, "/api/lan"):
+            // Share-link support: the LAN base URL, plus the token — but only
+            // for loopback callers (the machine's own user).
+            let body: String
+            if policy.lanEnabled, let ip = NetworkInterfaces.primaryLANIPv4() {
+                let isLocal = AccessPolicy.isLoopback(context.channel.remoteAddress)
+                let tokenField = isLocal && policy.token != nil
+                    ? #","token":"\#(policy.token!)""#
+                    : ""
+                body = #"{"ok":true,"enabled":true,"url":"http://\#(ip):\#(port)"\#(tokenField)}"#
+            } else {
+                body = #"{"ok":true,"enabled":false}"#
+            }
+            writeJSON(
+                status: .ok,
+                body: body,
+                context: context,
+                version: head.version,
+                keepAlive: head.isKeepAlive
+            )
         case (.GET, _) where path.hasPrefix("/api/"):
             writeJSON(
                 status: .notFound,
@@ -76,7 +114,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 keepAlive: false
             )
         case (.GET, _):
-            serveStatic(path: path, head: head, context: context)
+            serveStatic(path: path, head: head, context: context, setAuthCookie: setAuthCookie)
         default:
             writeJSON(
                 status: .notFound,
@@ -88,7 +126,12 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         }
     }
 
-    private func serveStatic(path: String, head: HTTPRequestHead, context: ChannelHandlerContext) {
+    private func serveStatic(
+        path: String,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext,
+        setAuthCookie: Bool = false
+    ) {
         guard let root = staticRoot else {
             writeJSON(
                 status: .notFound,
@@ -119,6 +162,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             ? "no-cache"
             : "public, max-age=3600")
         headers.add(name: "Connection", value: head.isKeepAlive ? "keep-alive" : "close")
+        if setAuthCookie, let cookie = policy.setCookieHeaderValue {
+            headers.add(name: "Set-Cookie", value: cookie)
+        }
 
         let responseHead = HTTPResponseHead(version: head.version, status: .ok, headers: headers)
         context.write(wrapOutboundOut(.head(responseHead)), promise: nil)

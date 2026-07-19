@@ -23,9 +23,18 @@ swift run kitterm start
 ```bash
 kitterm status | stop | restart
 kitterm start --port 3420
+kitterm open ~/proj        # browser shell in that directory
+kitterm start --lan        # phone/LAN access (token-gated)
+kitterm start --record     # asciinema .cast per session
 ```
 
 State: `~/.kitterm/` · default port `3418`.
+
+## Sessions are URLs
+
+- `/?cwd=/path` — new shell in that directory (what `kitterm open` uses)
+- `/?session=<id>` — join a session: first client controls, others observe read-only (⧉ button copies the link)
+- `--lan` prints `http://<lan-ip>:3418/?token=…` — open it on your phone; anyone with the link gets a shell as your user, share carefully
 
 **Dev UI:** `swift run kitterm start` then `cd Web/terminal && pnpm dev` (proxies to the daemon).
 

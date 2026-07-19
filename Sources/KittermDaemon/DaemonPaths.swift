@@ -19,6 +19,14 @@ public enum DaemonPaths: Sendable {
         stateDirectory.appendingPathComponent(KittermConstants.logFileName)
     }
 
+    public static var tokenFile: URL {
+        stateDirectory.appendingPathComponent("token")
+    }
+
+    public static var recordingsDirectory: URL {
+        stateDirectory.appendingPathComponent("recordings", isDirectory: true)
+    }
+
     public static func ensureStateDirectory() throws {
         try FileManager.default.createDirectory(
             at: stateDirectory,

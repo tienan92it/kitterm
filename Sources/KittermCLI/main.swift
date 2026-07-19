@@ -15,18 +15,32 @@ enum KittermMain {
         do {
             switch command {
             case "start":
-                try start(parsePort(args.dropFirst()))
+                try start(
+                    parsePort(args.dropFirst()),
+                    lan: hasFlag("--lan", args),
+                    record: hasFlag("--record", args)
+                )
             case "stop":
                 try stop()
             case "status":
                 try status()
             case "restart":
                 try stop(ignoreMissing: true)
-                try start(parsePort(args.dropFirst()))
+                try start(
+                    parsePort(args.dropFirst()),
+                    lan: hasFlag("--lan", args),
+                    record: hasFlag("--record", args)
+                )
+            case "open":
+                try openShell(at: args.dropFirst().first(where: { !$0.hasPrefix("-") }))
             case "serve":
                 // Internal: foreground daemon process.
                 let port = parsePort(args.dropFirst())
-                try serve(port: port)
+                try serve(
+                    port: port,
+                    lan: hasFlag("--lan", args),
+                    record: hasFlag("--record", args)
+                )
             case "help", "-h", "--help":
                 printUsage()
             default:
@@ -46,16 +60,27 @@ enum KittermMain {
             kitterm — Mac loopback terminal daemon
 
             Usage:
-              kitterm start [--port PORT]
+              kitterm start [--port PORT] [--lan] [--record]
               kitterm stop
               kitterm status
-              kitterm restart [--port PORT]
+              kitterm restart [--port PORT] [--lan] [--record]
+              kitterm open [PATH]     # browser shell in PATH (default: cwd)
+
+            --lan binds all interfaces; non-loopback clients need the token
+            printed at start (also in ~/.kitterm/token).
+            --record writes each session to ~/.kitterm/recordings/*.cast
+            (asciinema v2 — replay with `asciinema play`).
 
             Default port: \(KittermConstants.defaultPort)
             State: ~/.kitterm/{pid,port,server.log}
             Browser: http://kitterm.localhost:<port>/ (after Web/terminal build)
             """
         )
+    }
+
+    private static func hasFlag<S: Sequence>(_ flag: String, _ args: S) -> Bool
+    where S.Element == String {
+        args.contains(flag)
     }
 
     private static func parsePort<S: Sequence>(_ args: S) -> Int where S.Element == String {
@@ -76,7 +101,7 @@ enum KittermMain {
         return port
     }
 
-    private static func serve(port: Int) throws {
+    private static func serve(port: Int, lan: Bool = false, record: Bool = false) throws {
         try DaemonPaths.ensureStateDirectory()
         redirectLogs(to: DaemonPaths.logFile)
 
@@ -84,10 +109,22 @@ enum KittermMain {
         try "\(pid)".write(to: DaemonPaths.pidFile, atomically: true, encoding: .utf8)
         try "\(port)".write(to: DaemonPaths.portFile, atomically: true, encoding: .utf8)
 
-        try runDaemon(config: DaemonConfig(host: KittermConstants.defaultHost, port: port))
+        try runDaemon(
+            config: DaemonConfig(
+                host: KittermConstants.defaultHost,
+                port: port,
+                allowLAN: lan,
+                recordSessions: record
+            )
+        )
     }
 
-    private static func start(_ port: Int) throws {
+    private static func start(
+        _ port: Int,
+        lan: Bool = false,
+        record: Bool = false,
+        openBrowser: Bool = true
+    ) throws {
         try DaemonPaths.ensureStateDirectory()
         if let existing = livePid() {
             print("kitterm already running (pid \(existing), port \(readPort() ?? port))")
@@ -104,7 +141,14 @@ enum KittermMain {
         // forkpty in practice on macOS when stdio is inherited from Process.
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = ["serve", "--port", "\(port)"]
+        var serveArgs = ["serve", "--port", "\(port)"]
+        if lan {
+            serveArgs.append("--lan")
+        }
+        if record {
+            serveArgs.append("--record")
+        }
+        process.arguments = serveArgs
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
@@ -143,8 +187,88 @@ enum KittermMain {
         }
 
         let pid = livePid() ?? process.processIdentifier
-        print("kitterm started on \(KittermConstants.defaultHost):\(port) (pid \(pid))")
-        openBrowserIfPossible(port: port)
+        print("kitterm started on \(lan ? "0.0.0.0" : KittermConstants.defaultHost):\(port) (pid \(pid))")
+        if lan {
+            printLANAccess(port: port)
+        }
+        if openBrowser {
+            openBrowserIfPossible(port: port)
+        }
+    }
+
+    /// Best-effort LAN URL with the auth token for other devices.
+    private static func printLANAccess(port: Int) {
+        // Token is written by the daemon at bind time; wait briefly for it.
+        var token: String?
+        let deadline = Date().addingTimeInterval(1)
+        while Date() < deadline {
+            token = try? String(contentsOf: DaemonPaths.tokenFile, encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if let token, !token.isEmpty { break }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        guard let token, !token.isEmpty else {
+            print("LAN token: see ~/.kitterm/token")
+            return
+        }
+        let ip = lanIPAddress() ?? "<lan-ip>"
+        print("LAN access: http://\(ip):\(port)/?token=\(token)")
+        print("(anyone with this link gets a shell as your user — share carefully)")
+    }
+
+    private static func lanIPAddress() -> String? {
+        for interface in ["en0", "en1"] {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/sbin/ipconfig")
+            process.arguments = ["getifaddr", interface]
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = FileHandle.nullDevice
+            guard (try? process.run()) != nil else { continue }
+            process.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let ip = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                !ip.isEmpty {
+                return ip
+            }
+        }
+        return nil
+    }
+
+    /// `kitterm open [path]` — new browser shell in the given directory.
+    private static func openShell(at rawPath: String?) throws {
+        let fm = FileManager.default
+        let base = rawPath ?? fm.currentDirectoryPath
+        let expanded: String
+        if base == "~" {
+            expanded = fm.homeDirectoryForCurrentUser.path
+        } else if base.hasPrefix("~/") {
+            expanded = fm.homeDirectoryForCurrentUser.path + String(base.dropFirst(1))
+        } else if base.hasPrefix("/") {
+            expanded = base
+        } else {
+            expanded = URL(fileURLWithPath: fm.currentDirectoryPath)
+                .appendingPathComponent(base).standardizedFileURL.path
+        }
+        var isDirectory: ObjCBool = false
+        guard fm.fileExists(atPath: expanded, isDirectory: &isDirectory), isDirectory.boolValue else {
+            throw CLIError.notADirectory(path: expanded)
+        }
+
+        let port = readPort() ?? KittermConstants.defaultPort
+        if livePid() == nil {
+            try start(port, openBrowser: false)
+        }
+
+        var components = URLComponents(string: "http://kitterm.localhost:\(port)/")!
+        components.queryItems = [URLQueryItem(name: "cwd", value: expanded)]
+        let url = components.url!.absoluteString
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = [url]
+        try process.run()
+        print("opened \(url)")
     }
 
     /// Opens the browser client when a built web UI is available. Best-effort; never fails start.
@@ -279,6 +403,7 @@ enum KittermMain {
 enum CLIError: Error, LocalizedError {
     case daemonExited
     case portInUse(port: Int, occupant: String)
+    case notADirectory(path: String)
 
     var errorDescription: String? {
         switch self {
@@ -289,6 +414,8 @@ enum CLIError: Error, LocalizedError {
             port \(port) is already in use by \(occupant). \
             Stop that process, or run: kitterm start --port <other>
             """
+        case .notADirectory(let path):
+            return "not a directory: \(path)"
         }
     }
 }

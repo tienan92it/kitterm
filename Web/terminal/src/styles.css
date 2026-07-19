@@ -20,6 +20,26 @@ body,
   top: 8px;
   right: 12px;
   z-index: 4;
+  display: flex;
+  gap: 8px;
+}
+
+.share-button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  background: rgba(13, 17, 23, 0.95);
+  color: #e6edf3;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.share-button:hover {
+  background: #21262d;
+  border-color: #58a6ff;
 }
 
 .settings-gear {
@@ -225,7 +245,7 @@ body,
 #search {
   position: absolute;
   top: 8px;
-  right: 52px;
+  right: 92px;
   z-index: 3;
   display: flex;
   gap: 4px;

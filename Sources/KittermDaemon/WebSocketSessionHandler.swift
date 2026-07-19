@@ -9,9 +9,17 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
 
     private let registry: SessionRegistry
     private let reattachID: UUID?
+    private let requestedCwd: String?
+    /// Client page has no screen state (reload / adopted link) — reattach
+    /// replays the recent tail instead of only the detached bytes.
+    private let freshClient: Bool
+    private let recordSessions: Bool
     private var sessionID: UUID?
     private var pty: PtySession?
     private var batcher: OutputBatcher?
+    private var role: SessionRole = .controller
+    /// Identity of this connection in the session's observer list.
+    private let observerID = UUID()
     /// Client frames that arrive before the PTY is wired (claim is async).
     private var pendingClientFrames: [Data] = []
     private var outboundBuffered = 0
@@ -22,9 +30,18 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     private var heartbeatTask: RepeatedTask?
     private var closed = false
 
-    init(registry: SessionRegistry, reattachID: UUID? = nil) {
+    init(
+        registry: SessionRegistry,
+        reattachID: UUID? = nil,
+        requestedCwd: String? = nil,
+        freshClient: Bool = false,
+        recordSessions: Bool = false
+    ) {
         self.registry = registry
         self.reattachID = reattachID
+        self.requestedCwd = requestedCwd
+        self.freshClient = freshClient
+        self.recordSessions = recordSessions
     }
 
     func handlerAdded(context: ChannelHandlerContext) {
@@ -36,25 +53,28 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
             )
         ).whenFailure { _ in }
 
-        let claimPromise = context.eventLoop.makePromise(of: PtySession?.self)
+        let claimPromise = context.eventLoop.makePromise(of: SessionRegistry.SessionResolution.self)
         let registry = self.registry
         let reattachID = self.reattachID
         claimPromise.completeWithTask {
-            guard let reattachID else { return nil }
-            return await registry.claim(reattachID)
+            guard let reattachID else { return .notFound }
+            return await registry.resolve(reattachID)
         }
-        claimPromise.futureResult.whenSuccess { [weak self] claimed in
+        claimPromise.futureResult.whenSuccess { [weak self] resolution in
             guard let self, !self.closed else {
                 // Channel died before the claim resolved — put the session back.
-                if let claimed, let reattachID {
-                    claimed.detach()
+                if case .controller(let session) = resolution, let reattachID {
+                    session.detach()
                     Task { await registry.markDetached(reattachID) }
                 }
                 return
             }
-            if let claimed, let reattachID {
-                self.adopt(session: claimed, id: reattachID, context: context)
-            } else {
+            switch resolution {
+            case .controller(let session):
+                self.adopt(session: session, id: self.reattachID!, context: context)
+            case .observer(let session):
+                self.adoptAsObserver(session: session, id: self.reattachID!, context: context)
+            case .notFound:
                 self.spawnNew(context: context)
             }
         }
@@ -106,14 +126,75 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         sessionID = id
         pty = session
         sendSessionId(id, context: context)
+        sendRole(.controller, context: context)
         sendMeta(context: context, session: session)
         wire(session: session, context: context)
     }
 
+    /// Read-only mirror: replay the recent tail, then stream live output.
+    private func adoptAsObserver(session: PtySession, id: UUID, context: ChannelHandlerContext) {
+        role = .observer
+        sessionID = id
+        pty = session
+        sendSessionId(id, context: context)
+        sendRole(.observer, context: context)
+        sendMeta(context: context, session: session)
+        if let encoded = try? ServerFrame.resize(cols: session.cols, rows: session.rows).encode() {
+            writeBinary(encoded, context: context)
+        }
+
+        let batcher = OutputBatcher(eventLoop: context.eventLoop) { [weak self, weak context] buffer in
+            guard let self, let context else { return }
+            self.sendOutput(buffer, context: context)
+        }
+        self.batcher = batcher
+
+        let replay = session.addObserver(
+            observerID,
+            handlers: PtySession.ObserverHandlers(
+                onOutput: { [weak self, weak context] data in
+                    guard let context else { return }
+                    context.eventLoop.execute {
+                        self?.batcher?.append(data)
+                    }
+                },
+                onExit: { [weak self, weak context] code in
+                    guard let context else { return }
+                    context.eventLoop.execute {
+                        self?.handlePtyExit(code, context: context)
+                    }
+                },
+                onResize: { [weak self, weak context] cols, rows in
+                    guard let context else { return }
+                    context.eventLoop.execute {
+                        guard let self, !self.closed else { return }
+                        if let encoded = try? ServerFrame.resize(cols: cols, rows: rows).encode() {
+                            self.writeBinary(encoded, context: context)
+                        }
+                    }
+                }
+            )
+        )
+        if !replay.isEmpty {
+            batcher.append(replay)
+        }
+        startHeartbeat(context: context)
+        pendingClientFrames = []
+    }
+
     private func spawnNew(context: ChannelHandlerContext) {
         do {
-            let session = try PtySession.spawn()
+            let session = try PtySession.spawn(cwd: Self.validatedCwd(requestedCwd))
             self.pty = session
+            if recordSessions,
+               let recorder = SessionRecorder(
+                   directory: DaemonPaths.recordingsDirectory,
+                   cols: session.cols,
+                   rows: session.rows,
+                   shell: session.shellPath
+               ) {
+                session.attachRecorder(recorder)
+            }
             let idPromise = context.eventLoop.makePromise(of: UUID.self)
             idPromise.completeWithTask {
                 await self.registry.register(session)
@@ -128,6 +209,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
                 self.sessionID = id
                 self.sendSessionId(id, context: context)
             }
+            sendRole(.controller, context: context)
             sendMeta(context: context, session: session)
             wire(session: session, context: context)
         } catch {
@@ -156,7 +238,8 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
                 context.eventLoop.execute {
                     self?.handlePtyExit(code, context: context)
                 }
-            }
+            },
+            replayRecentTail: freshClient && reattachID != nil
         )
 
         startHeartbeat(context: context)
@@ -169,6 +252,8 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     }
 
     private func handleClientPayload(_ data: Data, context: ChannelHandlerContext) {
+        // Observers are read-only: their input never reaches the PTY.
+        guard role == .controller else { return }
         // Oversized frames are dropped (not session-killing). Clients should chunk pastes.
         guard data.count <= KittermConstants.maxInputBytes + 1 else {
             return
@@ -193,10 +278,38 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         }
     }
 
+    /// Deep-link cwd (`/?cwd=…`): expand `~`, require an existing directory;
+    /// anything else falls back to the default (home).
+    static func validatedCwd(_ raw: String?) -> String? {
+        guard var path = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty else {
+            return nil
+        }
+        if path == "~" {
+            path = FileManager.default.homeDirectoryForCurrentUser.path
+        } else if path.hasPrefix("~/") {
+            path = FileManager.default.homeDirectoryForCurrentUser.path + String(path.dropFirst(1))
+        }
+        guard path.hasPrefix("/") else { return nil }
+        let resolved = URL(fileURLWithPath: path).standardizedFileURL.path
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: resolved, isDirectory: &isDirectory),
+              isDirectory.boolValue
+        else {
+            return nil
+        }
+        return resolved
+    }
+
     // MARK: - Outbound
 
     private func sendSessionId(_ id: UUID, context: ChannelHandlerContext) {
         if let encoded = try? ServerFrame.sessionId(id.uuidString).encode() {
+            writeBinary(encoded, context: context)
+        }
+    }
+
+    private func sendRole(_ role: SessionRole, context: ChannelHandlerContext) {
+        if let encoded = try? ServerFrame.role(role).encode() {
             writeBinary(encoded, context: context)
         }
     }
@@ -249,6 +362,9 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     }
 
     private func updateBackpressure(context: ChannelHandlerContext) {
+        // Observers never pause the shared PTY; slow ones are closed at the
+        // hard backpressure threshold instead.
+        guard role == .controller else { return }
         guard !clientPaused else { return }
         let shouldPause =
             !context.channel.isWritable
@@ -287,6 +403,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     // MARK: - Teardown
 
     private func handlePtyExit(_ code: Int32, context: ChannelHandlerContext) {
+        guard !closed else { return }
         ptyExited = true
         batcher?.flushNow()
         if let encoded = try? ServerFrame.exit(code).encode() {
@@ -330,7 +447,15 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         pendingClientFrames = []
 
         let registry = registry
-        if let pty, let sessionID {
+        if role == .observer {
+            // Observers never own the session lifecycle.
+            if let pty, let sessionID {
+                pty.removeObserver(observerID)
+                if !ptyExited {
+                    Task { await registry.observerLeft(sessionID) }
+                }
+            }
+        } else if let pty, let sessionID {
             if ptyExited {
                 pty.terminate()
                 Task { await registry.remove(sessionID) }

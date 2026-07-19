@@ -14,7 +14,11 @@ export const ServerOpcode = {
   cwd: 3,
   exit: 4,
   sessionId: 5,
+  resize: 6,
+  role: 7,
 } as const;
+
+export type SessionRole = "controller" | "observer";
 
 export type SessionMeta = {
   shell: string;
@@ -28,7 +32,9 @@ export type ServerFrame =
   | { type: "sessionMeta"; meta: SessionMeta }
   | { type: "cwd"; cwd: string }
   | { type: "exit"; code: number }
-  | { type: "sessionId"; id: string };
+  | { type: "sessionId"; id: string }
+  | { type: "resize"; cols: number; rows: number }
+  | { type: "role"; role: SessionRole };
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -126,6 +132,19 @@ export function decodeServerFrame(buffer: ArrayBuffer): ServerFrame {
     }
     case ServerOpcode.sessionId:
       return { type: "sessionId", id: textDecoder.decode(payload) };
+    case ServerOpcode.resize: {
+      if (payload.length !== 4) {
+        throw new Error("invalid resize payload");
+      }
+      const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+      return { type: "resize", cols: view.getUint16(0, false), rows: view.getUint16(2, false) };
+    }
+    case ServerOpcode.role: {
+      if (payload.length !== 1) {
+        throw new Error("invalid role payload");
+      }
+      return { type: "role", role: payload[0] === 1 ? "observer" : "controller" };
+    }
     default:
       throw new Error(`unknown server opcode ${opcode}`);
   }

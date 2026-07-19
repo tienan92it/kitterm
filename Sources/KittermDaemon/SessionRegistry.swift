@@ -22,25 +22,49 @@ public actor SessionRegistry {
         return id
     }
 
-    /// Reattach: returns the session if it exists, is detached, and still runs.
-    public func claim(_ id: UUID) -> PtySession? {
-        guard let session = sessions[id], !attachedIDs.contains(id) else {
-            return nil
-        }
-        guard session.isRunning else {
-            removeInternal(id)
-            return nil
-        }
-        lingerTasks.removeValue(forKey: id)?.cancel()
-        attachedIDs.insert(id)
-        return session
+    public enum SessionResolution: Sendable {
+        /// No controller attached — the caller becomes it.
+        case controller(PtySession)
+        /// Another client controls the session — the caller may observe.
+        case observer(PtySession)
+        case notFound
     }
 
-    /// Client went away; keep the session for the linger window.
+    /// Resolve a session link: first client in becomes controller, later
+    /// clients become read-only observers.
+    public func resolve(_ id: UUID) -> SessionResolution {
+        guard let session = sessions[id] else { return .notFound }
+        guard session.isRunning else {
+            removeInternal(id)
+            return .notFound
+        }
+        lingerTasks.removeValue(forKey: id)?.cancel()
+        if attachedIDs.contains(id) {
+            return .observer(session)
+        }
+        attachedIDs.insert(id)
+        return .controller(session)
+    }
+
+    /// Controller went away; keep the session for the linger window.
     /// (`PtySession.detach()` has already been called by the handler.)
     public func markDetached(_ id: UUID) {
-        guard sessions[id] != nil else { return }
+        guard let session = sessions[id] else { return }
         attachedIDs.remove(id)
+        if session.observerCount == 0 {
+            scheduleLinger(id)
+        }
+    }
+
+    /// An observer disconnected; if nobody is left, start the linger clock.
+    public func observerLeft(_ id: UUID) {
+        guard let session = sessions[id] else { return }
+        if !attachedIDs.contains(id), session.observerCount == 0 {
+            scheduleLinger(id)
+        }
+    }
+
+    private func scheduleLinger(_ id: UUID) {
         lingerTasks[id]?.cancel()
         lingerTasks[id] = Task { [weak self] in
             // Suspending clock: machine sleep must not consume the window.
@@ -71,6 +95,7 @@ public actor SessionRegistry {
 
     private func reapIfStillDetached(_ id: UUID) {
         guard !attachedIDs.contains(id) else { return }
+        if let session = sessions[id], session.observerCount > 0 { return }
         removeInternal(id)
     }
 

@@ -8,13 +8,21 @@ import NIOWebSocket
 public struct DaemonConfig: Sendable {
     public var host: String
     public var port: Int
+    /// Bind all interfaces and require the token for non-loopback clients.
+    public var allowLAN: Bool
+    /// Record every session to `~/.kitterm/recordings/*.cast` (asciinema v2).
+    public var recordSessions: Bool
 
     public init(
         host: String = KittermConstants.defaultHost,
-        port: Int = KittermConstants.defaultPort
+        port: Int = KittermConstants.defaultPort,
+        allowLAN: Bool = false,
+        recordSessions: Bool = false
     ) {
         self.host = host
         self.port = port
+        self.allowLAN = allowLAN
+        self.recordSessions = recordSessions
     }
 }
 
@@ -35,13 +43,28 @@ public final class DaemonServer: @unchecked Sendable {
 
     public func start() throws {
         let registry = self.registry
+        let policy: AccessPolicy
+        if config.allowLAN {
+            let token = AccessPolicy.generateToken()
+            try DaemonPaths.ensureStateDirectory()
+            try token.write(to: DaemonPaths.tokenFile, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o600],
+                ofItemAtPath: DaemonPaths.tokenFile.path
+            )
+            policy = .lan(token: token)
+        } else {
+            try? FileManager.default.removeItem(at: DaemonPaths.tokenFile)
+            policy = .loopbackOnly
+        }
+
         let upgrader = NIOWebSocketServerUpgrader(
             maxFrameSize: KittermConstants.maxInputBytes + 16,
             shouldUpgrade: { channel, head in
-                let (host, origin) = LoopbackSecurity.hostAndOrigin(from: head.headers)
-                if let reason = LoopbackSecurity.rejectionReason(
-                    hostHeader: host,
-                    originHeader: origin
+                if case .reject(let reason) = policy.decide(
+                    remote: channel.remoteAddress,
+                    headers: head.headers,
+                    uri: head.uri
                 ) {
                     return channel.eventLoop.makeFailedFuture(
                         DaemonError.rejected(reason)
@@ -54,10 +77,18 @@ public final class DaemonServer: @unchecked Sendable {
                 }
                 return channel.eventLoop.makeSucceededFuture(HTTPHeaders())
             },
-            upgradePipelineHandler: { channel, head in
+            upgradePipelineHandler: { [config] channel, head in
                 let reattachID = Self.reattachSessionID(fromRequestURI: head.uri)
+                let requestedCwd = Self.queryValue("cwd", fromRequestURI: head.uri)
+                let freshClient = Self.queryValue("fresh", fromRequestURI: head.uri) == "1"
                 return channel.pipeline.addHandler(
-                    WebSocketSessionHandler(registry: registry, reattachID: reattachID)
+                    WebSocketSessionHandler(
+                        registry: registry,
+                        reattachID: reattachID,
+                        requestedCwd: requestedCwd,
+                        freshClient: freshClient,
+                        recordSessions: config.recordSessions
+                    )
                 )
             }
         )
@@ -68,8 +99,12 @@ public final class DaemonServer: @unchecked Sendable {
             .childChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             // Interactive echo is many tiny writes — never let Nagle delay them.
             .childChannelOption(ChannelOptions.socketOption(.tcp_nodelay), value: 1)
-            .childChannelInitializer { channel in
-                let httpHandler = HTTPAPIHandler(registry: registry)
+            .childChannelInitializer { [config] channel in
+                let httpHandler = HTTPAPIHandler(
+                    registry: registry,
+                    policy: policy,
+                    port: config.port
+                )
                 let config = NIOHTTPServerUpgradeConfiguration(
                     upgraders: [upgrader as any HTTPServerProtocolUpgrader],
                     completionHandler: { context in
@@ -83,11 +118,12 @@ public final class DaemonServer: @unchecked Sendable {
                 }
             }
 
-        // Loopback-only bind — never 0.0.0.0 in MVP.
-        let host = config.host
+        // Loopback by default; all interfaces only with explicit --lan (token-gated).
+        let host = config.allowLAN ? "0.0.0.0" : config.host
         precondition(
-            host == "127.0.0.1" || host == "::1" || host == "localhost",
-            "kitterm MVP binds loopback only"
+            config.allowLAN
+                || host == "127.0.0.1" || host == "::1" || host == "localhost",
+            "kitterm binds loopback unless --lan is set"
         )
 
         do {
@@ -114,12 +150,20 @@ public final class DaemonServer: @unchecked Sendable {
 
     /// Extracts `?session=<uuid>` from the WS request URI (reattach request).
     static func reattachSessionID(fromRequestURI uri: String) -> UUID? {
-        guard let components = URLComponents(string: uri),
-              let raw = components.queryItems?.first(where: { $0.name == "session" })?.value
-        else {
+        guard let raw = queryValue("session", fromRequestURI: uri) else {
             return nil
         }
         return UUID(uuidString: raw)
+    }
+
+    static func queryValue(_ name: String, fromRequestURI uri: String) -> String? {
+        guard let components = URLComponents(string: uri),
+              let value = components.queryItems?.first(where: { $0.name == name })?.value,
+              !value.isEmpty
+        else {
+            return nil
+        }
+        return value
     }
 
     public func stop() throws {

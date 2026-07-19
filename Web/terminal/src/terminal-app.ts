@@ -15,6 +15,7 @@ import {
   buildKittyKeySequence,
   extractKeyboardModifiers,
 } from "./kitty";
+import { setFavicon, type FaviconState } from "./favicon";
 import { OutputFlowControl } from "./flow-control";
 import { LOCAL_FONT_ID, resolveFontFamily, type TerminalFontId } from "./fonts";
 import { KittermSession, defaultWsUrl } from "./session";
@@ -54,11 +55,31 @@ export class TerminalApp {
     onPause: () => this.session.sendPause(),
     onResume: () => this.session.sendResume(),
   });
-  private sessionId: string | null = readStoredSessionId();
+  /** `/?session=<id>` link outranks the tab's stored session. */
+  private sessionId: string | null =
+    new URLSearchParams(window.location.search).get("session") ??
+    readStoredSessionId();
+  /** True while this connection is a read-only observer of the session. */
+  private readOnly = false;
+  /** Deep-link `/?cwd=…` — used only when spawning a fresh session. */
+  private readonly requestedCwd: string | null = new URLSearchParams(
+    window.location.search,
+  ).get("cwd");
+  /** A cwd deep link requests a NEW shell: it outranks any stored session id
+   * until the daemon confirms the fresh session. */
+  private deepLinkPending: boolean = new URLSearchParams(
+    window.location.search,
+  ).has("cwd");
   private reconnectTimer: number | null = null;
   private reconnectAttempt = 0;
   private lastConnectAt = 0;
+  /** False until the first successful connect of this page's lifetime.
+   * A fresh page has no terminal content, so reattach asks the daemon to
+   * replay the recent tail (otherwise an idle shell shows a bare cursor). */
+  private hasEverConnected = false;
   private statusClearTimer: number | null = null;
+  private connectionState: FaviconState = "reconnecting";
+  private unreadOutput = false;
   private disposed = false;
   private exited = false;
   constructor(options: TerminalAppOptions) {
@@ -90,10 +111,12 @@ export class TerminalApp {
 
     this.session = new KittermSession({
       onOpen: () => {
+        this.hasEverConnected = true;
         this.reconnectAttempt = 0;
         this.clearReconnectTimer();
         this.flowControl.reset();
         this.setStatus(null);
+        this.setConnectionState("connected");
         this.fitAndResize();
         this.terminal.focus();
       },
@@ -114,9 +137,11 @@ export class TerminalApp {
     this.wireClipboard();
     this.wireSearch();
     this.wireSettings();
+    this.wireShare();
     this.wireResize(options.container);
     this.wireReconnectTriggers();
 
+    this.setConnectionState("reconnecting");
     this.connect();
   }
 
@@ -134,15 +159,23 @@ export class TerminalApp {
 
   private connect(): void {
     this.lastConnectAt = Date.now();
-    const url = this.sessionId
-      ? `${defaultWsUrl()}?session=${encodeURIComponent(this.sessionId)}`
-      : defaultWsUrl();
-    this.session.connect(url);
+    const params = new URLSearchParams();
+    if (this.deepLinkPending && this.requestedCwd) {
+      params.set("cwd", this.requestedCwd);
+    } else if (this.sessionId) {
+      params.set("session", this.sessionId);
+      if (!this.hasEverConnected) {
+        params.set("fresh", "1");
+      }
+    }
+    const query = params.toString();
+    this.session.connect(query ? `${defaultWsUrl()}?${query}` : defaultWsUrl());
   }
 
   private handleDisconnect(): void {
     if (this.disposed || this.exited) return;
     this.setStatus("Reconnecting…");
+    this.setConnectionState("reconnecting");
     this.scheduleReconnect();
   }
 
@@ -176,10 +209,22 @@ export class TerminalApp {
       this.setStatus("Reconnecting…");
       this.connect();
     };
-    window.addEventListener("focus", tryNow);
+    const clearUnread = () => {
+      if (this.unreadOutput) {
+        this.unreadOutput = false;
+        this.updateFavicon();
+      }
+    };
+    window.addEventListener("focus", () => {
+      clearUnread();
+      tryNow();
+    });
     window.addEventListener("online", tryNow);
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") tryNow();
+      if (document.visibilityState === "visible") {
+        clearUnread();
+        tryNow();
+      }
     });
   }
 
@@ -205,6 +250,56 @@ export class TerminalApp {
       onLocalFontFamilyChange: (family) => this.applyLocalFont(family),
       onFontSizeChange: (fontSize) => this.applyFontSize(fontSize),
     });
+  }
+
+  /** Copy `/?session=<id>` — open in another window/device to observe live. */
+  private wireShare(): void {
+    if (!this.settingsRoot) return;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "share-button";
+    button.title = "Copy session link";
+    button.setAttribute("aria-label", "Copy session link");
+    button.textContent = "⧉";
+    button.addEventListener("click", () => {
+      if (!this.sessionId) return;
+      void this.buildShareLink(this.sessionId).then(({ url, lan }) => {
+        void navigator.clipboard.writeText(url).then(
+          () => this.flashStatus(lan ? "LAN session link copied" : "Session link copied"),
+          () => this.flashStatus(url, 8000),
+        );
+      });
+    });
+    this.settingsRoot.insertBefore(button, this.settingsRoot.firstChild);
+  }
+
+  /** A `kitterm.localhost` link is unreachable from other devices; in LAN
+   * mode, share the daemon's LAN URL (token included) instead. */
+  private async buildShareLink(
+    sessionId: string,
+  ): Promise<{ url: string; lan: boolean }> {
+    const sameOrigin = `${window.location.origin}/?session=${encodeURIComponent(sessionId)}`;
+    if (!isLoopbackHostname(window.location.hostname)) {
+      return { url: sameOrigin, lan: false };
+    }
+    try {
+      const response = await fetch("/api/lan");
+      const info = (await response.json()) as {
+        enabled?: boolean;
+        url?: string;
+        token?: string;
+      };
+      if (info.enabled && info.url) {
+        const token = info.token ? `&token=${encodeURIComponent(info.token)}` : "";
+        return {
+          url: `${info.url}/?session=${encodeURIComponent(sessionId)}${token}`,
+          lan: true,
+        };
+      }
+    } catch {
+      // Daemon unreachable mid-reconnect — fall back to the local link.
+    }
+    return { url: sameOrigin, lan: false };
   }
 
   private applyTheme(themeId: TerminalThemeId): void {
@@ -299,7 +394,7 @@ export class TerminalApp {
 
   private wireInput(): void {
     this.terminal.onData((data) => {
-      if (!this.exited) {
+      if (!this.exited && !this.readOnly) {
         this.session.sendInput(data);
       }
     });
@@ -324,7 +419,7 @@ export class TerminalApp {
       ) {
         event.preventDefault();
         this.terminal.clearSelection();
-        if (!this.exited) {
+        if (!this.exited && !this.readOnly) {
           this.session.sendInput("\x03");
         }
         return false;
@@ -362,7 +457,7 @@ export class TerminalApp {
         void navigator.clipboard
           .readText()
           .then((text) => {
-            if (text && !this.exited) {
+            if (text && !this.exited && !this.readOnly) {
               this.session.sendInput(text);
             }
           })
@@ -391,7 +486,7 @@ export class TerminalApp {
   private wireClipboard(): void {
     // Middle-click paste when clipboard read is permitted.
     this.terminal.element?.addEventListener("mousedown", (event) => {
-      if (event.button !== 1 || this.exited) return;
+      if (event.button !== 1 || this.exited || this.readOnly) return;
       event.preventDefault();
       void navigator.clipboard
         .readText()
@@ -465,7 +560,8 @@ export class TerminalApp {
   }
 
   private fitAndResize(): void {
-    if (this.disposed || this.exited) return;
+    // Observers render at the controller's size; never fight it locally.
+    if (this.disposed || this.exited || this.readOnly) return;
     try {
       this.fitAddon.fit();
     } catch {
@@ -484,39 +580,79 @@ export class TerminalApp {
         const bytes = frame.data.byteLength;
         this.flowControl.enqueue(bytes);
         this.terminal.write(frame.data, () => this.flowControl.dequeue(bytes));
+        if (document.hidden && !this.unreadOutput) {
+          this.unreadOutput = true;
+          this.updateFavicon();
+        }
         break;
       }
       case "sessionId": {
-        const replaced = this.sessionId !== null && this.sessionId !== frame.id;
+        const replaced =
+          !this.deepLinkPending &&
+          this.sessionId !== null &&
+          this.sessionId !== frame.id;
+        this.deepLinkPending = false;
         this.sessionId = frame.id;
         storeSessionId(frame.id);
+        if (window.location.search) {
+          // Session established — drop deep-link params from the address bar.
+          window.history.replaceState({}, "", window.location.pathname);
+        }
         if (replaced) {
           this.flashStatus("Previous shell ended — started a new shell");
         }
         break;
       }
+      case "role":
+        this.readOnly = frame.role === "observer";
+        if (this.readOnly) {
+          this.setStatus("Observing — read-only");
+        } else {
+          this.setStatus(null);
+          this.fitAndResize();
+        }
+        break;
+      case "resize":
+        if (this.readOnly && frame.cols > 0 && frame.rows > 0) {
+          this.terminal.resize(frame.cols, frame.rows);
+        }
+        break;
       case "title":
         if (frame.title.trim()) {
-          document.title = `${frame.title} — kitterm`;
+          this.setTitle(`${frame.title} — kitterm`);
         }
         break;
       case "cwd":
         if (frame.cwd) {
-          document.title = `${basename(frame.cwd)} — kitterm`;
+          this.setTitle(`${basename(frame.cwd)} — kitterm`);
         }
         break;
       case "sessionMeta":
         if (frame.meta.cwd) {
-          document.title = `${basename(frame.meta.cwd)} — kitterm`;
+          this.setTitle(`${basename(frame.meta.cwd)} — kitterm`);
         }
         break;
       case "exit":
         this.exited = true;
         clearStoredSessionId();
         this.setStatus(`Shell exited (${frame.code}) — reload for a new shell`);
+        this.setConnectionState("exited");
         this.session.close();
         break;
     }
+  }
+
+  private setTitle(title: string): void {
+    document.title = title;
+  }
+
+  private setConnectionState(state: FaviconState): void {
+    this.connectionState = state;
+    this.updateFavicon();
+  }
+
+  private updateFavicon(): void {
+    setFavicon(this.connectionState, this.unreadOutput);
   }
 
   private setStatus(message: string | null): void {
@@ -534,7 +670,7 @@ export class TerminalApp {
     }
   }
 
-  private flashStatus(message: string, durationMs = 4000): void {
+  private flashStatus(message: string, durationMs: number = 4000): void {
     this.setStatus(message);
     this.statusClearTimer = window.setTimeout(() => {
       this.statusClearTimer = null;
@@ -573,4 +709,14 @@ function clearStoredSessionId(): void {
 function basename(path: string): string {
   const parts = path.replace(/\/+$/, "").split("/");
   return parts[parts.length - 1] || path;
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  const name = hostname.toLowerCase();
+  return (
+    name === "localhost" ||
+    name === "127.0.0.1" ||
+    name === "[::1]" ||
+    name.endsWith(".localhost")
+  );
 }

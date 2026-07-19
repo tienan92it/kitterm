@@ -7,6 +7,9 @@ Guidance for coding agents working in this repo.
 - **Browser terminal only** — xterm.js client served by a Swift loopback daemon
 - Tab open = new shell; session id in `sessionStorage` keeps "tab = shell"
 - Transient disconnects (sleep/wake, reload) **detach** the PTY: output buffers (1MB cap, then reads pause), client auto-reconnects with backoff + on focus/online/visible; unreattached sessions are reaped after 5 min (suspending clock)
+- **Sessions are URLs**: `/?cwd=<path>` deep-links a new shell (`kitterm open <path>`); `/?session=<uuid>` joins a session — first client is controller, later ones are read-only observers (128KB replay tail, resize broadcast, share button copies the link)
+- `--lan` binds 0.0.0.0 with token auth for non-loopback peers (`?token=` → cookie; `~/.kitterm/token`); loopback stays trusted
+- `--record` writes asciinema v2 casts to `~/.kitterm/recordings/`
 - **No Node on the hot path** (daemon is Swift + NIO)
 - No native Mac app
 - PTY spawn uses `kitterm-spawn-helper` (must be beside `kitterm`) so the shell gets a controlling TTY — required for Ctrl+C → SIGINT
@@ -24,6 +27,8 @@ Guidance for coding agents working in this repo.
 | S→C | `3` | cwd UTF-8 |
 | S→C | `4` | exit code `i32` BE |
 | S→C | `5` | session id UTF-8 (reattach via `/ws?session=<uuid>`) |
+| S→C | `6` | resize `cols:u16 rows:u16` BE (observer follows controller size) |
+| S→C | `7` | role `u8` (0 controller, 1 observer) |
 
 Flow-control defaults: ~2ms / 64KB batching, PTY pause at 4MB buffered outbound, resume at 1MB, hard close at 64MB.
 

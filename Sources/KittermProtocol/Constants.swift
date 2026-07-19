@@ -40,6 +40,8 @@ public enum KittermConstants: Sendable {
     public static let sessionDetachLingerSeconds: Int = 300
     /// PTY output buffered while detached; reads pause beyond this cap.
     public static let sessionDetachBufferMaxBytes: Int = 1 * 1024 * 1024
+    /// Rolling tail of recent output replayed to newly joining observers.
+    public static let sessionObserverReplayMaxBytes: Int = 128 * 1024
 
     public static let serverStopGraceMs: Int = 1_500
 

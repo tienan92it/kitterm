@@ -16,6 +16,14 @@ public enum ServerOpcode: UInt8, Sendable {
     case cwd = 3
     case exit = 4
     case sessionId = 5
+    case resize = 6
+    case role = 7
+}
+
+/// Client's relationship to a session (observer mode).
+public enum SessionRole: UInt8, Sendable {
+    case controller = 0
+    case observer = 1
 }
 
 public enum FrameError: Error, Equatable, Sendable {
@@ -159,6 +167,8 @@ public enum ServerFrame: Equatable, Sendable {
     case cwd(String)
     case exit(Int32)
     case sessionId(String)
+    case resize(cols: UInt16, rows: UInt16)
+    case role(SessionRole)
 
     public static func decode(_ data: Data) throws -> ServerFrame {
         guard let opcodeByte = data.first else {
@@ -198,6 +208,22 @@ public enum ServerFrame: Equatable, Sendable {
                 throw FrameError.invalidUTF8
             }
             return .sessionId(id)
+        case .resize:
+            guard payload.count == 4 else {
+                throw FrameError.invalidResizePayload
+            }
+            let cols = UInt16(payload[payload.startIndex]) << 8
+                | UInt16(payload[payload.startIndex + 1])
+            let rows = UInt16(payload[payload.startIndex + 2]) << 8
+                | UInt16(payload[payload.startIndex + 3])
+            return .resize(cols: cols, rows: rows)
+        case .role:
+            guard payload.count == 1,
+                  let role = SessionRole(rawValue: payload[payload.startIndex])
+            else {
+                throw FrameError.truncatedPayload
+            }
+            return .role(role)
         }
     }
 
@@ -228,6 +254,14 @@ public enum ServerFrame: Equatable, Sendable {
             var out = Data([ServerOpcode.sessionId.rawValue])
             out.append(contentsOf: id.utf8)
             return out
+        case .resize(let cols, let rows):
+            return Data([
+                ServerOpcode.resize.rawValue,
+                UInt8(cols >> 8), UInt8(cols & 0xff),
+                UInt8(rows >> 8), UInt8(rows & 0xff),
+            ])
+        case .role(let role):
+            return Data([ServerOpcode.role.rawValue, role.rawValue])
         }
     }
 }
