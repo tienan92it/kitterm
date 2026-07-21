@@ -40,17 +40,34 @@ echo "==> downloading kitterm $VERSION"
 curl -fsSL "$BASE/$TARBALL" -o "$TMP/$TARBALL" \
     || die "download failed: $BASE/$TARBALL"
 
-# Checksum is advisory — a missing .sha256 must not block install.
-if curl -fsSL "$BASE/$TARBALL.sha256" -o "$TMP/sum" 2>/dev/null; then
-    EXPECTED="$(cat "$TMP/sum")"
-    ACTUAL="$(shasum -a 256 "$TMP/$TARBALL" | awk '{print $1}')"
-    [ "$EXPECTED" = "$ACTUAL" ] || die "checksum mismatch (expected $EXPECTED, got $ACTUAL)"
-    echo "==> checksum ok"
-fi
+# Every release publishes a .sha256 next to the tarball — verify or fail.
+curl -fsSL "$BASE/$TARBALL.sha256" -o "$TMP/sum" \
+    || die "checksum download failed: $BASE/$TARBALL.sha256"
+EXPECTED="$(cat "$TMP/sum")"
+ACTUAL="$(shasum -a 256 "$TMP/$TARBALL" | awk '{print $1}')"
+[ "$EXPECTED" = "$ACTUAL" ] || die "checksum mismatch (expected $EXPECTED, got $ACTUAL)"
+echo "==> checksum ok"
+
+# --- Validate the new build before touching the existing install ---------------
+tar -xzf "$TMP/$TARBALL" -C "$TMP"
+
+# Unsigned build: clear the quarantine bit Gatekeeper sets on downloads,
+# otherwise the first launch is blocked with "cannot be opened".
+xattr -dr com.apple.quarantine "$TMP/bin" "$TMP/lib" "$TMP/share" 2>/dev/null || true
+
+# Smoke-test in the staging dir so a non-launching binary (wrong macOS
+# minimum, bad slice) is caught while the old install is still intact.
+"$TMP/lib/kitterm/kitterm" --help >/dev/null 2>&1 \
+    || die "downloaded binary failed to run; existing install left untouched"
 
 # --- Install ------------------------------------------------------------------
-# Stop a running daemon first: replacing the binary underneath it leaves a live
-# process serving a stale build with state files pointing at the new one.
+# Quiesce whichever mechanism owns a running daemon. A plain `kitterm stop`
+# is not enough when the LaunchAgent is installed: KeepAlive would respawn
+# the old binary while we replace the files under it.
+SERVICE_PLIST="$HOME/Library/LaunchAgents/com.kitterm.daemon.plist"
+SERVICE_INSTALLED=0
+[ -f "$SERVICE_PLIST" ] && SERVICE_INSTALLED=1
+launchctl bootout "gui/$(id -u)/com.kitterm.daemon" >/dev/null 2>&1 || true
 if [ -x "$PREFIX/bin/kitterm" ]; then
     "$PREFIX/bin/kitterm" stop >/dev/null 2>&1 || true
 fi
@@ -59,19 +76,17 @@ echo "==> installing to $PREFIX"
 mkdir -p "$PREFIX/bin" "$PREFIX/lib" "$PREFIX/share" \
     || die "cannot write to $PREFIX (set KITTERM_PREFIX to a writable path)"
 
-tar -xzf "$TMP/$TARBALL" -C "$TMP"
 rm -rf "$PREFIX/lib/kitterm" "$PREFIX/share/kitterm"
 cp -R "$TMP/bin/kitterm" "$PREFIX/bin/kitterm"
 cp -R "$TMP/lib/kitterm" "$PREFIX/lib/kitterm"
 cp -R "$TMP/share/kitterm" "$PREFIX/share/kitterm"
 
-# Unsigned build: clear the quarantine bit Gatekeeper sets on downloads,
-# otherwise the first launch is blocked with "cannot be opened".
-xattr -dr com.apple.quarantine \
-    "$PREFIX/bin/kitterm" "$PREFIX/lib/kitterm" 2>/dev/null || true
-
-"$PREFIX/lib/kitterm/kitterm" --help >/dev/null 2>&1 \
-    || die "installed binary failed to run"
+# Re-load the login agent we booted out, now pointing at the new build.
+if [ "$SERVICE_INSTALLED" = 1 ]; then
+    echo "==> restarting kitterm service"
+    launchctl bootstrap "gui/$(id -u)" "$SERVICE_PLIST" >/dev/null 2>&1 \
+        || echo "warning: could not reload the kitterm service; run: kitterm service install"
+fi
 
 echo
 echo "kitterm $VERSION installed."
@@ -84,7 +99,9 @@ case ":$PATH:" in
     *)
         echo "  $PREFIX/bin is not on your PATH. Add it:"
         echo
-        case "${SHELL##*/}" in
+        # ${SHELL##*/} would abort under set -u when SHELL is unset (cron/CI).
+        SHELL_NAME="${SHELL:-}"
+        case "${SHELL_NAME##*/}" in
             zsh)  echo "    echo 'export PATH=\"$PREFIX/bin:\$PATH\"' >> ~/.zshrc && exec zsh" ;;
             bash) echo "    echo 'export PATH=\"$PREFIX/bin:\$PATH\"' >> ~/.bash_profile && exec bash" ;;
             *)    echo "    export PATH=\"$PREFIX/bin:\$PATH\"" ;;

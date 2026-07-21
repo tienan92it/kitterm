@@ -25,12 +25,7 @@ enum KittermMain {
             case "status":
                 try status()
             case "restart":
-                try stop(ignoreMissing: true)
-                try start(
-                    parsePort(args.dropFirst()),
-                    lan: hasFlag("--lan", args),
-                    record: hasFlag("--record", args)
-                )
+                try restart(args.dropFirst())
             case "open":
                 try openShell(at: args.dropFirst().first(where: { !$0.hasPrefix("-") }))
             case "service":
@@ -125,6 +120,43 @@ enum KittermMain {
         )
     }
 
+    /// `kitterm restart` — restarts whichever mechanism owns the daemon.
+    private static func restart<S: Sequence>(_ args: S) throws where S.Element == String {
+        let array = Array(args)
+        if serviceLoaded() {
+            // The service's plist is the configuration of record; restarting
+            // with different flags must go through `service install`.
+            guard array.isEmpty else {
+                throw CLIError.serviceFailed(
+                    action: "restart",
+                    detail: "the kitterm service manages the daemon; to change flags run: kitterm service install \(array.joined(separator: " "))"
+                )
+            }
+            let result = launchctl(["kickstart", "-k", "gui/\(getuid())/\(serviceLabel)"])
+            guard result.status == 0 else {
+                throw CLIError.serviceFailed(
+                    action: "launchctl kickstart",
+                    detail: result.output.isEmpty ? "launchctl exited \(result.status)" : result.output
+                )
+            }
+            let port = readPort() ?? KittermConstants.defaultPort
+            let deadline = Date().addingTimeInterval(3)
+            while Date() < deadline {
+                if isHealthy(port: port) {
+                    print("kitterm service restarted (port \(port))")
+                    return
+                }
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+            throw CLIError.serviceFailed(
+                action: "restart",
+                detail: "service restarted but the daemon is not healthy on port \(port); see ~/.kitterm/server.log"
+            )
+        }
+        try stop(ignoreMissing: true)
+        try start(parsePort(array), lan: hasFlag("--lan", array), record: hasFlag("--record", array))
+    }
+
     private static func start(
         _ port: Int,
         lan: Bool = false,
@@ -135,6 +167,14 @@ enum KittermMain {
         if let existing = livePid() {
             print("kitterm already running (pid \(existing), port \(readPort() ?? port))")
             return
+        }
+        if serviceLoaded() {
+            // The agent owns the daemon (it may be mid-respawn right now);
+            // a detached competitor would just fight it for the port.
+            throw CLIError.serviceFailed(
+                action: "start",
+                detail: "the kitterm service manages the daemon; use `kitterm restart`, `kitterm service install` to reconfigure, or `kitterm service uninstall` to remove it"
+            )
         }
 
         if let occupant = portListenerDescription(port: port) {
@@ -319,7 +359,43 @@ enum KittermMain {
         }
     }
 
+    /// True when the LaunchAgent is bootstrapped into the user's gui session.
+    private static func serviceLoaded() -> Bool {
+        launchctl(["print", "gui/\(getuid())/\(serviceLabel)"]).status == 0
+    }
+
+    /// The executable path a login agent can outlive: absolute, existing, and
+    /// preferring the stable `<prefix>/bin/kitterm` wrapper over the internal
+    /// `<prefix>/lib/kitterm/kitterm` it execs (both resolve helper + web root).
+    private static func serviceExecutablePath() throws -> String {
+        let raw = ResolveExecutable.path()
+        guard raw.hasPrefix("/"), FileManager.default.isExecutableFile(atPath: raw) else {
+            throw CLIError.serviceFailed(
+                action: "service install",
+                detail: "cannot resolve an absolute path to the kitterm binary (got \"\(raw)\"); run kitterm via its installed path"
+            )
+        }
+        let url = URL(fileURLWithPath: raw).standardizedFileURL
+        if url.deletingLastPathComponent().lastPathComponent == "kitterm",
+           url.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent == "lib" {
+            let wrapper = url
+                .deletingLastPathComponent()  // lib/kitterm
+                .deletingLastPathComponent()  // lib
+                .deletingLastPathComponent()  // prefix
+                .appendingPathComponent("bin/kitterm")
+            if FileManager.default.isExecutableFile(atPath: wrapper.path) {
+                return wrapper.path
+            }
+        }
+        if url.pathComponents.contains(".build") {
+            print("warning: installing service with a build-tree binary (\(url.path));")
+            print("         the agent breaks if the build directory is cleaned or moved")
+        }
+        return url.path
+    }
+
     private static func installService(port: Int, lan: Bool, record: Bool) throws {
+        let executable = try serviceExecutablePath()
         let plist = launchAgentPlist
         try FileManager.default.createDirectory(
             at: plist.deletingLastPathComponent(),
@@ -327,7 +403,7 @@ enum KittermMain {
         )
 
         // A foreground `serve` under launchd — KeepAlive restarts it on crash.
-        var programArgs = [ResolveExecutable.path(), "serve", "--port", "\(port)"]
+        var programArgs = [executable, "serve", "--port", "\(port)"]
         if lan { programArgs.append("--lan") }
         if record { programArgs.append("--record") }
 
@@ -357,16 +433,43 @@ enum KittermMain {
 
         """.write(to: plist, atomically: true, encoding: .utf8)
 
-        // A manually started daemon would hold the port against the agent.
-        try? stop(ignoreMissing: true)
-        // Replacing an existing agent requires unloading it first.
+        // Replacing an existing agent requires unloading it first; do it before
+        // the pid-file stop so KeepAlive can't respawn what we just stopped.
         _ = launchctl(["bootout", "gui/\(getuid())/\(serviceLabel)"])
+        // A manually started daemon would hold the port against the agent.
+        try? stop(ignoreMissing: true, quiet: true)
+
+        // A foreign listener would leave the agent crash-looping on bind.
+        if let occupant = portListenerDescription(port: port) {
+            throw CLIError.portInUse(port: port, occupant: occupant)
+        }
+
+        // Clear any persisted disabled state (System Settings toggle, or a past
+        // `launchctl disable`) — otherwise bootstrap fails with error 119.
+        _ = launchctl(["enable", "gui/\(getuid())/\(serviceLabel)"])
 
         let result = launchctl(["bootstrap", "gui/\(getuid())", plist.path])
         guard result.status == 0 else {
             throw CLIError.serviceFailed(
-                action: "bootstrap",
+                action: "launchctl bootstrap",
                 detail: result.output.isEmpty ? "launchctl exited \(result.status)" : result.output
+            )
+        }
+
+        // bootstrap only loads the job; confirm the daemon actually serves.
+        let deadline = Date().addingTimeInterval(3)
+        var healthy = false
+        while Date() < deadline {
+            if isHealthy(port: port) {
+                healthy = true
+                break
+            }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        guard healthy else {
+            throw CLIError.serviceFailed(
+                action: "service start",
+                detail: "agent loaded but the daemon is not healthy on port \(port); see ~/.kitterm/server.log"
             )
         }
 
@@ -376,14 +479,20 @@ enum KittermMain {
     }
 
     private static func uninstallService() throws {
+        // Bootout first, unconditionally: the job can be loaded even when the
+        // plist file is gone (deleted by hand), and would otherwise keep
+        // KeepAlive-respawning until logout.
+        let bootout = launchctl(["bootout", "gui/\(getuid())/\(serviceLabel)"])
         let plist = launchAgentPlist
-        guard FileManager.default.fileExists(atPath: plist.path) else {
-            print("kitterm service is not installed")
-            return
+        let hadPlist = FileManager.default.fileExists(atPath: plist.path)
+        if hadPlist {
+            try FileManager.default.removeItem(at: plist)
         }
-        _ = launchctl(["bootout", "gui/\(getuid())/\(serviceLabel)"])
-        try FileManager.default.removeItem(at: plist)
-        print("kitterm service uninstalled")
+        if hadPlist || bootout.status == 0 {
+            print("kitterm service uninstalled")
+        } else {
+            print("kitterm service is not installed")
+        }
     }
 
     private static func serviceStatus() {
@@ -427,10 +536,21 @@ enum KittermMain {
             .replacingOccurrences(of: ">", with: "&gt;")
     }
 
-    private static func stop(ignoreMissing: Bool = false) throws {
+    private static func stop(ignoreMissing: Bool = false, quiet: Bool = false) throws {
+        // A launchd-managed daemon must be booted out, not signalled —
+        // KeepAlive would respawn it within seconds of a plain SIGTERM.
+        var wasService = false
+        if serviceLoaded() {
+            wasService = true
+            _ = launchctl(["bootout", "gui/\(getuid())/\(serviceLabel)"])
+        }
+
         guard let pid = livePid() else {
-            if ignoreMissing { return }
-            print("kitterm is not running")
+            if wasService, !quiet {
+                print("kitterm service stopped (unloaded until next login; `kitterm service uninstall` removes it)")
+            } else if !ignoreMissing, !quiet {
+                print("kitterm is not running")
+            }
             return
         }
         kill(pid, SIGTERM)
@@ -442,7 +562,12 @@ enum KittermMain {
             kill(pid, SIGKILL)
         }
         try? FileManager.default.removeItem(at: DaemonPaths.pidFile)
-        print("kitterm stopped (was pid \(pid))")
+        if quiet { return }
+        if wasService {
+            print("kitterm stopped (was pid \(pid); service unloaded until next login — `kitterm service uninstall` removes it)")
+        } else {
+            print("kitterm stopped (was pid \(pid))")
+        }
     }
 
     private static func status() throws {
@@ -551,7 +676,7 @@ enum CLIError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .serviceFailed(let action, let detail):
-            return "launchctl \(action) failed: \(detail)"
+            return "\(action) failed: \(detail)"
         case .daemonExited:
             return "daemon exited before becoming healthy; see ~/.kitterm/server.log"
         case .portInUse(let port, let occupant):

@@ -17,7 +17,18 @@ jobs:
     # macOS 14 runners are arm64; the SDK is universal so both slices build here.
     runs-on: macos-14
     steps:
+      # Resolve first so checkout can pin to the tag: a workflow_dispatch for
+      # v0.1.0 must build the v0.1.0 source, not whatever HEAD happens to be.
+      # env (not inline ${{ }} in run:) keeps the input out of shell parsing.
+      - name: Resolve version
+        id: v
+        env:
+          VERSION: ${{ github.event.inputs.version || github.ref_name }}
+        run: echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.v.outputs.version }}
 
       - uses: actions/setup-node@v4
         with:
@@ -30,12 +41,10 @@ jobs:
       - name: Show toolchain
         run: swift --version && pnpm --version
 
-      - name: Resolve version
-        id: v
-        run: echo "version=${{ github.event.inputs.version || github.ref_name }}" >> "$GITHUB_OUTPUT"
-
       - name: Build release tarball
-        run: ./scripts/build-release.sh "${{ steps.v.outputs.version }}"
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: ./scripts/build-release.sh "$VERSION"
 
       - name: Publish
         uses: softprops/action-gh-release@v2

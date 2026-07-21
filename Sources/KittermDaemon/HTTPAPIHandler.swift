@@ -17,7 +17,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         registry: SessionRegistry,
         policy: AccessPolicy = .loopbackOnly,
         port: Int = KittermConstants.defaultPort,
-        staticRoot: URL? = StaticFileServer.resolveRoot()
+        staticRoot: URL? = StaticFileServer.cachedRoot
     ) {
         self.registry = registry
         self.policy = policy

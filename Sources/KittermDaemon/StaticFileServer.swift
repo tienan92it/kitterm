@@ -2,6 +2,11 @@ import Foundation
 
 /// Resolves and reads built web assets from `Web/terminal/dist` (or KITTERM_WEB_ROOT).
 public enum StaticFileServer: Sendable {
+    /// The root cannot change during the process lifetime, and `resolveRoot()`
+    /// stats every candidate — cache it so per-connection handler construction
+    /// doesn't repeat blocking filesystem calls on the event loop.
+    public static let cachedRoot: URL? = resolveRoot()
+
     public static func resolveRoot() -> URL? {
         if let env = ProcessInfo.processInfo.environment["KITTERM_WEB_ROOT"], !env.isEmpty {
             let url = URL(fileURLWithPath: env, isDirectory: true)
