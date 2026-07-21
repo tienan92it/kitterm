@@ -33,6 +33,15 @@ kitterm start
 
 ## Usage
 
+```sh
+kitterm start [--port PORT] [--lan] [--record]
+kitterm stop | status | restart
+kitterm open [PATH]
+kitterm service install | uninstall | status
+```
+
+State lives in `~/.kitterm/`; the default port is `3418`.
+
 | Feature | How |
 | --- | --- |
 | **A tab is a shell** | Open a tab to get one; close it and the shell dies |
@@ -42,15 +51,6 @@ kitterm start
 | **Phone / LAN access** | `kitterm start --lan` prints a token-gated URL |
 | **Record sessions** | `kitterm start --record` → asciinema casts in `~/.kitterm/recordings/` |
 | **Start on login** | `kitterm service install` |
-
-```sh
-kitterm start [--port PORT] [--lan] [--record]
-kitterm stop | status | restart
-kitterm open [PATH]
-kitterm service install | uninstall | status
-```
-
-State lives in `~/.kitterm/`; the default port is `3418`.
 
 ## Security
 
