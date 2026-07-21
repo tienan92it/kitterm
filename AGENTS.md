@@ -10,6 +10,8 @@ Guidance for coding agents working in this repo.
 - **Sessions are URLs**: `/?cwd=<path>` deep-links a new shell (`kitterm open <path>`); `/?session=<uuid>` joins a session — first client is controller, later ones are read-only observers (128KB replay tail, resize broadcast, share button copies the link)
 - `--lan` binds 0.0.0.0 with token auth for non-loopback peers (`?token=` → cookie; `~/.kitterm/token`); loopback stays trusted
 - `--record` writes asciinema v2 casts to `~/.kitterm/recordings/`
+- Tab title is per-session (custom name + optional cwd folder), stored per session id; observers adopt the controller's title and cannot edit it
+- `kitterm service install` runs the daemon from a per-user LaunchAgent — see **Service** below
 - **No Node on the hot path** (daemon is Swift + NIO)
 - No native Mac app
 - PTY spawn uses `kitterm-spawn-helper` (must be beside `kitterm`) so the shell gets a controlling TTY — required for Ctrl+C → SIGINT
@@ -34,13 +36,42 @@ Flow-control defaults: ~2ms / 64KB batching, PTY pause at 4MB buffered outbound,
 
 ## Security
 
-- Bind `127.0.0.1` only
+- Bind `127.0.0.1` by default; `--lan` is the only path that widens it (0.0.0.0 + token auth)
 - Enforce Host / Origin against loopback hostnames
-- No TLS / remote bind in MVP
+- No TLS, no multi-user model — shells run as the invoking user
 
 ## State
 
-`~/.kitterm/{pid,port,server.log}` — default port **3418**.
+`~/.kitterm/{pid,port,token,server.log}` plus `recordings/` — default port **3418**.
+
+## Distribution
+
+Releases ship a universal tarball; `scripts/install.sh` unpacks it into a prefix
+(default `~/.local`):
+
+```
+<prefix>/bin/kitterm              # sh wrapper, execs the real binary
+<prefix>/lib/kitterm/kitterm      # argv[0] lands here, so the helper is a sibling
+<prefix>/lib/kitterm/kitterm-spawn-helper
+<prefix>/share/kitterm/web/       # prebuilt UI (StaticFileServer's installed root)
+```
+
+The wrapper exists so `SpawnHelperPath.resolve()` finds the helper beside argv[0].
+**This layout is encoded in four places** — `scripts/build-release.sh`,
+`scripts/install.sh`, `StaticFileServer.candidateRoots()`, and `SpawnHelperPath` —
+so changing it means changing all four, and nothing fails at build time if you don't.
+
+## Service
+
+`kitterm service install|uninstall|status` writes a LaunchAgent
+(`~/Library/LaunchAgents/com.kitterm.daemon.plist`, `KeepAlive=true`) pointing at
+`<prefix>/bin/kitterm`.
+
+While the agent is loaded **it owns the daemon**: `stop` boots it out before
+signalling (a bare SIGTERM would just be undone by KeepAlive), `restart` kickstarts
+it, `start` refuses, and reconfiguring means re-running `service install`. Any code
+that stops or replaces the daemon must account for the agent — including
+`scripts/install.sh`, which boots out before the file swap and re-bootstraps after.
 
 ## Coding standards
 
@@ -48,6 +79,9 @@ Flow-control defaults: ~2ms / 64KB batching, PTY pause at 4MB buffered outbound,
 - KISS: simplest working solution first
 - Do not copy large copyrighted chunks from ttyd / localterm
 - Keep JSON off the I/O stream (health/API only)
+- **No regressions in performance, core features, or UX** — verify with `swift test`
+  and `KittermBench` before calling work done; nothing that adds blocking I/O to the
+  event loop or per-connection path
 
 ## Commands
 
@@ -56,5 +90,10 @@ swift build
 swift test
 cd Web/terminal && pnpm install && pnpm build
 swift run kitterm start|stop|status|restart
-swift run KittermBench
+swift run KittermBench                     # against a running daemon
+./scripts/build-release.sh v0.1.0          # universal tarball → dist/
 ```
+
+`KittermBench`'s `TUI-redraw` scenario is flaky — it intermittently reads ~193 B
+instead of ~159 KB when it races shell startup. Re-run before treating it as a
+regression.
