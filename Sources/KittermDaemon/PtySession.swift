@@ -1,6 +1,7 @@
 import Darwin
 import Foundation
 import KittermProtocol
+import NIOConcurrencyHelpers
 import NIOCore
 import NIOPosix
 
@@ -25,8 +26,9 @@ public enum PtyError: Error, LocalizedError {
 /// spawning stays safe inside the multi-threaded NIO daemon. The helper acquires
 /// a controlling TTY (`TIOCSCTTY`) so ISIG delivers SIGINT on Ctrl+C / VINTR.
 ///
-/// PTY reads are driven by an `NIOPipeBootstrap` channel on the daemon event
-/// loop; the master fd is kept for writes and `ioctl`.
+/// PTY I/O is driven by an `NIOPipeBootstrap` channel on the daemon event loop,
+/// in both directions — NIO retries partial writes that the non-blocking master
+/// fd cannot take at once. The master fd itself is kept for `ioctl` and close.
 public final class PtySession: @unchecked Sendable {
     public let pid: pid_t
     public let shellPath: String
@@ -35,7 +37,18 @@ public final class PtySession: @unchecked Sendable {
     public private(set) var rows: UInt16
 
     private let masterFD: Int32
-    private let syncQueue = DispatchQueue(label: "kitterm.pty.sync")
+    /// The single domain for every mutable field below. Rules, in order:
+    ///
+    /// 1. Never invoke a client callback while holding it — snapshot the
+    ///    handlers, release, then call. Callbacks re-enter this class
+    ///    (`write`, `pauseReading`, …) and the lock is not recursive.
+    /// 2. Never block on the event loop while holding it. `terminate` used to
+    ///    `wait()` on a channel close here while `write()` entered the lock
+    ///    *from* the loop, which deadlocked the daemon.
+    ///
+    /// Channel methods (`setOption`, `close`) are thread-safe in NIO and hop to
+    /// the loop themselves, so they need neither the lock nor a manual hop.
+    private let stateLock = NIOLock()
     private var readChannel: Channel?
     private weak var eventLoop: EventLoop?
     private var readingPaused = false
@@ -45,6 +58,8 @@ public final class PtySession: @unchecked Sendable {
     /// While no client is attached (startup gap, transient disconnect),
     /// output accumulates here, bounded by pausing PTY reads at the cap.
     private var detachedBuffer = Data()
+    /// Input written before the reader channel exists, flushed on adoption.
+    private var pendingInput = Data()
     private var attached = false
     private var onOutput: ((Data) -> Void)?
     private var onExit: ((Int32) -> Void)?
@@ -213,7 +228,12 @@ public final class PtySession: @unchecked Sendable {
 
     private func makeReaderOnEventLoop(group: EventLoopGroup, eventLoop: EventLoop) -> EventLoopFuture<Void> {
         eventLoop.preconditionInEventLoop()
-        guard readChannel == nil, !terminated else {
+        let alreadyReading: Bool = stateLock.withLock {
+            guard readChannel == nil, !terminated else { return true }
+            self.eventLoop = eventLoop
+            return false
+        }
+        guard !alreadyReading else {
             return eventLoop.makeSucceededFuture(())
         }
 
@@ -222,7 +242,6 @@ public final class PtySession: @unchecked Sendable {
             return eventLoop.makeFailedFuture(PtyError.forkFailed(errno: errno))
         }
 
-        self.eventLoop = eventLoop
         let session = self
         return NIOPipeBootstrap(group: group)
             .channelOption(ChannelOptions.autoRead, value: true)
@@ -231,139 +250,139 @@ public final class PtySession: @unchecked Sendable {
             }
             .takingOwnershipOfDescriptor(inputOutput: readFD)
             .map { channel in
-                self.readChannel = channel
+                // `terminate()` may have run while the bootstrap was in flight;
+                // adopting the channel then would leak it past shutdown.
+                let queued: Data? = self.stateLock.withLock { () -> Data? in
+                    guard !self.terminated else { return nil }
+                    self.readChannel = channel
+                    let pending = self.pendingInput
+                    self.pendingInput = Data()
+                    return pending
+                }
+                guard let queued else {
+                    channel.close(promise: nil)
+                    return
+                }
+                // Input that arrived before the channel existed goes out first,
+                // ahead of anything written after adoption.
+                if !queued.isEmpty { self.writeToChannel(channel, queued) }
             }
     }
 
     /// Called on the event loop by `PtyReadHandler`.
     func handleRead(_ buffer: inout ByteBuffer) {
-        guard let eventLoop, eventLoop.inEventLoop else { return }
-        guard !terminated, !readingPaused else { return }
         guard buffer.readableBytes > 0 else { return }
-
         let chunk = Data(buffer: buffer)
-        appendRecentOutputLocked(chunk)
-        recorder?.recordOutput(chunk)
-        for (_, observer) in observers {
-            observer.onOutput(chunk)
-        }
-        if attached, let onOutput {
-            onOutput(chunk)
-        } else {
-            detachedBuffer.append(chunk)
-            if detachedBuffer.count >= KittermConstants.sessionDetachBufferMaxBytes {
-                pauseReadingOnEventLoop()
+
+        // Snapshot under the lock, then call out with it released: the output
+        // handlers below re-enter this class.
+        let dispatch: (recorder: SessionRecorder?,
+                       observers: [(Data) -> Void],
+                       controller: ((Data) -> Void)?,
+                       pause: Bool)? = stateLock.withLock {
+            guard !terminated, !readingPaused else { return nil }
+            appendRecentOutputLocked(chunk)
+            let observerOutputs = observers.values.map(\.onOutput)
+            if attached, let onOutput {
+                return (recorder, observerOutputs, onOutput, false)
             }
+            detachedBuffer.append(chunk)
+            let overflow = detachedBuffer.count >= KittermConstants.sessionDetachBufferMaxBytes
+            if overflow { readingPaused = true }
+            return (recorder, observerOutputs, nil, overflow)
+        }
+        guard let dispatch else { return }
+
+        dispatch.recorder?.recordOutput(chunk)
+        for observer in dispatch.observers {
+            observer(chunk)
+        }
+        dispatch.controller?(chunk)
+        if dispatch.pause {
+            setChannelAutoRead(false)
         }
     }
 
     func readChannelClosed() {
-        guard let eventLoop else { return }
-        eventLoop.execute {
-            self.readChannel = nil
-        }
+        stateLock.withLock { readChannel = nil }
     }
 
+    /// Send input to the shell.
+    ///
+    /// Writes go through the reader channel rather than straight to the master
+    /// fd. The fd is non-blocking, so a large paste fills the PTY buffer and
+    /// returns `EAGAIN` part-way; the old direct loop dropped the remainder,
+    /// silently truncating input. NIO keeps the unwritten tail and drains it
+    /// when the fd is writable again.
+    ///
+    /// Ordering follows the caller. In the daemon that is a single controller
+    /// on one event loop, so input stays in sequence.
     public func write(_ data: Data) throws {
-        try syncQueue.sync {
+        guard !data.isEmpty else { return }
+        let flush: (channel: Channel, bytes: Data)? = try stateLock.withLock {
             guard !terminated else { throw PtyError.closed }
-            try data.withUnsafeBytes { raw in
-                guard let base = raw.baseAddress else { return }
-                var written = 0
-                while written < data.count {
-                    let n = Darwin.write(masterFD, base.advanced(by: written), data.count - written)
-                    if n < 0 {
-                        if errno == EINTR { continue }
-                        if errno == EAGAIN { return }
-                        throw PtyError.closed
-                    }
-                    written += Int(n)
-                }
-            }
+            pendingInput.append(data)
+            // No reader yet: hold the bytes until the channel is adopted. The
+            // daemon always calls `makeReader` before wiring a client, so this
+            // is the startup gap only.
+            guard let channel = readChannel else { return nil }
+            let bytes = pendingInput
+            pendingInput = Data()
+            return (channel, bytes)
         }
+        guard let flush else { return }
+        writeToChannel(flush.channel, flush.bytes)
+    }
+
+    /// Called with the lock released — `writeAndFlush` runs the pipeline inline
+    /// when already on the event loop.
+    private func writeToChannel(_ channel: Channel, _ bytes: Data) {
+        var buffer = channel.allocator.buffer(capacity: bytes.count)
+        buffer.writeBytes(bytes)
+        channel.writeAndFlush(buffer, promise: nil)
     }
 
     public func resize(cols: UInt16, rows: UInt16) throws {
         let c = min(max(cols, 1), KittermConstants.maxCols)
         let r = min(max(rows, 1), KittermConstants.maxRows)
-        try syncQueue.sync {
-            guard !terminated else { throw PtyError.closed }
-            var win = winsize(ws_row: r, ws_col: c, ws_xpixel: 0, ws_ypixel: 0)
-            guard ioctl(masterFD, TIOCSWINSZ, &win) == 0 else {
-                throw PtyError.ioctlFailed
-            }
-            self.cols = c
-            self.rows = r
-            recorder?.recordResize(cols: c, rows: r)
-            let observerResizes = observers.values.map { ($0.onResize, c, r) }
-            if let eventLoop {
-                eventLoop.execute {
-                    for (handler, cols, rows) in observerResizes {
-                        handler(cols, rows)
-                    }
+        let notify: (recorder: SessionRecorder?, resizes: [(UInt16, UInt16) -> Void]) =
+            try stateLock.withLock {
+                guard !terminated else { throw PtyError.closed }
+                var win = winsize(ws_row: r, ws_col: c, ws_xpixel: 0, ws_ypixel: 0)
+                guard ioctl(masterFD, TIOCSWINSZ, &win) == 0 else {
+                    throw PtyError.ioctlFailed
                 }
-            } else {
-                for (handler, cols, rows) in observerResizes {
-                    handler(cols, rows)
-                }
+                self.cols = c
+                self.rows = r
+                return (recorder, observers.values.map(\.onResize))
             }
+        notify.recorder?.recordResize(cols: c, rows: r)
+        for handler in notify.resizes {
+            handler(c, r)
         }
     }
 
     public var isRunning: Bool {
-        syncQueue.sync { !terminated }
+        stateLock.withLock { !terminated }
     }
 
     public var observerCount: Int {
-        syncQueue.sync { observers.count }
+        stateLock.withLock { observers.count }
     }
 
     public func addObserver(_ id: UUID, handlers: ObserverHandlers) -> Data {
-        if let eventLoop {
-            if eventLoop.inEventLoop {
-                observers[id] = handlers
-                return recentOutput
-            }
-            do {
-                return try eventLoop.submit {
-                    self.observers[id] = handlers
-                    return self.recentOutput
-                }.wait()
-            } catch {
-                return syncQueue.sync {
-                    observers[id] = handlers
-                    return recentOutput
-                }
-            }
-        }
-        return syncQueue.sync {
+        stateLock.withLock {
             observers[id] = handlers
             return recentOutput
         }
     }
 
     public func removeObserver(_ id: UUID) {
-        if let eventLoop {
-            eventLoop.execute {
-                self.observers.removeValue(forKey: id)
-            }
-        } else {
-            syncQueue.sync {
-                observers.removeValue(forKey: id)
-            }
-        }
+        stateLock.withLock { _ = observers.removeValue(forKey: id) }
     }
 
     func attachRecorder(_ recorder: SessionRecorder) {
-        if let eventLoop {
-            eventLoop.execute {
-                self.recorder = recorder
-            }
-        } else {
-            syncQueue.sync {
-                self.recorder = recorder
-            }
-        }
+        stateLock.withLock { self.recorder = recorder }
     }
 
     public func attach(
@@ -371,107 +390,63 @@ public final class PtySession: @unchecked Sendable {
         onExit: @escaping (Int32) -> Void,
         replayRecentTail: Bool = false
     ) {
-        if let eventLoop {
-            eventLoop.execute {
-                self.attachLocked(
-                    onOutput: onOutput,
-                    onExit: onExit,
-                    replayRecentTail: replayRecentTail
-                )
+        let resumed: (replay: Data?, wasPaused: Bool) = stateLock.withLock {
+            self.onOutput = onOutput
+            self.onExit = onExit
+            attached = true
+            let pending: Data?
+            if replayRecentTail {
+                detachedBuffer = Data()
+                pending = recentOutput.isEmpty ? nil : recentOutput
+            } else if !detachedBuffer.isEmpty {
+                pending = detachedBuffer
+                detachedBuffer = Data()
+            } else {
+                pending = nil
             }
-        } else {
-            syncQueue.sync {
-                attachLocked(
-                    onOutput: onOutput,
-                    onExit: onExit,
-                    replayRecentTail: replayRecentTail
-                )
-            }
+            let wasPaused = readingPaused
+            readingPaused = false
+            return (pending, wasPaused)
         }
-    }
-
-    private func attachLocked(
-        onOutput: @escaping (Data) -> Void,
-        onExit: @escaping (Int32) -> Void,
-        replayRecentTail: Bool
-    ) {
-        if let eventLoop {
-            eventLoop.preconditionInEventLoop()
-        }
-        self.onOutput = onOutput
-        self.onExit = onExit
-        attached = true
-        if replayRecentTail {
-            detachedBuffer = Data()
-            if !recentOutput.isEmpty {
-                onOutput(recentOutput)
-            }
-        } else if !detachedBuffer.isEmpty {
-            let replay = detachedBuffer
-            detachedBuffer = Data()
-            onOutput(replay)
-        }
-        resumeReadingOnEventLoop()
+        if let replay = resumed.replay { onOutput(replay) }
+        if resumed.wasPaused { setChannelAutoRead(true) }
     }
 
     public func detach(onExitWhileDetached: ((Int32) -> Void)? = nil) {
-        if let eventLoop {
-            eventLoop.execute {
-                self.detachLocked(onExitWhileDetached: onExitWhileDetached)
-            }
-        } else {
-            syncQueue.sync {
-                detachLocked(onExitWhileDetached: onExitWhileDetached)
-            }
+        let wasPaused = stateLock.withLock { () -> Bool in
+            attached = false
+            onOutput = nil
+            onExit = onExitWhileDetached
+            let paused = readingPaused
+            readingPaused = false
+            return paused
         }
-    }
-
-    private func detachLocked(onExitWhileDetached: ((Int32) -> Void)?) {
-        if let eventLoop {
-            eventLoop.preconditionInEventLoop()
-        }
-        attached = false
-        onOutput = nil
-        onExit = onExitWhileDetached
-        resumeReadingOnEventLoop()
+        if wasPaused { setChannelAutoRead(true) }
     }
 
     public func pauseReading() {
-        if let eventLoop {
-            eventLoop.execute {
-                self.pauseReadingOnEventLoop()
-            }
-        } else {
-            syncQueue.sync { pauseReadingOnEventLoop() }
+        let changed = stateLock.withLock { () -> Bool in
+            guard !readingPaused else { return false }
+            readingPaused = true
+            return true
         }
+        if changed { setChannelAutoRead(false) }
     }
 
     public func resumeReading() {
-        if let eventLoop {
-            eventLoop.execute {
-                self.resumeReadingOnEventLoop()
-            }
-        } else {
-            syncQueue.sync { resumeReadingOnEventLoop() }
+        let changed = stateLock.withLock { () -> Bool in
+            guard readingPaused else { return false }
+            readingPaused = false
+            return true
         }
+        if changed { setChannelAutoRead(true) }
     }
 
-    private func pauseReadingOnEventLoop() {
-        if let eventLoop {
-            eventLoop.preconditionInEventLoop()
-        }
-        guard !readingPaused else { return }
-        readingPaused = true
-        readChannel?.setOption(ChannelOptions.autoRead, value: false).whenFailure { _ in }
-    }
-
-    private func resumeReadingOnEventLoop() {
-        if let eventLoop {
-            eventLoop.preconditionInEventLoop()
-        }
-        guard readingPaused else { return }
-        readingPaused = false
-        readChannel?.setOption(ChannelOptions.autoRead, value: true).whenFailure { _ in }
+    /// Channel options are thread-safe and hop to the loop internally, so this
+    /// is called with the lock released.
+    private func setChannelAutoRead(_ enabled: Bool) {
+        let channel = stateLock.withLock { readChannel }
+        channel?.setOption(ChannelOptions.autoRead, value: enabled).whenFailure { _ in }
     }
 
     private func appendRecentOutputLocked(_ chunk: Data) {
@@ -483,29 +458,32 @@ public final class PtySession: @unchecked Sendable {
     }
 
     public func terminate() {
-        syncQueue.sync {
-            guard !terminated else { return }
+        // Everything that can block — closing the channel, signalling the child
+        // — happens after the lock is released. Waiting on the event loop while
+        // holding it deadlocks against `write()`, which the loop itself calls.
+        let shutdown: (channel: Channel?, recorder: SessionRecorder?)? = stateLock.withLock {
+            guard !terminated else { return nil }
             terminated = true
-            recorder?.close()
-            recorder = nil
-            if let channel = readChannel, let eventLoop {
-                if eventLoop.inEventLoop {
-                    channel.close(promise: nil)
-                } else {
-                    try? eventLoop.flatSubmit {
-                        channel.close()
-                    }.wait()
-                }
-            }
-            readChannel = nil
+            let channel = readChannel
+            let recorder = self.recorder
+            self.readChannel = nil
+            self.recorder = nil
+            // The shell is going away; undelivered input has nowhere to go.
+            pendingInput = Data()
             _ = Darwin.close(masterFD)
-            if kill(pid, 0) == 0 {
-                kill(-pid, SIGHUP)
-                let child = pid
-                DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
-                    if kill(child, 0) == 0 {
-                        kill(-child, SIGKILL)
-                    }
+            return (channel, recorder)
+        }
+        guard let shutdown else { return }
+
+        shutdown.recorder?.close()
+        // Thread-safe and non-blocking: NIO hops to the loop itself.
+        shutdown.channel?.close(promise: nil)
+        if kill(pid, 0) == 0 {
+            kill(-pid, SIGHUP)
+            let child = pid
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
+                if kill(child, 0) == 0 {
+                    kill(-child, SIGKILL)
                 }
             }
         }
@@ -526,28 +504,27 @@ public final class PtySession: @unchecked Sendable {
                 code = -1
             }
             guard let self else { return }
-            if let eventLoop = self.eventLoop {
-                eventLoop.execute {
-                    self.deliverExit(code)
-                }
+            // Deliver on the event loop so exit cannot overtake output that is
+            // still queued there; fall back to direct delivery pre-reader.
+            let loop = self.stateLock.withLock { self.eventLoop }
+            if let loop {
+                loop.execute { self.deliverExit(code) }
             } else {
-                self.syncQueue.async {
-                    self.deliverExit(code)
-                }
+                self.deliverExit(code)
             }
         }
     }
 
     private func deliverExit(_ code: Int32) {
-        if let eventLoop {
-            eventLoop.preconditionInEventLoop()
-        }
-        guard !exitNotified else { return }
-        exitNotified = true
-        let handler = onExit
-        let observerExits = observers.values.map(\.onExit)
-        handler?(code)
-        for observerExit in observerExits {
+        let handlers: (controller: ((Int32) -> Void)?, observers: [(Int32) -> Void])? =
+            stateLock.withLock {
+                guard !exitNotified else { return nil }
+                exitNotified = true
+                return (onExit, observers.values.map(\.onExit))
+            }
+        guard let handlers else { return }
+        handlers.controller?(code)
+        for observerExit in handlers.observers {
             observerExit(code)
         }
     }

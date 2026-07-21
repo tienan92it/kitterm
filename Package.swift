@@ -51,5 +51,9 @@ let package = Package(
             name: "KittermProtocolTests",
             dependencies: ["KittermProtocol"]
         ),
+        .testTarget(
+            name: "KittermDaemonTests",
+            dependencies: ["KittermDaemon", "KittermSpawnHelper"]
+        ),
     ]
 )
