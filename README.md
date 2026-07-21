@@ -27,33 +27,30 @@ kitterm start
 # → http://kitterm.localhost:3418/
 ```
 
-Installs a universal binary and prebuilt UI into `~/.local` — no Swift or Node
-required. Override with `KITTERM_PREFIX=/usr/local`.
-
 > [!NOTE]
 > Releases are unsigned. The installer clears the quarantine attribute for you; if you
 > extract the tarball by hand, run `xattr -dr com.apple.quarantine <prefix>` first.
 
 ## Usage
 
+| Feature | How |
+| --- | --- |
+| **A tab is a shell** | Open a tab to get one; close it and the shell dies |
+| **Survives disconnects** | Sleep or reload — output buffers and the client reconnects automatically |
+| **Open in a directory** | `kitterm open ~/proj`, or link `/?cwd=/path` |
+| **Share a session** | ⧉ copies `/?session=<id>` — first client controls, others observe read-only |
+| **Phone / LAN access** | `kitterm start --lan` prints a token-gated URL |
+| **Record sessions** | `kitterm start --record` → asciinema casts in `~/.kitterm/recordings/` |
+| **Start on login** | `kitterm service install` |
+
 ```sh
 kitterm start [--port PORT] [--lan] [--record]
 kitterm stop | status | restart
-kitterm open [PATH]                  # new browser shell in PATH
-kitterm service install | uninstall  # start on login via LaunchAgent
+kitterm open [PATH]
+kitterm service install | uninstall | status
 ```
 
-Open a tab to get a shell; close it and the shell dies. Sleep, reload, or a dropped
-network detaches the PTY and buffers output — the client reconnects and picks up where
-it left off. State lives in `~/.kitterm/`; the default port is `3418`.
-
-**Sessions are URLs.** `/?cwd=/path` opens a shell in that directory (what `kitterm open`
-links to), and `/?session=<id>` joins an existing one — the first client controls it,
-everyone after observes read-only. The ⧉ button copies the link.
-
-**`--lan`** binds all interfaces and prints a token-gated URL for your phone or tablet
-(token also in `~/.kitterm/token`). **`--record`** writes [asciinema](https://asciinema.org)
-v2 casts to `~/.kitterm/recordings/`.
+State lives in `~/.kitterm/`; the default port is `3418`.
 
 ## Security
 
