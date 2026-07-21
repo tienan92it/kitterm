@@ -33,6 +33,8 @@ enum KittermMain {
                 )
             case "open":
                 try openShell(at: args.dropFirst().first(where: { !$0.hasPrefix("-") }))
+            case "service":
+                try service(args.dropFirst())
             case "serve":
                 // Internal: foreground daemon process.
                 let port = parsePort(args.dropFirst())
@@ -65,6 +67,10 @@ enum KittermMain {
               kitterm status
               kitterm restart [--port PORT] [--lan] [--record]
               kitterm open [PATH]     # browser shell in PATH (default: cwd)
+              kitterm service install [--port PORT] [--lan] [--record]
+              kitterm service uninstall | status
+
+            service install starts kitterm on login via a LaunchAgent.
 
             --lan binds all interfaces; non-loopback clients need the token
             printed at start (also in ~/.kitterm/token).
@@ -285,6 +291,142 @@ enum KittermMain {
         try? process.run()
     }
 
+    // MARK: - LaunchAgent (opt-in auto-start)
+
+    private static let serviceLabel = "com.kitterm.daemon"
+
+    private static var launchAgentPlist: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents/\(serviceLabel).plist")
+    }
+
+    private static func service<S: Sequence>(_ args: S) throws where S.Element == String {
+        let array = Array(args)
+        switch array.first ?? "status" {
+        case "install":
+            try installService(
+                port: parsePort(array),
+                lan: hasFlag("--lan", array),
+                record: hasFlag("--record", array)
+            )
+        case "uninstall":
+            try uninstallService()
+        case "status":
+            serviceStatus()
+        default:
+            fputs("usage: kitterm service install|uninstall|status\n", stderr)
+            exit(2)
+        }
+    }
+
+    private static func installService(port: Int, lan: Bool, record: Bool) throws {
+        let plist = launchAgentPlist
+        try FileManager.default.createDirectory(
+            at: plist.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+
+        // A foreground `serve` under launchd — KeepAlive restarts it on crash.
+        var programArgs = [ResolveExecutable.path(), "serve", "--port", "\(port)"]
+        if lan { programArgs.append("--lan") }
+        if record { programArgs.append("--record") }
+
+        let entries = programArgs
+            .map { "\t\t<string>\(xmlEscaped($0))</string>" }
+            .joined(separator: "\n")
+
+        try """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+        \t<key>Label</key>
+        \t<string>\(serviceLabel)</string>
+        \t<key>ProgramArguments</key>
+        \t<array>
+        \(entries)
+        \t</array>
+        \t<key>RunAtLoad</key>
+        \t<true/>
+        \t<key>KeepAlive</key>
+        \t<true/>
+        \t<key>ProcessType</key>
+        \t<string>Background</string>
+        </dict>
+        </plist>
+
+        """.write(to: plist, atomically: true, encoding: .utf8)
+
+        // A manually started daemon would hold the port against the agent.
+        try? stop(ignoreMissing: true)
+        // Replacing an existing agent requires unloading it first.
+        _ = launchctl(["bootout", "gui/\(getuid())/\(serviceLabel)"])
+
+        let result = launchctl(["bootstrap", "gui/\(getuid())", plist.path])
+        guard result.status == 0 else {
+            throw CLIError.serviceFailed(
+                action: "bootstrap",
+                detail: result.output.isEmpty ? "launchctl exited \(result.status)" : result.output
+            )
+        }
+
+        print("kitterm service installed — starts on login (port \(port))")
+        print("plist: \(plist.path)")
+        print("disable with: kitterm service uninstall")
+    }
+
+    private static func uninstallService() throws {
+        let plist = launchAgentPlist
+        guard FileManager.default.fileExists(atPath: plist.path) else {
+            print("kitterm service is not installed")
+            return
+        }
+        _ = launchctl(["bootout", "gui/\(getuid())/\(serviceLabel)"])
+        try FileManager.default.removeItem(at: plist)
+        print("kitterm service uninstalled")
+    }
+
+    private static func serviceStatus() {
+        guard FileManager.default.fileExists(atPath: launchAgentPlist.path) else {
+            print("kitterm service not installed")
+            return
+        }
+        let result = launchctl(["print", "gui/\(getuid())/\(serviceLabel)"])
+        if result.status == 0 {
+            print("kitterm service installed and loaded (\(launchAgentPlist.path))")
+        } else {
+            print("kitterm service installed but not loaded (\(launchAgentPlist.path))")
+        }
+    }
+
+    private static func launchctl(_ arguments: [String]) -> (status: Int32, output: String) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        process.arguments = arguments
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        do {
+            try process.run()
+        } catch {
+            return (-1, "\(error)")
+        }
+        // Read before waiting: launchctl output is small, but a full pipe
+        // buffer would deadlock the child against waitUntilExit().
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        let text = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return (process.terminationStatus, text)
+    }
+
+    private static func xmlEscaped(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+    }
+
     private static func stop(ignoreMissing: Bool = false) throws {
         guard let pid = livePid() else {
             if ignoreMissing { return }
@@ -404,9 +546,12 @@ enum CLIError: Error, LocalizedError {
     case daemonExited
     case portInUse(port: Int, occupant: String)
     case notADirectory(path: String)
+    case serviceFailed(action: String, detail: String)
 
     var errorDescription: String? {
         switch self {
+        case .serviceFailed(let action, let detail):
+            return "launchctl \(action) failed: \(detail)"
         case .daemonExited:
             return "daemon exited before becoming healthy; see ~/.kitterm/server.log"
         case .portInUse(let port, let occupant):

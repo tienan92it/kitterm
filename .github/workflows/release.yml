@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag to build (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # macOS 14 runners are arm64; the SDK is universal so both slices build here.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Show toolchain
+        run: swift --version && pnpm --version
+
+      - name: Resolve version
+        id: v
+        run: echo "version=${{ github.event.inputs.version || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build release tarball
+        run: ./scripts/build-release.sh "${{ steps.v.outputs.version }}"
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.v.outputs.version }}
+          files: |
+            dist/kitterm-${{ steps.v.outputs.version }}-macos-universal.tar.gz
+            dist/kitterm-${{ steps.v.outputs.version }}-macos-universal.tar.gz.sha256
+          body: |
+            ## Install
+
+            ```sh
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | sh
+            ```
+
+            Then `kitterm start`.
+
+            Builds are unsigned: the installer clears the quarantine attribute
+            for you. If you extract the tarball by hand instead, run
+            `xattr -dr com.apple.quarantine <prefix>` before first launch.

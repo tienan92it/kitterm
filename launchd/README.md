@@ -6,6 +6,16 @@ The agent runs `kitterm serve` in the foreground so launchd owns the process lif
 
 ## Install
 
+```bash
+kitterm service install     # writes the plist and bootstraps it
+kitterm service status
+```
+
+That generates the plist below with the correct absolute path already filled in,
+so the steps that follow are only needed if you want to manage it by hand.
+
+### Manual alternative
+
 1. Build a release binary and put it somewhere stable:
 
 ```bash
@@ -40,6 +50,12 @@ curl -s -H 'Host: 127.0.0.1:3418' http://127.0.0.1:3418/api/health
 Logs: `~/.kitterm/server.log` (written by `serve`).
 
 ## Uninstall
+
+```bash
+kitterm service uninstall
+```
+
+Or by hand:
 
 ```bash
 launchctl bootout gui/$(id -u)/com.kitterm.daemon

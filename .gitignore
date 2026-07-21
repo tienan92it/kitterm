@@ -31,3 +31,6 @@ dist/
 # Secrets / env
 .env
 .env.*
+
+# Release artifacts (root only — not Web/terminal/dist)
+/dist/

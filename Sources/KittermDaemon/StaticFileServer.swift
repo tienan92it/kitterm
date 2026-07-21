@@ -57,6 +57,12 @@ public enum StaticFileServer: Sendable {
         )
         roots.append(execDir.appendingPathComponent("web", isDirectory: true))
         roots.append(execDir.appendingPathComponent("Web/terminal/dist", isDirectory: true))
+        // Installed layout: <prefix>/lib/kitterm/kitterm → <prefix>/share/kitterm/web
+        roots.append(
+            execDir
+                .appendingPathComponent("../../share/kitterm/web", isDirectory: true)
+                .standardizedFileURL
+        )
         return roots
     }
 
