@@ -9,6 +9,7 @@ import {
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
   type KittermSettings,
+  type TabTitleSettings,
   clampFontSize,
 } from "./settings-store";
 import { TERMINAL_THEMES, type TerminalThemeId } from "./themes";
@@ -18,6 +19,8 @@ export type SettingsPanelCallbacks = {
   onFontChange: (fontId: TerminalFontId) => void;
   onLocalFontFamilyChange: (family: string) => void;
   onFontSizeChange: (fontSize: number) => void;
+  onTabTitleChange: (title: string) => void;
+  onTabTitleShowFolderChange: (showFolder: boolean) => void;
 };
 
 export class SettingsPanel {
@@ -33,6 +36,12 @@ export class SettingsPanel {
   private localList: HTMLElement | null = null;
   private localManual: HTMLInputElement | null = null;
   private localStatus: HTMLElement | null = null;
+  private tabTitleInput: HTMLInputElement | null = null;
+  private tabTitleFolder: HTMLInputElement | null = null;
+  private tabTitleNote: HTMLElement | null = null;
+  /** Editing stays closed until the daemon confirms this client controls the
+   * session; observers never get it. */
+  private tabTitleEditable = false;
   private localFamilies: readonly string[] = [];
   private localFontFamily: string | null;
   /** Applied font id, as last confirmed by settings sync. */
@@ -101,6 +110,15 @@ export class SettingsPanel {
           <button type="button" id="settings-size-inc" aria-label="Increase font size">+</button>
         </div>
       </label>
+      <div class="settings-field">
+        <label for="settings-tab-title">Tab title</label>
+        <input id="settings-tab-title" type="text" placeholder="kitterm" autocomplete="off" spellcheck="false" />
+        <label class="settings-check">
+          <input id="settings-tab-title-folder" type="checkbox" />
+          <span>Folder name</span>
+        </label>
+        <p id="settings-tab-title-note" class="settings-note" hidden>Only the session owner can rename this tab.</p>
+      </div>
     `;
 
     this.root.append(gear, this.backdrop, this.dialog);
@@ -113,6 +131,29 @@ export class SettingsPanel {
     this.localList = this.dialog.querySelector("#settings-local-list");
     this.localManual = this.dialog.querySelector("#settings-local-manual");
     this.localStatus = this.dialog.querySelector("#settings-local-status");
+    this.tabTitleInput = this.dialog.querySelector("#settings-tab-title");
+    this.tabTitleFolder = this.dialog.querySelector("#settings-tab-title-folder");
+    this.tabTitleNote = this.dialog.querySelector("#settings-tab-title-note");
+
+    if (this.tabTitleInput) {
+      this.tabTitleInput.value = initial.tabTitle;
+      // `input` (not `change`): the title tracks typing, like the live preview
+      // the other settings give.
+      this.tabTitleInput.addEventListener("input", () => {
+        if (!this.tabTitleEditable) return;
+        this.callbacks.onTabTitleChange(this.tabTitleInput!.value);
+      });
+    }
+
+    if (this.tabTitleFolder) {
+      this.tabTitleFolder.checked = initial.tabTitleShowFolder;
+      this.tabTitleFolder.addEventListener("change", () => {
+        if (!this.tabTitleEditable) return;
+        this.callbacks.onTabTitleShowFolderChange(this.tabTitleFolder!.checked);
+      });
+    }
+
+    this.setTabTitleEditable(false);
 
     if (this.themeSelect) {
       for (const theme of TERMINAL_THEMES) {
@@ -237,6 +278,7 @@ export class SettingsPanel {
       if (!this.browsingLocalFonts) this.fontSelect.value = settings.fontId;
     }
     if (this.sizeInput) this.sizeInput.value = String(settings.fontSize);
+    this.syncTabTitle(settings);
     if (this.localManual && settings.localFontFamily) {
       this.localManual.value = settings.localFontFamily;
     }
@@ -244,6 +286,28 @@ export class SettingsPanel {
       this.browsingLocalFonts || settings.fontId === LOCAL_FONT_ID,
     );
     this.renderLocalList();
+  }
+
+  /** Update just the tab-title controls. Used when a title arrives from
+   * another tab, so mirroring does not rebuild the whole panel (`sync` also
+   * re-renders the installed-font list). */
+  syncTabTitle(settings: TabTitleSettings): void {
+    if (
+      this.tabTitleInput &&
+      document.activeElement !== this.tabTitleInput &&
+      this.tabTitleInput.value !== settings.tabTitle
+    ) {
+      this.tabTitleInput.value = settings.tabTitle;
+    }
+    if (this.tabTitleFolder) this.tabTitleFolder.checked = settings.tabTitleShowFolder;
+  }
+
+  /** Controllers may rename the tab; observers see the owner's title only. */
+  setTabTitleEditable(editable: boolean): void {
+    this.tabTitleEditable = editable;
+    if (this.tabTitleInput) this.tabTitleInput.disabled = !editable;
+    if (this.tabTitleFolder) this.tabTitleFolder.disabled = !editable;
+    if (this.tabTitleNote) this.tabTitleNote.hidden = editable;
   }
 
   private readonly onDocumentKeydown = (event: KeyboardEvent): void => {

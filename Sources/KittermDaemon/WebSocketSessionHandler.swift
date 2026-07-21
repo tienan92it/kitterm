@@ -322,10 +322,9 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         if let encoded = try? ServerFrame.cwd(session.initialCwd).encode() {
             writeBinary(encoded, context: context)
         }
-        let shellName = URL(fileURLWithPath: session.shellPath).lastPathComponent
-        if let encoded = try? ServerFrame.title(shellName).encode() {
-            writeBinary(encoded, context: context)
-        }
+        // No `title` frame: the shell name is already in `sessionMeta`, and the
+        // client builds its tab title from the custom name plus the cwd. The
+        // opcode stays in the protocol so older clients keep decoding.
     }
 
     private func sendOutput(_ buffer: ByteBuffer, context: ChannelHandlerContext) {

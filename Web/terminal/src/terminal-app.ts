@@ -21,14 +21,31 @@ import { LOCAL_FONT_ID, resolveFontFamily, type TerminalFontId } from "./fonts";
 import { KittermSession, defaultWsUrl } from "./session";
 import { SettingsPanel } from "./settings-panel";
 import {
+  DEFAULT_TAB_TITLE,
+  isTabTitleStorageEvent,
   loadSettings,
+  loadTabTitle,
   saveFontId,
   saveFontSize,
   saveLocalFontFamily,
+  saveTabTitle,
   saveThemeId,
   type KittermSettings,
 } from "./settings-store";
 import { findThemeById, type TerminalThemeId } from "./themes";
+import {
+  composeTabTitle,
+  cwdFromOsc1337,
+  cwdFromOsc7,
+  folderFromCwd,
+} from "./title";
+
+/** Longest OSC 1337 payload still plausibly shell integration; anything above
+ * this is bulk data (inline images) we must not keep buffering for. */
+const ITERM_OSC_PAYLOAD_LIMIT = 4096;
+
+/** Coalesce a burst of typing into one storage write. */
+const TAB_TITLE_PERSIST_DEBOUNCE_MS = 300;
 
 export type TerminalAppOptions = {
   container: HTMLElement;
@@ -61,6 +78,12 @@ export class TerminalApp {
     readStoredSessionId();
   /** True while this connection is a read-only observer of the session. */
   private readOnly = false;
+  /** Current folder for the tab title; null until the shell reports one. */
+  private folder: string | null = null;
+  /** Last value written to `document.title`, to skip redundant writes. */
+  private lastTitle = "";
+  /** Pending debounced write of the tab title. */
+  private tabTitlePersistTimer: number | null = null;
   /** Deep-link `/?cwd=…` — used only when spawning a fresh session. */
   private readonly requestedCwd: string | null = new URLSearchParams(
     window.location.search,
@@ -133,6 +156,7 @@ export class TerminalApp {
     this.applyPageBackground(theme.colors.background);
     this.attachWebgl();
     this.registerKittyHandlers();
+    this.registerCwdHandlers();
     this.wireInput();
     this.wireClipboard();
     this.wireSearch();
@@ -141,6 +165,11 @@ export class TerminalApp {
     this.wireResize(options.container);
     this.wireReconnectTriggers();
 
+    // A known session id (reload, or a `/?session=` link) has its title ready
+    // before the daemon answers, so the tab does not flash a fallback name.
+    this.loadTabTitleForSession();
+    this.refreshTitle();
+    window.addEventListener("storage", this.onStorage);
     this.setConnectionState("reconnecting");
     this.connect();
   }
@@ -148,7 +177,10 @@ export class TerminalApp {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    // Write any title typed in the last few hundred milliseconds.
+    this.persistTabTitle();
     this.clearReconnectTimer();
+    window.removeEventListener("storage", this.onStorage);
     this.resizeObserver?.disconnect();
     this.settingsPanel?.dispose();
     this.session.close();
@@ -249,8 +281,76 @@ export class TerminalApp {
       onFontChange: (fontId) => this.applyFont(fontId),
       onLocalFontFamilyChange: (family) => this.applyLocalFont(family),
       onFontSizeChange: (fontSize) => this.applyFontSize(fontSize),
+      onTabTitleChange: (title) => this.applyTabTitle(title),
+      onTabTitleShowFolderChange: (showFolder) =>
+        this.applyTabTitleShowFolder(showFolder),
     });
   }
+
+  private applyTabTitle(title: string): void {
+    if (this.readOnly) return;
+    this.settings = { ...this.settings, tabTitle: title };
+    this.refreshTitle();
+    // Typing repaints the title immediately but writes storage at most once
+    // per burst: each write parses and re-serialises the session map and
+    // wakes every other kitterm tab with a `storage` event.
+    this.scheduleTabTitlePersist();
+  }
+
+  private applyTabTitleShowFolder(showFolder: boolean): void {
+    if (this.readOnly) return;
+    this.settings = { ...this.settings, tabTitleShowFolder: showFolder };
+    this.refreshTitle();
+    this.persistTabTitle();
+  }
+
+  private scheduleTabTitlePersist(): void {
+    if (this.tabTitlePersistTimer !== null) {
+      window.clearTimeout(this.tabTitlePersistTimer);
+    }
+    this.tabTitlePersistTimer = window.setTimeout(() => {
+      this.tabTitlePersistTimer = null;
+      this.persistTabTitle();
+    }, TAB_TITLE_PERSIST_DEBOUNCE_MS);
+  }
+
+  /** Controller-only: the title belongs to the session, so an observer tab
+   * must never write it back. */
+  private persistTabTitle(): void {
+    if (this.tabTitlePersistTimer !== null) {
+      window.clearTimeout(this.tabTitlePersistTimer);
+      this.tabTitlePersistTimer = null;
+    }
+    if (this.readOnly || !this.sessionId) return;
+    saveTabTitle(this.sessionId, {
+      tabTitle: this.settings.tabTitle,
+      tabTitleShowFolder: this.settings.tabTitleShowFolder,
+    });
+  }
+
+  /** Adopt the session's stored title — for an observer this is the title its
+   * controller set. */
+  private loadTabTitleForSession(): void {
+    const prefs = this.sessionId
+      ? loadTabTitle(this.sessionId)
+      : { ...DEFAULT_TAB_TITLE };
+    if (
+      prefs.tabTitle === this.settings.tabTitle &&
+      prefs.tabTitleShowFolder === this.settings.tabTitleShowFolder
+    ) {
+      return;
+    }
+    this.settings = { ...this.settings, ...prefs };
+    this.settingsPanel?.syncTabTitle(this.settings);
+    this.refreshTitle();
+  }
+
+  /** Mirror the controller's edits into observer tabs of the same browser.
+   * `storage` fires only in other tabs, so this never echoes our own write. */
+  private readonly onStorage = (event: StorageEvent): void => {
+    if (!isTabTitleStorageEvent(event)) return;
+    this.loadTabTitleForSession();
+  };
 
   /** Copy `/?session=<id>` — open in another window/device to observe live. */
   private wireShare(): void {
@@ -594,6 +694,16 @@ export class TerminalApp {
         this.deepLinkPending = false;
         this.sessionId = frame.id;
         storeSessionId(frame.id);
+        if (replaced) {
+          // The shell died and a new one took its place. The tab is still the
+          // user's "Deploy" tab, so carry the name across rather than silently
+          // reverting to the folder.
+          this.persistTabTitle();
+        } else {
+          // A reload restores this session's title; an observer adopts the
+          // controller's.
+          this.loadTabTitleForSession();
+        }
         if (window.location.search) {
           // Session established — drop deep-link params from the address bar.
           window.history.replaceState({}, "", window.location.pathname);
@@ -605,6 +715,8 @@ export class TerminalApp {
       }
       case "role":
         this.readOnly = frame.role === "observer";
+        // Renaming the tab is part of controlling the session.
+        this.settingsPanel?.setTabTitleEditable(!this.readOnly);
         if (this.readOnly) {
           this.setStatus("Observing — read-only");
         } else {
@@ -618,19 +730,14 @@ export class TerminalApp {
         }
         break;
       case "title":
-        if (frame.title.trim()) {
-          this.setTitle(`${frame.title} — kitterm`);
-        }
+        // Legacy frame: current daemons no longer send it. The tab title comes
+        // from the custom name plus the cwd, so there is nothing to do.
         break;
       case "cwd":
-        if (frame.cwd) {
-          this.setTitle(`${basename(frame.cwd)} — kitterm`);
-        }
+        if (frame.cwd) this.setFolderFromCwd(frame.cwd);
         break;
       case "sessionMeta":
-        if (frame.meta.cwd) {
-          this.setTitle(`${basename(frame.meta.cwd)} — kitterm`);
-        }
+        if (frame.meta.cwd) this.setFolderFromCwd(frame.meta.cwd);
         break;
       case "exit":
         this.exited = true;
@@ -642,7 +749,54 @@ export class TerminalApp {
     }
   }
 
-  private setTitle(title: string): void {
+  /** Live folder source: the shell's own OSC sequences, already parsed by
+   * xterm. The handlers return false so xterm's default handling is untouched,
+   * and they fire about once per prompt — not per output chunk.
+   *
+   * OSC 7 is free: xterm buffers an OSC payload only while a handler is
+   * registered for that id, and OSC 7 payloads are one path.
+   *
+   * OSC 1337 is not free. iTerm2 shares that id between shell integration
+   * (`CurrentDir=`, tiny) and inline images (`File=`, megabytes), so keeping a
+   * handler on it would make xterm accumulate every `imgcat`/matplotlib image
+   * into a string just to discard it. We therefore drop the handler the first
+   * time a payload is clearly not shell integration: the cost is bounded to
+   * one sequence per page, and cwd tracking falls back to OSC 7 and the
+   * daemon's attach-time cwd. */
+  private registerCwdHandlers(): void {
+    this.terminal.parser.registerOscHandler(7, (data) => {
+      const cwd = cwdFromOsc7(data);
+      if (cwd) this.setFolderFromCwd(cwd);
+      return false;
+    });
+
+    const iterm = this.terminal.parser.registerOscHandler(1337, (data) => {
+      const cwd = cwdFromOsc1337(data);
+      if (cwd) {
+        this.setFolderFromCwd(cwd);
+      } else if (data.length > ITERM_OSC_PAYLOAD_LIMIT) {
+        // An image (or similar bulk payload) — stop paying to buffer them.
+        iterm.dispose();
+      }
+      return false;
+    });
+  }
+
+  private setFolderFromCwd(cwd: string): void {
+    const folder = folderFromCwd(cwd);
+    if (folder === this.folder) return;
+    this.folder = folder;
+    this.refreshTitle();
+  }
+
+  private refreshTitle(): void {
+    const title = composeTabTitle({
+      custom: this.settings.tabTitle,
+      showFolder: this.settings.tabTitleShowFolder,
+      folder: this.folder,
+    });
+    if (title === this.lastTitle) return;
+    this.lastTitle = title;
     document.title = title;
   }
 
@@ -704,11 +858,6 @@ function clearStoredSessionId(): void {
   } catch {
     // ignore
   }
-}
-
-function basename(path: string): string {
-  const parts = path.replace(/\/+$/, "").split("/");
-  return parts[parts.length - 1] || path;
 }
 
 function isLoopbackHostname(hostname: string): boolean {

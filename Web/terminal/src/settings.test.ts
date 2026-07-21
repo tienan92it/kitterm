@@ -8,11 +8,14 @@ import {
 } from "./fonts";
 import { queryLocalFonts } from "./local-fonts";
 import {
+  DEFAULT_TAB_TITLE,
   FONT_SIZE_DEFAULT,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
   clampFontSize,
   loadSettings,
+  loadTabTitle,
+  saveTabTitle,
 } from "./settings-store";
 import { DEFAULT_THEME_ID, findThemeById } from "./themes";
 
@@ -74,6 +77,95 @@ describe("loadSettings", () => {
     expect(fallback.fontSize).toBe(FONT_SIZE_DEFAULT);
     expect(fallback.themeId).toBe(DEFAULT_THEME_ID);
     expect(fallback.fontId).toBe("menlo");
+  });
+});
+
+describe("tab title, keyed by session", () => {
+  it("defaults to no custom title with the folder shown", () => {
+    stubLocalStorage();
+    expect(loadSettings().tabTitle).toBe("");
+    expect(loadSettings().tabTitleShowFolder).toBe(true);
+    expect(loadTabTitle("session-a")).toEqual({
+      tabTitle: "",
+      tabTitleShowFolder: true,
+    });
+  });
+
+  it("round-trips a session's title", () => {
+    stubLocalStorage();
+    saveTabTitle("session-a", { tabTitle: "My App", tabTitleShowFolder: false });
+    expect(loadTabTitle("session-a")).toEqual({
+      tabTitle: "My App",
+      tabTitleShowFolder: false,
+    });
+  });
+
+  it("keeps sessions independent, so a new tab starts clean", () => {
+    stubLocalStorage();
+    saveTabTitle("session-a", { tabTitle: "My App", tabTitleShowFolder: true });
+    expect(loadTabTitle("session-b")).toEqual({
+      tabTitle: "",
+      tabTitleShowFolder: true,
+    });
+  });
+
+  it("lets an observer read the controller's title for the same session", () => {
+    stubLocalStorage();
+    saveTabTitle("shared", { tabTitle: "Deploy", tabTitleShowFolder: true });
+    // Same key, as an observer tab of that session would read it.
+    expect(loadTabTitle("shared").tabTitle).toBe("Deploy");
+  });
+
+  it("trims the custom title and treats blank as unset", () => {
+    stubLocalStorage();
+    saveTabTitle("session-a", { tabTitle: "  My App  ", tabTitleShowFolder: true });
+    expect(loadTabTitle("session-a").tabTitle).toBe("My App");
+    saveTabTitle("session-a", { tabTitle: "   ", tabTitleShowFolder: true });
+    expect(loadTabTitle("session-a").tabTitle).toBe("");
+  });
+
+  it("prunes old sessions so storage cannot grow without bound", () => {
+    stubLocalStorage();
+    for (let i = 0; i < 60; i += 1) {
+      saveTabTitle(`session-${i}`, {
+        tabTitle: `T${i}`,
+        tabTitleShowFolder: true,
+      });
+    }
+    // Oldest evicted, newest kept.
+    expect(loadTabTitle("session-0").tabTitle).toBe("");
+    expect(loadTabTitle("session-59").tabTitle).toBe("T59");
+  });
+
+  it("falls back to defaults on corrupt storage", () => {
+    stubLocalStorage({ "kitterm:tab-titles": "{not json" });
+    expect(loadTabTitle("session-a")).toEqual({
+      tabTitle: "",
+      tabTitleShowFolder: true,
+    });
+  });
+
+  it("survives localStorage being unavailable", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: () => {
+        throw new Error("blocked");
+      },
+      setItem: () => {
+        throw new Error("blocked");
+      },
+      removeItem: () => undefined,
+    });
+    expect(() =>
+      saveTabTitle("session-a", { tabTitle: "My App", tabTitleShowFolder: true }),
+    ).not.toThrow();
+    expect(loadTabTitle("session-a")).toEqual({
+      tabTitle: "",
+      tabTitleShowFolder: true,
+    });
+  });
+
+  it("keeps the shared defaults immutable", () => {
+    expect(Object.isFrozen(DEFAULT_TAB_TITLE)).toBe(true);
   });
 });
 
