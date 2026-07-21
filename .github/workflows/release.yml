@@ -14,8 +14,8 @@ permissions:
 
 jobs:
   release:
-    # macOS 14 runners are arm64; the SDK is universal so both slices build here.
-    runs-on: macos-14
+    # arm64 runner with Xcode 16 (Swift 6); the SDK is universal so both slices build.
+    runs-on: macos-15
     steps:
       # Resolve first so checkout can pin to the tag: a workflow_dispatch for
       # v0.1.0 must build the v0.1.0 source, not whatever HEAD happens to be.
