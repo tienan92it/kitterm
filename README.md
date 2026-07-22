@@ -22,7 +22,7 @@ with no Node on the hot path.
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/tienan92it/kitterm/main/scripts/install.sh | sh
+curl -fsSL https://kitterm.dev/install.sh | sh
 kitterm start
 # → http://kitterm.localhost:3418/
 ```

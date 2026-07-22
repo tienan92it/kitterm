@@ -38,7 +38,7 @@ a:hover{color:#f0f6fc;text-decoration:underline}
         <button class="copy-btn" id="copy">copy</button>
       </div>
       <div style="padding:18px 20px;font-size:13px;line-height:2">
-        <div style="word-break:break-all"><span style="color:var(--accent)">$</span> <span style="color:#e6edf3">curl -fsSL https://raw.githubusercontent.com/tienan92it/kitterm/main/scripts/install.sh | sh</span></div>
+        <div style="word-break:break-all"><span style="color:var(--accent)">$</span> <span style="color:#e6edf3">curl -fsSL https://kitterm.dev/install.sh | sh</span></div>
         <div style="margin-top:8px"><span style="color:var(--accent)">$</span> <span style="color:#e6edf3">kitterm start</span></div>
         <div style="color:#8b949e">→ http://kitterm.localhost:3418/<span class="cursor sm"></span></div>
       </div>
@@ -51,7 +51,7 @@ a:hover{color:#f0f6fc;text-decoration:underline}
 </div>
 <script>
 document.getElementById('copy').addEventListener('click', function(){
-  navigator.clipboard.writeText('curl -fsSL https://raw.githubusercontent.com/tienan92it/kitterm/main/scripts/install.sh | sh');
+  navigator.clipboard.writeText('curl -fsSL https://kitterm.dev/install.sh | sh');
   this.textContent = 'copied ✓';
   clearTimeout(this._t);
   this._t = setTimeout(() => { this.textContent = 'copy'; }, 1500);

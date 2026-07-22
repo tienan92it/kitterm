@@ -57,7 +57,7 @@ jobs:
             ## Install
 
             ```sh
-            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | sh
+            curl -fsSL https://kitterm.dev/install.sh | sh
             ```
 
             Then `kitterm start`.

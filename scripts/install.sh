@@ -1,7 +1,7 @@
 #!/bin/sh
 # kitterm installer
 #
-#   curl -fsSL https://raw.githubusercontent.com/tienan92it/kitterm/main/scripts/install.sh | sh
+#   curl -fsSL https://kitterm.dev/install.sh | sh
 #
 # Env:
 #   KITTERM_PREFIX   install prefix (default: ~/.local)
