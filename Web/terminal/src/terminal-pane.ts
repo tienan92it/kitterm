@@ -1,0 +1,636 @@
+import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon } from "@xterm/addon-search";
+import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
+import { WebglAddon } from "@xterm/addon-webgl";
+import { Terminal } from "@xterm/xterm";
+import "@xterm/xterm/css/xterm.css";
+
+import {
+  ENTER_KEY_CODE,
+  KEYBOARD_MODIFIER_SHIFT_BIT,
+  KITTY_KEYBOARD_SET_MODE_AND_NOT,
+  KITTY_KEYBOARD_SET_MODE_OR,
+  KITTY_KEYBOARD_SET_MODE_REPLACE,
+  KittyFlagStack,
+  buildKittyKeySequence,
+  extractKeyboardModifiers,
+} from "./kitty";
+import type { FaviconState } from "./favicon";
+import { OutputFlowControl } from "./flow-control";
+import { resolveFontFamily } from "./fonts";
+import { matchPaneCommand, type PaneCommand } from "./pane-keys";
+import type { PaneId } from "./pane-layout";
+import { KittermSession, defaultWsUrl } from "./session";
+import type { KittermSettings } from "./settings-store";
+import { findThemeById } from "./themes";
+import { cwdFromOsc1337, cwdFromOsc7, folderFromCwd } from "./title";
+
+/** Longest OSC 1337 payload still plausibly shell integration; anything above
+ * this is bulk data (inline images) we must not keep buffering for. */
+const ITERM_OSC_PAYLOAD_LIMIT = 4096;
+
+/**
+ * One shell: an xterm instance, its WebSocket, and its reconnect state.
+ *
+ * A pane owns nothing global. `document.title`, the favicon, `window`
+ * listeners, the settings panel, and layout persistence all belong to the app
+ * shell, which a pane reaches only through {@link PaneHost}. That separation is
+ * what makes several panes able to coexist in one page: registering any of
+ * those per pane would multiply the work by the pane count.
+ */
+export interface PaneHost {
+  /** Shared across every pane; the shell owns persistence. */
+  readonly settings: KittermSettings;
+  /** Connection state or exit changed — the shell re-aggregates the favicon. */
+  paneStateChanged(pane: TerminalPane): void;
+  /** Output arrived; the shell decides whether that means "unread". */
+  paneOutput(pane: TerminalPane): void;
+  /** Persistent status for this pane (surfaced when it is focused). */
+  paneStatus(pane: TerminalPane, message: string | null): void;
+  /** Transient toast from any pane, shown immediately. */
+  paneFlash(message: string, durationMs?: number): void;
+  /** The daemon named this pane's session. */
+  paneSessionId(pane: TerminalPane, id: string, replaced: boolean): void;
+  /** The shell's cwd changed — drives the tab title while focused. */
+  paneFolderChanged(pane: TerminalPane): void;
+  /** Controller/observer resolved. */
+  paneRoleChanged(pane: TerminalPane): void;
+  /** A pane keybinding fired. */
+  paneCommand(pane: TerminalPane, command: PaneCommand): void;
+  /** The user clicked into this pane. */
+  paneFocusRequested(pane: TerminalPane): void;
+  /** ⌘F inside this pane. */
+  paneSearchRequested(pane: TerminalPane): void;
+}
+
+export type TerminalPaneOptions = {
+  id: PaneId;
+  container: HTMLElement;
+  host: PaneHost;
+  isMac: boolean;
+  /** Reattach target; null spawns a fresh shell. */
+  sessionId?: string | null;
+  /** Where a fresh shell should start — also used when a reattach misses. */
+  cwd?: string | null;
+};
+
+export class TerminalPane {
+  readonly id: PaneId;
+  private readonly terminal: Terminal;
+  private readonly fitAddon: FitAddon;
+  private readonly searchAddon: SearchAddon;
+  private readonly session: KittermSession;
+  private readonly kitty = new KittyFlagStack();
+  private readonly host: PaneHost;
+  private readonly isMac: boolean;
+  private webglAddon: WebglAddon | null = null;
+  private resizeObserver: ResizeObserver | null = null;
+  private readonly flowControl = new OutputFlowControl({
+    onPause: () => this.session.sendPause(),
+    onResume: () => this.session.sendResume(),
+  });
+  private sessionIdValue: string | null;
+  /** Start directory for a fresh shell; kept so a respawn lands in the same
+   * place after the daemon forgets the session. */
+  private cwd: string | null;
+  private readOnlyValue = false;
+  private folderValue: string | null = null;
+  private reconnectTimer: number | null = null;
+  private reconnectAttempt = 0;
+  private lastConnectAt = 0;
+  /** False until the first successful connect of this pane's lifetime.
+   * A fresh pane has no terminal content, so reattach asks the daemon to
+   * replay the recent tail (otherwise an idle shell shows a bare cursor). */
+  private hasEverConnected = false;
+  private connectionStateValue: FaviconState = "reconnecting";
+  private disposed = false;
+  private exitedValue = false;
+  /** Coalesces a burst of ResizeObserver callbacks into one fit per frame. */
+  private fitHandle: number | null = null;
+
+  constructor(options: TerminalPaneOptions) {
+    this.id = options.id;
+    this.host = options.host;
+    this.isMac = options.isMac;
+    this.sessionIdValue = options.sessionId ?? null;
+    this.cwd = options.cwd ?? null;
+
+    const settings = this.host.settings;
+    const theme = findThemeById(settings.themeId);
+
+    this.terminal = new Terminal({
+      allowProposedApi: true,
+      cursorBlink: true,
+      fontFamily: resolveFontFamily(settings.fontId, settings.localFontFamily),
+      fontSize: settings.fontSize,
+      scrollback: 10_000,
+      theme: theme.colors,
+      macOptionIsMeta: true,
+      rightClickSelectsWord: true,
+    });
+
+    this.fitAddon = new FitAddon();
+    this.searchAddon = new SearchAddon();
+    this.terminal.loadAddon(this.fitAddon);
+    this.terminal.loadAddon(this.searchAddon);
+    this.terminal.loadAddon(new UnicodeGraphemesAddon());
+
+    this.session = new KittermSession({
+      onOpen: () => {
+        this.hasEverConnected = true;
+        this.reconnectAttempt = 0;
+        this.clearReconnectTimer();
+        this.flowControl.reset();
+        this.host.paneStatus(this, null);
+        this.setConnectionState("connected");
+        this.scheduleFit();
+      },
+      onFrame: (frame) => this.handleFrame(frame),
+      onClose: () => this.handleDisconnect(),
+      onError: () => {
+        // onClose follows and drives the reconnect; no separate handling.
+      },
+    });
+
+    this.terminal.open(options.container);
+    this.registerKittyHandlers();
+    this.registerCwdHandlers();
+    this.wireInput();
+    this.wireClipboard();
+    this.wireResize(options.container);
+    this.setConnectionState("reconnecting");
+  }
+
+  // MARK: Accessors used by the shell
+
+  get sessionId(): string | null {
+    return this.sessionIdValue;
+  }
+
+  get lastCwd(): string | null {
+    return this.cwd;
+  }
+
+  get folder(): string | null {
+    return this.folderValue;
+  }
+
+  get readOnly(): boolean {
+    return this.readOnlyValue;
+  }
+
+  get exited(): boolean {
+    return this.exitedValue;
+  }
+
+  get connectionState(): FaviconState {
+    return this.connectionStateValue;
+  }
+
+  focus(): void {
+    this.terminal.focus();
+  }
+
+  blur(): void {
+    this.terminal.blur();
+  }
+
+  /** Start connecting. Separate from the constructor so the shell can stagger
+   * a restored layout instead of opening N sockets in the same tick. */
+  start(delayMs = 0): void {
+    if (delayMs <= 0) {
+      this.connect();
+      return;
+    }
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.disposed) this.connect();
+    }, delayMs);
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.clearReconnectTimer();
+    if (this.fitHandle !== null) cancelAnimationFrame(this.fitHandle);
+    this.resizeObserver?.disconnect();
+    this.releaseWebgl();
+    this.session.close();
+    this.terminal.dispose();
+  }
+
+  // MARK: Settings, applied by the shell to every pane
+
+  applySettings(settings: KittermSettings): void {
+    const theme = findThemeById(settings.themeId);
+    this.terminal.options.theme = theme.colors;
+    this.terminal.options.fontFamily = resolveFontFamily(
+      settings.fontId,
+      settings.localFontFamily,
+    );
+    this.terminal.options.fontSize = settings.fontSize;
+    this.remeasureAndFit();
+  }
+
+  private remeasureAndFit(): void {
+    try {
+      this.webglAddon?.clearTextureAtlas();
+    } catch {
+      /* addon may already be disposed */
+    }
+    this.scheduleFit();
+  }
+
+  // MARK: WebGL, rationed by the shell
+
+  attachWebgl(): boolean {
+    if (this.webglAddon || this.disposed) return this.webglAddon !== null;
+    try {
+      const webgl = new WebglAddon();
+      webgl.onContextLoss(() => {
+        webgl.dispose();
+        this.webglAddon = null;
+      });
+      this.terminal.loadAddon(webgl);
+      this.webglAddon = webgl;
+      return true;
+    } catch {
+      return false; // DOM renderer fallback
+    }
+  }
+
+  releaseWebgl(): void {
+    if (!this.webglAddon) return;
+    try {
+      this.webglAddon.dispose();
+    } catch {
+      /* already gone */
+    }
+    this.webglAddon = null;
+  }
+
+  // MARK: Search, driven by the shell's single search bar
+
+  findNext(term: string): void {
+    this.searchAddon.findNext(term, { caseSensitive: false });
+  }
+
+  findPrevious(term: string): void {
+    this.searchAddon.findPrevious(term, { caseSensitive: false });
+  }
+
+  clearSearchDecorations(): void {
+    this.searchAddon.clearDecorations();
+  }
+
+  // MARK: Connection
+
+  private connect(): void {
+    this.lastConnectAt = Date.now();
+    const params = new URLSearchParams();
+    if (this.sessionIdValue) {
+      params.set("session", this.sessionIdValue);
+      if (!this.hasEverConnected) params.set("fresh", "1");
+    }
+    // Sent alongside a session id on purpose: the daemon reattaches when the
+    // session is alive and otherwise spawns here, so a pane restored after a
+    // daemon restart comes back in the folder it was in.
+    if (this.cwd) params.set("cwd", this.cwd);
+    const query = params.toString();
+    this.session.connect(query ? `${defaultWsUrl()}?${query}` : defaultWsUrl());
+  }
+
+  /** Immediate retry on focus / visibility / network-online, driven by the
+   * shell so one event does not fan out into N uncoordinated attempts. */
+  reconnectNow(): void {
+    if (this.disposed || this.exitedValue || this.session.ready) return;
+    if (Date.now() - this.lastConnectAt < 500) return;
+    this.clearReconnectTimer();
+    this.reconnectAttempt = 0;
+    this.host.paneStatus(this, "Reconnecting…");
+    this.connect();
+  }
+
+  private handleDisconnect(): void {
+    if (this.disposed || this.exitedValue) return;
+    this.host.paneStatus(this, "Reconnecting…");
+    this.setConnectionState("reconnecting");
+    this.scheduleReconnect();
+  }
+
+  private scheduleReconnect(): void {
+    if (this.reconnectTimer !== null) return;
+    const delay = Math.min(10_000, 500 * 2 ** this.reconnectAttempt);
+    this.reconnectAttempt += 1;
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.disposed && !this.exitedValue && !this.session.ready) {
+        // A failed attempt fires onClose, which schedules the next retry.
+        this.connect();
+      }
+    }, delay);
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer !== null) {
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  private setConnectionState(state: FaviconState): void {
+    if (this.connectionStateValue === state) return;
+    this.connectionStateValue = state;
+    this.host.paneStateChanged(this);
+  }
+
+  // MARK: Sizing
+
+  private wireResize(container: HTMLElement): void {
+    this.resizeObserver = new ResizeObserver(() => this.scheduleFit());
+    this.resizeObserver.observe(container);
+  }
+
+  /** Coalesce to one fit per frame: a splitter drag can fire the observer for
+   * every pane many times per frame, and each fit measures the DOM and puts a
+   * resize on the wire. */
+  scheduleFit(): void {
+    if (this.disposed || this.fitHandle !== null) return;
+    this.fitHandle = requestAnimationFrame(() => {
+      this.fitHandle = null;
+      this.fitAndResize();
+    });
+  }
+
+  private fitAndResize(): void {
+    // Observers render at the controller's size; never fight it locally.
+    if (this.disposed || this.exitedValue || this.readOnlyValue) return;
+    try {
+      this.fitAddon.fit();
+    } catch {
+      return;
+    }
+    const cols = this.terminal.cols;
+    const rows = this.terminal.rows;
+    if (cols > 0 && rows > 0 && this.session.ready) {
+      this.session.sendResize(cols, rows);
+    }
+  }
+
+  // MARK: Frames
+
+  private handleFrame(frame: import("./protocol").ServerFrame): void {
+    switch (frame.type) {
+      case "output": {
+        const bytes = frame.data.byteLength;
+        this.flowControl.enqueue(bytes);
+        this.terminal.write(frame.data, () => this.flowControl.dequeue(bytes));
+        this.host.paneOutput(this);
+        break;
+      }
+      case "sessionId": {
+        const replaced =
+          this.sessionIdValue !== null && this.sessionIdValue !== frame.id;
+        this.sessionIdValue = frame.id;
+        this.host.paneSessionId(this, frame.id, replaced);
+        if (replaced) {
+          this.host.paneFlash("Previous shell ended — started a new shell");
+        }
+        break;
+      }
+      case "role":
+        this.readOnlyValue = frame.role === "observer";
+        this.host.paneRoleChanged(this);
+        if (this.readOnlyValue) {
+          this.host.paneStatus(this, "Observing — read-only");
+        } else {
+          this.host.paneStatus(this, null);
+          this.scheduleFit();
+        }
+        break;
+      case "resize":
+        if (this.readOnlyValue && frame.cols > 0 && frame.rows > 0) {
+          this.terminal.resize(frame.cols, frame.rows);
+        }
+        break;
+      case "title":
+        // Legacy frame: current daemons no longer send it. The tab title comes
+        // from the custom name plus the cwd, so there is nothing to do.
+        break;
+      case "cwd":
+        if (frame.cwd) this.setFolderFromCwd(frame.cwd);
+        break;
+      case "sessionMeta":
+        if (frame.meta.cwd) this.setFolderFromCwd(frame.meta.cwd);
+        break;
+      case "exit":
+        this.exitedValue = true;
+        this.sessionIdValue = null;
+        // The shell only surfaces this for the last pane; any other exiting
+        // pane is closed and the message never shows.
+        this.host.paneStatus(
+          this,
+          `Shell exited (${frame.code}) — reload for a new shell`,
+        );
+        this.setConnectionState("exited");
+        this.session.close();
+        this.host.paneStateChanged(this);
+        break;
+    }
+  }
+
+  /** Live folder source: the shell's own OSC sequences, already parsed by
+   * xterm. The handlers return false so xterm's default handling is untouched,
+   * and they fire about once per prompt — not per output chunk.
+   *
+   * OSC 7 is free: xterm buffers an OSC payload only while a handler is
+   * registered for that id, and OSC 7 payloads are one path.
+   *
+   * OSC 1337 is not free. iTerm2 shares that id between shell integration
+   * (`CurrentDir=`, tiny) and inline images (`File=`, megabytes), so keeping a
+   * handler on it would make xterm accumulate every `imgcat`/matplotlib image
+   * into a string just to discard it. We therefore drop the handler the first
+   * time a payload is clearly not shell integration: the cost is bounded to
+   * one sequence per page, and cwd tracking falls back to OSC 7 and the
+   * daemon's attach-time cwd. */
+  private registerCwdHandlers(): void {
+    this.terminal.parser.registerOscHandler(7, (data) => {
+      const cwd = cwdFromOsc7(data);
+      if (cwd) this.setFolderFromCwd(cwd);
+      return false;
+    });
+
+    const iterm = this.terminal.parser.registerOscHandler(1337, (data) => {
+      const cwd = cwdFromOsc1337(data);
+      if (cwd) {
+        this.setFolderFromCwd(cwd);
+      } else if (data.length > ITERM_OSC_PAYLOAD_LIMIT) {
+        // An image (or similar bulk payload) — stop paying to buffer them.
+        iterm.dispose();
+      }
+      return false;
+    });
+  }
+
+  private setFolderFromCwd(cwd: string): void {
+    this.cwd = cwd;
+    const folder = folderFromCwd(cwd);
+    if (folder === this.folderValue) return;
+    this.folderValue = folder;
+    this.host.paneFolderChanged(this);
+  }
+
+  private registerKittyHandlers(): void {
+    this.terminal.parser.registerCsiHandler({ prefix: ">", final: "u" }, (params) => {
+      const first = params[0];
+      const flags = typeof first === "number" ? first : 1;
+      this.kitty.push(flags);
+      return true;
+    });
+    this.terminal.parser.registerCsiHandler({ prefix: "<", final: "u" }, (params) => {
+      const first = params[0];
+      const count = typeof first === "number" && first > 0 ? first : 1;
+      this.kitty.pop(count);
+      return true;
+    });
+    this.terminal.parser.registerCsiHandler({ prefix: "=", final: "u" }, (params) => {
+      const first = params[0];
+      const second = params[1];
+      if (typeof first !== "number") return true;
+      const mode =
+        typeof second === "number" && second > 0 ? second : KITTY_KEYBOARD_SET_MODE_REPLACE;
+      if (
+        mode === KITTY_KEYBOARD_SET_MODE_REPLACE ||
+        mode === KITTY_KEYBOARD_SET_MODE_OR ||
+        mode === KITTY_KEYBOARD_SET_MODE_AND_NOT
+      ) {
+        this.kitty.set(first, mode);
+      }
+      return true;
+    });
+  }
+
+  private wireInput(): void {
+    this.terminal.onData((data) => {
+      if (!this.exitedValue && !this.readOnlyValue) {
+        this.session.sendInput(data);
+      }
+    });
+
+    this.terminal.attachCustomKeyEventHandler((event) => {
+      if (event.type !== "keydown") {
+        return true;
+      }
+
+      // Pane chords first — matchPaneCommand only matches combinations no
+      // terminal application can receive, so this cannot swallow a shell key.
+      const command = matchPaneCommand(event, this.isMac);
+      if (command) {
+        event.preventDefault();
+        this.host.paneCommand(this, command);
+        return false;
+      }
+
+      const key = event.key.toLowerCase();
+
+      // Ctrl+C → always send ETX (\x03) ourselves. Returning true and relying on
+      // xterm is unreliable when a selection exists or the browser/OS interferes;
+      // explicit send matches a real terminal's SIGINT path (verified via WS).
+      // Copy remains ⌘C / Ctrl+Shift+C only — never bare Ctrl+C.
+      if (
+        event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        !event.shiftKey &&
+        (key === "c" || event.code === "KeyC")
+      ) {
+        event.preventDefault();
+        this.terminal.clearSelection();
+        if (!this.exitedValue && !this.readOnlyValue) {
+          this.session.sendInput("\x03");
+        }
+        return false;
+      }
+
+      // Find: ⌘F on macOS, Ctrl+Shift+F elsewhere (avoid stealing Ctrl+F from apps).
+      const isFind =
+        (event.metaKey && !event.ctrlKey && !event.shiftKey && key === "f") ||
+        (event.ctrlKey && event.shiftKey && !event.metaKey && key === "f");
+      if (isFind) {
+        event.preventDefault();
+        this.host.paneSearchRequested(this);
+        return false;
+      }
+
+      // Copy selection: ⌘C, or Ctrl+Shift+C — never bare Ctrl+C.
+      const isCopy =
+        (event.metaKey && !event.ctrlKey && key === "c") ||
+        (event.ctrlKey && event.shiftKey && !event.metaKey && key === "c");
+      if (isCopy) {
+        const selection = this.terminal.getSelection();
+        if (selection) {
+          event.preventDefault();
+          void navigator.clipboard.writeText(selection).catch(() => {});
+          return false;
+        }
+      }
+
+      // Paste: ⌘V / Ctrl+Shift+V (plain Ctrl+V left to the browser/xterm path).
+      const isPaste =
+        (event.metaKey && !event.ctrlKey && key === "v") ||
+        (event.ctrlKey && event.shiftKey && !event.metaKey && key === "v");
+      if (isPaste) {
+        event.preventDefault();
+        void navigator.clipboard
+          .readText()
+          .then((text) => {
+            if (text && !this.exitedValue && !this.readOnlyValue) {
+              this.session.sendInput(text);
+            }
+          })
+          .catch(() => {});
+        return false;
+      }
+
+      if (event.key !== "Enter") {
+        return true;
+      }
+      const modifierBits = extractKeyboardModifiers(event);
+      if (modifierBits !== 0 && this.kitty.disambiguateActive) {
+        event.preventDefault();
+        this.session.sendInput(buildKittyKeySequence(ENTER_KEY_CODE, modifierBits));
+        return false;
+      }
+      if (modifierBits === KEYBOARD_MODIFIER_SHIFT_BIT) {
+        event.preventDefault();
+        this.session.sendInput("\n");
+        return false;
+      }
+      return true;
+    });
+  }
+
+  private wireClipboard(): void {
+    const element = this.terminal.element;
+    if (!element) return;
+
+    // Clicking anywhere in the pane focuses it.
+    element.addEventListener(
+      "mousedown",
+      () => this.host.paneFocusRequested(this),
+      true,
+    );
+
+    // Middle-click paste when clipboard read is permitted.
+    element.addEventListener("mousedown", (event) => {
+      if (event.button !== 1 || this.exitedValue || this.readOnlyValue) return;
+      event.preventDefault();
+      void navigator.clipboard
+        .readText()
+        .then((text) => {
+          if (text) this.session.sendInput(text);
+        })
+        .catch(() => {});
+    });
+  }
+}

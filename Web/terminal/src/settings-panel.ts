@@ -21,6 +21,8 @@ export type SettingsPanelCallbacks = {
   onFontSizeChange: (fontSize: number) => void;
   onTabTitleChange: (title: string) => void;
   onTabTitleShowFolderChange: (showFolder: boolean) => void;
+  /** Copy a link to the focused pane's session, for observing elsewhere. */
+  onCopySessionLink: () => void;
 };
 
 export class SettingsPanel {
@@ -119,6 +121,10 @@ export class SettingsPanel {
         </label>
         <p id="settings-tab-title-note" class="settings-note" hidden>Only the session owner can rename this tab.</p>
       </div>
+      <div class="settings-share">
+        <button type="button" id="settings-share">⧉ Copy session link</button>
+        <p class="settings-note">Opens the focused pane read-only for whoever you send it to.</p>
+      </div>
     `;
 
     this.root.append(gear, this.backdrop, this.dialog);
@@ -134,6 +140,10 @@ export class SettingsPanel {
     this.tabTitleInput = this.dialog.querySelector("#settings-tab-title");
     this.tabTitleFolder = this.dialog.querySelector("#settings-tab-title-folder");
     this.tabTitleNote = this.dialog.querySelector("#settings-tab-title-note");
+
+    this.dialog
+      .querySelector("#settings-share")
+      ?.addEventListener("click", () => this.callbacks.onCopySessionLink());
 
     if (this.tabTitleInput) {
       this.tabTitleInput.value = initial.tabTitle;

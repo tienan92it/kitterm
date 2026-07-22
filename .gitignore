@@ -34,3 +34,6 @@ dist/
 
 # Release artifacts (root only — not Web/terminal/dist)
 /dist/
+
+# Local Claude Code settings
+.claude/settings.local.json*

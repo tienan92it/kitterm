@@ -15,31 +15,15 @@ body,
   overflow: hidden;
 }
 
+/* Bottom-right: the top-right corner belongs to whichever pane occupies it,
+   where the per-pane close button lives. */
 .settings-host {
   position: absolute;
-  top: 8px;
+  bottom: 12px;
   right: 12px;
   z-index: 4;
   display: flex;
   gap: 8px;
-}
-
-.share-button {
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: 1px solid #30363d;
-  border-radius: 4px;
-  background: rgba(13, 17, 23, 0.95);
-  color: #e6edf3;
-  font-size: 15px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.share-button:hover {
-  background: #21262d;
-  border-color: #58a6ff;
 }
 
 .settings-gear {
@@ -72,13 +56,14 @@ body,
   display: none !important;
 }
 
+/* Opens upward from the gear, which sits in the bottom-right corner. */
 .settings-dialog {
   position: fixed;
-  top: 48px;
+  bottom: 52px;
   right: 12px;
   z-index: 6;
   width: min(360px, calc(100vw - 24px));
-  max-height: calc(100vh - 64px);
+  max-height: calc(100vh - 84px);
   overflow: auto;
   padding: 12px 14px 14px;
   background: #161b22;
@@ -290,10 +275,101 @@ body,
   background: #30363d;
 }
 
+/* Layout container: panes are positioned absolutely from the layout tree, so
+   splitting never re-parents a live xterm node. */
 #terminal {
   position: absolute;
   inset: 0;
   padding: 4px;
+}
+
+/* Positioning context for the absolutely placed panes. `#terminal` already
+   supplies one; this keeps the view usable if mounted on any other element. */
+.pane-container {
+  position: relative;
+}
+
+.pane {
+  position: absolute;
+  overflow: hidden;
+}
+
+/* The gutter is carved inside each pane so the rects tile exactly and need no
+   gap arithmetic. The border is always present, so focus changes restyle
+   without reflowing — and therefore without refitting the terminal. */
+.pane-inner {
+  position: absolute;
+  inset: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.pane.is-split .pane-inner {
+  inset: 3px;
+  border-color: #30363d;
+}
+
+.pane.is-split.is-focused .pane-inner {
+  border-color: #58a6ff;
+}
+
+.pane-close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 3;
+  display: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  background: rgba(13, 17, 23, 0.9);
+  color: #8b949e;
+  font: 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  cursor: pointer;
+}
+
+.pane.is-split:hover .pane-close {
+  display: block;
+}
+
+.pane-close:hover {
+  color: #e6edf3;
+  border-color: #58a6ff;
+}
+
+.pane-splitter {
+  position: absolute;
+  z-index: 2;
+  background: transparent;
+}
+
+.pane-splitter.is-row {
+  width: 9px;
+  transform: translateX(-50%);
+  cursor: col-resize;
+}
+
+.pane-splitter.is-column {
+  height: 9px;
+  transform: translateY(-50%);
+  cursor: row-resize;
+}
+
+.pane-splitter:hover {
+  background: rgba(88, 166, 255, 0.25);
+}
+
+/* While dragging, keep xterm's selection handling from eating the pointer. */
+body.pane-dragging {
+  user-select: none;
+  cursor: inherit;
+}
+
+body.pane-dragging .pane-inner {
+  pointer-events: none;
 }
 
 #terminal .xterm {
@@ -335,11 +411,35 @@ body,
   accent-color: #58a6ff;
 }
 
+/* Declares the family explicitly: `body` sets none, so inheriting here would
+   fall back to the browser's default serif. */
 .settings-note {
   margin: 4px 0 0;
-  font-size: 11px;
-  line-height: 1.4;
+  font: 11px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #6e7681;
+}
+
+/* Last row of the dialog: an action, not a setting — separated accordingly. */
+.settings-share {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #21262d;
+}
+
+.settings-share button {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  background: rgba(13, 17, 23, 0.95);
+  color: #e6edf3;
+  font: 12px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  cursor: pointer;
+}
+
+.settings-share button:hover {
+  background: #21262d;
+  border-color: #58a6ff;
 }
 
 .settings-check input[type="checkbox"]:disabled,
