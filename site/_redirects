@@ -1,0 +1,4 @@
+# Cloudflare Pages redirects.
+# Short install URL — points at the script in the repo so there is one source
+# of truth. `curl -fsSL` follows the redirect.
+/install.sh  https://raw.githubusercontent.com/tienan92it/kitterm/main/scripts/install.sh  302
