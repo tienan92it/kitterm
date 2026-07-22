@@ -27,6 +27,11 @@ public enum DaemonPaths: Sendable {
         stateDirectory.appendingPathComponent("recordings", isDirectory: true)
     }
 
+    /// Timestamp of the previous session, for the `Last login:` banner.
+    public static var lastLoginFile: URL {
+        stateDirectory.appendingPathComponent("lastlogin")
+    }
+
     public static func ensureStateDirectory() throws {
         try FileManager.default.createDirectory(
             at: stateDirectory,

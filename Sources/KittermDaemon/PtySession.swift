@@ -162,6 +162,16 @@ public final class PtySession: @unchecked Sendable {
             posix_spawn_file_actions_addclose(&actions, slave)
         }
 
+        // Written to the slave before the shell starts, so it is already in the
+        // pty buffer when the first prompt arrives and cannot interleave with
+        // it. Going in through the pty (rather than synthesising a frame) means
+        // recording, the replay tail, and observers all pick it up unchanged.
+        if let banner = LastLogin.banner(forSlave: slave) {
+            _ = banner.withCString { ptr in
+                Darwin.write(slave, ptr, strlen(ptr))
+            }
+        }
+
         let helperPath = try SpawnHelperPath.resolve()
         let shellName = URL(fileURLWithPath: shell).lastPathComponent
         let argv0 = "-" + shellName
