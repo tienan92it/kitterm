@@ -72,6 +72,8 @@ export type TerminalPaneOptions = {
   sessionId?: string | null;
   /** Where a fresh shell should start — also used when a reattach misses. */
   cwd?: string | null;
+  /** Durable key selecting this pane's own history file on the daemon. */
+  histKey?: string | null;
 };
 
 export class TerminalPane {
@@ -93,6 +95,8 @@ export class TerminalPane {
   /** Start directory for a fresh shell; kept so a respawn lands in the same
    * place after the daemon forgets the session. */
   private cwd: string | null;
+  /** Durable per-pane history key, sent to the daemon as `?hist=`. */
+  private readonly histKeyValue: string | null;
   private readOnlyValue = false;
   private folderValue: string | null = null;
   private reconnectTimer: number | null = null;
@@ -114,6 +118,7 @@ export class TerminalPane {
     this.isMac = options.isMac;
     this.sessionIdValue = options.sessionId ?? null;
     this.cwd = options.cwd ?? null;
+    this.histKeyValue = options.histKey ?? null;
 
     const settings = this.host.settings;
     const theme = findThemeById(settings.themeId);
@@ -169,6 +174,10 @@ export class TerminalPane {
 
   get lastCwd(): string | null {
     return this.cwd;
+  }
+
+  get histKey(): string | null {
+    return this.histKeyValue;
   }
 
   get folder(): string | null {
@@ -296,6 +305,8 @@ export class TerminalPane {
     // session is alive and otherwise spawns here, so a pane restored after a
     // daemon restart comes back in the folder it was in.
     if (this.cwd) params.set("cwd", this.cwd);
+    // Selects this pane's own history file so up-arrow survives a restart.
+    if (this.histKeyValue) params.set("hist", this.histKeyValue);
     const query = params.toString();
     this.session.connect(query ? `${defaultWsUrl()}?${query}` : defaultWsUrl());
   }

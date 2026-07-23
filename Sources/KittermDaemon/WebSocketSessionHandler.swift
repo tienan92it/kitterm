@@ -10,6 +10,8 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     private let registry: SessionRegistry
     private let reattachID: UUID?
     private let requestedCwd: String?
+    /// Selects this pane's own history file; nil falls back to the shell default.
+    private let histKey: String?
     /// Client page has no screen state (reload / adopted link) — reattach
     /// replays the recent tail instead of only the detached bytes.
     private let freshClient: Bool
@@ -35,6 +37,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         reattachID: UUID? = nil,
         requestedCwd: String? = nil,
         freshClient: Bool = false,
+        histKey: String? = nil,
         recordSessions: Bool = false,
         eventLoopGroup: EventLoopGroup
     ) {
@@ -42,6 +45,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         self.reattachID = reattachID
         self.requestedCwd = requestedCwd
         self.freshClient = freshClient
+        self.histKey = histKey
         self.recordSessions = recordSessions
         self.eventLoopGroup = eventLoopGroup
     }
@@ -176,7 +180,10 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
 
     private func spawnNew(context: ChannelHandlerContext) {
         do {
-            let session = try PtySession.spawn(cwd: Self.validatedCwd(requestedCwd))
+            let session = try PtySession.spawn(
+                cwd: Self.validatedCwd(requestedCwd),
+                histFile: Self.historyFile(for: histKey)
+            )
             self.pty = session
             if recordSessions,
                let recorder = SessionRecorder(
@@ -234,6 +241,12 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
             onExit: { [weak self, weak context] code in
                 guard let context else { return }
                 self?.handlePtyExit(code, context: context)
+            },
+            onCwd: { [weak self, weak context] cwd in
+                guard let self, let context, let encoded = try? ServerFrame.cwd(cwd).encode() else {
+                    return
+                }
+                self.writeBinary(encoded, context: context)
             },
             replayRecentTail: freshClient && reattachID != nil
         )
@@ -294,6 +307,16 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
             return nil
         }
         return resolved
+    }
+
+    /// Per-pane history file for `?hist=<key>`. The key is sanitized to a strict
+    /// allowlist so it can never escape `~/.kitterm/history/`; anything invalid
+    /// yields nil, and the shell falls back to its own default HISTFILE.
+    static func historyFile(for key: String?) -> String? {
+        guard let key, !key.isEmpty, key.count <= 128 else { return nil }
+        let allowed = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-")
+        guard key.allSatisfy(allowed.contains) else { return nil }
+        return DaemonPaths.historyDirectory.appendingPathComponent(key).path
     }
 
     // MARK: - Outbound

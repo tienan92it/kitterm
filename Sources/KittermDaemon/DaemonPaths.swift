@@ -32,6 +32,11 @@ public enum DaemonPaths: Sendable {
         stateDirectory.appendingPathComponent("lastlogin")
     }
 
+    /// Per-pane shell history files, keyed by the client's durable pane key.
+    public static var historyDirectory: URL {
+        stateDirectory.appendingPathComponent("history", isDirectory: true)
+    }
+
     public static func ensureStateDirectory() throws {
         try FileManager.default.createDirectory(
             at: stateDirectory,

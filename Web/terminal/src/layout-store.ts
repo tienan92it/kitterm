@@ -24,6 +24,9 @@ export type PaneSession = {
   sessionId: string | null;
   /** Last known cwd, so a respawned pane lands in the right folder. */
   cwd?: string;
+  /** Durable key for this pane's own history file, so up-arrow survives a
+   * restart with the commands run in THIS pane. Generated once per pane. */
+  histKey?: string;
 };
 
 export type StoredLayout = {
@@ -83,6 +86,7 @@ export const loadLayout = (): StoredLayout | null => {
       sessions.set(record.pane, {
         sessionId: typeof record.sessionId === "string" ? record.sessionId : null,
         cwd: typeof record.cwd === "string" ? record.cwd : undefined,
+        histKey: typeof record.histKey === "string" ? record.histKey : undefined,
       });
     }
   }
@@ -102,6 +106,7 @@ export const saveLayout = ({ root, focus, sessions }: StoredLayout): void => {
         pane,
         sessionId: session.sessionId,
         ...(session.cwd ? { cwd: session.cwd } : {}),
+        ...(session.histKey ? { histKey: session.histKey } : {}),
       })),
     }),
   );

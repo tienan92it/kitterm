@@ -186,6 +186,10 @@ export class TerminalApp implements PaneHost {
       isMac: this.isMac,
       sessionId: session.sessionId,
       cwd: session.cwd ?? null,
+      // Reuse a restored key so the pane keeps its own history; mint one for a
+      // fresh pane. Never sent for a `/?session=` link pane (linkBoot), whose
+      // history belongs to the shell being observed, not to us.
+      histKey: this.linkBoot ? null : (session.histKey ?? newHistKey()),
     });
     this.panes.set(id, pane);
     this.webgl.acquire(id, pane);
@@ -283,6 +287,17 @@ export class TerminalApp implements PaneHost {
         if (target) this.setFocus(target);
         break;
       }
+      case "new-tab": {
+        // Synchronous with the keydown gesture — any await/rAF here and the
+        // popup blocker kills the tab. Full path, not the folder basename.
+        const cwd = pane.lastCwd;
+        window.open(
+          cwd ? `/?cwd=${encodeURIComponent(cwd)}` : "/",
+          "_blank",
+          "noopener",
+        );
+        break;
+      }
     }
   }
 
@@ -375,6 +390,7 @@ export class TerminalApp implements PaneHost {
       sessions.set(id, {
         sessionId: pane.sessionId,
         cwd: pane.lastCwd ?? undefined,
+        histKey: pane.histKey ?? undefined,
       });
     }
     saveLayout({ root: this.root, focus: this.focusedId, sessions });
@@ -713,4 +729,14 @@ function isLoopbackHostname(hostname: string): boolean {
     name === "[::1]" ||
     name.endsWith(".localhost")
   );
+}
+
+/** A durable id for a pane's history file. crypto.randomUUID is available in
+ * every secure context (localhost counts); the fallback keeps a dev build over
+ * plain HTTP working. The daemon only accepts [A-Za-z0-9-], which both satisfy. */
+function newHistKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `h-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }

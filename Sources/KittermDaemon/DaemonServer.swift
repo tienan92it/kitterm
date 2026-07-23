@@ -81,12 +81,14 @@ public final class DaemonServer: @unchecked Sendable {
                 let reattachID = Self.reattachSessionID(fromRequestURI: head.uri)
                 let requestedCwd = Self.queryValue("cwd", fromRequestURI: head.uri)
                 let freshClient = Self.queryValue("fresh", fromRequestURI: head.uri) == "1"
+                let histKey = Self.queryValue("hist", fromRequestURI: head.uri)
                 return channel.pipeline.addHandler(
                     WebSocketSessionHandler(
                         registry: registry,
                         reattachID: reattachID,
                         requestedCwd: requestedCwd,
                         freshClient: freshClient,
+                        histKey: histKey,
                         recordSessions: config.recordSessions,
                         eventLoopGroup: group
                     )

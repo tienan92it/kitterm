@@ -63,6 +63,12 @@ public final class PtySession: @unchecked Sendable {
     private var attached = false
     private var onOutput: ((Data) -> Void)?
     private var onExit: ((Int32) -> Void)?
+    /// Live cwd tracking: a low-frequency poll of the shell's own directory via
+    /// `proc_pidinfo`, so the client learns `cd`s even when the shell emits no
+    /// OSC 7 (a bare macOS zsh does not). Diff-gated to one frame per change.
+    private var onCwd: ((String) -> Void)?
+    private var lastPolledCwd: String?
+    private var cwdTask: RepeatedTask?
 
     public struct ObserverHandlers {
         let onOutput: (Data) -> Void
@@ -110,10 +116,16 @@ public final class PtySession: @unchecked Sendable {
     public static func spawn(
         cols: UInt16 = KittermConstants.defaultCols,
         rows: UInt16 = KittermConstants.defaultRows,
-        cwd: String? = nil
+        cwd: String? = nil,
+        histFile: String? = nil
     ) throws -> PtySession {
         let shell = resolvedShell()
         let startCwd = cwd ?? FileManager.default.homeDirectoryForCurrentUser.path
+        // A per-pane HISTFILE lets up-arrow survive a restart with this pane's
+        // own commands; seed it once from the shell's global history.
+        if let histFile {
+            seedHistoryFile(histFile, shell: shell)
+        }
         var win = winsize(
             ws_row: rows,
             ws_col: cols,
@@ -193,7 +205,7 @@ public final class PtySession: @unchecked Sendable {
         var argv: [UnsafeMutablePointer<CChar>?] = helperPtrs
         argv.append(nil)
 
-        let envPairs = buildChildEnvironment()
+        let envPairs = buildChildEnvironment(histFile: histFile)
         var envPointers: [UnsafeMutablePointer<CChar>?] = envPairs.map { strdup($0) }
         envPointers.append(nil)
         defer {
@@ -398,11 +410,13 @@ public final class PtySession: @unchecked Sendable {
     public func attach(
         onOutput: @escaping (Data) -> Void,
         onExit: @escaping (Int32) -> Void,
+        onCwd: ((String) -> Void)? = nil,
         replayRecentTail: Bool = false
     ) {
         let resumed: (replay: Data?, wasPaused: Bool) = stateLock.withLock {
             self.onOutput = onOutput
             self.onExit = onExit
+            self.onCwd = onCwd
             attached = true
             let pending: Data?
             if replayRecentTail {
@@ -420,18 +434,68 @@ public final class PtySession: @unchecked Sendable {
         }
         if let replay = resumed.replay { onOutput(replay) }
         if resumed.wasPaused { setChannelAutoRead(true) }
+        if onCwd != nil { startCwdPolling() }
     }
 
     public func detach(onExitWhileDetached: ((Int32) -> Void)? = nil) {
+        stopCwdPolling()
         let wasPaused = stateLock.withLock { () -> Bool in
             attached = false
             onOutput = nil
             onExit = onExitWhileDetached
+            onCwd = nil
             let paused = readingPaused
             readingPaused = false
             return paused
         }
         if wasPaused { setChannelAutoRead(true) }
+    }
+
+    // MARK: - Live cwd polling
+
+    /// Cadence for the cwd poll. 2s is imperceptible for "restore where I was"
+    /// while keeping the syscall rate negligible on the shared event loop.
+    private static let cwdPollInterval = TimeAmount.seconds(2)
+
+    /// Read the shell process's own working directory. `proc_pidinfo` is a fast
+    /// kernel-state read (microseconds), not blocking I/O; returns nil for a
+    /// reaped pid or any failure so the caller never throws.
+    static func currentDirectory(ofPID pid: pid_t) -> String? {
+        var info = proc_vnodepathinfo()
+        let size = Int32(MemoryLayout<proc_vnodepathinfo>.size)
+        let rc = proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &info, size)
+        guard rc == size else { return nil }
+        return withUnsafeBytes(of: &info.pvi_cdir.vip_path) { raw in
+            let cString = raw.baseAddress!.assumingMemoryBound(to: CChar.self)
+            let path = String(cString: cString)
+            return path.isEmpty ? nil : path
+        }
+    }
+
+    private func startCwdPolling() {
+        let alive = stateLock.withLock { !terminated }
+        guard alive, let eventLoop, cwdTask == nil else { return }
+        lastPolledCwd = initialCwd
+        cwdTask = eventLoop.scheduleRepeatedTask(
+            initialDelay: Self.cwdPollInterval,
+            delay: Self.cwdPollInterval
+        ) { [weak self] _ in
+            self?.pollCwd()
+        }
+    }
+
+    private func stopCwdPolling() {
+        cwdTask?.cancel()
+        cwdTask = nil
+    }
+
+    private func pollCwd() {
+        guard let path = Self.currentDirectory(ofPID: pid), path != lastPolledCwd else {
+            return
+        }
+        lastPolledCwd = path
+        let callback = stateLock.withLock { onCwd }
+        callback?(path)
     }
 
     public func pauseReading() {
@@ -468,6 +532,7 @@ public final class PtySession: @unchecked Sendable {
     }
 
     public func terminate() {
+        stopCwdPolling()
         // Everything that can block — closing the channel, signalling the child
         // — happens after the lock is released. Waiting on the event loop while
         // holding it deadlocks against `write()`, which the loop itself calls.
@@ -552,7 +617,7 @@ public final class PtySession: @unchecked Sendable {
         return KittermConstants.defaultShellFallback
     }
 
-    private static func buildChildEnvironment() -> [String] {
+    private static func buildChildEnvironment(histFile: String? = nil) -> [String] {
         var env = ProcessInfo.processInfo.environment
         for key in KittermConstants.ptyEnvDenylist {
             env.removeValue(forKey: key)
@@ -566,7 +631,32 @@ public final class PtySession: @unchecked Sendable {
         if env["LSCOLORS"] == nil {
             env["LSCOLORS"] = KittermConstants.lscolorsDefault
         }
+        // zsh and bash both honour HISTFILE; fish keeps its own db and ignores it.
+        if let histFile {
+            env["HISTFILE"] = histFile
+        }
         return env.map { "\($0.key)=\($0.value)" }
+    }
+
+    /// Copy the shell's global history into a fresh per-pane file so up-arrow
+    /// still shows prior commands. Only on first creation — a restored pane's
+    /// file already holds its own accumulated history.
+    static func seedHistoryFile(_ path: String, shell: String) {
+        let fm = FileManager.default
+        try? fm.createDirectory(
+            at: URL(fileURLWithPath: path).deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        guard !fm.fileExists(atPath: path) else { return }
+
+        let home = fm.homeDirectoryForCurrentUser
+        let globalName = shell.hasSuffix("bash") ? ".bash_history" : ".zsh_history"
+        let global = home.appendingPathComponent(globalName)
+        if fm.fileExists(atPath: global.path) {
+            try? fm.copyItem(at: global, to: URL(fileURLWithPath: path))
+        } else {
+            fm.createFile(atPath: path, contents: nil)
+        }
     }
 }
 

@@ -32,7 +32,7 @@ describe("saveLayout / loadLayout", () => {
       root,
       focus: "p2",
       sessions: new Map([
-        ["p1", { sessionId: "abc", cwd: "/tmp" }],
+        ["p1", { sessionId: "abc", cwd: "/tmp", histKey: "k1" }],
         ["p2", { sessionId: null }],
       ]),
     });
@@ -40,8 +40,16 @@ describe("saveLayout / loadLayout", () => {
     const loaded = loadLayout();
     expect(loaded?.root).toEqual(root);
     expect(loaded?.focus).toBe("p2");
-    expect(loaded?.sessions.get("p1")).toEqual({ sessionId: "abc", cwd: "/tmp" });
-    expect(loaded?.sessions.get("p2")).toEqual({ sessionId: null, cwd: undefined });
+    expect(loaded?.sessions.get("p1")).toEqual({
+      sessionId: "abc",
+      cwd: "/tmp",
+      histKey: "k1",
+    });
+    expect(loaded?.sessions.get("p2")).toEqual({
+      sessionId: null,
+      cwd: undefined,
+      histKey: undefined,
+    });
   });
 
   it("returns null when nothing is stored", () => {
