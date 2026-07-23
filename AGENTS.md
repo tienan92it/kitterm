@@ -7,7 +7,9 @@ Guidance for coding agents working in this repo.
 - **Browser terminal only** — xterm.js client served by a Swift loopback daemon
 - Tab open = new shell; session id in `sessionStorage` keeps "tab = shell"
 - Transient disconnects (sleep/wake, reload) **detach** the PTY: output buffers (1MB cap, then reads pause), client auto-reconnects with backoff + on focus/online/visible; unreattached sessions are reaped after 5 min (suspending clock)
-- **Sessions are URLs**: `/?cwd=<path>` deep-links a new shell (`kitterm open <path>`); `/?session=<uuid>` joins a session — first client is controller, later ones are read-only observers (128KB replay tail, resize broadcast, share button copies the link)
+- **Sessions are URLs**: `/?cwd=<path>` deep-links a new shell (`kitterm open <path>`); `/?session=<uuid>` joins a session — first client is controller, later ones are read-only observers (128KB replay tail, resize broadcast, share button copies the link); `/?hist=<key>` selects a per-pane history file
+- **Split panes** (client): one browser tab holds a binary tree of panes (⌘D / ⌘⇧D split, ⌘⌥↑↓ / click focus, ⌘⌥T new browser tab in the focused pane's cwd). Layout + per-pane `{sessionId, cwd, histKey}` persist in `sessionStorage`; a reload restores the tree and reattaches each pane. Daemon is unchanged — N panes are just N WebSockets
+- **Restart resilience**: the daemon polls each shell's cwd via `proc_pidinfo` (~2s, diff-gated) and pushes `cwd` frames, so a restored pane respawns where it was even when the shell emits no OSC 7. Each pane's `?hist=<key>` maps to `~/.kitterm/history/<key>` (set as `HISTFILE`, seeded once from the user's global history), so up-arrow survives a restart with that pane's own commands
 - `--lan` binds 0.0.0.0 with token auth for non-loopback peers (`?token=` → cookie; `~/.kitterm/token`); loopback stays trusted
 - `--record` writes asciinema v2 casts to `~/.kitterm/recordings/`
 - Tab title is per-session (custom name + optional cwd folder), stored per session id; observers adopt the controller's title and cannot edit it
@@ -42,7 +44,8 @@ Flow-control defaults: ~2ms / 64KB batching, PTY pause at 4MB buffered outbound,
 
 ## State
 
-`~/.kitterm/{pid,port,token,server.log}` plus `recordings/` — default port **3418**.
+`~/.kitterm/{pid,port,token,server.log,lastlogin}` plus `recordings/` and
+`history/<key>` (per-pane) — default port **3418**.
 
 ## Distribution
 

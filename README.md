@@ -38,6 +38,7 @@ kitterm start [--port PORT] [--lan] [--record]
 kitterm stop | status | restart
 kitterm open [PATH]
 kitterm service install | uninstall | status
+kitterm upgrade | version
 ```
 
 State lives in `~/.kitterm/`; the default port is `3418`.
@@ -45,12 +46,14 @@ State lives in `~/.kitterm/`; the default port is `3418`.
 | Feature | How |
 | --- | --- |
 | **A tab is a shell** | Open a tab to get one; close it and the shell dies |
-| **Survives disconnects** | Sleep or reload — output buffers and the client reconnects automatically |
+| **Split panes** | ⌘D / ⌘⇧D split; ⌘⌥T opens a new tab in the same directory |
+| **Survives restart** | Reload after `kitterm restart` — each pane returns in its last directory, with its own history |
 | **Open in a directory** | `kitterm open ~/proj`, or link `/?cwd=/path` |
 | **Share a session** | ⧉ copies `/?session=<id>` — first client controls, others observe read-only |
 | **Phone / LAN access** | `kitterm start --lan` prints a token-gated URL |
 | **Record sessions** | `kitterm start --record` → asciinema casts in `~/.kitterm/recordings/` |
 | **Start on login** | `kitterm service install` |
+| **Self-update** | `kitterm upgrade` installs the latest release |
 
 ## Security
 
