@@ -48,6 +48,8 @@ State lives in `~/.kitterm/`; the default port is `3418`.
 | **A tab is a shell** | Open a tab to get one; close it and the shell dies |
 | **Split panes** | ⌘D / ⌘⇧D split; ⌘⌥T opens a new tab in the same directory |
 | **Survives restart** | Reload after `kitterm restart` — each pane returns in its last directory, with its own history |
+| **Survives disconnects** | Every session keeps a 4 MiB output log; a reconnect replays exactly the bytes you missed |
+| **Command marks** | With [shell integration](scripts/shell-integration.zsh): ⌘↑/⌘↓ jump between prompts, failed commands get a red dot, `/api/sessions/<id>/marks` lists what ran and how it exited |
 | **Open in a directory** | `kitterm open ~/proj`, or link `/?cwd=/path` |
 | **Share a session** | ⧉ copies `/?session=<id>` — first client controls, others observe read-only |
 | **Phone / LAN access** | `kitterm start --lan` prints a token-gated URL |

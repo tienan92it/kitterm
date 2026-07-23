@@ -25,6 +25,7 @@ Guidance for coding agents working in this repo.
 | C→S | `0` | UTF-8 / raw input |
 | C→S | `1` | `cols:u16` `rows:u16` (big-endian) |
 | C→S | `2` / `3` | pause / resume (empty) |
+| C→S | `4` | mark `kind:u8` (0 A, 1 B, 2 C, 3 D) `exit:i32` BE (Int32.min = absent) `offset:u64` BE `cmdline:utf8` (≤2KiB) — OSC 133/633 parsed by the client, indexed by the daemon (`/api/sessions/<id>/marks`; the daemon never parses ANSI) |
 | S→C | `0` | raw PTY output |
 | S→C | `1` | title UTF-8 |
 | S→C | `2` | session meta (length-prefixed fields) |
