@@ -4,6 +4,16 @@
 # and the OSC 633;E command line, so kitterm can index commands: ⌘↑/⌘↓
 # prompt jumps, failed-command dots, and /api/sessions/<id>/marks.
 #
+# ONLY source this if your shell does not already emit OSC 133. Many setups
+# do (Powerlevel10k, oh-my-zsh integrations, VS Code, iTerm2). Two emitters
+# means every prompt and exit is marked twice, which doubles the entries in
+# /api/sessions/<id>/marks. To check, run this in a kitterm tab:
+#
+#   cat -v <<< "$(print -P "$PS1")" | grep -o '133;[A-D]'
+#
+# or simply try the features first — if ⌘↑/⌘↓ already jump between prompts
+# and failed commands already show a red dot, you need nothing here.
+#
 # Install: source it from ~/.zshrc, guarded to kitterm shells only:
 #
 #   [[ -n $KITTERM_DAEMON_CHILD ]] && source /path/to/shell-integration.zsh
