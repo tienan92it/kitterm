@@ -38,8 +38,10 @@ public enum KittermConstants: Sendable {
     /// kept alive this long awaiting reattach, then reaped. Uses a suspending
     /// clock so machine sleep does not consume the window.
     public static let sessionDetachLingerSeconds: Int = 300
-    /// PTY output buffered while detached; reads pause beyond this cap.
-    public static let sessionDetachBufferMaxBytes: Int = 1 * 1024 * 1024
+    /// Per-session ring of recent output with absolute stream offsets; serves
+    /// reattach gap-replay, observer catch-up, and tail replay. Sized to
+    /// rebuild a full 10k-line client scrollback with escape overhead.
+    public static let sessionLogBytes: Int = 4 * 1024 * 1024
     /// Rolling tail of recent output replayed to newly joining observers.
     public static let sessionObserverReplayMaxBytes: Int = 128 * 1024
 

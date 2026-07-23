@@ -171,8 +171,8 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
                 }
             )
         )
-        if !replay.isEmpty {
-            batcher.append(replay)
+        if !replay.data.isEmpty {
+            batcher.append(replay.data)
         }
         startHeartbeat(context: context)
         pendingClientFrames = []
@@ -234,7 +234,11 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         }
         self.batcher = batcher
 
-        session.attach(
+        let replay: PtySession.ReplayRequest =
+            freshClient && reattachID != nil
+                ? .tail(maxBytes: KittermConstants.sessionObserverReplayMaxBytes)
+                : .fromDetachPoint
+        let snapshot = session.attach(
             onOutput: { [weak self] data in
                 self?.batcher?.append(data)
             },
@@ -248,8 +252,11 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
                 }
                 self.writeBinary(encoded, context: context)
             },
-            replayRecentTail: freshClient && reattachID != nil
+            replay: replay
         )
+        if !snapshot.data.isEmpty {
+            batcher.append(snapshot.data)
+        }
 
         startHeartbeat(context: context)
 

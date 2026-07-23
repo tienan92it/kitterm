@@ -55,9 +55,15 @@ public final class PtySession: @unchecked Sendable {
     private var terminated = false
     private var exitNotified = false
 
-    /// While no client is attached (startup gap, transient disconnect),
-    /// output accumulates here, bounded by pausing PTY reads at the cap.
-    private var detachedBuffer = Data()
+    /// Every output byte flows through this ring; reattach gap-replay,
+    /// observer catch-up, and tail replay are all snapshots of it. Offsets
+    /// never restart, so a detached shell keeps writing freely — old bytes
+    /// rotate out instead of pausing reads at a cap.
+    private var log = SessionLog()
+    /// Stream offset of the last byte delivered to a controller (0 before the
+    /// first adoption). Clients that cannot name their own offset replay the
+    /// gap from here.
+    private var detachOffset: UInt64 = 0
     /// Input written before the reader channel exists, flushed on adoption.
     private var pendingInput = Data()
     private var attached = false
@@ -88,8 +94,6 @@ public final class PtySession: @unchecked Sendable {
 
     /// Read-only mirrors of this session (observer mode).
     private var observers: [UUID: ObserverHandlers] = [:]
-    /// Rolling tail of recent output, replayed to observers when they join.
-    private var recentOutput = Data()
     /// Optional asciinema recorder (daemon `--record`).
     private var recorder: SessionRecorder?
 
@@ -297,21 +301,17 @@ public final class PtySession: @unchecked Sendable {
         let chunk = Data(buffer: buffer)
 
         // Snapshot under the lock, then call out with it released: the output
-        // handlers below re-enter this class.
+        // handlers below re-enter this class. Detached output only rotates the
+        // log — reads never pause for it, so a long-running program keeps
+        // making progress while no client is watching.
         let dispatch: (recorder: SessionRecorder?,
                        observers: [(Data) -> Void],
-                       controller: ((Data) -> Void)?,
-                       pause: Bool)? = stateLock.withLock {
+                       controller: ((Data) -> Void)?)? = stateLock.withLock {
             guard !terminated, !readingPaused else { return nil }
-            appendRecentOutputLocked(chunk)
+            log.append(chunk)
             let observerOutputs = observers.values.map(\.onOutput)
-            if attached, let onOutput {
-                return (recorder, observerOutputs, onOutput, false)
-            }
-            detachedBuffer.append(chunk)
-            let overflow = detachedBuffer.count >= KittermConstants.sessionDetachBufferMaxBytes
-            if overflow { readingPaused = true }
-            return (recorder, observerOutputs, nil, overflow)
+            let controller = attached ? onOutput : nil
+            return (recorder, observerOutputs, controller)
         }
         guard let dispatch else { return }
 
@@ -320,9 +320,6 @@ public final class PtySession: @unchecked Sendable {
             observer(chunk)
         }
         dispatch.controller?(chunk)
-        if dispatch.pause {
-            setChannelAutoRead(false)
-        }
     }
 
     func readChannelClosed() {
@@ -392,10 +389,10 @@ public final class PtySession: @unchecked Sendable {
         stateLock.withLock { observers.count }
     }
 
-    public func addObserver(_ id: UUID, handlers: ObserverHandlers) -> Data {
+    public func addObserver(_ id: UUID, handlers: ObserverHandlers) -> SessionLog.Snapshot {
         stateLock.withLock {
             observers[id] = handlers
-            return recentOutput
+            return log.tail(maxBytes: KittermConstants.sessionObserverReplayMaxBytes)
         }
     }
 
@@ -407,34 +404,54 @@ public final class PtySession: @unchecked Sendable {
         stateLock.withLock { self.recorder = recorder }
     }
 
+    /// How a newly attaching controller wants missed output replayed.
+    public enum ReplayRequest {
+        /// Client counted its received bytes; replay everything after them.
+        case sinceOffset(UInt64)
+        /// Fresh page with no screen state; replay the recent tail only.
+        case tail(maxBytes: Int)
+        /// Client cannot name an offset (old client, or the startup gap
+        /// before the first adoption); replay the gap since the last
+        /// delivered byte.
+        case fromDetachPoint
+    }
+
+    /// Returns the replay snapshot instead of delivering it through
+    /// `onOutput`, so the caller can frame it (e.g. announce offsets) before
+    /// any live bytes. Safe because the handler and the PTY reader share the
+    /// daemon's single event-loop thread: no output can interleave between
+    /// this returning and the caller sending the snapshot.
+    @discardableResult
     public func attach(
         onOutput: @escaping (Data) -> Void,
         onExit: @escaping (Int32) -> Void,
         onCwd: ((String) -> Void)? = nil,
-        replayRecentTail: Bool = false
-    ) {
-        let resumed: (replay: Data?, wasPaused: Bool) = stateLock.withLock {
+        replay: ReplayRequest = .fromDetachPoint
+    ) -> SessionLog.Snapshot {
+        let resumed: (snapshot: SessionLog.Snapshot, wasPaused: Bool) = stateLock.withLock {
             self.onOutput = onOutput
             self.onExit = onExit
             self.onCwd = onCwd
             attached = true
-            let pending: Data?
-            if replayRecentTail {
-                detachedBuffer = Data()
-                pending = recentOutput.isEmpty ? nil : recentOutput
-            } else if !detachedBuffer.isEmpty {
-                pending = detachedBuffer
-                detachedBuffer = Data()
-            } else {
-                pending = nil
+            let snapshot: SessionLog.Snapshot
+            switch replay {
+            case .sinceOffset(let offset):
+                snapshot = log.snapshot(from: offset)
+            case .tail(let maxBytes):
+                snapshot = log.tail(maxBytes: maxBytes)
+            case .fromDetachPoint:
+                snapshot = log.snapshot(from: detachOffset)
             }
+            // Everything up to head is now the controller's; a re-attach
+            // without an intervening detach must not replay it again.
+            detachOffset = log.head
             let wasPaused = readingPaused
             readingPaused = false
-            return (pending, wasPaused)
+            return (snapshot, wasPaused)
         }
-        if let replay = resumed.replay { onOutput(replay) }
         if resumed.wasPaused { setChannelAutoRead(true) }
         if onCwd != nil { startCwdPolling() }
+        return resumed.snapshot
     }
 
     public func detach(onExitWhileDetached: ((Int32) -> Void)? = nil) {
@@ -444,6 +461,9 @@ public final class PtySession: @unchecked Sendable {
             onOutput = nil
             onExit = onExitWhileDetached
             onCwd = nil
+            // The controller saw everything up to here; the gap for the next
+            // offset-less attach starts now.
+            detachOffset = log.head
             let paused = readingPaused
             readingPaused = false
             return paused
@@ -521,14 +541,6 @@ public final class PtySession: @unchecked Sendable {
     private func setChannelAutoRead(_ enabled: Bool) {
         let channel = stateLock.withLock { readChannel }
         channel?.setOption(ChannelOptions.autoRead, value: enabled).whenFailure { _ in }
-    }
-
-    private func appendRecentOutputLocked(_ chunk: Data) {
-        recentOutput.append(chunk)
-        let cap = KittermConstants.sessionObserverReplayMaxBytes
-        if recentOutput.count > cap {
-            recentOutput = Data(recentOutput.suffix(cap))
-        }
     }
 
     public func terminate() {
