@@ -25,7 +25,8 @@ import type { Direction, SplitDir } from "./pane-layout";
 export type PaneCommand =
   | { type: "split"; dir: SplitDir }
   | { type: "navigate"; dir: Direction }
-  | { type: "close" };
+  | { type: "close" }
+  | { type: "new-tab" };
 
 /** The subset of KeyboardEvent this module needs, so tests need no DOM. */
 export type ChordEvent = Pick<
@@ -59,6 +60,8 @@ export const matchPaneCommand = (event: ChordEvent, isMac: boolean): PaneCommand
       const dir = ARROW_DIRECTIONS[key];
       if (dir) return { type: "navigate", dir };
       if (key === "w" || key === "W") return { type: "close" };
+      // ⌘⌥T — ⌘T and ⌘⇧T are browser-reserved and not interceptable.
+      if (key === "t" || key === "T") return { type: "new-tab" };
     }
     return null;
   }
@@ -71,8 +74,10 @@ export const matchPaneCommand = (event: ChordEvent, isMac: boolean): PaneCommand
     if (key === "E" || key === "e") return { type: "split", dir: "column" };
     const dir = ARROW_DIRECTIONS[key];
     if (dir) return { type: "navigate", dir };
-  } else if (key === "W" || key === "w") {
-    return { type: "close" };
+  } else {
+    if (key === "W" || key === "w") return { type: "close" };
+    // Ctrl+Shift+Alt+T — Ctrl+Shift+T is reopen-closed-tab, reserved.
+    if (key === "T" || key === "t") return { type: "new-tab" };
   }
   return null;
 };

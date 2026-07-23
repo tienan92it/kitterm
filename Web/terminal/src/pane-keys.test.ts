@@ -39,6 +39,16 @@ describe("matchPaneCommand — macOS", () => {
     ).toEqual({ type: "close" });
   });
 
+  it("⌘⌥T opens a new tab", () => {
+    expect(
+      matchPaneCommand(chord({ key: "t", metaKey: true, altKey: true }), true),
+    ).toEqual({ type: "new-tab" });
+  });
+
+  it("leaves bare ⌘T alone — the browser owns it for new tab", () => {
+    expect(matchPaneCommand(chord({ key: "t", metaKey: true }), true)).toBeNull();
+  });
+
   it("leaves ⌘⌥←/→ alone — Chrome and Safari own them for tab switching", () => {
     expect(
       matchPaneCommand(chord({ key: "ArrowLeft", metaKey: true, altKey: true }), true),
@@ -83,6 +93,21 @@ describe("matchPaneCommand — non-mac", () => {
         false,
       ),
     ).toEqual({ type: "close" });
+  });
+
+  it("Ctrl+Shift+Alt+T opens a new tab", () => {
+    expect(
+      matchPaneCommand(
+        chord({ key: "T", ctrlKey: true, shiftKey: true, altKey: true }),
+        false,
+      ),
+    ).toEqual({ type: "new-tab" });
+  });
+
+  it("leaves Ctrl+Shift+T alone — reopen-closed-tab is reserved", () => {
+    expect(
+      matchPaneCommand(chord({ key: "T", ctrlKey: true, shiftKey: true }), false),
+    ).toBeNull();
   });
 
   it("does not use the macOS chords", () => {
