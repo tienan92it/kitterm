@@ -73,6 +73,22 @@ final class FrameTests: XCTestCase {
         XCTAssertEqual(try ServerFrame.decode(encoded), frame)
     }
 
+    func testServerLogStateRoundTrip() throws {
+        let frame = ServerFrame.logState(resync: true, offset: 0x0102_0304_0506_0708, replayLen: 4096)
+        let encoded = try frame.encode()
+        XCTAssertEqual(encoded.count, 18)
+        XCTAssertEqual(try ServerFrame.decode(encoded), frame)
+
+        let plain = ServerFrame.logState(resync: false, offset: 0, replayLen: 0)
+        XCTAssertEqual(try ServerFrame.decode(try plain.encode()), plain)
+    }
+
+    func testServerLogStateRejectsTruncatedPayload() {
+        XCTAssertThrowsError(try ServerFrame.decode(Data([8, 1, 0, 0]))) { error in
+            XCTAssertEqual(error as? FrameError, .truncatedPayload)
+        }
+    }
+
     func testUnknownOpcode() {
         XCTAssertThrowsError(try ClientFrame.decode(Data([99]))) { error in
             XCTAssertEqual(error as? FrameError, .unknownOpcode(99))

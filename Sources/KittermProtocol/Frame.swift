@@ -18,6 +18,7 @@ public enum ServerOpcode: UInt8, Sendable {
     case sessionId = 5
     case resize = 6
     case role = 7
+    case logState = 8
 }
 
 /// Client's relationship to a session (observer mode).
@@ -169,6 +170,12 @@ public enum ServerFrame: Equatable, Sendable {
     case sessionId(String)
     case resize(cols: UInt16, rows: UInt16)
     case role(SessionRole)
+    /// Sent once per attach, before any replayed output. `offset` is the
+    /// absolute stream offset of the next output byte; `replayLen` bytes of
+    /// replay precede live output (0 = none). `resync` means the client's
+    /// screen state is stale (offset pruned, or a tail replay) and must be
+    /// reset before parsing what follows.
+    case logState(resync: Bool, offset: UInt64, replayLen: UInt64)
 
     public static func decode(_ data: Data) throws -> ServerFrame {
         guard let opcodeByte = data.first else {
@@ -224,6 +231,21 @@ public enum ServerFrame: Equatable, Sendable {
                 throw FrameError.truncatedPayload
             }
             return .role(role)
+        case .logState:
+            guard payload.count == 17 else {
+                throw FrameError.truncatedPayload
+            }
+            let resync = payload[payload.startIndex] & 0x01 != 0
+            func u64(at start: Data.Index) -> UInt64 {
+                var value: UInt64 = 0
+                for i in 0..<8 {
+                    value = value << 8 | UInt64(payload[start + i])
+                }
+                return value
+            }
+            let offset = u64(at: payload.startIndex + 1)
+            let replayLen = u64(at: payload.startIndex + 9)
+            return .logState(resync: resync, offset: offset, replayLen: replayLen)
         }
     }
 
@@ -262,6 +284,13 @@ public enum ServerFrame: Equatable, Sendable {
             ])
         case .role(let role):
             return Data([ServerOpcode.role.rawValue, role.rawValue])
+        case .logState(let resync, let offset, let replayLen):
+            var out = Data([ServerOpcode.logState.rawValue, resync ? 1 : 0])
+            var beOffset = offset.bigEndian
+            withUnsafeBytes(of: &beOffset) { out.append(contentsOf: $0) }
+            var beLen = replayLen.bigEndian
+            withUnsafeBytes(of: &beLen) { out.append(contentsOf: $0) }
+            return out
         }
     }
 }

@@ -16,6 +16,7 @@ export const ServerOpcode = {
   sessionId: 5,
   resize: 6,
   role: 7,
+  logState: 8,
 } as const;
 
 export type SessionRole = "controller" | "observer";
@@ -34,7 +35,11 @@ export type ServerFrame =
   | { type: "exit"; code: number }
   | { type: "sessionId"; id: string }
   | { type: "resize"; cols: number; rows: number }
-  | { type: "role"; role: SessionRole };
+  | { type: "role"; role: SessionRole }
+  /** Announces the replay window on attach: `offset` is the absolute stream
+   * offset of the next output byte, `replayLen` bytes of replay precede live
+   * output, and `resync` means the screen state is stale and must be reset. */
+  | { type: "logState"; resync: boolean; offset: number; replayLen: number };
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -144,6 +149,20 @@ export function decodeServerFrame(buffer: ArrayBuffer): ServerFrame {
         throw new Error("invalid role payload");
       }
       return { type: "role", role: payload[0] === 1 ? "observer" : "controller" };
+    }
+    case ServerOpcode.logState: {
+      if (payload.length !== 17) {
+        throw new Error("invalid logState payload");
+      }
+      const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+      // Offsets stay far below 2^53 (bytes of one shell's output), so Number
+      // conversion is exact.
+      return {
+        type: "logState",
+        resync: (payload[0] & 0x01) !== 0,
+        offset: Number(view.getBigUint64(1, false)),
+        replayLen: Number(view.getBigUint64(9, false)),
+      };
     }
     default:
       throw new Error(`unknown server opcode ${opcode}`);

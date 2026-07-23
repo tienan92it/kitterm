@@ -106,6 +106,10 @@ export class TerminalPane {
    * A fresh pane has no terminal content, so reattach asks the daemon to
    * replay the recent tail (otherwise an idle shell shows a bare cursor). */
   private hasEverConnected = false;
+  /** Absolute session-log offset of the next output byte this pane expects.
+   * Counted on receive and re-anchored by each `logState` frame; sent back
+   * as `?since=` so a reconnect replays exactly the missed bytes. */
+  private outputBytes = 0;
   private connectionStateValue: FaviconState = "reconnecting";
   private disposed = false;
   private exitedValue = false;
@@ -299,7 +303,12 @@ export class TerminalPane {
     const params = new URLSearchParams();
     if (this.sessionIdValue) {
       params.set("session", this.sessionIdValue);
-      if (!this.hasEverConnected) params.set("fresh", "1");
+      if (this.hasEverConnected) {
+        // Mid-session reconnect: ask for exactly the bytes we missed.
+        params.set("since", String(this.outputBytes));
+      } else {
+        params.set("fresh", "1");
+      }
     }
     // Sent alongside a session id on purpose: the daemon reattaches when the
     // session is alive and otherwise spawns here, so a pane restored after a
@@ -394,11 +403,21 @@ export class TerminalPane {
     switch (frame.type) {
       case "output": {
         const bytes = frame.data.byteLength;
+        this.outputBytes += bytes;
         this.flowControl.enqueue(bytes);
         this.terminal.write(frame.data, () => this.flowControl.dequeue(bytes));
         this.host.paneOutput(this);
         break;
       }
+      case "logState":
+        if (frame.resync) {
+          // Stale screen (pruned offset or tail replay): clear before the
+          // replay parses. Resetting an already-empty terminal is harmless.
+          this.terminal.reset();
+          this.kitty.reset();
+        }
+        this.outputBytes = frame.offset;
+        break;
       case "sessionId": {
         const replaced =
           this.sessionIdValue !== null && this.sessionIdValue !== frame.id;

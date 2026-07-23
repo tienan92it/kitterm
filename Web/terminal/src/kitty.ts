@@ -44,6 +44,11 @@ export class KittyFlagStack {
     this.stack.push(flags);
   }
 
+  /** Back to power-on state — used when the screen is reset for a resync. */
+  reset(): void {
+    this.stack = [0];
+  }
+
   pop(count = 1): void {
     for (let i = 0; i < count && this.stack.length > 1; i += 1) {
       this.stack.pop();

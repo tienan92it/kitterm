@@ -6,7 +6,7 @@ Guidance for coding agents working in this repo.
 
 - **Browser terminal only** — xterm.js client served by a Swift loopback daemon
 - Tab open = new shell; session id in `sessionStorage` keeps "tab = shell"
-- Transient disconnects (sleep/wake, reload) **detach** the PTY: output buffers (1MB cap, then reads pause), client auto-reconnects with backoff + on focus/online/visible; unreattached sessions are reaped after 5 min (suspending clock)
+- Transient disconnects (sleep/wake, reload) **detach** the PTY: every output byte flows through a per-session **4MiB ring with absolute stream offsets** (`SessionLog`) — detached reads never pause, the ring rotates. The client counts received bytes and reconnects with `?since=<offset>`; the daemon replays exactly the gap (or the full ring + a resync flag when the offset rotated out, announced via the `logState` frame). Client auto-reconnects with backoff + on focus/online/visible; unreattached sessions are reaped after 5 min (suspending clock)
 - **Sessions are URLs**: `/?cwd=<path>` deep-links a new shell (`kitterm open <path>`); `/?session=<uuid>` joins a session — first client is controller, later ones are read-only observers (128KB replay tail, resize broadcast, share button copies the link); `/?hist=<key>` selects a per-pane history file
 - **Split panes** (client): one browser tab holds a binary tree of panes (⌘D / ⌘⇧D split, ⌘⌥↑↓ / click focus, ⌘⌥T new browser tab in the focused pane's cwd). Layout + per-pane `{sessionId, cwd, histKey}` persist in `sessionStorage`; a reload restores the tree and reattaches each pane. Daemon is unchanged — N panes are just N WebSockets
 - **Restart resilience**: the daemon polls each shell's cwd via `proc_pidinfo` (~2s, diff-gated) and pushes `cwd` frames, so a restored pane respawns where it was even when the shell emits no OSC 7. Each pane's `?hist=<key>` maps to `~/.kitterm/history/<key>` (set as `HISTFILE`, seeded once from the user's global history), so up-arrow survives a restart with that pane's own commands
@@ -33,6 +33,7 @@ Guidance for coding agents working in this repo.
 | S→C | `5` | session id UTF-8 (reattach via `/ws?session=<uuid>`) |
 | S→C | `6` | resize `cols:u16 rows:u16` BE (observer follows controller size) |
 | S→C | `7` | role `u8` (0 controller, 1 observer) |
+| S→C | `8` | logState `flags:u8` (bit0 resync) `offset:u64` `replayLen:u64` BE — sent once per attach, before any replayed output |
 
 Flow-control defaults: ~2ms / 64KB batching, PTY pause at 4MB buffered outbound, resume at 1MB, hard close at 64MB.
 
