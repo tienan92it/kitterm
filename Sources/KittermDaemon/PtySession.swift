@@ -415,7 +415,7 @@ public final class PtySession: @unchecked Sendable {
     }
 
     /// How a newly attaching controller wants missed output replayed.
-    public enum ReplayRequest {
+    public enum ReplayRequest: Equatable {
         /// Client counted its received bytes; replay everything after them.
         case sinceOffset(UInt64)
         /// Fresh page with no screen state; replay the recent tail only.

@@ -223,7 +223,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
                 self.sendSessionId(id, context: context)
                 self.sendRole(.controller, context: context)
                 self.sendMeta(context: context, session: session)
-                self.wire(session: session, context: context)
+                self.wire(session: session, context: context, freshlySpawned: true)
             }
         } catch {
             let reason = (error as? LocalizedError)?.errorDescription ?? "pty spawn failed"
@@ -232,7 +232,11 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         }
     }
 
-    private func wire(session: PtySession, context: ChannelHandlerContext) {
+    private func wire(
+        session: PtySession,
+        context: ChannelHandlerContext,
+        freshlySpawned: Bool = false
+    ) {
         applyWriteWatermarks(context: context, role: .controller)
         let batcher = OutputBatcher(eventLoop: context.eventLoop) { [weak self, weak context] buffer in
             guard let self, let context else { return }
@@ -240,17 +244,13 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         }
         self.batcher = batcher
 
-        // Replay preference: an exact client offset beats the fresh-tail
-        // heuristic beats the detach-point gap (old clients, startup).
-        let replay: PtySession.ReplayRequest
-        if let sinceOffset {
-            replay = .sinceOffset(sinceOffset)
-        } else if freshClient && reattachID != nil {
-            replay = .tail(maxBytes: KittermConstants.sessionObserverReplayMaxBytes)
-        } else {
-            replay = .fromDetachPoint
-        }
-        let isTail = if case .tail = replay { true } else { false }
+        let plan = Self.resolveReplay(
+            freshlySpawned: freshlySpawned,
+            reattaching: reattachID != nil,
+            sinceOffset: sinceOffset,
+            freshClient: freshClient
+        )
+        let isTail = if case .tail = plan.request { true } else { false }
         let snapshot = session.attach(
             onOutput: { [weak self] data in
                 self?.batcher?.append(data)
@@ -265,11 +265,16 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
                 }
                 self.writeBinary(encoded, context: context)
             },
-            replay: replay
+            replay: plan.request
         )
-        // A tail replay lands on a screen that never saw the earlier bytes,
-        // so it needs the same reset a pruned offset does.
-        sendLogState(resync: snapshot.pruned || isTail, snapshot: snapshot, context: context)
+        // A tail replay lands on a screen that never saw the earlier bytes, and
+        // a fresh shell that replaced a missing session lands on the previous
+        // shell's stale screen — both need the same reset a pruned offset does.
+        sendLogState(
+            resync: snapshot.pruned || isTail || plan.forceResync,
+            snapshot: snapshot,
+            context: context
+        )
         if !snapshot.data.isEmpty {
             batcher.append(snapshot.data)
         }
@@ -314,6 +319,50 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         } catch {
             // Ignore malformed frames; keep session alive.
         }
+    }
+
+    /// How a newly wired controller's screen is rebuilt: which bytes to replay,
+    /// and whether the client must clear its screen first.
+    struct ReplayPlan: Equatable {
+        let request: PtySession.ReplayRequest
+        let forceResync: Bool
+    }
+
+    /// Choose the replay for a controller attach.
+    ///
+    /// The one case that must not fall through to the offset path is a fresh
+    /// shell that was spawned because a requested session was gone (a daemon
+    /// restart is the common trigger). The client's `since` offset names the
+    /// previous, now-dead stream; replaying `[since, head)` of the *new* shell
+    /// would splice a mid-stream slice of its startup onto the client's stale
+    /// screen — which is what left input garbled after a restart. Such a spawn
+    /// replays the new shell from the start and forces a resync so the client
+    /// rebuilds its screen instead of appending to the old one.
+    ///
+    /// A fresh shell with no reattach request (a brand-new tab) keeps its prior
+    /// behaviour: replay from the detach point (offset 0 for a new stream) with
+    /// no forced resync, since its terminal is already empty.
+    static func resolveReplay(
+        freshlySpawned: Bool,
+        reattaching: Bool,
+        sinceOffset: UInt64?,
+        freshClient: Bool
+    ) -> ReplayPlan {
+        if freshlySpawned {
+            return ReplayPlan(request: .fromDetachPoint, forceResync: reattaching)
+        }
+        // Replay preference: an exact client offset beats the fresh-tail
+        // heuristic beats the detach-point gap (old clients, startup).
+        if let sinceOffset {
+            return ReplayPlan(request: .sinceOffset(sinceOffset), forceResync: false)
+        }
+        if freshClient && reattaching {
+            return ReplayPlan(
+                request: .tail(maxBytes: KittermConstants.sessionObserverReplayMaxBytes),
+                forceResync: false
+            )
+        }
+        return ReplayPlan(request: .fromDetachPoint, forceResync: false)
     }
 
     /// Deep-link cwd (`/?cwd=…`): expand `~`, require an existing directory;
