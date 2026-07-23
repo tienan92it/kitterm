@@ -94,6 +94,8 @@ public final class PtySession: @unchecked Sendable {
 
     /// Read-only mirrors of this session (observer mode).
     private var observers: [UUID: ObserverHandlers] = [:]
+    /// Shell-integration marks reported by the controller's emulator.
+    private var markStore = SessionMarkStore()
     /// Optional asciinema recorder (daemon `--record`).
     private var recorder: SessionRecorder?
 
@@ -398,6 +400,14 @@ public final class PtySession: @unchecked Sendable {
 
     public func removeObserver(_ id: UUID) {
         stateLock.withLock { _ = observers.removeValue(forKey: id) }
+    }
+
+    public func appendMark(_ mark: SessionMark) {
+        stateLock.withLock { markStore.append(mark) }
+    }
+
+    public func marksSnapshot() -> [SessionMark] {
+        stateLock.withLock { markStore.marks }
     }
 
     func attachRecorder(_ recorder: SessionRecorder) {

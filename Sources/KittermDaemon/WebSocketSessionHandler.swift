@@ -304,6 +304,12 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
             case .resume:
                 clientPaused = false
                 updateBackpressure(context: context)
+            case .mark(let kind, let exit, let offset, let command):
+                // Controller-only (guarded above); the client's emulator did
+                // the ANSI parsing — the daemon just indexes the result.
+                pty?.appendMark(
+                    SessionMark(offset: offset, kind: kind, exit: exit, command: command)
+                )
             }
         } catch {
             // Ignore malformed frames; keep session alive.

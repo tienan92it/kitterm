@@ -44,6 +44,10 @@ public enum KittermConstants: Sendable {
     public static let sessionLogBytes: Int = 4 * 1024 * 1024
     /// Rolling tail of recent output replayed to newly joining observers.
     public static let sessionObserverReplayMaxBytes: Int = 128 * 1024
+    /// Longest OSC 633;E command line carried in a mark frame.
+    public static let maxMarkCommandBytes: Int = 2048
+    /// Shell-integration marks kept per session (FIFO beyond the cap).
+    public static let sessionMarkCap: Int = 1000
 
     public static let serverStopGraceMs: Int = 1_500
 

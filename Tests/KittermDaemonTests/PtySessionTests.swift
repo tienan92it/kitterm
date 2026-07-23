@@ -265,6 +265,27 @@ final class PtySessionTests: XCTestCase {
         XCTAssertEqual(received.data, Data("flowing-again".utf8))
     }
 
+    // MARK: - Shell-integration marks
+
+    func testMarksAccumulateAndSnapshotInOrder() {
+        session.appendMark(SessionMark(offset: 0, kind: .promptStart, exit: nil, command: nil))
+        session.appendMark(SessionMark(offset: 10, kind: .preExec, exit: nil, command: "ls"))
+        session.appendMark(SessionMark(offset: 90, kind: .commandEnd, exit: 0, command: nil))
+
+        let marks = session.marksSnapshot()
+        XCTAssertEqual(marks.map(\.offset), [0, 10, 90])
+        XCTAssertEqual(marks[1].command, "ls")
+        XCTAssertEqual(marks[2].exit, 0)
+    }
+
+    func testMarkStoreDropsOldestBeyondTheCap() {
+        var store = SessionMarkStore(cap: 3)
+        for offset in UInt64(0)..<5 {
+            store.append(SessionMark(offset: offset, kind: .promptStart, exit: nil, command: nil))
+        }
+        XCTAssertEqual(store.marks.map(\.offset), [2, 3, 4])
+    }
+
     // MARK: - Observers
 
     func testObserverCountTracksAddAndRemove() {

@@ -5,7 +5,11 @@ export const ClientOpcode = {
   resize: 1,
   pause: 2,
   resume: 3,
+  mark: 4,
 } as const;
+
+/** Sentinel for "no exit code" in a mark frame (Int32.min). */
+export const MARK_NO_EXIT = -0x80000000;
 
 export const ServerOpcode = {
   output: 0,
@@ -64,6 +68,25 @@ export function encodeResize(cols: number, rows: number): ArrayBuffer {
 
 export function encodePause(): ArrayBuffer {
   return new Uint8Array([ClientOpcode.pause]).buffer;
+}
+
+/** Shell-integration mark: kind u8 | exit i32be (Int32.min = absent) |
+ * offset u64be | command utf8. Mirrors ClientFrame.mark. */
+export function encodeMark(
+  kind: number,
+  exit: number | null,
+  offset: number,
+  command?: string | null,
+): ArrayBuffer {
+  const commandBytes = command ? textEncoder.encode(command) : new Uint8Array(0);
+  const out = new Uint8Array(14 + commandBytes.byteLength);
+  const view = new DataView(out.buffer);
+  out[0] = ClientOpcode.mark;
+  out[1] = kind;
+  view.setInt32(2, exit ?? MARK_NO_EXIT, false);
+  view.setBigUint64(6, BigInt(offset), false);
+  out.set(commandBytes, 14);
+  return out.buffer;
 }
 
 export function encodeResume(): ArrayBuffer {

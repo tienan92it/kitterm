@@ -73,6 +73,45 @@ final class FrameTests: XCTestCase {
         XCTAssertEqual(try ServerFrame.decode(encoded), frame)
     }
 
+    func testClientMarkRoundTrip() throws {
+        let frame = ClientFrame.mark(
+            kind: .commandEnd,
+            exit: 1,
+            offset: 987_654,
+            command: "swift test"
+        )
+        XCTAssertEqual(try ClientFrame.decode(frame.encode()), frame)
+    }
+
+    func testClientMarkWithoutExitOrCommand() throws {
+        let frame = ClientFrame.mark(kind: .promptStart, exit: nil, offset: 0, command: nil)
+        let encoded = frame.encode()
+        XCTAssertEqual(encoded.count, 14)
+        XCTAssertEqual(try ClientFrame.decode(encoded), frame)
+    }
+
+    func testClientMarkRejectsBadKindAndOversizedCommand() {
+        var bad = ClientFrame.mark(kind: .promptStart, exit: nil, offset: 0, command: nil).encode()
+        bad[1] = 9 // unknown kind
+        XCTAssertThrowsError(try ClientFrame.decode(bad)) { error in
+            XCTAssertEqual(error as? FrameError, .invalidMarkPayload)
+        }
+
+        let oversized = ClientFrame.mark(
+            kind: .preExec,
+            exit: nil,
+            offset: 0,
+            command: String(repeating: "x", count: KittermConstants.maxMarkCommandBytes + 1)
+        ).encode()
+        XCTAssertThrowsError(try ClientFrame.decode(oversized)) { error in
+            XCTAssertEqual(error as? FrameError, .invalidMarkPayload)
+        }
+
+        XCTAssertThrowsError(try ClientFrame.decode(Data([4, 0, 0]))) { error in
+            XCTAssertEqual(error as? FrameError, .invalidMarkPayload)
+        }
+    }
+
     func testServerLogStateRoundTrip() throws {
         let frame = ServerFrame.logState(resync: true, offset: 0x0102_0304_0506_0708, replayLen: 4096)
         let encoded = try frame.encode()

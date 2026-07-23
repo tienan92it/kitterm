@@ -19,6 +19,13 @@ import type { FaviconState } from "./favicon";
 import { OutputFlowControl } from "./flow-control";
 import { resolveFontFamily } from "./fonts";
 import { matchPaneCommand, type PaneCommand } from "./pane-keys";
+import {
+  MAX_MARK_COMMAND_BYTES,
+  MarkKind,
+  parseOsc133,
+  parseOsc633,
+  type ParsedMark,
+} from "./command-marks";
 import type { PaneId } from "./pane-layout";
 import { ReplayGuard } from "./replay-guard";
 import { KittermSession, defaultWsUrl } from "./session";
@@ -93,6 +100,8 @@ export class TerminalPane {
     onResume: () => this.session.sendResume(),
   });
   private readonly replayGuard = new ReplayGuard();
+  /** 633;E command line awaiting its preExec mark. */
+  private pendingCommandLine: string | null = null;
   private sessionIdValue: string | null;
   /** Start directory for a fresh shell; kept so a respawn lands in the same
    * place after the daemon forgets the session. */
@@ -166,6 +175,7 @@ export class TerminalPane {
     this.terminal.open(options.container);
     this.registerKittyHandlers();
     this.registerCwdHandlers();
+    this.registerMarkHandlers();
     this.wireInput();
     this.wireClipboard();
     this.wireResize(options.container);
@@ -508,6 +518,41 @@ export class TerminalPane {
       }
       return false;
     });
+  }
+
+  /** OSC 133/633 shell-integration marks: the emulator is the parser, the
+   * daemon only indexes what we report. Registered for every pane so the
+   * handlers also see replayed bytes, but only the controller reports. */
+  private registerMarkHandlers(): void {
+    this.terminal.parser.registerOscHandler(133, (data) => {
+      this.handleParsedMark(parseOsc133(data));
+      return false;
+    });
+    this.terminal.parser.registerOscHandler(633, (data) => {
+      this.handleParsedMark(parseOsc633(data));
+      return false;
+    });
+  }
+
+  private handleParsedMark(parsed: ParsedMark | null): void {
+    if (!parsed) return;
+    if (parsed.type === "commandLine") {
+      // Attached to the next preExec mark rather than reported on its own.
+      this.pendingCommandLine = parsed.command;
+      return;
+    }
+    if (this.readOnlyValue || this.exitedValue) return;
+    let command: string | null = null;
+    if (parsed.kind === MarkKind.preExec && this.pendingCommandLine) {
+      command = this.pendingCommandLine;
+      this.pendingCommandLine = null;
+      // The daemon rejects oversized command lines; keep the mark, drop the
+      // text, rather than losing the mark to a byte-cap violation.
+      if (new TextEncoder().encode(command).byteLength > MAX_MARK_COMMAND_BYTES) {
+        command = null;
+      }
+    }
+    this.session.sendMark(parsed.kind, parsed.exit, this.outputBytes, command);
   }
 
   private setFolderFromCwd(cwd: string): void {
