@@ -6,6 +6,21 @@ public enum ClientOpcode: UInt8, Sendable {
     case resize = 1
     case pause = 2
     case resume = 3
+    case mark = 4
+}
+
+/// Shell-integration mark kinds (OSC 133 / OSC 633 letters), parsed by the
+/// client's terminal emulator and reported to the daemon — the daemon itself
+/// never parses ANSI.
+public enum MarkKind: UInt8, Sendable {
+    /// OSC 133;A — prompt start.
+    case promptStart = 0
+    /// OSC 133;B — prompt end, user input begins.
+    case commandStart = 1
+    /// OSC 133;C — command executed, output begins.
+    case preExec = 2
+    /// OSC 133;D — command finished (carries the exit code).
+    case commandEnd = 3
 }
 
 /// Server → client frame types.
@@ -18,6 +33,7 @@ public enum ServerOpcode: UInt8, Sendable {
     case sessionId = 5
     case resize = 6
     case role = 7
+    case logState = 8
 }
 
 /// Client's relationship to a session (observer mode).
@@ -34,6 +50,7 @@ public enum FrameError: Error, Equatable, Sendable {
     case invalidResizePayload
     case invalidExitPayload
     case invalidSessionMeta
+    case invalidMarkPayload
 }
 
 public enum ClientFrame: Equatable, Sendable {
@@ -41,6 +58,11 @@ public enum ClientFrame: Equatable, Sendable {
     case resize(cols: UInt16, rows: UInt16)
     case pause
     case resume
+    /// A shell-integration mark the client's emulator parsed from the output
+    /// stream. `offset` is the client's absolute session-log offset at parse
+    /// time; `exit` is nil except on `.commandEnd`; `command` carries the
+    /// OSC 633;E command line when the shell reports one (≤ 2KiB).
+    case mark(kind: MarkKind, exit: Int32?, offset: UInt64, command: String?)
 
     public static func decode(_ data: Data) throws -> ClientFrame {
         guard let opcodeByte = data.first else {
@@ -68,6 +90,39 @@ public enum ClientFrame: Equatable, Sendable {
         case .resume:
             guard payload.isEmpty else { throw FrameError.truncatedPayload }
             return .resume
+        case .mark:
+            // kind u8 | exit i32be (Int32.min = absent) | offset u64be | cmdline utf8
+            guard payload.count >= 13 else {
+                throw FrameError.invalidMarkPayload
+            }
+            guard let kind = MarkKind(rawValue: payload[payload.startIndex]) else {
+                throw FrameError.invalidMarkPayload
+            }
+            var exitRaw: Int32 = 0
+            for i in 0..<4 {
+                exitRaw = exitRaw << 8 | Int32(payload[payload.startIndex + 1 + i])
+            }
+            var offset: UInt64 = 0
+            for i in 0..<8 {
+                offset = offset << 8 | UInt64(payload[payload.startIndex + 5 + i])
+            }
+            let commandBytes = payload.dropFirst(13)
+            guard commandBytes.count <= KittermConstants.maxMarkCommandBytes else {
+                throw FrameError.invalidMarkPayload
+            }
+            var command: String?
+            if !commandBytes.isEmpty {
+                guard let text = String(data: Data(commandBytes), encoding: .utf8) else {
+                    throw FrameError.invalidUTF8
+                }
+                command = text
+            }
+            return .mark(
+                kind: kind,
+                exit: exitRaw == Int32.min ? nil : exitRaw,
+                offset: offset,
+                command: command
+            )
         }
     }
 
@@ -87,6 +142,16 @@ public enum ClientFrame: Equatable, Sendable {
             return Data([ClientOpcode.pause.rawValue])
         case .resume:
             return Data([ClientOpcode.resume.rawValue])
+        case .mark(let kind, let exit, let offset, let command):
+            var out = Data([ClientOpcode.mark.rawValue, kind.rawValue])
+            var beExit = (exit ?? Int32.min).bigEndian
+            withUnsafeBytes(of: &beExit) { out.append(contentsOf: $0) }
+            var beOffset = offset.bigEndian
+            withUnsafeBytes(of: &beOffset) { out.append(contentsOf: $0) }
+            if let command {
+                out.append(contentsOf: command.utf8)
+            }
+            return out
         }
     }
 }
@@ -169,6 +234,12 @@ public enum ServerFrame: Equatable, Sendable {
     case sessionId(String)
     case resize(cols: UInt16, rows: UInt16)
     case role(SessionRole)
+    /// Sent once per attach, before any replayed output. `offset` is the
+    /// absolute stream offset of the next output byte; `replayLen` bytes of
+    /// replay precede live output (0 = none). `resync` means the client's
+    /// screen state is stale (offset pruned, or a tail replay) and must be
+    /// reset before parsing what follows.
+    case logState(resync: Bool, offset: UInt64, replayLen: UInt64)
 
     public static func decode(_ data: Data) throws -> ServerFrame {
         guard let opcodeByte = data.first else {
@@ -224,6 +295,21 @@ public enum ServerFrame: Equatable, Sendable {
                 throw FrameError.truncatedPayload
             }
             return .role(role)
+        case .logState:
+            guard payload.count == 17 else {
+                throw FrameError.truncatedPayload
+            }
+            let resync = payload[payload.startIndex] & 0x01 != 0
+            func u64(at start: Data.Index) -> UInt64 {
+                var value: UInt64 = 0
+                for i in 0..<8 {
+                    value = value << 8 | UInt64(payload[start + i])
+                }
+                return value
+            }
+            let offset = u64(at: payload.startIndex + 1)
+            let replayLen = u64(at: payload.startIndex + 9)
+            return .logState(resync: resync, offset: offset, replayLen: replayLen)
         }
     }
 
@@ -262,6 +348,13 @@ public enum ServerFrame: Equatable, Sendable {
             ])
         case .role(let role):
             return Data([ServerOpcode.role.rawValue, role.rawValue])
+        case .logState(let resync, let offset, let replayLen):
+            var out = Data([ServerOpcode.logState.rawValue, resync ? 1 : 0])
+            var beOffset = offset.bigEndian
+            withUnsafeBytes(of: &beOffset) { out.append(contentsOf: $0) }
+            var beLen = replayLen.bigEndian
+            withUnsafeBytes(of: &beLen) { out.append(contentsOf: $0) }
+            return out
         }
     }
 }

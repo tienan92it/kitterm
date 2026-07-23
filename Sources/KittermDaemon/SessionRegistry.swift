@@ -22,6 +22,11 @@ public actor SessionRegistry {
         return id
     }
 
+    /// Read-only lookup (API handlers); does not affect controller claims.
+    public func session(_ id: UUID) -> PtySession? {
+        sessions[id]
+    }
+
     public enum SessionResolution: Sendable {
         /// No controller attached — the caller becomes it.
         case controller(PtySession)

@@ -118,6 +118,30 @@ describe("decodeServerFrame", () => {
       meta: { shell: "/bin/zsh", pid: 12345, cwd: "/Users/me" },
     });
   });
+
+  it("decodes logState", () => {
+    const payload = [
+      0x01, // resync
+      0, 0, 0, 0, 0, 0, 0x30, 0x39, // offset 12345
+      0, 0, 0, 0, 0, 0, 0x00, 0x80, // replayLen 128
+    ];
+    expect(decodeServerFrame(frame(ServerOpcode.logState, ...payload))).toEqual({
+      type: "logState",
+      resync: true,
+      offset: 12345,
+      replayLen: 128,
+    });
+  });
+
+  it("decodes logState without resync", () => {
+    const payload = [0x00, ...new Array(16).fill(0)];
+    expect(decodeServerFrame(frame(ServerOpcode.logState, ...payload))).toEqual({
+      type: "logState",
+      resync: false,
+      offset: 0,
+      replayLen: 0,
+    });
+  });
 });
 
 describe("decodeServerFrame — malformed input", () => {
@@ -135,6 +159,7 @@ describe("decodeServerFrame — malformed input", () => {
     ["resize", ServerOpcode.resize, [0, 1]],
     ["role", ServerOpcode.role, []],
     ["role", ServerOpcode.role, [0, 0]],
+    ["logState", ServerOpcode.logState, [1, 0, 0]],
   ])("rejects a wrong-length %s payload", (name, opcode, payload) => {
     expect(() => decodeServerFrame(frame(opcode, ...payload))).toThrow(
       new RegExp(`invalid ${name} payload`),

@@ -2,7 +2,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
 import { WebglAddon } from "@xterm/addon-webgl";
-import { Terminal } from "@xterm/xterm";
+import { Terminal, type IMarker } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 
 import {
@@ -19,7 +19,15 @@ import type { FaviconState } from "./favicon";
 import { OutputFlowControl } from "./flow-control";
 import { resolveFontFamily } from "./fonts";
 import { matchPaneCommand, type PaneCommand } from "./pane-keys";
+import {
+  MAX_MARK_COMMAND_BYTES,
+  MarkKind,
+  parseOsc133,
+  parseOsc633,
+  type ParsedMark,
+} from "./command-marks";
 import type { PaneId } from "./pane-layout";
+import { ReplayGuard } from "./replay-guard";
 import { KittermSession, defaultWsUrl } from "./session";
 import type { KittermSettings } from "./settings-store";
 import { findThemeById } from "./themes";
@@ -28,6 +36,9 @@ import { cwdFromOsc1337, cwdFromOsc7, folderFromCwd } from "./title";
 /** Longest OSC 1337 payload still plausibly shell integration; anything above
  * this is bulk data (inline images) we must not keep buffering for. */
 const ITERM_OSC_PAYLOAD_LIMIT = 4096;
+
+/** Prompt markers kept per pane for ⌘↑/⌘↓ navigation. */
+const MAX_PROMPT_MARKERS = 200;
 
 /**
  * One shell: an xterm instance, its WebSocket, and its reconnect state.
@@ -91,6 +102,14 @@ export class TerminalPane {
     onPause: () => this.session.sendPause(),
     onResume: () => this.session.sendResume(),
   });
+  private readonly replayGuard = new ReplayGuard();
+  /** 633;E command line awaiting its preExec mark. */
+  private pendingCommandLine: string | null = null;
+  /** The current replay window was announced with resync=1 (stale-screen
+   * rebuild) — marks parsed from it were already reported once. */
+  private replayIsResync = false;
+  /** Markers on prompt lines for ⌘↑/⌘↓ navigation. */
+  private promptMarkers: IMarker[] = [];
   private sessionIdValue: string | null;
   /** Start directory for a fresh shell; kept so a respawn lands in the same
    * place after the daemon forgets the session. */
@@ -106,6 +125,10 @@ export class TerminalPane {
    * A fresh pane has no terminal content, so reattach asks the daemon to
    * replay the recent tail (otherwise an idle shell shows a bare cursor). */
   private hasEverConnected = false;
+  /** Absolute session-log offset of the next output byte this pane expects.
+   * Counted on receive and re-anchored by each `logState` frame; sent back
+   * as `?since=` so a reconnect replays exactly the missed bytes. */
+  private outputBytes = 0;
   private connectionStateValue: FaviconState = "reconnecting";
   private disposed = false;
   private exitedValue = false;
@@ -160,6 +183,7 @@ export class TerminalPane {
     this.terminal.open(options.container);
     this.registerKittyHandlers();
     this.registerCwdHandlers();
+    this.registerMarkHandlers();
     this.wireInput();
     this.wireClipboard();
     this.wireResize(options.container);
@@ -299,7 +323,12 @@ export class TerminalPane {
     const params = new URLSearchParams();
     if (this.sessionIdValue) {
       params.set("session", this.sessionIdValue);
-      if (!this.hasEverConnected) params.set("fresh", "1");
+      if (this.hasEverConnected) {
+        // Mid-session reconnect: ask for exactly the bytes we missed.
+        params.set("since", String(this.outputBytes));
+      } else {
+        params.set("fresh", "1");
+      }
     }
     // Sent alongside a session id on purpose: the daemon reattaches when the
     // session is alive and otherwise spawns here, so a pane restored after a
@@ -394,11 +423,32 @@ export class TerminalPane {
     switch (frame.type) {
       case "output": {
         const bytes = frame.data.byteLength;
+        this.outputBytes += bytes;
         this.flowControl.enqueue(bytes);
-        this.terminal.write(frame.data, () => this.flowControl.dequeue(bytes));
+        const generation = this.replayGuard.generation;
+        this.terminal.write(frame.data, () => {
+          this.flowControl.dequeue(bytes);
+          this.replayGuard.onParsed(bytes, generation);
+        });
         this.host.paneOutput(this);
         break;
       }
+      case "logState":
+        if (frame.resync) {
+          // Stale screen (pruned offset or tail replay): clear before the
+          // replay parses. Resetting an already-empty terminal is harmless.
+          this.terminal.reset();
+          this.kitty.reset();
+        }
+        this.outputBytes = frame.offset;
+        this.replayIsResync = frame.resync;
+        // A 633;E buffered on the old connection must not attach to the next
+        // live command.
+        this.pendingCommandLine = null;
+        // Replayed bytes may contain device queries; swallow xterm's answers
+        // to them until the whole replay window has parsed.
+        this.replayGuard.arm(frame.replayLen);
+        break;
       case "sessionId": {
         const replaced =
           this.sessionIdValue !== null && this.sessionIdValue !== frame.id;
@@ -483,6 +533,99 @@ export class TerminalPane {
     });
   }
 
+  /** OSC 133/633 shell-integration marks: the emulator is the parser, the
+   * daemon only indexes what we report. Registered for every pane so the
+   * handlers also see replayed bytes, but only the controller reports. */
+  private registerMarkHandlers(): void {
+    this.terminal.parser.registerOscHandler(133, (data) => {
+      this.handleParsedMark(parseOsc133(data));
+      return false;
+    });
+    this.terminal.parser.registerOscHandler(633, (data) => {
+      this.handleParsedMark(parseOsc633(data));
+      return false;
+    });
+  }
+
+  private handleParsedMark(parsed: ParsedMark | null): void {
+    if (!parsed) return;
+    if (parsed.type === "commandLine") {
+      // Attached to the next preExec mark rather than reported on its own.
+      this.pendingCommandLine = parsed.command;
+      return;
+    }
+    // Local navigation state first — observers and replayed bytes get
+    // markers and decorations too; only the reporting below is gated.
+    if (parsed.kind === MarkKind.promptStart) {
+      this.addPromptMarker();
+    } else if (
+      parsed.kind === MarkKind.commandEnd &&
+      parsed.exit !== null &&
+      parsed.exit !== 0
+    ) {
+      this.decorateFailedCommand(parsed.exit);
+    }
+    // Consume a buffered 633;E even when the mark itself is not reported,
+    // so a replayed command line cannot leak onto the next live command.
+    let command: string | null = null;
+    if (parsed.kind === MarkKind.preExec && this.pendingCommandLine) {
+      command = this.pendingCommandLine;
+      this.pendingCommandLine = null;
+      // The daemon rejects oversized command lines; keep the mark, drop the
+      // text, rather than losing the mark to a byte-cap violation.
+      if (new TextEncoder().encode(command).byteLength > MAX_MARK_COMMAND_BYTES) {
+        command = null;
+      }
+    }
+    if (this.readOnlyValue || this.exitedValue) return;
+    // A resync replay re-covers bytes a previous connection already parsed
+    // and reported — re-reporting them would duplicate marks in the daemon's
+    // index. Gap replays (resync=0) are bytes nobody reported; keep those.
+    if (this.replayGuard.active && this.replayIsResync) return;
+    this.session.sendMark(parsed.kind, parsed.exit, this.outputBytes, command);
+  }
+
+  /** Prompt lines, oldest first; markers dispose themselves as their lines
+   * scroll out of the buffer. */
+  private addPromptMarker(): void {
+    const marker = this.terminal.registerMarker(0);
+    if (!marker) return;
+    this.promptMarkers = this.promptMarkers.filter((m) => !m.isDisposed);
+    this.promptMarkers.push(marker);
+    while (this.promptMarkers.length > MAX_PROMPT_MARKERS) {
+      this.promptMarkers.shift()?.dispose();
+    }
+  }
+
+  /** ⌘↑ / ⌘↓ — scroll to the previous / next prompt line. */
+  jumpToPrompt(direction: -1 | 1): void {
+    const viewportTop = this.terminal.buffer.active.viewportY;
+    const lines = this.promptMarkers
+      .filter((m) => !m.isDisposed)
+      .map((m) => m.line)
+      .sort((a, b) => a - b);
+    const target =
+      direction === -1
+        ? [...lines].reverse().find((line) => line < viewportTop)
+        : lines.find((line) => line > viewportTop);
+    if (target !== undefined) {
+      this.terminal.scrollToLine(target);
+    } else if (direction === 1) {
+      this.terminal.scrollToBottom();
+    }
+  }
+
+  /** A red dot on the failed command's prompt line. */
+  private decorateFailedCommand(exit: number): void {
+    const marker = [...this.promptMarkers].reverse().find((m) => !m.isDisposed);
+    if (!marker) return;
+    const decoration = this.terminal.registerDecoration({ marker });
+    decoration?.onRender((element) => {
+      element.classList.add("kitterm-cmd-failed");
+      element.title = `exit ${exit}`;
+    });
+  }
+
   private setFolderFromCwd(cwd: string): void {
     this.cwd = cwd;
     const folder = folderFromCwd(cwd);
@@ -523,6 +666,7 @@ export class TerminalPane {
 
   private wireInput(): void {
     this.terminal.onData((data) => {
+      if (this.replayGuard.shouldDrop(data)) return;
       if (!this.exitedValue && !this.readOnlyValue) {
         this.session.sendInput(data);
       }
@@ -539,6 +683,22 @@ export class TerminalPane {
       if (command) {
         event.preventDefault();
         this.host.paneCommand(this, command);
+        return false;
+      }
+
+      // ⌘↑ / ⌘↓ — jump between prompt lines (needs shell-integration marks;
+      // without any markers ⌘↓ still snaps to the bottom). macOS only: the
+      // non-mac Ctrl+Shift+arrows are taken by pane navigation.
+      if (
+        this.isMac &&
+        event.metaKey &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.shiftKey &&
+        (event.key === "ArrowUp" || event.key === "ArrowDown")
+      ) {
+        event.preventDefault();
+        this.jumpToPrompt(event.key === "ArrowUp" ? -1 : 1);
         return false;
       }
 
@@ -586,22 +746,11 @@ export class TerminalPane {
         }
       }
 
-      // Paste: ⌘V / Ctrl+Shift+V (plain Ctrl+V left to the browser/xterm path).
-      const isPaste =
-        (event.metaKey && !event.ctrlKey && key === "v") ||
-        (event.ctrlKey && event.shiftKey && !event.metaKey && key === "v");
-      if (isPaste) {
-        event.preventDefault();
-        void navigator.clipboard
-          .readText()
-          .then((text) => {
-            if (text && !this.exitedValue && !this.readOnlyValue) {
-              this.session.sendInput(text);
-            }
-          })
-          .catch(() => {});
-        return false;
-      }
+      // Paste (⌘V / Ctrl+V / Ctrl+Shift+V) is deliberately NOT intercepted:
+      // the native paste event reaches xterm's textarea, which applies
+      // bracketed paste (mode 2004) and newline normalization. Reading the
+      // clipboard here and calling sendInput would bypass both, making
+      // multi-line pastes execute line by line.
 
       if (event.key !== "Enter") {
         return true;
@@ -632,14 +781,16 @@ export class TerminalPane {
       true,
     );
 
-    // Middle-click paste when clipboard read is permitted.
+    // Middle-click paste when clipboard read is permitted. Delivered via
+    // terminal.paste() so bracketed paste and newline normalization apply,
+    // same as a keyboard paste.
     element.addEventListener("mousedown", (event) => {
       if (event.button !== 1 || this.exitedValue || this.readOnlyValue) return;
       event.preventDefault();
       void navigator.clipboard
         .readText()
         .then((text) => {
-          if (text) this.session.sendInput(text);
+          if (text) this.terminal.paste(text);
         })
         .catch(() => {});
     });

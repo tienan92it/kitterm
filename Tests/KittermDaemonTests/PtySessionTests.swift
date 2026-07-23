@@ -138,22 +138,21 @@ final class PtySessionTests: XCTestCase {
     func testDetachedOutputBuffersAndReplaysOnAttach() {
         feed("while-away")
 
-        let received = Captured()
-        session.attach(onOutput: received.append, onExit: { _ in })
-        XCTAssertEqual(received.data, Data("while-away".utf8))
+        let replay = session.attach(onOutput: { _ in }, onExit: { _ in })
+        XCTAssertEqual(replay.data, Data("while-away".utf8))
+        XCTAssertEqual(replay.start, 0)
+        XCTAssertFalse(replay.pruned)
     }
 
     func testReplayIsDeliveredOnlyOnce() {
         feed("once")
 
-        let first = Captured()
-        session.attach(onOutput: first.append, onExit: { _ in })
+        let first = session.attach(onOutput: { _ in }, onExit: { _ in })
         session.detach()
 
-        let second = Captured()
-        session.attach(onOutput: second.append, onExit: { _ in })
+        let second = session.attach(onOutput: { _ in }, onExit: { _ in })
         XCTAssertEqual(first.data, Data("once".utf8))
-        XCTAssertTrue(second.data.isEmpty, "the buffer was already drained by the first attach")
+        XCTAssertTrue(second.data.isEmpty, "the gap was already replayed by the first attach")
     }
 
     func testDetachBuffersOutputForTheNextController() {
@@ -163,29 +162,44 @@ final class PtySessionTests: XCTestCase {
         feed("after-detach")
         XCTAssertTrue(first.data.isEmpty, "a detached controller must not keep receiving output")
 
-        let second = Captured()
-        session.attach(onOutput: second.append, onExit: { _ in })
-        XCTAssertEqual(second.data, Data("after-detach".utf8))
+        let replay = session.attach(onOutput: { _ in }, onExit: { _ in })
+        XCTAssertEqual(replay.data, Data("after-detach".utf8))
     }
 
-    /// A reattaching client asks for the rolling tail instead of the detached
-    /// buffer, so it repaints the screen rather than replaying the gap twice.
-    func testReplayRecentTailDeliversRecentOutputAndDropsTheDetachedBuffer() {
+    /// A reattaching client asks for the rolling tail instead of the detach
+    /// gap, so it repaints the screen rather than replaying the gap twice.
+    func testReplayTailDeliversRecentOutputAndConsumesTheGap() {
         feed("scrollback")
 
-        let received = Captured()
-        session.attach(
-            onOutput: received.append,
+        let replay = session.attach(
+            onOutput: { _ in },
             onExit: { _ in },
-            replayRecentTail: true
+            replay: .tail(maxBytes: KittermConstants.sessionObserverReplayMaxBytes)
         )
-        XCTAssertEqual(received.data, Data("scrollback".utf8))
+        XCTAssertEqual(replay.data, Data("scrollback".utf8))
 
-        // The detached buffer was discarded, not queued behind the tail.
+        // The gap was consumed, not queued behind the tail.
         session.detach()
-        let second = Captured()
-        session.attach(onOutput: second.append, onExit: { _ in })
+        let second = session.attach(onOutput: { _ in }, onExit: { _ in })
         XCTAssertTrue(second.data.isEmpty)
+    }
+
+    /// A client that counted its received bytes replays exactly the gap.
+    func testReplaySinceOffsetDeliversExactlyTheMissingBytes() {
+        let live = Captured()
+        session.attach(onOutput: live.append, onExit: { _ in })
+        feed("seen-")
+        session.detach()
+        feed("missed")
+
+        let replay = session.attach(
+            onOutput: { _ in },
+            onExit: { _ in },
+            replay: .sinceOffset(UInt64(live.data.count))
+        )
+        XCTAssertEqual(replay.data, Data("missed".utf8))
+        XCTAssertEqual(replay.start, 5)
+        XCTAssertFalse(replay.pruned)
     }
 
     func testExitWhileDetachedGoesToTheDetachHandler() {
@@ -226,28 +240,64 @@ final class PtySessionTests: XCTestCase {
         XCTAssertEqual(received.data, Data("still-flowing".utf8))
     }
 
-    /// An unbounded detached buffer would let a runaway process grow the
-    /// daemon's memory without limit, so reads pause at the cap.
-    func testDetachedBufferOverflowPausesReadsUntilAttach() {
-        let cap = KittermConstants.sessionDetachBufferMaxBytes
+    /// The old detached buffer paused PTY reads at its cap, stalling whatever
+    /// the shell was doing while nobody watched. The ring instead keeps
+    /// reading and rotates: old bytes are lost, progress is not. A pruned
+    /// detach-point attach gets a bounded tail (not the full ring) because
+    /// offset-less requesters are old clients that append it to a stale
+    /// screen.
+    func testDetachedOutputRotatesInsteadOfPausingReads() {
+        let cap = KittermConstants.sessionLogBytes
+        let tailCap = KittermConstants.sessionObserverReplayMaxBytes
         let chunk = 64 * 1024
         var written = 0
-        while written < cap {
+        while written < cap + chunk {
             feed(bytes: chunk)
             written += chunk
         }
 
-        // Reads are paused now, so this is dropped rather than buffered.
-        feed(bytes: chunk)
+        let replay = session.attach(onOutput: { _ in }, onExit: { _ in })
+        XCTAssertTrue(replay.pruned, "the gap start rotated out of the ring")
+        XCTAssertEqual(replay.data.count, tailCap, "pruned gap falls back to a bounded tail")
+        XCTAssertEqual(replay.start, UInt64(written - tailCap))
 
+        // An exact offset still gets the full retained ring on request.
+        session.detach()
+        let full = session.attach(
+            onOutput: { _ in },
+            onExit: { _ in },
+            replay: .sinceOffset(0)
+        )
+        XCTAssertTrue(full.pruned)
+        XCTAssertEqual(full.data.count, cap)
+
+        // Reads were never paused, so live output flows immediately.
         let received = Captured()
+        session.detach()
         session.attach(onOutput: received.append, onExit: { _ in })
-        XCTAssertEqual(received.data.count, written, "attach replays exactly what was buffered")
-
-        // Attaching resumed reads.
-        received.reset()
         feed("flowing-again")
         XCTAssertEqual(received.data, Data("flowing-again".utf8))
+    }
+
+    // MARK: - Shell-integration marks
+
+    func testMarksAccumulateAndSnapshotInOrder() {
+        session.appendMark(SessionMark(offset: 0, kind: .promptStart, exit: nil, command: nil))
+        session.appendMark(SessionMark(offset: 10, kind: .preExec, exit: nil, command: "ls"))
+        session.appendMark(SessionMark(offset: 90, kind: .commandEnd, exit: 0, command: nil))
+
+        let marks = session.marksSnapshot()
+        XCTAssertEqual(marks.map(\.offset), [0, 10, 90])
+        XCTAssertEqual(marks[1].command, "ls")
+        XCTAssertEqual(marks[2].exit, 0)
+    }
+
+    func testMarkStoreDropsOldestBeyondTheCap() {
+        var store = SessionMarkStore(cap: 3)
+        for offset in UInt64(0)..<5 {
+            store.append(SessionMark(offset: offset, kind: .promptStart, exit: nil, command: nil))
+        }
+        XCTAssertEqual(store.marks.map(\.offset), [2, 3, 4])
     }
 
     // MARK: - Observers
@@ -264,7 +314,7 @@ final class PtySessionTests: XCTestCase {
     func testObserverJoiningReceivesTheRecentTail() {
         feed("earlier-output")
         let replay = session.addObserver(UUID(), handlers: .noop)
-        XCTAssertEqual(replay, Data("earlier-output".utf8))
+        XCTAssertEqual(replay.data, Data("earlier-output".utf8))
     }
 
     func testObserversReceiveOutputAlongsideTheController() {

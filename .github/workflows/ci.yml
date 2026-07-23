@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    # arm64 runner with Xcode 16 (Swift 6), matching release.yml.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift tests
+        run: swift test
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: Web/terminal/pnpm-lock.yaml
+
+      - name: Web client build and tests
+        working-directory: Web/terminal
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm test

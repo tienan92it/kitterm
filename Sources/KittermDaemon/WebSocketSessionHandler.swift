@@ -15,6 +15,9 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     /// Client page has no screen state (reload / adopted link) — reattach
     /// replays the recent tail instead of only the detached bytes.
     private let freshClient: Bool
+    /// The client's count of output bytes it already has (`?since=`); the
+    /// daemon replays exactly the gap after it. Takes precedence over `fresh`.
+    private let sinceOffset: UInt64?
     private let recordSessions: Bool
     private let eventLoopGroup: EventLoopGroup
     private var sessionID: UUID?
@@ -38,6 +41,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         requestedCwd: String? = nil,
         freshClient: Bool = false,
         histKey: String? = nil,
+        sinceOffset: UInt64? = nil,
         recordSessions: Bool = false,
         eventLoopGroup: EventLoopGroup
     ) {
@@ -46,6 +50,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         self.requestedCwd = requestedCwd
         self.freshClient = freshClient
         self.histKey = histKey
+        self.sinceOffset = sinceOffset
         self.recordSessions = recordSessions
         self.eventLoopGroup = eventLoopGroup
     }
@@ -171,8 +176,9 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
                 }
             )
         )
-        if !replay.isEmpty {
-            batcher.append(replay)
+        sendLogState(resync: true, snapshot: replay, context: context)
+        if !replay.data.isEmpty {
+            batcher.append(replay.data)
         }
         startHeartbeat(context: context)
         pendingClientFrames = []
@@ -234,7 +240,18 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         }
         self.batcher = batcher
 
-        session.attach(
+        // Replay preference: an exact client offset beats the fresh-tail
+        // heuristic beats the detach-point gap (old clients, startup).
+        let replay: PtySession.ReplayRequest
+        if let sinceOffset {
+            replay = .sinceOffset(sinceOffset)
+        } else if freshClient && reattachID != nil {
+            replay = .tail(maxBytes: KittermConstants.sessionObserverReplayMaxBytes)
+        } else {
+            replay = .fromDetachPoint
+        }
+        let isTail = if case .tail = replay { true } else { false }
+        let snapshot = session.attach(
             onOutput: { [weak self] data in
                 self?.batcher?.append(data)
             },
@@ -248,8 +265,14 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
                 }
                 self.writeBinary(encoded, context: context)
             },
-            replayRecentTail: freshClient && reattachID != nil
+            replay: replay
         )
+        // A tail replay lands on a screen that never saw the earlier bytes,
+        // so it needs the same reset a pruned offset does.
+        sendLogState(resync: snapshot.pruned || isTail, snapshot: snapshot, context: context)
+        if !snapshot.data.isEmpty {
+            batcher.append(snapshot.data)
+        }
 
         startHeartbeat(context: context)
 
@@ -281,6 +304,12 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
             case .resume:
                 clientPaused = false
                 updateBackpressure(context: context)
+            case .mark(let kind, let exit, let offset, let command):
+                // Controller-only (guarded above); the client's emulator did
+                // the ANSI parsing — the daemon just indexes the result.
+                pty?.appendMark(
+                    SessionMark(offset: offset, kind: kind, exit: exit, command: command)
+                )
             }
         } catch {
             // Ignore malformed frames; keep session alive.
@@ -329,6 +358,23 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
 
     private func sendRole(_ role: SessionRole, context: ChannelHandlerContext) {
         if let encoded = try? ServerFrame.role(role).encode() {
+            writeBinary(encoded, context: context)
+        }
+    }
+
+    /// Announce the replay window before its bytes: the client learns its
+    /// absolute offset, how many replay bytes follow, and whether its screen
+    /// state is stale. Old clients drop the unknown opcode harmlessly.
+    private func sendLogState(
+        resync: Bool,
+        snapshot: SessionLog.Snapshot,
+        context: ChannelHandlerContext
+    ) {
+        if let encoded = try? ServerFrame.logState(
+            resync: resync,
+            offset: snapshot.start,
+            replayLen: UInt64(snapshot.data.count)
+        ).encode() {
             writeBinary(encoded, context: context)
         }
     }

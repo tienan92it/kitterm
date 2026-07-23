@@ -5,7 +5,11 @@ export const ClientOpcode = {
   resize: 1,
   pause: 2,
   resume: 3,
+  mark: 4,
 } as const;
+
+/** Sentinel for "no exit code" in a mark frame (Int32.min). */
+export const MARK_NO_EXIT = -0x80000000;
 
 export const ServerOpcode = {
   output: 0,
@@ -16,6 +20,7 @@ export const ServerOpcode = {
   sessionId: 5,
   resize: 6,
   role: 7,
+  logState: 8,
 } as const;
 
 export type SessionRole = "controller" | "observer";
@@ -34,7 +39,11 @@ export type ServerFrame =
   | { type: "exit"; code: number }
   | { type: "sessionId"; id: string }
   | { type: "resize"; cols: number; rows: number }
-  | { type: "role"; role: SessionRole };
+  | { type: "role"; role: SessionRole }
+  /** Announces the replay window on attach: `offset` is the absolute stream
+   * offset of the next output byte, `replayLen` bytes of replay precede live
+   * output, and `resync` means the screen state is stale and must be reset. */
+  | { type: "logState"; resync: boolean; offset: number; replayLen: number };
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -59,6 +68,25 @@ export function encodeResize(cols: number, rows: number): ArrayBuffer {
 
 export function encodePause(): ArrayBuffer {
   return new Uint8Array([ClientOpcode.pause]).buffer;
+}
+
+/** Shell-integration mark: kind u8 | exit i32be (Int32.min = absent) |
+ * offset u64be | command utf8. Mirrors ClientFrame.mark. */
+export function encodeMark(
+  kind: number,
+  exit: number | null,
+  offset: number,
+  command?: string | null,
+): ArrayBuffer {
+  const commandBytes = command ? textEncoder.encode(command) : new Uint8Array(0);
+  const out = new Uint8Array(14 + commandBytes.byteLength);
+  const view = new DataView(out.buffer);
+  out[0] = ClientOpcode.mark;
+  out[1] = kind;
+  view.setInt32(2, exit ?? MARK_NO_EXIT, false);
+  view.setBigUint64(6, BigInt(offset), false);
+  out.set(commandBytes, 14);
+  return out.buffer;
 }
 
 export function encodeResume(): ArrayBuffer {
@@ -144,6 +172,20 @@ export function decodeServerFrame(buffer: ArrayBuffer): ServerFrame {
         throw new Error("invalid role payload");
       }
       return { type: "role", role: payload[0] === 1 ? "observer" : "controller" };
+    }
+    case ServerOpcode.logState: {
+      if (payload.length !== 17) {
+        throw new Error("invalid logState payload");
+      }
+      const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+      // Offsets stay far below 2^53 (bytes of one shell's output), so Number
+      // conversion is exact.
+      return {
+        type: "logState",
+        resync: (payload[0] & 0x01) !== 0,
+        offset: Number(view.getBigUint64(1, false)),
+        replayLen: Number(view.getBigUint64(9, false)),
+      };
     }
     default:
       throw new Error(`unknown server opcode ${opcode}`);

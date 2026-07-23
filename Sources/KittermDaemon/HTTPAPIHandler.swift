@@ -105,6 +105,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 version: head.version,
                 keepAlive: head.isKeepAlive
             )
+        case (.GET, _) where path.hasPrefix("/api/sessions/") && path.hasSuffix("/marks"):
+            serveMarks(path: path, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/"):
             writeJSON(
                 status: .notFound,
@@ -123,6 +125,80 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 version: head.version,
                 keepAlive: false
             )
+        }
+    }
+
+    /// `GET /api/sessions/<uuid>/marks` — the session's shell-integration
+    /// marks as JSON. Read-only; agents and tooling consume this to answer
+    /// "what ran, what did it exit with" without parsing ANSI.
+    ///
+    /// Serialization runs on the event loop; that is safe only because the
+    /// store is hard-capped at `sessionMarkCap` (1000) tiny entries.
+    private func serveMarks(
+        path: String,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        let components = path.split(separator: "/")
+        // ["api", "sessions", "<uuid>", "marks"]
+        guard components.count == 4, let id = UUID(uuidString: String(components[2])) else {
+            writeJSON(
+                status: .notFound,
+                body: #"{"ok":false,"error":"not found"}"#,
+                context: context,
+                version: head.version,
+                keepAlive: false
+            )
+            return
+        }
+        let promise = context.eventLoop.makePromise(of: [SessionMark]?.self)
+        promise.completeWithTask {
+            await self.registry.session(id)?.marksSnapshot()
+        }
+        promise.futureResult.whenComplete { result in
+            guard case .success(.some(let marks)) = result else {
+                self.writeJSON(
+                    status: .notFound,
+                    body: #"{"ok":false,"error":"no such session"}"#,
+                    context: context,
+                    version: head.version,
+                    keepAlive: false
+                )
+                return
+            }
+            let items: [[String: Any]] = marks.map { mark in
+                var item: [String: Any] = [
+                    "offset": mark.offset,
+                    "kind": Self.markKindName(mark.kind),
+                    "at": Int(mark.at.timeIntervalSince1970 * 1000),
+                ]
+                if let exit = mark.exit { item["exit"] = exit }
+                if let command = mark.command { item["command"] = command }
+                return item
+            }
+            let body: String
+            if let data = try? JSONSerialization.data(withJSONObject: ["ok": true, "marks": items]),
+               let text = String(data: data, encoding: .utf8) {
+                body = text
+            } else {
+                body = #"{"ok":false,"error":"encoding failed"}"#
+            }
+            self.writeJSON(
+                status: .ok,
+                body: body,
+                context: context,
+                version: head.version,
+                keepAlive: head.isKeepAlive
+            )
+        }
+    }
+
+    private static func markKindName(_ kind: MarkKind) -> String {
+        switch kind {
+        case .promptStart: return "promptStart"
+        case .commandStart: return "commandStart"
+        case .preExec: return "preExec"
+        case .commandEnd: return "commandEnd"
         }
     }
 
