@@ -2,7 +2,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
 import { WebglAddon } from "@xterm/addon-webgl";
-import { Terminal } from "@xterm/xterm";
+import { Terminal, type IMarker } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 
 import {
@@ -36,6 +36,9 @@ import { cwdFromOsc1337, cwdFromOsc7, folderFromCwd } from "./title";
 /** Longest OSC 1337 payload still plausibly shell integration; anything above
  * this is bulk data (inline images) we must not keep buffering for. */
 const ITERM_OSC_PAYLOAD_LIMIT = 4096;
+
+/** Prompt markers kept per pane for ⌘↑/⌘↓ navigation. */
+const MAX_PROMPT_MARKERS = 200;
 
 /**
  * One shell: an xterm instance, its WebSocket, and its reconnect state.
@@ -102,6 +105,8 @@ export class TerminalPane {
   private readonly replayGuard = new ReplayGuard();
   /** 633;E command line awaiting its preExec mark. */
   private pendingCommandLine: string | null = null;
+  /** Markers on prompt lines for ⌘↑/⌘↓ navigation. */
+  private promptMarkers: IMarker[] = [];
   private sessionIdValue: string | null;
   /** Start directory for a fresh shell; kept so a respawn lands in the same
    * place after the daemon forgets the session. */
@@ -541,6 +546,17 @@ export class TerminalPane {
       this.pendingCommandLine = parsed.command;
       return;
     }
+    // Local navigation state first — observers and replayed bytes get
+    // markers and decorations too; only the reporting below is gated.
+    if (parsed.kind === MarkKind.promptStart) {
+      this.addPromptMarker();
+    } else if (
+      parsed.kind === MarkKind.commandEnd &&
+      parsed.exit !== null &&
+      parsed.exit !== 0
+    ) {
+      this.decorateFailedCommand(parsed.exit);
+    }
     if (this.readOnlyValue || this.exitedValue) return;
     let command: string | null = null;
     if (parsed.kind === MarkKind.preExec && this.pendingCommandLine) {
@@ -553,6 +569,47 @@ export class TerminalPane {
       }
     }
     this.session.sendMark(parsed.kind, parsed.exit, this.outputBytes, command);
+  }
+
+  /** Prompt lines, oldest first; markers dispose themselves as their lines
+   * scroll out of the buffer. */
+  private addPromptMarker(): void {
+    const marker = this.terminal.registerMarker(0);
+    if (!marker) return;
+    this.promptMarkers = this.promptMarkers.filter((m) => !m.isDisposed);
+    this.promptMarkers.push(marker);
+    while (this.promptMarkers.length > MAX_PROMPT_MARKERS) {
+      this.promptMarkers.shift()?.dispose();
+    }
+  }
+
+  /** ⌘↑ / ⌘↓ — scroll to the previous / next prompt line. */
+  jumpToPrompt(direction: -1 | 1): void {
+    const viewportTop = this.terminal.buffer.active.viewportY;
+    const lines = this.promptMarkers
+      .filter((m) => !m.isDisposed)
+      .map((m) => m.line)
+      .sort((a, b) => a - b);
+    const target =
+      direction === -1
+        ? [...lines].reverse().find((line) => line < viewportTop)
+        : lines.find((line) => line > viewportTop);
+    if (target !== undefined) {
+      this.terminal.scrollToLine(target);
+    } else if (direction === 1) {
+      this.terminal.scrollToBottom();
+    }
+  }
+
+  /** A red dot on the failed command's prompt line. */
+  private decorateFailedCommand(exit: number): void {
+    const marker = [...this.promptMarkers].reverse().find((m) => !m.isDisposed);
+    if (!marker) return;
+    const decoration = this.terminal.registerDecoration({ marker });
+    decoration?.onRender((element) => {
+      element.classList.add("kitterm-cmd-failed");
+      element.title = `exit ${exit}`;
+    });
   }
 
   private setFolderFromCwd(cwd: string): void {
@@ -612,6 +669,22 @@ export class TerminalPane {
       if (command) {
         event.preventDefault();
         this.host.paneCommand(this, command);
+        return false;
+      }
+
+      // ⌘↑ / ⌘↓ — jump between prompt lines (needs shell-integration marks;
+      // without any markers ⌘↓ still snaps to the bottom). macOS only: the
+      // non-mac Ctrl+Shift+arrows are taken by pane navigation.
+      if (
+        this.isMac &&
+        event.metaKey &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.shiftKey &&
+        (event.key === "ArrowUp" || event.key === "ArrowDown")
+      ) {
+        event.preventDefault();
+        this.jumpToPrompt(event.key === "ArrowUp" ? -1 : 1);
         return false;
       }
 
