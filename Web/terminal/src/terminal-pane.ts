@@ -586,22 +586,11 @@ export class TerminalPane {
         }
       }
 
-      // Paste: ⌘V / Ctrl+Shift+V (plain Ctrl+V left to the browser/xterm path).
-      const isPaste =
-        (event.metaKey && !event.ctrlKey && key === "v") ||
-        (event.ctrlKey && event.shiftKey && !event.metaKey && key === "v");
-      if (isPaste) {
-        event.preventDefault();
-        void navigator.clipboard
-          .readText()
-          .then((text) => {
-            if (text && !this.exitedValue && !this.readOnlyValue) {
-              this.session.sendInput(text);
-            }
-          })
-          .catch(() => {});
-        return false;
-      }
+      // Paste (⌘V / Ctrl+V / Ctrl+Shift+V) is deliberately NOT intercepted:
+      // the native paste event reaches xterm's textarea, which applies
+      // bracketed paste (mode 2004) and newline normalization. Reading the
+      // clipboard here and calling sendInput would bypass both, making
+      // multi-line pastes execute line by line.
 
       if (event.key !== "Enter") {
         return true;
@@ -632,14 +621,16 @@ export class TerminalPane {
       true,
     );
 
-    // Middle-click paste when clipboard read is permitted.
+    // Middle-click paste when clipboard read is permitted. Delivered via
+    // terminal.paste() so bracketed paste and newline normalization apply,
+    // same as a keyboard paste.
     element.addEventListener("mousedown", (event) => {
       if (event.button !== 1 || this.exitedValue || this.readOnlyValue) return;
       event.preventDefault();
       void navigator.clipboard
         .readText()
         .then((text) => {
-          if (text) this.session.sendInput(text);
+          if (text) this.terminal.paste(text);
         })
         .catch(() => {});
     });
