@@ -131,6 +131,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// `GET /api/sessions/<uuid>/marks` — the session's shell-integration
     /// marks as JSON. Read-only; agents and tooling consume this to answer
     /// "what ran, what did it exit with" without parsing ANSI.
+    ///
+    /// Serialization runs on the event loop; that is safe only because the
+    /// store is hard-capped at `sessionMarkCap` (1000) tiny entries.
     private func serveMarks(
         path: String,
         head: HTTPRequestHead,

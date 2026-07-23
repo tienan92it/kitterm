@@ -450,7 +450,23 @@ public final class PtySession: @unchecked Sendable {
             case .tail(let maxBytes):
                 snapshot = log.tail(maxBytes: maxBytes)
             case .fromDetachPoint:
-                snapshot = log.snapshot(from: detachOffset)
+                let gap = log.snapshot(from: detachOffset)
+                if gap.pruned {
+                    // Requesters on this path are old clients that ignore the
+                    // resync flag and append the replay to their stale screen.
+                    // A full-ring append would garble it for minutes; a small
+                    // tail bounds the damage the same way a fresh page does.
+                    let tail = log.tail(
+                        maxBytes: KittermConstants.sessionObserverReplayMaxBytes
+                    )
+                    snapshot = SessionLog.Snapshot(
+                        data: tail.data,
+                        start: tail.start,
+                        pruned: true
+                    )
+                } else {
+                    snapshot = gap
+                }
             }
             // Everything up to head is now the controller's; a re-attach
             // without an intervening detach must not replay it again.

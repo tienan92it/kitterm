@@ -15,10 +15,14 @@
 [[ -n $KITTERM_SHELL_INTEGRATION ]] && return 0
 KITTERM_SHELL_INTEGRATION=1
 
-# 633;E escaping: literal backslashes doubled, semicolons as \x3b.
+# 633;E escaping: literal backslashes doubled; semicolons and line breaks as
+# hex escapes. A raw newline inside an OSC payload would abort the sequence
+# and echo the rest of the command into the terminal.
 __kitterm_escape_cmd() {
   local cmd=${1//\\/\\\\}
-  printf '%s' "${cmd//;/\\x3b}"
+  cmd=${cmd//;/\\x3b}
+  cmd=${cmd//$'\n'/\\x0a}
+  printf '%s' "${cmd//$'\r'/\\x0d}"
 }
 
 __kitterm_preexec() {

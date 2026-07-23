@@ -43,6 +43,7 @@ Flow-control defaults: ~2ms / 64KB batching, PTY pause at 4MB buffered outbound,
 - Bind `127.0.0.1` by default; `--lan` is the only path that widens it (0.0.0.0 + token auth)
 - Enforce Host / Origin against loopback hostnames
 - No TLS, no multi-user model — shells run as the invoking user
+- `/api/sessions/<id>/marks` exposes command lines (more sensitive than session counts) behind the same access policy — anyone the policy admits can read what ran in any session
 
 ## State
 

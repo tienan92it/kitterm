@@ -105,6 +105,9 @@ export class TerminalPane {
   private readonly replayGuard = new ReplayGuard();
   /** 633;E command line awaiting its preExec mark. */
   private pendingCommandLine: string | null = null;
+  /** The current replay window was announced with resync=1 (stale-screen
+   * rebuild) — marks parsed from it were already reported once. */
+  private replayIsResync = false;
   /** Markers on prompt lines for ⌘↑/⌘↓ navigation. */
   private promptMarkers: IMarker[] = [];
   private sessionIdValue: string | null;
@@ -422,9 +425,10 @@ export class TerminalPane {
         const bytes = frame.data.byteLength;
         this.outputBytes += bytes;
         this.flowControl.enqueue(bytes);
+        const generation = this.replayGuard.generation;
         this.terminal.write(frame.data, () => {
           this.flowControl.dequeue(bytes);
-          this.replayGuard.onParsed(bytes);
+          this.replayGuard.onParsed(bytes, generation);
         });
         this.host.paneOutput(this);
         break;
@@ -437,6 +441,10 @@ export class TerminalPane {
           this.kitty.reset();
         }
         this.outputBytes = frame.offset;
+        this.replayIsResync = frame.resync;
+        // A 633;E buffered on the old connection must not attach to the next
+        // live command.
+        this.pendingCommandLine = null;
         // Replayed bytes may contain device queries; swallow xterm's answers
         // to them until the whole replay window has parsed.
         this.replayGuard.arm(frame.replayLen);
@@ -557,7 +565,8 @@ export class TerminalPane {
     ) {
       this.decorateFailedCommand(parsed.exit);
     }
-    if (this.readOnlyValue || this.exitedValue) return;
+    // Consume a buffered 633;E even when the mark itself is not reported,
+    // so a replayed command line cannot leak onto the next live command.
     let command: string | null = null;
     if (parsed.kind === MarkKind.preExec && this.pendingCommandLine) {
       command = this.pendingCommandLine;
@@ -568,6 +577,11 @@ export class TerminalPane {
         command = null;
       }
     }
+    if (this.readOnlyValue || this.exitedValue) return;
+    // A resync replay re-covers bytes a previous connection already parsed
+    // and reported — re-reporting them would duplicate marks in the daemon's
+    // index. Gap replays (resync=0) are bytes nobody reported; keep those.
+    if (this.replayGuard.active && this.replayIsResync) return;
     this.session.sendMark(parsed.kind, parsed.exit, this.outputBytes, command);
   }
 

@@ -38,18 +38,30 @@ export function isQueryResponse(data: string): boolean {
 
 export class ReplayGuard {
   private remaining = 0;
+  private gen = 0;
 
-  /** Called on `logState`: the next `replayLen` output bytes are replay. */
+  /** Called on `logState`: the next `replayLen` output bytes are replay.
+   * Bumps the generation so parse callbacks still in flight from before the
+   * reconnect (bytes queued in xterm's write buffer when the old connection
+   * died) cannot erode the new window and disarm the guard early. */
   arm(replayLen: number): void {
+    this.gen += 1;
     this.remaining = replayLen;
+  }
+
+  /** Capture this at write time and pass it back to `onParsed`. */
+  get generation(): number {
+    return this.gen;
   }
 
   get active(): boolean {
     return this.remaining > 0;
   }
 
-  /** Feed parse-completion byte counts (the write-callback totals). */
-  onParsed(bytes: number): void {
+  /** Feed parse-completion byte counts (the write-callback totals). Counts
+   * only bytes written under the current generation. */
+  onParsed(bytes: number, generation: number): void {
+    if (generation !== this.gen) return;
     this.remaining = Math.max(0, this.remaining - bytes);
   }
 

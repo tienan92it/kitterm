@@ -40,6 +40,7 @@ describe("ReplayGuard", () => {
   it("drops query responses only while the replay window is parsing", () => {
     const guard = new ReplayGuard();
     guard.arm(100);
+    const gen = guard.generation;
 
     expect(guard.shouldDrop("\x1b[24;1R")).toBe(true);
     expect(guard.shouldDrop("\x1b[?1;2c")).toBe(true);
@@ -50,11 +51,11 @@ describe("ReplayGuard", () => {
     expect(guard.shouldDrop("ls\r")).toBe(false);
     expect(guard.shouldDrop("\x1b[A")).toBe(false);
 
-    guard.onParsed(60);
+    guard.onParsed(60, gen);
     expect(guard.active).toBe(true);
     expect(guard.shouldDrop("\x1b[24;1R")).toBe(true);
 
-    guard.onParsed(40);
+    guard.onParsed(40, gen);
     expect(guard.active).toBe(false);
     // Disarmed: a live CPR (e.g. vim asking right now) passes.
     expect(guard.shouldDrop("\x1b[24;1R")).toBe(false);
@@ -70,9 +71,25 @@ describe("ReplayGuard", () => {
   it("re-arms per reconnect", () => {
     const guard = new ReplayGuard();
     guard.arm(10);
-    guard.onParsed(10);
+    guard.onParsed(10, guard.generation);
     expect(guard.active).toBe(false);
     guard.arm(5);
     expect(guard.shouldDrop("\x1b[0n")).toBe(true);
+  });
+
+  it("ignores parse callbacks from before the latest arm", () => {
+    const guard = new ReplayGuard();
+    guard.arm(10);
+    const staleGen = guard.generation;
+
+    // Reconnect: bytes queued under the old connection finish parsing after
+    // the new window is armed — they must not erode it.
+    guard.arm(50);
+    guard.onParsed(40, staleGen);
+    expect(guard.active).toBe(true);
+    expect(guard.shouldDrop("\x1b[24;1R")).toBe(true);
+
+    guard.onParsed(50, guard.generation);
+    expect(guard.active).toBe(false);
   });
 });

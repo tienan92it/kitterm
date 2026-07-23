@@ -242,9 +242,13 @@ final class PtySessionTests: XCTestCase {
 
     /// The old detached buffer paused PTY reads at its cap, stalling whatever
     /// the shell was doing while nobody watched. The ring instead keeps
-    /// reading and rotates: old bytes are lost, progress is not.
+    /// reading and rotates: old bytes are lost, progress is not. A pruned
+    /// detach-point attach gets a bounded tail (not the full ring) because
+    /// offset-less requesters are old clients that append it to a stale
+    /// screen.
     func testDetachedOutputRotatesInsteadOfPausingReads() {
         let cap = KittermConstants.sessionLogBytes
+        let tailCap = KittermConstants.sessionObserverReplayMaxBytes
         let chunk = 64 * 1024
         var written = 0
         while written < cap + chunk {
@@ -254,8 +258,18 @@ final class PtySessionTests: XCTestCase {
 
         let replay = session.attach(onOutput: { _ in }, onExit: { _ in })
         XCTAssertTrue(replay.pruned, "the gap start rotated out of the ring")
-        XCTAssertEqual(replay.data.count, cap, "attach replays the full retained ring")
-        XCTAssertEqual(replay.start, UInt64(written - cap))
+        XCTAssertEqual(replay.data.count, tailCap, "pruned gap falls back to a bounded tail")
+        XCTAssertEqual(replay.start, UInt64(written - tailCap))
+
+        // An exact offset still gets the full retained ring on request.
+        session.detach()
+        let full = session.attach(
+            onOutput: { _ in },
+            onExit: { _ in },
+            replay: .sinceOffset(0)
+        )
+        XCTAssertTrue(full.pruned)
+        XCTAssertEqual(full.data.count, cap)
 
         // Reads were never paused, so live output flows immediately.
         let received = Captured()
