@@ -20,6 +20,7 @@ import { OutputFlowControl } from "./flow-control";
 import { resolveFontFamily } from "./fonts";
 import { matchPaneCommand, type PaneCommand } from "./pane-keys";
 import type { PaneId } from "./pane-layout";
+import { ReplayGuard } from "./replay-guard";
 import { KittermSession, defaultWsUrl } from "./session";
 import type { KittermSettings } from "./settings-store";
 import { findThemeById } from "./themes";
@@ -91,6 +92,7 @@ export class TerminalPane {
     onPause: () => this.session.sendPause(),
     onResume: () => this.session.sendResume(),
   });
+  private readonly replayGuard = new ReplayGuard();
   private sessionIdValue: string | null;
   /** Start directory for a fresh shell; kept so a respawn lands in the same
    * place after the daemon forgets the session. */
@@ -405,7 +407,10 @@ export class TerminalPane {
         const bytes = frame.data.byteLength;
         this.outputBytes += bytes;
         this.flowControl.enqueue(bytes);
-        this.terminal.write(frame.data, () => this.flowControl.dequeue(bytes));
+        this.terminal.write(frame.data, () => {
+          this.flowControl.dequeue(bytes);
+          this.replayGuard.onParsed(bytes);
+        });
         this.host.paneOutput(this);
         break;
       }
@@ -417,6 +422,9 @@ export class TerminalPane {
           this.kitty.reset();
         }
         this.outputBytes = frame.offset;
+        // Replayed bytes may contain device queries; swallow xterm's answers
+        // to them until the whole replay window has parsed.
+        this.replayGuard.arm(frame.replayLen);
         break;
       case "sessionId": {
         const replaced =
@@ -542,6 +550,7 @@ export class TerminalPane {
 
   private wireInput(): void {
     this.terminal.onData((data) => {
+      if (this.replayGuard.shouldDrop(data)) return;
       if (!this.exitedValue && !this.readOnlyValue) {
         this.session.sendInput(data);
       }
