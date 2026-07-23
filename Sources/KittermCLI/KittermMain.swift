@@ -30,6 +30,10 @@ enum KittermMain {
                 try openShell(at: args.dropFirst().first(where: { !$0.hasPrefix("-") }))
             case "service":
                 try service(args.dropFirst())
+            case "upgrade", "update":
+                try upgrade()
+            case "version", "--version", "-v":
+                print(installedVersion() ?? "dev")
             case "serve":
                 // Internal: foreground daemon process.
                 let port = parsePort(args.dropFirst())
@@ -64,6 +68,8 @@ enum KittermMain {
               kitterm open [PATH]     # browser shell in PATH (default: cwd)
               kitterm service install [--port PORT] [--lan] [--record]
               kitterm service uninstall | status
+              kitterm upgrade         # install the latest release
+              kitterm version
 
             service install starts kitterm on login via a LaunchAgent.
 
@@ -394,6 +400,67 @@ enum KittermMain {
         return url.path
     }
 
+    // MARK: - Upgrade
+
+    /// The install prefix this binary lives under, or nil for a dev/unknown
+    /// layout. Installed layout is always `<prefix>/lib/kitterm/kitterm`.
+    private static func installedPrefix() -> URL? {
+        let url = URL(fileURLWithPath: ResolveExecutable.path()).standardizedFileURL
+        guard
+            url.deletingLastPathComponent().lastPathComponent == "kitterm",
+            url.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent == "lib"
+        else {
+            return nil
+        }
+        return url
+            .deletingLastPathComponent()  // lib/kitterm
+            .deletingLastPathComponent()  // lib
+            .deletingLastPathComponent()  // prefix
+    }
+
+    /// Version string packaged at `<prefix>/share/kitterm/VERSION`, or nil.
+    private static func installedVersion() -> String? {
+        guard let prefix = installedPrefix() else { return nil }
+        let file = prefix.appendingPathComponent("share/kitterm/VERSION")
+        return (try? String(contentsOf: file, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Reinstall the latest release into this binary's own prefix by running the
+    /// official installer, which handles checksum, quarantine, and the
+    /// stop→swap→restart of a service-managed daemon.
+    private static func upgrade() throws {
+        guard let prefix = installedPrefix() else {
+            throw CLIError.upgradeUnavailable(
+                detail: "kitterm is not running from an installed location "
+                    + "(\(ResolveExecutable.path())). Reinstall from https://kitterm.dev instead."
+            )
+        }
+
+        print("current version: \(installedVersion() ?? "unknown")")
+        print("installing the latest release into \(prefix.path) …")
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "curl -fsSL https://kitterm.dev/install.sh | sh"]
+        var environment = ProcessInfo.processInfo.environment
+        environment["KITTERM_PREFIX"] = prefix.path
+        process.environment = environment
+        // Inherit stdio so the installer's progress streams straight through.
+
+        do {
+            try process.run()
+        } catch {
+            throw CLIError.upgradeFailed(detail: error.localizedDescription)
+        }
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw CLIError.upgradeFailed(
+                detail: "installer exited with status \(process.terminationStatus)"
+            )
+        }
+    }
+
     private static func installService(port: Int, lan: Bool, record: Bool) throws {
         let executable = try serviceExecutablePath()
         let plist = launchAgentPlist
@@ -672,6 +739,8 @@ enum CLIError: Error, LocalizedError {
     case portInUse(port: Int, occupant: String)
     case notADirectory(path: String)
     case serviceFailed(action: String, detail: String)
+    case upgradeUnavailable(detail: String)
+    case upgradeFailed(detail: String)
 
     var errorDescription: String? {
         switch self {
@@ -686,6 +755,10 @@ enum CLIError: Error, LocalizedError {
             """
         case .notADirectory(let path):
             return "not a directory: \(path)"
+        case .upgradeUnavailable(let detail):
+            return "cannot upgrade: \(detail)"
+        case .upgradeFailed(let detail):
+            return "upgrade failed: \(detail)"
         }
     }
 }
