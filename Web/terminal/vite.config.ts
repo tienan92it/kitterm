@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
 export default defineConfig({
@@ -18,5 +19,11 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
     sourcemap: true,
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, "index.html"),
+        sessions: resolve(__dirname, "sessions.html"),
+      },
+    },
   },
 });

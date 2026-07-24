@@ -518,10 +518,20 @@ public final class PtySession: @unchecked Sendable {
         }
     }
 
+    /// The shell's working directory as last observed by the poll, for readers
+    /// on other threads (the session-list API). Falls back to the spawn cwd
+    /// before the first poll.
+    public var currentCwd: String {
+        stateLock.withLock { lastPolledCwd ?? initialCwd }
+    }
+
     private func startCwdPolling() {
-        let alive = stateLock.withLock { !terminated }
+        let alive = stateLock.withLock { () -> Bool in
+            guard !terminated else { return false }
+            lastPolledCwd = initialCwd
+            return true
+        }
         guard alive, let eventLoop, cwdTask == nil else { return }
-        lastPolledCwd = initialCwd
         cwdTask = eventLoop.scheduleRepeatedTask(
             initialDelay: Self.cwdPollInterval,
             delay: Self.cwdPollInterval
@@ -536,11 +546,15 @@ public final class PtySession: @unchecked Sendable {
     }
 
     private func pollCwd() {
-        guard let path = Self.currentDirectory(ofPID: pid), path != lastPolledCwd else {
-            return
+        guard let path = Self.currentDirectory(ofPID: pid) else { return }
+        // Read, compare, and store the cwd under the lock so the session-list
+        // API can read it from another thread; call the client callback with
+        // the lock released, per the class invariant.
+        let callback: ((String) -> Void)? = stateLock.withLock {
+            guard path != lastPolledCwd else { return nil }
+            lastPolledCwd = path
+            return onCwd
         }
-        lastPolledCwd = path
-        let callback = stateLock.withLock { onCwd }
         callback?(path)
     }
 

@@ -27,6 +27,36 @@ public actor SessionRegistry {
         sessions[id]
     }
 
+    /// A point-in-time view of one session for the listing API.
+    public struct SessionSummary: Sendable {
+        public let id: UUID
+        public let shell: String
+        public let cwd: String
+        public let pid: Int32
+        /// A controller is attached (vs. detached, awaiting reattach).
+        public let attached: Bool
+        public let observerCount: Int
+        /// Shell-integration marks, newest last — the caller derives state.
+        public let marks: [SessionMark]
+    }
+
+    /// Every live session, for `/api/sessions`. Ordered by id for stability.
+    public func summaries() -> [SessionSummary] {
+        sessions
+            .map { id, session in
+                SessionSummary(
+                    id: id,
+                    shell: session.shellPath,
+                    cwd: session.currentCwd,
+                    pid: session.pid,
+                    attached: attachedIDs.contains(id),
+                    observerCount: session.observerCount,
+                    marks: session.marksSnapshot()
+                )
+            }
+            .sorted { $0.id.uuidString < $1.id.uuidString }
+    }
+
     public enum SessionResolution: Sendable {
         /// No controller attached — the caller becomes it.
         case controller(PtySession)
