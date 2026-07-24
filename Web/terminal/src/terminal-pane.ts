@@ -26,6 +26,12 @@ import {
   parseOsc633,
   type ParsedMark,
 } from "./command-marks";
+import {
+  Osc99Assembler,
+  parseOsc9,
+  parseOsc777,
+  type TerminalNotification,
+} from "./notifications";
 import type { PaneId } from "./pane-layout";
 import { ReplayGuard } from "./replay-guard";
 import { KittermSession, defaultWsUrl } from "./session";
@@ -56,6 +62,8 @@ export interface PaneHost {
   paneStateChanged(pane: TerminalPane): void;
   /** Output arrived; the shell decides whether that means "unread". */
   paneOutput(pane: TerminalPane): void;
+  /** A program in this pane asked for attention (OSC 9/777/99). */
+  paneAttention(pane: TerminalPane, note: TerminalNotification): void;
   /** Persistent status for this pane (surfaced when it is focused). */
   paneStatus(pane: TerminalPane, message: string | null): void;
   /** Transient toast from any pane, shown immediately. */
@@ -103,6 +111,7 @@ export class TerminalPane {
     onResume: () => this.session.sendResume(),
   });
   private readonly replayGuard = new ReplayGuard();
+  private readonly osc99 = new Osc99Assembler();
   /** 633;E command line awaiting its preExec mark. */
   private pendingCommandLine: string | null = null;
   /** The current replay window was announced with resync=1 (stale-screen
@@ -184,6 +193,7 @@ export class TerminalPane {
     this.registerKittyHandlers();
     this.registerCwdHandlers();
     this.registerMarkHandlers();
+    this.registerNotifyHandlers();
     this.wireInput();
     this.wireClipboard();
     this.wireResize(options.container);
@@ -543,6 +553,27 @@ export class TerminalPane {
     });
     this.terminal.parser.registerOscHandler(633, (data) => {
       this.handleParsedMark(parseOsc633(data));
+      return false;
+    });
+  }
+
+  /** OSC 9 / 777 / 99 desktop notifications: parsed here, surfaced by the
+   * shell. Suppressed during replay so a reconnect does not re-fire a
+   * notification the user already saw. */
+  private registerNotifyHandlers(): void {
+    const surface = (note: TerminalNotification | null) => {
+      if (note && !this.replayGuard.active) this.host.paneAttention(this, note);
+    };
+    this.terminal.parser.registerOscHandler(9, (data) => {
+      surface(parseOsc9(data));
+      return false;
+    });
+    this.terminal.parser.registerOscHandler(777, (data) => {
+      surface(parseOsc777(data));
+      return false;
+    });
+    this.terminal.parser.registerOscHandler(99, (data) => {
+      surface(this.osc99.feed(data));
       return false;
     });
   }
