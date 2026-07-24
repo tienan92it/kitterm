@@ -69,6 +69,22 @@ describe("WakeLockManager", () => {
     expect(m.held).toBe(false);
   });
 
+  it("ignores a stale release event from a replaced sentinel", async () => {
+    const s1 = fakeSentinel();
+    const s2 = fakeSentinel();
+    const sentinels = [s1, s2];
+    const m = new WakeLockManager({
+      request: async () => sentinels.shift() ?? null,
+      isVisible: () => true,
+    });
+    await m.setWanted(true); // holds s1
+    await m.setWanted(false); // releases s1…
+    await m.setWanted(true); // …and re-acquires s2
+    expect(m.held).toBe(true);
+    s1.fireRelease(); // s1's release event arrives late
+    expect(m.held).toBe(true); // s2 must still be tracked
+  });
+
   it("is a no-op where the API is unsupported", async () => {
     const m = new WakeLockManager({ request: async () => null, isVisible: () => true });
     await m.setWanted(true);

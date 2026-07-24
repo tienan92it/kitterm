@@ -53,7 +53,9 @@ export class WakeLockManager {
       }
       this.sentinel = sentinel;
       sentinel.addEventListener("release", () => {
-        this.sentinel = null;
+        // A release event from an old sentinel (fired async after we replaced
+        // it) must not drop the current one — that would leak the held lock.
+        if (this.sentinel === sentinel) this.sentinel = null;
       });
     } catch {
       this.sentinel = null;

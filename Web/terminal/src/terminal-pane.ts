@@ -938,6 +938,13 @@ export class TerminalPane {
         if (lastY === null || accumulator === null || rect === null || event.touches.length !== 1) {
           return;
         }
+        const touch = event.touches[0];
+        // Track continuously — feed() is down-positive: moving the finger down
+        // increases clientY. Kept fresh even on the scrollback path, so a
+        // mid-gesture switch to the alt screen doesn't jump from a stale delta.
+        const deltaY = touch.clientY - lastY;
+        lastY = touch.clientY;
+
         const target = swipeTarget(
           this.terminal.buffer.active.type === "alternate",
           this.terminal.modes.mouseTrackingMode !== "none",
@@ -945,10 +952,7 @@ export class TerminalPane {
         // Let xterm handle scrollback on the normal screen.
         if (target === "scrollback") return;
 
-        const touch = event.touches[0];
-        // feed() is down-positive: moving the finger down increases clientY.
-        const steps = accumulator.feed(touch.clientY - lastY);
-        lastY = touch.clientY;
+        const steps = accumulator.feed(deltaY);
         // We own this gesture now — stop xterm from also scrolling.
         event.preventDefault();
         if (steps === 0 || this.exitedValue || this.readOnlyValue) return;
