@@ -161,21 +161,28 @@ export class ExtraKeysBar {
 
     // Touch and mouse deliver the tap differently, and preventDefault on
     // touchstart (needed to keep the terminal focused) also cancels the
-    // synthesized click — so the touch path must act on touchstart itself,
-    // while the mouse path acts on click. They are mutually exclusive: a real
-    // tap fires touchstart and its click is suppressed; a mouse click never
-    // fires touchstart. This is the bug the first version had — it relied on
-    // click alone, which never arrives on a touchscreen.
+    // synthesized click on spec-compliant browsers — so the touch path acts on
+    // touchstart, the mouse path on click. `handledTouch` guards the case where
+    // a browser fires the click anyway, so a real tap always sends exactly one
+    // key (a double-send is what could make Esc misbehave in vim/less).
+    let handledTouch = false;
     btn.addEventListener("mousedown", (e) => e.preventDefault());
     btn.addEventListener(
       "touchstart",
       (e) => {
         e.preventDefault();
+        handledTouch = true;
         act();
       },
       { passive: false },
     );
-    btn.addEventListener("click", act);
+    btn.addEventListener("click", () => {
+      if (handledTouch) {
+        handledTouch = false; // this click belongs to the touch we already handled
+        return;
+      }
+      act();
+    });
     return btn;
   }
 

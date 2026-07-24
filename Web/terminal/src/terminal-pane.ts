@@ -253,6 +253,7 @@ export class TerminalPane {
     if (this.exitedValue || this.readOnlyValue) return;
     const bytes = keyBytes(spec, this.terminal.modes.applicationCursorKeysMode);
     if (bytes) this.session.sendInput(bytes);
+    // Keep the terminal focused so the soft keyboard stays up.
     this.terminal.focus();
   }
 
