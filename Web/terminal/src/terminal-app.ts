@@ -1,5 +1,7 @@
+import { ExtraKeysBar, isTouchPrimary } from "./extra-keys";
 import { setFavicon, type FaviconState } from "./favicon";
 import { LOCAL_FONT_ID, resolveFontFamily, type TerminalFontId } from "./fonts";
+import { trackKeyboardInsets } from "./keyboard-insets";
 import {
   loadLayout,
   saveLayout,
@@ -37,6 +39,7 @@ import {
 import { TerminalPane, type PaneHost } from "./terminal-pane";
 import { findThemeById, type TerminalThemeId } from "./themes";
 import { composeTabTitle } from "./title";
+import { createWakeLock } from "./wake-lock";
 import { WebglBudget } from "./webgl-budget";
 
 /** Coalesce a burst of typing into one storage write. */
@@ -93,6 +96,8 @@ export class TerminalApp implements PaneHost {
   private lastTitle = "";
   private paneCounter = 0;
   private disposed = false;
+  private disposeKeyboardInsets: (() => void) | null = null;
+  private readonly wakeLock = createWakeLock();
   /** A `/?session=` link is a view onto someone else's shell: it must not read
    * or overwrite this tab's saved layout until the user makes it their own. */
   private linkBoot = false;
@@ -120,6 +125,7 @@ export class TerminalApp implements PaneHost {
     this.wireSettings();
     this.wireSearch();
     this.wireGlobalListeners();
+    this.mountExtraKeys();
 
     const boot = this.resolveBoot();
     this.root = boot.root;
@@ -221,6 +227,8 @@ export class TerminalApp implements PaneHost {
     this.persistTabTitle();
     this.persistLayout();
     window.removeEventListener("storage", this.onStorage);
+    this.disposeKeyboardInsets?.();
+    void this.wakeLock.setWanted(false);
     this.settingsPanel?.dispose();
     for (const pane of this.panes.values()) pane.dispose();
     this.panes.clear();
@@ -235,12 +243,22 @@ export class TerminalApp implements PaneHost {
 
   paneStateChanged(pane: TerminalPane): void {
     this.updateFavicon();
+    // Hold the screen awake while a shell is connected (mobile: don't sleep
+    // mid-command and drop the session).
+    void this.wakeLock.setWanted(this.anyConnected());
     // A shell that exits closes its pane — the tmux/iTerm2 behaviour, and the
     // reason `exit` needs no keybinding. The last pane stays so the page keeps
     // something to look at.
     if (pane.exited && countPanes(this.root) > 1) {
       this.closePane(pane.id);
     }
+  }
+
+  private anyConnected(): boolean {
+    for (const pane of this.panes.values()) {
+      if (pane.connectionState === "connected") return true;
+    }
+    return false;
   }
 
   paneOutput(): void {
@@ -385,6 +403,17 @@ export class TerminalApp implements PaneHost {
     }
   }
 
+  /** The extra-keys row: only on touch-primary devices, where soft keyboards
+   * lack Ctrl/Alt/Esc/arrows. Its keys go to the focused pane. */
+  private mountExtraKeys(): void {
+    if (!isTouchPrimary()) return;
+    const bar = new ExtraKeysBar((spec) => this.focusedPane?.sendExtraKey(spec));
+    document.body.append(bar.element);
+    document.body.classList.add("has-extra-keys");
+    // Lift the row and terminal above the software keyboard.
+    this.disposeKeyboardInsets = trackKeyboardInsets();
+  }
+
   paneSearchRequested(pane: TerminalPane): void {
     this.setFocus(pane.id);
     this.openSearch();
@@ -518,6 +547,7 @@ export class TerminalApp implements PaneHost {
         clearUnread();
         clearFocusedAttention();
         tryNow();
+        void this.wakeLock.onVisibilityChange();
       }
     });
     window.addEventListener("resize", () => {

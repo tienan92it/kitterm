@@ -96,6 +96,7 @@ public enum StaticFileServer: Sendable {
         case "js", "mjs": return "text/javascript; charset=utf-8"
         case "css": return "text/css; charset=utf-8"
         case "json": return "application/json"
+        case "webmanifest": return "application/manifest+json"
         case "svg": return "image/svg+xml"
         case "png": return "image/png"
         case "jpg", "jpeg": return "image/jpeg"

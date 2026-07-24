@@ -32,8 +32,14 @@ import {
   parseOsc777,
   type TerminalNotification,
 } from "./notifications";
+import { type KeySpec, keyBytes } from "./extra-keys";
 import type { PaneId } from "./pane-layout";
 import { ReplayGuard } from "./replay-guard";
+import {
+  SwipeAccumulator,
+  swipeTarget,
+  swipeToInput,
+} from "./touch-scroll";
 import { KittermSession, defaultWsUrl } from "./session";
 import type { KittermSettings } from "./settings-store";
 import { findThemeById } from "./themes";
@@ -202,6 +208,7 @@ export class TerminalPane {
     this.registerNotifyHandlers();
     this.wireInput();
     this.wireClipboard();
+    this.wireTouch();
     this.wireResize(options.container);
     this.setConnectionState("reconnecting");
   }
@@ -237,6 +244,16 @@ export class TerminalPane {
   }
 
   focus(): void {
+    this.terminal.focus();
+  }
+
+  /** Deliver a key from the on-screen extra-keys row, respecting the app's
+   * cursor-keys mode. Keeps the terminal focused so the keyboard stays up. */
+  sendExtraKey(spec: KeySpec): void {
+    if (this.exitedValue || this.readOnlyValue) return;
+    const bytes = keyBytes(spec, this.terminal.modes.applicationCursorKeysMode);
+    if (bytes) this.session.sendInput(bytes);
+    // Keep the terminal focused so the soft keyboard stays up.
     this.terminal.focus();
   }
 
@@ -882,6 +899,96 @@ export class TerminalPane {
       }
       return true;
     });
+  }
+
+  /** Alt-screen-aware touch scrolling: on the normal screen xterm scrolls the
+   * scrollback (default); on the alternate screen a swipe becomes the input
+   * the app wants — mouse-wheel events or arrow keys — so vim/less/htop are
+   * usable with a finger. */
+  private wireTouch(): void {
+    const element = this.terminal.element;
+    if (!element) return;
+
+    let lastY: number | null = null;
+    let accumulator: SwipeAccumulator | null = null;
+    let rect: DOMRect | null = null;
+
+    element.addEventListener(
+      "touchstart",
+      (event) => {
+        this.host.paneFocusRequested(this);
+        if (event.touches.length !== 1) {
+          lastY = null;
+          return;
+        }
+        lastY = event.touches[0].clientY;
+        // Cache geometry for the gesture: cell height drives the step size,
+        // and the rect maps the finger to a cell for mouse-wheel reporting.
+        rect = element.getBoundingClientRect();
+        const rowHeight =
+          rect.height > 0 && this.terminal.rows > 0 ? rect.height / this.terminal.rows : 18;
+        accumulator = new SwipeAccumulator(rowHeight);
+      },
+      { passive: true },
+    );
+
+    element.addEventListener(
+      "touchmove",
+      (event) => {
+        if (lastY === null || accumulator === null || rect === null || event.touches.length !== 1) {
+          return;
+        }
+        const touch = event.touches[0];
+        // Track continuously — feed() is down-positive: moving the finger down
+        // increases clientY. Kept fresh even on the scrollback path, so a
+        // mid-gesture switch to the alt screen doesn't jump from a stale delta.
+        const deltaY = touch.clientY - lastY;
+        lastY = touch.clientY;
+
+        const target = swipeTarget(
+          this.terminal.buffer.active.type === "alternate",
+          this.terminal.modes.mouseTrackingMode !== "none",
+        );
+        // Let xterm handle scrollback on the normal screen.
+        if (target === "scrollback") return;
+
+        const steps = accumulator.feed(deltaY);
+        // We own this gesture now — stop xterm from also scrolling.
+        event.preventDefault();
+        if (steps === 0 || this.exitedValue || this.readOnlyValue) return;
+
+        const input = swipeToInput(
+          target,
+          steps,
+          this.cellAt(touch.clientX, touch.clientY, rect),
+          this.terminal.modes.applicationCursorKeysMode,
+        );
+        if (input) this.session.sendInput(input);
+      },
+      // Not passive: we call preventDefault on the alt screen.
+      { passive: false },
+    );
+
+    const end = () => {
+      lastY = null;
+      accumulator = null;
+      rect = null;
+    };
+    element.addEventListener("touchend", end, { passive: true });
+    element.addEventListener("touchcancel", end, { passive: true });
+  }
+
+  /** The 1-based terminal cell under a viewport point, for mouse-wheel
+   * reporting — a wheel event belongs at the pointer, not the text cursor. */
+  private cellAt(clientX: number, clientY: number, rect: DOMRect): { col: number; row: number } {
+    const cols = this.terminal.cols;
+    const rows = this.terminal.rows;
+    const col = rect.width > 0 ? Math.floor(((clientX - rect.left) / rect.width) * cols) + 1 : 1;
+    const row = rect.height > 0 ? Math.floor(((clientY - rect.top) / rect.height) * rows) + 1 : 1;
+    return {
+      col: Math.min(Math.max(col, 1), cols),
+      row: Math.min(Math.max(row, 1), rows),
+    };
   }
 
   private wireClipboard(): void {
