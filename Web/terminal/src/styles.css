@@ -481,15 +481,18 @@ body.pane-dragging .pane-inner {
    keyboard lacks. Fixed above the keyboard; the terminal area shrinks to fit. */
 :root {
   --extra-keys-height: 88px;
+  --keyboard-height: 0px;
 }
+/* Terminal sits above the extra-keys row and the software keyboard. */
 body.has-extra-keys #terminal {
-  bottom: var(--extra-keys-height);
+  bottom: calc(var(--extra-keys-height) + var(--keyboard-height));
 }
 .extra-keys {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
+  /* Lifted above the keyboard when it is open (visualViewport-driven). */
+  bottom: var(--keyboard-height);
   z-index: 5;
   display: flex;
   flex-direction: column;

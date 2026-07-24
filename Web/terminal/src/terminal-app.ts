@@ -7,6 +7,7 @@ import {
   type PaneSession,
 } from "./layout-store";
 import { ExtraKeysBar, isTouchPrimary } from "./extra-keys";
+import { trackKeyboardInsets } from "./keyboard-insets";
 import { NotificationCenter, type TerminalNotification } from "./notifications";
 import { isMacPlatform, type PaneCommand } from "./pane-keys";
 import {
@@ -94,6 +95,7 @@ export class TerminalApp implements PaneHost {
   private lastTitle = "";
   private paneCounter = 0;
   private disposed = false;
+  private disposeKeyboardInsets: (() => void) | null = null;
   /** A `/?session=` link is a view onto someone else's shell: it must not read
    * or overwrite this tab's saved layout until the user makes it their own. */
   private linkBoot = false;
@@ -223,6 +225,7 @@ export class TerminalApp implements PaneHost {
     this.persistTabTitle();
     this.persistLayout();
     window.removeEventListener("storage", this.onStorage);
+    this.disposeKeyboardInsets?.();
     this.settingsPanel?.dispose();
     for (const pane of this.panes.values()) pane.dispose();
     this.panes.clear();
@@ -394,6 +397,8 @@ export class TerminalApp implements PaneHost {
     const bar = new ExtraKeysBar((spec) => this.focusedPane?.sendExtraKey(spec));
     document.body.append(bar.element);
     document.body.classList.add("has-extra-keys");
+    // Lift the row and terminal above the software keyboard.
+    this.disposeKeyboardInsets = trackKeyboardInsets();
   }
 
   paneSearchRequested(pane: TerminalPane): void {
