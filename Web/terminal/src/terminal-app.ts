@@ -6,6 +6,7 @@ import {
   takeLegacySessionId,
   type PaneSession,
 } from "./layout-store";
+import { ExtraKeysBar, isTouchPrimary } from "./extra-keys";
 import { NotificationCenter, type TerminalNotification } from "./notifications";
 import { isMacPlatform, type PaneCommand } from "./pane-keys";
 import {
@@ -120,6 +121,7 @@ export class TerminalApp implements PaneHost {
     this.wireSettings();
     this.wireSearch();
     this.wireGlobalListeners();
+    this.mountExtraKeys();
 
     const boot = this.resolveBoot();
     this.root = boot.root;
@@ -383,6 +385,15 @@ export class TerminalApp implements PaneHost {
         return;
       }
     }
+  }
+
+  /** The extra-keys row: only on touch-primary devices, where soft keyboards
+   * lack Ctrl/Alt/Esc/arrows. Its keys go to the focused pane. */
+  private mountExtraKeys(): void {
+    if (!isTouchPrimary()) return;
+    const bar = new ExtraKeysBar((spec) => this.focusedPane?.sendExtraKey(spec));
+    document.body.append(bar.element);
+    document.body.classList.add("has-extra-keys");
   }
 
   paneSearchRequested(pane: TerminalPane): void {

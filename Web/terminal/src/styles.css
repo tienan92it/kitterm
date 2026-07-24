@@ -476,3 +476,52 @@ body.pane-dragging .pane-inner {
   width: 100% !important;
   pointer-events: none;
 }
+
+/* On-screen extra-keys row (touch devices): Ctrl/Alt/Esc/Tab/arrows the soft
+   keyboard lacks. Fixed above the keyboard; the terminal area shrinks to fit. */
+:root {
+  --extra-keys-height: 88px;
+}
+body.has-extra-keys #terminal {
+  bottom: var(--extra-keys-height);
+}
+.extra-keys {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px calc(4px + env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom))
+    calc(4px + env(safe-area-inset-left));
+  background: #10151c;
+  border-top: 1px solid #30363d;
+  touch-action: manipulation;
+}
+.extra-keys-row {
+  display: flex;
+  gap: 4px;
+}
+.extra-key {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 38px;
+  padding: 0;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #1c2230;
+  color: #e6edf3;
+  font: 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.extra-key:active {
+  background: #2a3242;
+}
+.extra-key-mod.armed {
+  background: #1f6feb;
+  border-color: #388bfd;
+  color: #fff;
+}

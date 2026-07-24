@@ -32,6 +32,7 @@ import {
   parseOsc777,
   type TerminalNotification,
 } from "./notifications";
+import { type KeySpec, keyBytes } from "./extra-keys";
 import type { PaneId } from "./pane-layout";
 import { ReplayGuard } from "./replay-guard";
 import {
@@ -243,6 +244,15 @@ export class TerminalPane {
   }
 
   focus(): void {
+    this.terminal.focus();
+  }
+
+  /** Deliver a key from the on-screen extra-keys row, respecting the app's
+   * cursor-keys mode. Keeps the terminal focused so the keyboard stays up. */
+  sendExtraKey(spec: KeySpec): void {
+    if (this.exitedValue || this.readOnlyValue) return;
+    const bytes = keyBytes(spec, this.terminal.modes.applicationCursorKeysMode);
+    if (bytes) this.session.sendInput(bytes);
     this.terminal.focus();
   }
 
