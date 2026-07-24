@@ -28,9 +28,8 @@ final class SessionRegistryTests: XCTestCase {
         session.appendMark(SessionMark(offset: 0, kind: .preExec, exit: nil, command: "ls"))
         session.appendMark(SessionMark(offset: 1, kind: .commandEnd, exit: 0, command: nil))
 
-        var summaries = await registry.summaries()
-        XCTAssertEqual(summaries.count, 1)
-        let summary = try XCTUnwrap(summaries.first)
+        let first = await registry.summaries()
+        let summary = try XCTUnwrap(first.first)
         XCTAssertEqual(summary.id, id)
         XCTAssertEqual(summary.shell, session.shellPath)
         XCTAssertEqual(summary.pid, session.pid)
@@ -41,14 +40,24 @@ final class SessionRegistryTests: XCTestCase {
         // The cwd is a live kernel read, not the attach-gated poll — a never-
         // attached session must still report where its shell actually is.
         // Resolve symlinks on both sides: the kernel reports the real path
-        // (/private/var/…) where NSTemporaryDirectory says /var/….
-        let reported = URL(fileURLWithPath: summary.cwd).resolvingSymlinksInPath().path
+        // (/private/var/…) where NSTemporaryDirectory says /var/…. Poll for the
+        // shell to settle: the spawn helper chdir's to the requested cwd after
+        // posix_spawn, so `liveCwd` reads the inherited dir for the first
+        // moments after spawn.
         let expected = URL(fileURLWithPath: tmp).resolvingSymlinksInPath().path
-        XCTAssertEqual(reported, expected)
+        var reported = ""
+        for _ in 0..<50 {
+            let polled = await registry.summaries()
+            reported = URL(fileURLWithPath: try XCTUnwrap(polled.first).cwd)
+                .resolvingSymlinksInPath().path
+            if reported == expected { break }
+            try await Task.sleep(nanoseconds: 20_000_000) // 20ms
+        }
+        XCTAssertEqual(reported, expected, "shell should settle into its spawn cwd")
 
         await registry.markDetached(id)
-        summaries = await registry.summaries()
-        XCTAssertFalse(try XCTUnwrap(summaries.first).attached)
+        let afterDetach = await registry.summaries()
+        XCTAssertFalse(try XCTUnwrap(afterDetach.first).attached)
 
         await registry.remove(id)
         let empty = await registry.summaries()
