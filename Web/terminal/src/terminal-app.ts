@@ -8,6 +8,7 @@ import {
 } from "./layout-store";
 import { ExtraKeysBar, isTouchPrimary } from "./extra-keys";
 import { trackKeyboardInsets } from "./keyboard-insets";
+import { createWakeLock } from "./wake-lock";
 import { NotificationCenter, type TerminalNotification } from "./notifications";
 import { isMacPlatform, type PaneCommand } from "./pane-keys";
 import {
@@ -96,6 +97,7 @@ export class TerminalApp implements PaneHost {
   private paneCounter = 0;
   private disposed = false;
   private disposeKeyboardInsets: (() => void) | null = null;
+  private readonly wakeLock = createWakeLock();
   /** A `/?session=` link is a view onto someone else's shell: it must not read
    * or overwrite this tab's saved layout until the user makes it their own. */
   private linkBoot = false;
@@ -226,6 +228,7 @@ export class TerminalApp implements PaneHost {
     this.persistLayout();
     window.removeEventListener("storage", this.onStorage);
     this.disposeKeyboardInsets?.();
+    void this.wakeLock.setWanted(false);
     this.settingsPanel?.dispose();
     for (const pane of this.panes.values()) pane.dispose();
     this.panes.clear();
@@ -240,12 +243,22 @@ export class TerminalApp implements PaneHost {
 
   paneStateChanged(pane: TerminalPane): void {
     this.updateFavicon();
+    // Hold the screen awake while a shell is connected (mobile: don't sleep
+    // mid-command and drop the session).
+    void this.wakeLock.setWanted(this.anyConnected());
     // A shell that exits closes its pane — the tmux/iTerm2 behaviour, and the
     // reason `exit` needs no keybinding. The last pane stays so the page keeps
     // something to look at.
     if (pane.exited && countPanes(this.root) > 1) {
       this.closePane(pane.id);
     }
+  }
+
+  private anyConnected(): boolean {
+    for (const pane of this.panes.values()) {
+      if (pane.connectionState === "connected") return true;
+    }
+    return false;
   }
 
   paneOutput(): void {
@@ -534,6 +547,7 @@ export class TerminalApp implements PaneHost {
         clearUnread();
         clearFocusedAttention();
         tryNow();
+        void this.wakeLock.onVisibilityChange();
       }
     });
     window.addEventListener("resize", () => {
