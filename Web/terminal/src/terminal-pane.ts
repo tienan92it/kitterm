@@ -34,6 +34,11 @@ import {
 } from "./notifications";
 import type { PaneId } from "./pane-layout";
 import { ReplayGuard } from "./replay-guard";
+import {
+  SwipeAccumulator,
+  swipeTarget,
+  swipeToInput,
+} from "./touch-scroll";
 import { KittermSession, defaultWsUrl } from "./session";
 import type { KittermSettings } from "./settings-store";
 import { findThemeById } from "./themes";
@@ -202,6 +207,7 @@ export class TerminalPane {
     this.registerNotifyHandlers();
     this.wireInput();
     this.wireClipboard();
+    this.wireTouch();
     this.wireResize(options.container);
     this.setConnectionState("reconnecting");
   }
@@ -882,6 +888,79 @@ export class TerminalPane {
       }
       return true;
     });
+  }
+
+  /** Alt-screen-aware touch scrolling: on the normal screen xterm scrolls the
+   * scrollback (default); on the alternate screen a swipe becomes the input
+   * the app wants — mouse-wheel events or arrow keys — so vim/less/htop are
+   * usable with a finger. */
+  private wireTouch(): void {
+    const element = this.terminal.element;
+    if (!element) return;
+
+    let lastY: number | null = null;
+    let accumulator: SwipeAccumulator | null = null;
+
+    element.addEventListener(
+      "touchstart",
+      (event) => {
+        this.host.paneFocusRequested(this);
+        if (event.touches.length !== 1) {
+          lastY = null;
+          return;
+        }
+        lastY = event.touches[0].clientY;
+        // Cell height drives the step size; fall back to a sane default.
+        const rowHeight =
+          element.clientHeight > 0 && this.terminal.rows > 0
+            ? element.clientHeight / this.terminal.rows
+            : 18;
+        accumulator = new SwipeAccumulator(rowHeight);
+      },
+      { passive: true },
+    );
+
+    element.addEventListener(
+      "touchmove",
+      (event) => {
+        if (lastY === null || accumulator === null || event.touches.length !== 1) return;
+        const target = swipeTarget(
+          this.terminal.buffer.active.type === "alternate",
+          this.terminal.modes.mouseTrackingMode !== "none",
+        );
+        // Let xterm handle scrollback on the normal screen.
+        if (target === "scrollback") return;
+
+        const y = event.touches[0].clientY;
+        // feed() is down-positive: moving the finger down increases clientY.
+        const steps = accumulator.feed(y - lastY);
+        lastY = y;
+        // We own this gesture now — stop xterm from also scrolling.
+        event.preventDefault();
+        if (steps === 0 || this.exitedValue || this.readOnlyValue) return;
+
+        const cursor = {
+          col: this.terminal.buffer.active.cursorX + 1,
+          row: this.terminal.buffer.active.cursorY + 1,
+        };
+        const input = swipeToInput(
+          target,
+          steps,
+          cursor,
+          this.terminal.modes.applicationCursorKeysMode,
+        );
+        if (input) this.session.sendInput(input);
+      },
+      // Not passive: we call preventDefault on the alt screen.
+      { passive: false },
+    );
+
+    const end = () => {
+      lastY = null;
+      accumulator = null;
+    };
+    element.addEventListener("touchend", end, { passive: true });
+    element.addEventListener("touchcancel", end, { passive: true });
   }
 
   private wireClipboard(): void {
