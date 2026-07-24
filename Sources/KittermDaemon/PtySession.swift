@@ -518,10 +518,31 @@ public final class PtySession: @unchecked Sendable {
         }
     }
 
+    /// The shell's working directory as last observed by the poll, for readers
+    /// on other threads (the session-list API). Falls back to the spawn cwd
+    /// before the first poll.
+    public var currentCwd: String {
+        stateLock.withLock { lastPolledCwd ?? initialCwd }
+    }
+
+    /// The shell's working directory right now, read from the kernel. The
+    /// poll only runs while a controller is attached, so a detached session's
+    /// `currentCwd` freezes at detach time — exactly the sessions the fleet
+    /// view supervises. `proc_pidinfo` is a microsecond read, so the listing
+    /// API asks the kernel directly and falls back to the last-known value.
+    public var liveCwd: String {
+        Self.currentDirectory(ofPID: pid) ?? currentCwd
+    }
+
     private func startCwdPolling() {
-        let alive = stateLock.withLock { !terminated }
+        let alive = stateLock.withLock { () -> Bool in
+            guard !terminated else { return false }
+            // Seed only when nothing was ever polled: a reattach must not
+            // regress a fresher value back to the spawn cwd.
+            if lastPolledCwd == nil { lastPolledCwd = initialCwd }
+            return true
+        }
         guard alive, let eventLoop, cwdTask == nil else { return }
-        lastPolledCwd = initialCwd
         cwdTask = eventLoop.scheduleRepeatedTask(
             initialDelay: Self.cwdPollInterval,
             delay: Self.cwdPollInterval
@@ -536,11 +557,15 @@ public final class PtySession: @unchecked Sendable {
     }
 
     private func pollCwd() {
-        guard let path = Self.currentDirectory(ofPID: pid), path != lastPolledCwd else {
-            return
+        guard let path = Self.currentDirectory(ofPID: pid) else { return }
+        // Read, compare, and store the cwd under the lock so the session-list
+        // API can read it from another thread; call the client callback with
+        // the lock released, per the class invariant.
+        let callback: ((String) -> Void)? = stateLock.withLock {
+            guard path != lastPolledCwd else { return nil }
+            lastPolledCwd = path
+            return onCwd
         }
-        lastPolledCwd = path
-        let callback = stateLock.withLock { onCwd }
         callback?(path)
     }
 

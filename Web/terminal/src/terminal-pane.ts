@@ -26,6 +26,12 @@ import {
   parseOsc633,
   type ParsedMark,
 } from "./command-marks";
+import {
+  Osc99Assembler,
+  parseOsc9,
+  parseOsc777,
+  type TerminalNotification,
+} from "./notifications";
 import type { PaneId } from "./pane-layout";
 import { ReplayGuard } from "./replay-guard";
 import { KittermSession, defaultWsUrl } from "./session";
@@ -56,6 +62,8 @@ export interface PaneHost {
   paneStateChanged(pane: TerminalPane): void;
   /** Output arrived; the shell decides whether that means "unread". */
   paneOutput(pane: TerminalPane): void;
+  /** A program in this pane asked for attention (OSC 9/777/99). */
+  paneAttention(pane: TerminalPane, note: TerminalNotification): void;
   /** Persistent status for this pane (surfaced when it is focused). */
   paneStatus(pane: TerminalPane, message: string | null): void;
   /** Transient toast from any pane, shown immediately. */
@@ -85,6 +93,8 @@ export type TerminalPaneOptions = {
   cwd?: string | null;
   /** Durable key selecting this pane's own history file on the daemon. */
   histKey?: string | null;
+  /** `?cmd=N` — scroll to the N-th command once it is replayed. */
+  commandScroll?: number | null;
 };
 
 export class TerminalPane {
@@ -103,6 +113,7 @@ export class TerminalPane {
     onResume: () => this.session.sendResume(),
   });
   private readonly replayGuard = new ReplayGuard();
+  private readonly osc99 = new Osc99Assembler();
   /** 633;E command line awaiting its preExec mark. */
   private pendingCommandLine: string | null = null;
   /** The current replay window was announced with resync=1 (stale-screen
@@ -110,6 +121,8 @@ export class TerminalPane {
   private replayIsResync = false;
   /** Markers on prompt lines for ⌘↑/⌘↓ navigation. */
   private promptMarkers: IMarker[] = [];
+  /** A `?cmd=N` deep link to scroll to once the command appears. */
+  private pendingCommandScroll: number | null;
   private sessionIdValue: string | null;
   /** Start directory for a fresh shell; kept so a respawn lands in the same
    * place after the daemon forgets the session. */
@@ -142,6 +155,7 @@ export class TerminalPane {
     this.sessionIdValue = options.sessionId ?? null;
     this.cwd = options.cwd ?? null;
     this.histKeyValue = options.histKey ?? null;
+    this.pendingCommandScroll = options.commandScroll ?? null;
 
     const settings = this.host.settings;
     const theme = findThemeById(settings.themeId);
@@ -172,6 +186,7 @@ export class TerminalPane {
         this.host.paneStatus(this, null);
         this.setConnectionState("connected");
         this.scheduleFit();
+        this.scheduleCommandScrollFallback();
       },
       onFrame: (frame) => this.handleFrame(frame),
       onClose: () => this.handleDisconnect(),
@@ -184,6 +199,7 @@ export class TerminalPane {
     this.registerKittyHandlers();
     this.registerCwdHandlers();
     this.registerMarkHandlers();
+    this.registerNotifyHandlers();
     this.wireInput();
     this.wireClipboard();
     this.wireResize(options.container);
@@ -547,6 +563,27 @@ export class TerminalPane {
     });
   }
 
+  /** OSC 9 / 777 / 99 desktop notifications: parsed here, surfaced by the
+   * shell. Suppressed during replay so a reconnect does not re-fire a
+   * notification the user already saw. */
+  private registerNotifyHandlers(): void {
+    const surface = (note: TerminalNotification | null) => {
+      if (note && !this.replayGuard.active) this.host.paneAttention(this, note);
+    };
+    this.terminal.parser.registerOscHandler(9, (data) => {
+      surface(parseOsc9(data));
+      return false;
+    });
+    this.terminal.parser.registerOscHandler(777, (data) => {
+      surface(parseOsc777(data));
+      return false;
+    });
+    this.terminal.parser.registerOscHandler(99, (data) => {
+      surface(this.osc99.feed(data));
+      return false;
+    });
+  }
+
   private handleParsedMark(parsed: ParsedMark | null): void {
     if (!parsed) return;
     if (parsed.type === "commandLine") {
@@ -595,6 +632,65 @@ export class TerminalPane {
     while (this.promptMarkers.length > MAX_PROMPT_MARKERS) {
       this.promptMarkers.shift()?.dispose();
     }
+    // A `?cmd=N` deep link waits for the command to appear as its prompt is
+    // replayed, then scrolls to it exactly.
+    if (
+      this.pendingCommandScroll !== null &&
+      this.commandCount >= this.pendingCommandScroll
+    ) {
+      const target = this.pendingCommandScroll;
+      this.pendingCommandScroll = null;
+      this.scrollToCommand(target);
+    }
+  }
+
+  /** Prompt markers still in the buffer, oldest first — one per command. */
+  private get liveMarkers(): IMarker[] {
+    return this.promptMarkers.filter((m) => !m.isDisposed);
+  }
+
+  /** Number of commands currently addressable in this pane's buffer. */
+  get commandCount(): number {
+    return this.liveMarkers.length;
+  }
+
+  /** A shareable link to command `index` (1-based) in this session. */
+  commandLink(index: number): string | null {
+    if (!this.sessionIdValue) return null;
+    return `${location.origin}/?session=${encodeURIComponent(this.sessionIdValue)}&cmd=${index}`;
+  }
+
+  /** If a `?cmd=N` link asked for more commands than the replay produced,
+   * scroll to the last one as a best effort once output has settled. */
+  private scheduleCommandScrollFallback(): void {
+    if (this.pendingCommandScroll === null) return;
+    window.setTimeout(() => {
+      if (this.pendingCommandScroll === null || this.disposed) return;
+      const target = this.pendingCommandScroll;
+      this.pendingCommandScroll = null;
+      if (this.commandCount > 0) this.scrollToCommand(target);
+    }, 1500);
+  }
+
+  /** Scroll to command `index` (1-based) and flash its prompt line. Indexing
+   * is buffer-relative, so a link can outrun this pane's retained commands;
+   * when that happens we land on the nearest one but say so, rather than
+   * highlight the wrong line with confidence. */
+  scrollToCommand(index: number): void {
+    const markers = this.liveMarkers;
+    const clamped = Math.min(index, markers.length);
+    const marker = markers[clamped - 1];
+    if (!marker) return;
+    if (clamped !== index) {
+      this.host.paneFlash("Linked command not in scrollback — showing nearest");
+    }
+    this.terminal.scrollToLine(marker.line);
+    const decoration = this.terminal.registerDecoration({ marker });
+    decoration?.onRender((element) => {
+      element.classList.add("kitterm-cmd-target");
+    });
+    // The highlight is a cue, not a permanent mark.
+    window.setTimeout(() => decoration?.dispose(), 2000);
   }
 
   /** ⌘↑ / ⌘↓ — scroll to the previous / next prompt line. */
@@ -615,15 +711,33 @@ export class TerminalPane {
     }
   }
 
-  /** A red dot on the failed command's prompt line. */
+  /** A red dot on the failed command's prompt line; clicking it copies a
+   * shareable link to that command. */
   private decorateFailedCommand(exit: number): void {
-    const marker = [...this.promptMarkers].reverse().find((m) => !m.isDisposed);
+    const markers = this.liveMarkers;
+    const marker = markers[markers.length - 1];
     if (!marker) return;
+    const index = markers.length; // this command's 1-based position
     const decoration = this.terminal.registerDecoration({ marker });
     decoration?.onRender((element) => {
       element.classList.add("kitterm-cmd-failed");
-      element.title = `exit ${exit}`;
+      element.title = `exit ${exit} — click to copy a link to this command`;
+      element.style.cursor = "pointer";
+      element.onclick = (event) => {
+        event.stopPropagation();
+        this.copyCommandLink(index);
+      };
     });
+  }
+
+  private copyCommandLink(index: number): void {
+    const link = this.commandLink(index);
+    if (!link) return;
+    // Synchronous in the click handler so Safari's user-activation check holds.
+    void navigator.clipboard.writeText(link).then(
+      () => this.host.paneFlash("Command link copied"),
+      () => this.host.paneFlash("Copy failed"),
+    );
   }
 
   private setFolderFromCwd(cwd: string): void {

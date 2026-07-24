@@ -6,6 +6,7 @@ import {
   takeLegacySessionId,
   type PaneSession,
 } from "./layout-store";
+import { NotificationCenter, type TerminalNotification } from "./notifications";
 import { isMacPlatform, type PaneCommand } from "./pane-keys";
 import {
   countPanes,
@@ -75,6 +76,17 @@ export class TerminalApp implements PaneHost {
   private settingsPanel: SettingsPanel | null = null;
   private searchInput: HTMLInputElement | null = null;
   private unreadOutput = false;
+  private readonly notifications = new NotificationCenter({
+    isVisible: () => document.visibilityState === "visible",
+    focusedSessionId: () => this.focusedPane?.sessionId ?? null,
+    setBadge: (count) => this.setAppBadge(count),
+    show: (title, body, onClick, key) =>
+      this.showSystemNotification(title, body, onClick, key),
+    focusSession: (sessionId) => this.focusSession(sessionId),
+  });
+  /** An attention arrived while notification permission was still "default";
+   * the next user gesture prompts for it. */
+  private wantNotifyPermission = false;
   private statusClearTimer: number | null = null;
   private tabTitlePersistTimer: number | null = null;
   private layoutPersistTimer: number | null = null;
@@ -84,6 +96,8 @@ export class TerminalApp implements PaneHost {
   /** A `/?session=` link is a view onto someone else's shell: it must not read
    * or overwrite this tab's saved layout until the user makes it their own. */
   private linkBoot = false;
+  /** `?cmd=N` from the boot URL, applied to the link-boot pane. */
+  private pendingCommandScroll: number | null = null;
   /** Per-pane persistent status, shown when that pane is focused. */
   private readonly paneStatuses = new Map<PaneId, string | null>();
 
@@ -129,6 +143,8 @@ export class TerminalApp implements PaneHost {
     const params = new URLSearchParams(window.location.search);
     const linkSession = params.get("session");
     const linkCwd = params.get("cwd");
+    const cmd = Number.parseInt(params.get("cmd") ?? "", 10);
+    this.pendingCommandScroll = Number.isFinite(cmd) && cmd > 0 ? cmd : null;
 
     // A share link or a cwd deep link is always a single fresh pane, and does
     // not disturb whatever layout this tab already had saved.
@@ -190,6 +206,8 @@ export class TerminalApp implements PaneHost {
       // fresh pane. Never sent for a `/?session=` link pane (linkBoot), whose
       // history belongs to the shell being observed, not to us.
       histKey: this.linkBoot ? null : (session.histKey ?? newHistKey()),
+      // A `?cmd=N` deep link applies to the single link-boot pane only.
+      commandScroll: this.linkBoot ? this.pendingCommandScroll : null,
     });
     this.panes.set(id, pane);
     this.webgl.acquire(id, pane);
@@ -230,6 +248,10 @@ export class TerminalApp implements PaneHost {
       this.unreadOutput = true;
       this.updateFavicon();
     }
+  }
+
+  paneAttention(pane: TerminalPane, note: TerminalNotification): void {
+    this.notifications.raise(pane.sessionId, note);
   }
 
   paneStatus(pane: TerminalPane, message: string | null): void {
@@ -302,7 +324,65 @@ export class TerminalApp implements PaneHost {
   }
 
   paneFocusRequested(pane: TerminalPane): void {
+    // A click is a user gesture — the only safe moment to ask for notification
+    // permission (Safari requires one, and prompting on load is hostile).
+    this.maybeRequestNotifyPermission();
     this.setFocus(pane.id);
+  }
+
+  // MARK: Notifications
+
+  private showSystemNotification(
+    title: string,
+    body: string,
+    onClick: () => void,
+    key?: string,
+  ): boolean {
+    if (typeof Notification === "undefined") return false;
+    if (Notification.permission !== "granted") {
+      // Badge + favicon still fired; defer the system prompt to a gesture.
+      if (Notification.permission === "default") this.wantNotifyPermission = true;
+      return false;
+    }
+    try {
+      const n = new Notification(title, {
+        body: body || undefined,
+        tag: key ? `kitterm:${key}` : "kitterm",
+      });
+      n.onclick = () => {
+        window.focus();
+        onClick();
+        n.close();
+      };
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private maybeRequestNotifyPermission(): void {
+    if (!this.wantNotifyPermission) return;
+    this.wantNotifyPermission = false;
+    if (typeof Notification === "undefined" || Notification.permission !== "default") return;
+    void Notification.requestPermission().catch(() => {});
+  }
+
+  private setAppBadge(count: number): void {
+    const nav = navigator as Navigator & {
+      setAppBadge?: (count?: number) => Promise<void>;
+      clearAppBadge?: () => Promise<void>;
+    };
+    if (count > 0) void nav.setAppBadge?.(count).catch(() => {});
+    else void nav.clearAppBadge?.().catch(() => {});
+  }
+
+  private focusSession(sessionId: string): void {
+    for (const [id, pane] of this.panes) {
+      if (pane.sessionId === sessionId) {
+        this.setFocus(id);
+        return;
+      }
+    }
   }
 
   paneSearchRequested(pane: TerminalPane): void {
@@ -356,6 +436,10 @@ export class TerminalApp implements PaneHost {
     this.view.setFocused(id);
     this.webgl.acquire(id, pane);
     pane.focus();
+    // Looking at a pane resolves its attention.
+    if (pane.sessionId && document.visibilityState === "visible") {
+      this.notifications.clear(pane.sessionId);
+    }
     this.setStatus(this.paneStatuses.get(id) ?? null);
     this.settingsPanel?.setTabTitleEditable(!pane.readOnly);
     this.loadTabTitleForFocused();
@@ -418,14 +502,21 @@ export class TerminalApp implements PaneHost {
       }
     };
 
+    const clearFocusedAttention = (): void => {
+      const sid = this.focusedPane?.sessionId;
+      if (sid) this.notifications.clear(sid);
+    };
+
     window.addEventListener("focus", () => {
       clearUnread();
+      clearFocusedAttention();
       tryNow();
     });
     window.addEventListener("online", tryNow);
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") {
         clearUnread();
+        clearFocusedAttention();
         tryNow();
       }
     });

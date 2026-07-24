@@ -105,6 +105,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 version: head.version,
                 keepAlive: head.isKeepAlive
             )
+        case (.GET, "/api/sessions"):
+            serveSessions(head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/sessions/") && path.hasSuffix("/marks"):
             serveMarks(path: path, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/"):
@@ -115,6 +117,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 version: head.version,
                 keepAlive: false
             )
+        case (.GET, "/sessions"):
+            // The fleet view is a distinct page; `/` stays "open a tab, get a
+            // shell". Extensionless URL, static file behind it.
+            serveStatic(path: "/sessions.html", head: head, context: context, setAuthCookie: setAuthCookie)
         case (.GET, _):
             serveStatic(path: path, head: head, context: context, setAuthCookie: setAuthCookie)
         default:
@@ -124,6 +130,49 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 context: context,
                 version: head.version,
                 keepAlive: false
+            )
+        }
+    }
+
+    /// `GET /api/sessions` — every live session with its mark-derived state.
+    /// The supervision surface: which shells are running, idle, or waiting,
+    /// and what each last ran. Read-only.
+    private func serveSessions(head: HTTPRequestHead, context: ChannelHandlerContext) {
+        let promise = context.eventLoop.makePromise(of: [SessionRegistry.SessionSummary].self)
+        promise.completeWithTask {
+            await self.registry.summaries()
+        }
+        promise.futureResult.whenComplete { result in
+            let summaries = (try? result.get()) ?? []
+            let items: [[String: Any]] = summaries.map { summary in
+                let derived = DerivedSessionState.derive(from: summary.marks)
+                var item: [String: Any] = [
+                    "id": summary.id.uuidString,
+                    "shell": summary.shell,
+                    "cwd": summary.cwd,
+                    "pid": summary.pid,
+                    "attached": summary.attached,
+                    "observers": summary.observerCount,
+                    "state": derived.state.rawValue,
+                    "marks": summary.marks.count,
+                ]
+                if let command = derived.lastCommand { item["lastCommand"] = command }
+                if let exit = derived.lastExit { item["lastExit"] = exit }
+                return item
+            }
+            let body: String
+            if let data = try? JSONSerialization.data(withJSONObject: ["ok": true, "sessions": items]),
+               let text = String(data: data, encoding: .utf8) {
+                body = text
+            } else {
+                body = #"{"ok":false,"error":"encoding failed"}"#
+            }
+            self.writeJSON(
+                status: .ok,
+                body: body,
+                context: context,
+                version: head.version,
+                keepAlive: head.isKeepAlive
             )
         }
     }
