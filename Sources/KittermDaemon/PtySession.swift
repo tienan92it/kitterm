@@ -525,10 +525,21 @@ public final class PtySession: @unchecked Sendable {
         stateLock.withLock { lastPolledCwd ?? initialCwd }
     }
 
+    /// The shell's working directory right now, read from the kernel. The
+    /// poll only runs while a controller is attached, so a detached session's
+    /// `currentCwd` freezes at detach time — exactly the sessions the fleet
+    /// view supervises. `proc_pidinfo` is a microsecond read, so the listing
+    /// API asks the kernel directly and falls back to the last-known value.
+    public var liveCwd: String {
+        Self.currentDirectory(ofPID: pid) ?? currentCwd
+    }
+
     private func startCwdPolling() {
         let alive = stateLock.withLock { () -> Bool in
             guard !terminated else { return false }
-            lastPolledCwd = initialCwd
+            // Seed only when nothing was ever polled: a reattach must not
+            // regress a fresher value back to the spawn cwd.
+            if lastPolledCwd == nil { lastPolledCwd = initialCwd }
             return true
         }
         guard alive, let eventLoop, cwdTask == nil else { return }

@@ -66,6 +66,31 @@ describe("Osc99Assembler", () => {
     const a = new Osc99Assembler();
     expect(a.feed(";")).toBeNull();
   });
+
+  it("ignores non-title/body payload types", () => {
+    const a = new Osc99Assembler();
+    // An icon chunk must not leak bytes into the title…
+    expect(a.feed("i=9:p=icon:d=0;aWNvbmJ5dGVz")).toBeNull();
+    expect(a.feed("i=9:d=1;Build done")).toEqual({ title: null, body: "Build done" });
+    // …and a notification made only of ignored payloads never fires.
+    expect(a.feed("p=icon;ZmFrZQ==")).toBeNull();
+  });
+
+  it("completes on a trailing ignored payload chunk", () => {
+    const a = new Osc99Assembler();
+    expect(a.feed("i=2:d=0;Agent waiting")).toBeNull();
+    expect(a.feed("i=2:p=icon:d=1;xxxx")).toEqual({ title: null, body: "Agent waiting" });
+  });
+
+  it("caps runaway accumulation into one notification", () => {
+    const a = new Osc99Assembler();
+    for (let i = 0; i < 100; i++) {
+      expect(a.feed(`i=big:d=0;${"x".repeat(1000)}`)).toBeNull();
+    }
+    const note = a.feed("i=big:d=1;end");
+    expect(note).not.toBeNull();
+    expect(note?.body.length).toBeLessThanOrEqual(4096);
+  });
 });
 
 function makeDeps(over: Partial<NotificationDeps> = {}): NotificationDeps & {

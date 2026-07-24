@@ -47,7 +47,7 @@ public actor SessionRegistry {
                 SessionSummary(
                     id: id,
                     shell: session.shellPath,
-                    cwd: session.currentCwd,
+                    cwd: session.liveCwd,
                     pid: session.pid,
                     attached: attachedIDs.contains(id),
                     observerCount: session.observerCount,

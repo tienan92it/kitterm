@@ -672,11 +672,18 @@ export class TerminalPane {
     }, 1500);
   }
 
-  /** Scroll to command `index` (1-based) and flash its prompt line. */
+  /** Scroll to command `index` (1-based) and flash its prompt line. Indexing
+   * is buffer-relative, so a link can outrun this pane's retained commands;
+   * when that happens we land on the nearest one but say so, rather than
+   * highlight the wrong line with confidence. */
   scrollToCommand(index: number): void {
     const markers = this.liveMarkers;
-    const marker = markers[Math.min(index, markers.length) - 1];
+    const clamped = Math.min(index, markers.length);
+    const marker = markers[clamped - 1];
     if (!marker) return;
+    if (clamped !== index) {
+      this.host.paneFlash("Linked command not in scrollback — showing nearest");
+    }
     this.terminal.scrollToLine(marker.line);
     const decoration = this.terminal.registerDecoration({ marker });
     decoration?.onRender((element) => {

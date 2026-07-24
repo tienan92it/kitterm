@@ -28,8 +28,13 @@ const root = document.getElementById("sessions");
 injectStyles();
 
 let lastSignature = "";
+/** One request at a time: a response slower than the poll interval must not
+ * overlap the next tick, or an older snapshot could repaint over a newer one. */
+let inFlight = false;
 
 async function poll(): Promise<void> {
+  if (inFlight || document.hidden) return;
+  inFlight = true;
   try {
     const res = await fetch("/api/sessions", { headers: { accept: "application/json" } });
     if (!res.ok) throw new Error(String(res.status));
@@ -37,6 +42,8 @@ async function poll(): Promise<void> {
     render(data.sessions ?? []);
   } catch {
     renderError();
+  } finally {
+    inFlight = false;
   }
 }
 
@@ -204,3 +211,7 @@ function injectStyles(): void {
 
 void poll();
 setInterval(() => void poll(), POLL_MS);
+// Hidden tabs skip polling (see poll); refresh immediately on return.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) void poll();
+});

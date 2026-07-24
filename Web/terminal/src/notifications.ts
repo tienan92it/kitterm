@@ -56,6 +56,10 @@ export function parseOsc777(data: string): TerminalNotification | null {
  * no browser notification surfaces anyway.
  */
 const MAX_PENDING = 32;
+/** Per-field cap on accumulated text. Far above what any OS notification
+ * shows, and it bounds memory against a producer that streams chunks into
+ * one id forever. */
+const MAX_FIELD_CHARS = 4096;
 
 type Pending = { title: string; body: string };
 
@@ -75,7 +79,11 @@ export class Osc99Assembler {
     }
 
     const id = meta.get("i") ?? "";
-    const which = meta.get("p") === "body" ? "body" : "title";
+    // Only title/body payloads become text; anything else (icon, buttons,
+    // sound, …) must not leak into the notification, but its `d` flag still
+    // counts toward completing the id.
+    const p = meta.get("p") ?? "title";
+    const which = p === "title" || p === "body" ? p : null;
     const done = meta.get("d") !== "0"; // default 1 = done
 
     let payload = payloadRaw;
@@ -88,7 +96,7 @@ export class Osc99Assembler {
     }
 
     const acc = this.pending.get(id) ?? { title: "", body: "" };
-    acc[which] += payload;
+    if (which) acc[which] = (acc[which] + payload).slice(0, MAX_FIELD_CHARS);
 
     if (!done) {
       this.pending.set(id, acc);
