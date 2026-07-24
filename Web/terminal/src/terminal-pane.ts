@@ -911,6 +911,7 @@ export class TerminalPane {
 
     let lastY: number | null = null;
     let accumulator: SwipeAccumulator | null = null;
+    let rect: DOMRect | null = null;
 
     element.addEventListener(
       "touchstart",
@@ -921,11 +922,11 @@ export class TerminalPane {
           return;
         }
         lastY = event.touches[0].clientY;
-        // Cell height drives the step size; fall back to a sane default.
+        // Cache geometry for the gesture: cell height drives the step size,
+        // and the rect maps the finger to a cell for mouse-wheel reporting.
+        rect = element.getBoundingClientRect();
         const rowHeight =
-          element.clientHeight > 0 && this.terminal.rows > 0
-            ? element.clientHeight / this.terminal.rows
-            : 18;
+          rect.height > 0 && this.terminal.rows > 0 ? rect.height / this.terminal.rows : 18;
         accumulator = new SwipeAccumulator(rowHeight);
       },
       { passive: true },
@@ -934,7 +935,9 @@ export class TerminalPane {
     element.addEventListener(
       "touchmove",
       (event) => {
-        if (lastY === null || accumulator === null || event.touches.length !== 1) return;
+        if (lastY === null || accumulator === null || rect === null || event.touches.length !== 1) {
+          return;
+        }
         const target = swipeTarget(
           this.terminal.buffer.active.type === "alternate",
           this.terminal.modes.mouseTrackingMode !== "none",
@@ -942,22 +945,18 @@ export class TerminalPane {
         // Let xterm handle scrollback on the normal screen.
         if (target === "scrollback") return;
 
-        const y = event.touches[0].clientY;
+        const touch = event.touches[0];
         // feed() is down-positive: moving the finger down increases clientY.
-        const steps = accumulator.feed(y - lastY);
-        lastY = y;
+        const steps = accumulator.feed(touch.clientY - lastY);
+        lastY = touch.clientY;
         // We own this gesture now — stop xterm from also scrolling.
         event.preventDefault();
         if (steps === 0 || this.exitedValue || this.readOnlyValue) return;
 
-        const cursor = {
-          col: this.terminal.buffer.active.cursorX + 1,
-          row: this.terminal.buffer.active.cursorY + 1,
-        };
         const input = swipeToInput(
           target,
           steps,
-          cursor,
+          this.cellAt(touch.clientX, touch.clientY, rect),
           this.terminal.modes.applicationCursorKeysMode,
         );
         if (input) this.session.sendInput(input);
@@ -969,9 +968,23 @@ export class TerminalPane {
     const end = () => {
       lastY = null;
       accumulator = null;
+      rect = null;
     };
     element.addEventListener("touchend", end, { passive: true });
     element.addEventListener("touchcancel", end, { passive: true });
+  }
+
+  /** The 1-based terminal cell under a viewport point, for mouse-wheel
+   * reporting — a wheel event belongs at the pointer, not the text cursor. */
+  private cellAt(clientX: number, clientY: number, rect: DOMRect): { col: number; row: number } {
+    const cols = this.terminal.cols;
+    const rows = this.terminal.rows;
+    const col = rect.width > 0 ? Math.floor(((clientX - rect.left) / rect.width) * cols) + 1 : 1;
+    const row = rect.height > 0 ? Math.floor(((clientY - rect.top) / rect.height) * rows) + 1 : 1;
+    return {
+      col: Math.min(Math.max(col, 1), cols),
+      row: Math.min(Math.max(row, 1), rows),
+    };
   }
 
   private wireClipboard(): void {

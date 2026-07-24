@@ -1,14 +1,13 @@
+import { ExtraKeysBar, isTouchPrimary } from "./extra-keys";
 import { setFavicon, type FaviconState } from "./favicon";
 import { LOCAL_FONT_ID, resolveFontFamily, type TerminalFontId } from "./fonts";
+import { trackKeyboardInsets } from "./keyboard-insets";
 import {
   loadLayout,
   saveLayout,
   takeLegacySessionId,
   type PaneSession,
 } from "./layout-store";
-import { ExtraKeysBar, isTouchPrimary } from "./extra-keys";
-import { trackKeyboardInsets } from "./keyboard-insets";
-import { createWakeLock } from "./wake-lock";
 import { NotificationCenter, type TerminalNotification } from "./notifications";
 import { isMacPlatform, type PaneCommand } from "./pane-keys";
 import {
@@ -40,6 +39,7 @@ import {
 import { TerminalPane, type PaneHost } from "./terminal-pane";
 import { findThemeById, type TerminalThemeId } from "./themes";
 import { composeTabTitle } from "./title";
+import { createWakeLock } from "./wake-lock";
 import { WebglBudget } from "./webgl-budget";
 
 /** Coalesce a burst of typing into one storage write. */

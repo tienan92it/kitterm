@@ -40,18 +40,15 @@ const ARROW_FINAL: Record<string, string> = {
   ArrowLeft: "D",
 };
 
-/** Base sequence for a named key, respecting application cursor keys (DECCKM)
- * so arrows/Home/End reach full-screen apps in the form they expect. */
+/** Base sequence for a named key the soft keyboard lacks, respecting
+ * application cursor keys (DECCKM) so arrows/Home/End reach full-screen apps in
+ * the form they expect. A literal character (e.g. "|") maps to itself. */
 function baseSequence(key: string, appCursorKeys: boolean): string {
   switch (key) {
     case "Escape":
       return "\x1b";
     case "Tab":
       return "\x09";
-    case "Enter":
-      return "\r";
-    case "Backspace":
-      return "\x7f";
     case "ArrowUp":
     case "ArrowDown":
     case "ArrowLeft":

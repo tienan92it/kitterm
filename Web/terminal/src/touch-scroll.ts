@@ -73,13 +73,14 @@ export class SwipeAccumulator {
 
 /**
  * The bytes to send for `steps` of swipe on a given target. `steps > 0` means
- * the finger moved down (reveal earlier content). Returns "" for the
- * scrollback target (handled by xterm) or no movement.
+ * the finger moved down (reveal earlier content). `position` is the 1-based
+ * cell under the finger, reported with each mouse-wheel event (SGR mouse mode).
+ * Returns "" for the scrollback target (handled by xterm) or no movement.
  */
 export function swipeToInput(
   target: SwipeTarget,
   steps: number,
-  cursor: { col: number; row: number } = { col: 1, row: 1 },
+  position: { col: number; row: number } = { col: 1, row: 1 },
   appCursorKeys = false,
 ): string {
   if (steps === 0 || target === "scrollback") return "";
@@ -90,5 +91,5 @@ export function swipeToInput(
     return (fingerDown ? arrowUp(appCursorKeys) : arrowDown(appCursorKeys)).repeat(count);
   }
   // mouse: finger down → wheel up.
-  return mouseWheelSequence(fingerDown, cursor.col, cursor.row).repeat(count);
+  return mouseWheelSequence(fingerDown, position.col, position.row).repeat(count);
 }
