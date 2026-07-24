@@ -96,6 +96,8 @@ export class TerminalApp implements PaneHost {
   /** A `/?session=` link is a view onto someone else's shell: it must not read
    * or overwrite this tab's saved layout until the user makes it their own. */
   private linkBoot = false;
+  /** `?cmd=N` from the boot URL, applied to the link-boot pane. */
+  private pendingCommandScroll: number | null = null;
   /** Per-pane persistent status, shown when that pane is focused. */
   private readonly paneStatuses = new Map<PaneId, string | null>();
 
@@ -141,6 +143,8 @@ export class TerminalApp implements PaneHost {
     const params = new URLSearchParams(window.location.search);
     const linkSession = params.get("session");
     const linkCwd = params.get("cwd");
+    const cmd = Number.parseInt(params.get("cmd") ?? "", 10);
+    this.pendingCommandScroll = Number.isFinite(cmd) && cmd > 0 ? cmd : null;
 
     // A share link or a cwd deep link is always a single fresh pane, and does
     // not disturb whatever layout this tab already had saved.
@@ -202,6 +206,8 @@ export class TerminalApp implements PaneHost {
       // fresh pane. Never sent for a `/?session=` link pane (linkBoot), whose
       // history belongs to the shell being observed, not to us.
       histKey: this.linkBoot ? null : (session.histKey ?? newHistKey()),
+      // A `?cmd=N` deep link applies to the single link-boot pane only.
+      commandScroll: this.linkBoot ? this.pendingCommandScroll : null,
     });
     this.panes.set(id, pane);
     this.webgl.acquire(id, pane);
