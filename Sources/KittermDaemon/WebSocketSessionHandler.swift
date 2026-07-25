@@ -402,10 +402,11 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         sendLogState(resync: false, snapshot: snapshot, context: context)
         sendRole(.controller, context: context)
         registerAsController(context: context)
-        // Attached/linger bookkeeping catches up asynchronously; the swap
-        // itself is already complete.
+        // Attached/linger bookkeeping catches up asynchronously — but in
+        // enqueue order, so a markDetached from a moments-earlier teardown
+        // can never land on top of this claim.
         let registry = registry
-        Task { await registry.claimControl(sessionID) }
+        handoff.enqueueBookkeeping { await registry.claimControl(sessionID) }
         updateBackpressure(context: context)
     }
 
@@ -630,25 +631,28 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         batcher = nil
         pendingClientFrames = []
 
+        // Registry calls go through the bookkeeping chain so they apply in
+        // event-loop order — a takeover's claimControl moments later must not
+        // be overtaken by this teardown's markDetached.
         let registry = registry
         if role == .observer {
             // Observers never own the session lifecycle.
             if let pty, let sessionID {
                 pty.removeObserver(observerID)
                 if !ptyExited {
-                    Task { await registry.observerLeft(sessionID) }
+                    handoff.enqueueBookkeeping { await registry.observerLeft(sessionID) }
                 }
             }
         } else if let pty, let sessionID {
             handoff.clearController(sessionID)
             if ptyExited {
                 pty.terminate()
-                Task { await registry.remove(sessionID) }
+                handoff.enqueueBookkeeping { await registry.remove(sessionID) }
             } else {
                 pty.detach(onExitWhileDetached: { _ in
                     Task { await registry.remove(sessionID) }
                 })
-                Task { await registry.markDetached(sessionID) }
+                handoff.enqueueBookkeeping { await registry.markDetached(sessionID) }
             }
         } else if let pty {
             // Never registered (spawn raced teardown) — kill it.

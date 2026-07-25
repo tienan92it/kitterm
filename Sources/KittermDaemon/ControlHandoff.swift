@@ -44,4 +44,22 @@ final class ControlHandoff: @unchecked Sendable {
     func takeStepDown(_ session: UUID) -> (() -> Void)? {
         stepDowns.removeValue(forKey: session)
     }
+
+    /// Tail of the registry-bookkeeping chain (see `enqueueBookkeeping`).
+    private var bookkeepingTail: Task<Void, Never>?
+
+    /// Run registry bookkeeping in strict enqueue order. Unstructured `Task`s
+    /// carry no FIFO guarantee into the actor, so a teardown's `markDetached`
+    /// could be applied *after* a takeover's `claimControl` that happened
+    /// later on the loop — leaving a live-controlled session marked detached,
+    /// which the linger clock would eventually reap. Chaining each op behind
+    /// the previous one makes actor-side application order match event-loop
+    /// order. Called only on the event-loop thread.
+    func enqueueBookkeeping(_ op: @escaping @Sendable () async -> Void) {
+        let previous = bookkeepingTail
+        bookkeepingTail = Task {
+            await previous?.value
+            await op()
+        }
+    }
 }
