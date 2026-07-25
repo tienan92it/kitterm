@@ -94,12 +94,30 @@ public struct SessionLog {
         return Snapshot(data: readRange(from: start), start: start, pruned: false)
     }
 
+    /// Bytes in `[from, to)`, clamped to what is retained. `pruned` is true when
+    /// `from` had rotated out of the ring (the returned bytes start later than
+    /// asked) — the caller only got the tail of the requested range. Used to
+    /// fetch one command's output between two mark offsets.
+    public func range(from: UInt64, to: UInt64) -> Snapshot {
+        let end = min(to, head)
+        let start = min(max(from, base), end)
+        let pruned = from < base
+        return Snapshot(data: readRange(from: start, to: end), start: start, pruned: pruned)
+    }
+
     /// Copy `[offset, head)` out of the ring; `offset` must be in `[base, head]`.
     private func readRange(from offset: UInt64) -> Data {
-        let length = Int(head - offset)
+        readRange(from: offset, to: head)
+    }
+
+    /// Copy `[from, to)` out of the ring; both must be in `[base, head]` with
+    /// `from ≤ to`. The ring position of `from` is measured from `head` (where
+    /// `writeIndex` sits), independent of the slice length.
+    private func readRange(from: UInt64, to: UInt64) -> Data {
+        let length = Int(to - from)
         guard length > 0 else { return Data() }
-        // Ring index of the requested offset, counting back from writeIndex.
-        let back = length % capacity
+        // `from`'s ring index: walk back (head - from) from the write cursor.
+        let back = Int(head - from) % capacity
         let startIndex = (writeIndex - back + capacity) % capacity
         let firstSlice = min(length, capacity - startIndex)
         var out = Data(capacity: length)

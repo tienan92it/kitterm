@@ -12,17 +12,22 @@ public struct DaemonConfig: Sendable {
     public var allowLAN: Bool
     /// Record every session to `~/.kitterm/recordings/*.cast` (asciinema v2).
     public var recordSessions: Bool
+    /// Enable the write route (`POST /api/sessions/<id>/input`). Off by default:
+    /// it lets any policy-admitted caller drive a shell as the invoking user.
+    public var agentControl: Bool
 
     public init(
         host: String = KittermConstants.defaultHost,
         port: Int = KittermConstants.defaultPort,
         allowLAN: Bool = false,
-        recordSessions: Bool = false
+        recordSessions: Bool = false,
+        agentControl: Bool = false
     ) {
         self.host = host
         self.port = port
         self.allowLAN = allowLAN
         self.recordSessions = recordSessions
+        self.agentControl = agentControl
     }
 }
 
@@ -109,7 +114,8 @@ public final class DaemonServer: @unchecked Sendable {
                 let httpHandler = HTTPAPIHandler(
                     registry: registry,
                     policy: policy,
-                    port: config.port
+                    port: config.port,
+                    agentControl: config.agentControl
                 )
                 let config = NIOHTTPServerUpgradeConfiguration(
                     upgraders: [upgrader as any HTTPServerProtocolUpgrader],

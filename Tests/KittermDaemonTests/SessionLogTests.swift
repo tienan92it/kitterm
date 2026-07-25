@@ -99,4 +99,66 @@ final class SessionLogTests: XCTestCase {
         XCTAssertEqual(snap.data, data("abc"))
         XCTAssertEqual(snap.start, 0)
     }
+
+    // MARK: - range(from:to:)
+
+    func testRangeReturnsExactSlice() {
+        var log = SessionLog(capacity: 32)
+        log.append(data("hello-world"))
+
+        let snap = log.range(from: 6, to: 11) // "world"
+        XCTAssertEqual(snap.data, data("world"))
+        XCTAssertEqual(snap.start, 6)
+        XCTAssertFalse(snap.pruned)
+    }
+
+    func testRangeInTheMiddle() {
+        var log = SessionLog(capacity: 32)
+        log.append(data("0123456789"))
+
+        let snap = log.range(from: 2, to: 5) // "234"
+        XCTAssertEqual(snap.data, data("234"))
+        XCTAssertEqual(snap.start, 2)
+    }
+
+    func testRangeAcrossTheWrapSeam() {
+        var log = SessionLog(capacity: 8)
+        log.append(data("abcdef")) // writeIndex 6
+        log.append(data("ghij")) // wraps; retained [2,10) = "cdefghij"
+
+        XCTAssertEqual(log.base, 2)
+        // A slice straddling the seam: offsets 4..8 = "efgh".
+        let snap = log.range(from: 4, to: 8)
+        XCTAssertEqual(snap.data, data("efgh"))
+        XCTAssertEqual(snap.start, 4)
+        XCTAssertFalse(snap.pruned)
+    }
+
+    func testRangeClampsAPrunedStart() {
+        var log = SessionLog(capacity: 4)
+        log.append(data("abcdefgh")) // base 4, retained "efgh"
+
+        // Asked from 1 (pruned) to 6 → clamped to [4,6) = "ef".
+        let snap = log.range(from: 1, to: 6)
+        XCTAssertTrue(snap.pruned)
+        XCTAssertEqual(snap.start, 4)
+        XCTAssertEqual(snap.data, data("ef"))
+    }
+
+    func testRangeClampsEndToHead() {
+        var log = SessionLog(capacity: 32)
+        log.append(data("abcde"))
+
+        let snap = log.range(from: 3, to: 99) // clamp to head=5 → "de"
+        XCTAssertEqual(snap.data, data("de"))
+        XCTAssertEqual(snap.start, 3)
+    }
+
+    func testEmptyRange() {
+        var log = SessionLog(capacity: 32)
+        log.append(data("abc"))
+
+        XCTAssertTrue(log.range(from: 2, to: 2).data.isEmpty)
+        XCTAssertTrue(log.range(from: 3, to: 1).data.isEmpty) // inverted → empty
+    }
 }

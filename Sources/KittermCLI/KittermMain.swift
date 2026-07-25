@@ -18,7 +18,8 @@ enum KittermMain {
                 try start(
                     parsePort(args.dropFirst()),
                     lan: hasFlag("--lan", args),
-                    record: hasFlag("--record", args)
+                    record: hasFlag("--record", args),
+                    agentControl: hasFlag("--agent-control", args)
                 )
             case "stop":
                 try stop()
@@ -40,7 +41,8 @@ enum KittermMain {
                 try serve(
                     port: port,
                     lan: hasFlag("--lan", args),
-                    record: hasFlag("--record", args)
+                    record: hasFlag("--record", args),
+                    agentControl: hasFlag("--agent-control", args)
                 )
             case "help", "-h", "--help":
                 printUsage()
@@ -61,12 +63,12 @@ enum KittermMain {
             kitterm — Mac loopback terminal daemon
 
             Usage:
-              kitterm start [--port PORT] [--lan] [--record]
+              kitterm start [--port PORT] [--lan] [--record] [--agent-control]
               kitterm stop
               kitterm status
-              kitterm restart [--port PORT] [--lan] [--record]
+              kitterm restart [--port PORT] [--lan] [--record] [--agent-control]
               kitterm open [PATH]     # browser shell in PATH (default: cwd)
-              kitterm service install [--port PORT] [--lan] [--record]
+              kitterm service install [--port PORT] [--lan] [--record] [--agent-control]
               kitterm service uninstall | status
               kitterm upgrade         # install the latest release
               kitterm version
@@ -77,6 +79,8 @@ enum KittermMain {
             printed at start (also in ~/.kitterm/token).
             --record writes each session to ~/.kitterm/recordings/*.cast
             (asciinema v2 — replay with `asciinema play`).
+            --agent-control enables POST /api/sessions/<id>/input, letting any
+            client the access policy admits type into any shell as your user.
 
             Default port: \(KittermConstants.defaultPort)
             State: ~/.kitterm/{pid,port,server.log}
@@ -108,7 +112,12 @@ enum KittermMain {
         return port
     }
 
-    private static func serve(port: Int, lan: Bool = false, record: Bool = false) throws {
+    private static func serve(
+        port: Int,
+        lan: Bool = false,
+        record: Bool = false,
+        agentControl: Bool = false
+    ) throws {
         try DaemonPaths.ensureStateDirectory()
         redirectLogs(to: DaemonPaths.logFile)
 
@@ -121,7 +130,8 @@ enum KittermMain {
                 host: KittermConstants.defaultHost,
                 port: port,
                 allowLAN: lan,
-                recordSessions: record
+                recordSessions: record,
+                agentControl: agentControl
             )
         )
     }
@@ -160,13 +170,19 @@ enum KittermMain {
             )
         }
         try stop(ignoreMissing: true)
-        try start(parsePort(array), lan: hasFlag("--lan", array), record: hasFlag("--record", array))
+        try start(
+            parsePort(array),
+            lan: hasFlag("--lan", array),
+            record: hasFlag("--record", array),
+            agentControl: hasFlag("--agent-control", array)
+        )
     }
 
     private static func start(
         _ port: Int,
         lan: Bool = false,
         record: Bool = false,
+        agentControl: Bool = false,
         openBrowser: Bool = true
     ) throws {
         try DaemonPaths.ensureStateDirectory()
@@ -199,6 +215,9 @@ enum KittermMain {
         }
         if record {
             serveArgs.append("--record")
+        }
+        if agentControl {
+            serveArgs.append("--agent-control")
         }
         process.arguments = serveArgs
         process.standardInput = FileHandle.nullDevice
@@ -353,7 +372,8 @@ enum KittermMain {
             try installService(
                 port: parsePort(array),
                 lan: hasFlag("--lan", array),
-                record: hasFlag("--record", array)
+                record: hasFlag("--record", array),
+                agentControl: hasFlag("--agent-control", array)
             )
         case "uninstall":
             try uninstallService()
@@ -461,7 +481,12 @@ enum KittermMain {
         }
     }
 
-    private static func installService(port: Int, lan: Bool, record: Bool) throws {
+    private static func installService(
+        port: Int,
+        lan: Bool,
+        record: Bool,
+        agentControl: Bool
+    ) throws {
         let executable = try serviceExecutablePath()
         let plist = launchAgentPlist
         try FileManager.default.createDirectory(
@@ -473,6 +498,7 @@ enum KittermMain {
         var programArgs = [executable, "serve", "--port", "\(port)"]
         if lan { programArgs.append("--lan") }
         if record { programArgs.append("--record") }
+        if agentControl { programArgs.append("--agent-control") }
 
         let entries = programArgs
             .map { "\t\t<string>\(xmlEscaped($0))</string>" }
