@@ -146,10 +146,6 @@ export class TerminalPane {
   private roleKnown = false;
   /** Overlay shown on read-only panes; clicking it requests control. */
   private takeControlBtn: HTMLButtonElement | null = null;
-  /** An in-band OSC 7/1337 cwd arrived. On a profile pane the transport's far
-   * end is the truth; the daemon's polled cwd (the local ssh/docker process)
-   * must then stop overwriting it. */
-  private sawInBandCwd = false;
   private folderValue: string | null = null;
   private reconnectTimer: number | null = null;
   private reconnectAttempt = 0;
@@ -575,13 +571,14 @@ export class TerminalPane {
         // from the custom name plus the cwd, so there is nothing to do.
         break;
       case "cwd":
-        // The daemon polls the *local* process (ssh, docker) — meaningless
-        // for a profile pane once the far end reports its own cwd in-band.
-        if (this.profileValue && this.sawInBandCwd) break;
+        // Latest report wins, whatever the source. The daemon only re-sends
+        // when the *local* process changes directory (ssh/docker never do),
+        // while a remote shell with kitterm integration reports OSC 7 every
+        // prompt — so the far end naturally out-reports the poll while you
+        // are inside it, and the local shell takes back over when you exit.
         if (frame.cwd) this.setFolderFromCwd(frame.cwd);
         break;
       case "sessionMeta":
-        if (this.profileValue && this.sawInBandCwd) break;
         if (frame.meta.cwd) this.setFolderFromCwd(frame.meta.cwd);
         break;
       case "exit":
@@ -618,17 +615,13 @@ export class TerminalPane {
   private registerCwdHandlers(): void {
     this.terminal.parser.registerOscHandler(7, (data) => {
       const cwd = cwdFromOsc7(data);
-      if (cwd) {
-        this.sawInBandCwd = true;
-        this.setFolderFromCwd(cwd);
-      }
+      if (cwd) this.setFolderFromCwd(cwd);
       return false;
     });
 
     const iterm = this.terminal.parser.registerOscHandler(1337, (data) => {
       const cwd = cwdFromOsc1337(data);
       if (cwd) {
-        this.sawInBandCwd = true;
         this.setFolderFromCwd(cwd);
       } else if (data.length > ITERM_OSC_PAYLOAD_LIMIT) {
         // An image (or similar bulk payload) — stop paying to buffer them.

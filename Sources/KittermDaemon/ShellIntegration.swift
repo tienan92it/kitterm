@@ -56,6 +56,10 @@ public enum ShellIntegration {
         __kitterm_ran_command=
       fi
       printf '\e]133;A\a'
+      # OSC 7 cwd report — how kitterm learns where a *remote* shell is (the
+      # daemon's local poll only sees the ssh/docker process). Unencoded: fine
+      # for ordinary paths; a literal % in the path may display decoded.
+      printf '\e]7;file://%s%s\a' "$HOST" "$PWD"
     }
 
     autoload -Uz add-zsh-hook
@@ -114,6 +118,10 @@ public enum ShellIntegration {
         __kitterm_ran_command=
       fi
       printf '\e]133;A\a'
+      # OSC 7 cwd report — how kitterm learns where a *remote* shell is (the
+      # daemon's local poll only sees the ssh/docker process). Unencoded: fine
+      # for ordinary paths; a literal % in the path may display decoded.
+      printf '\e]7;file://%s%s\a' "$HOSTNAME" "$PWD"
       __kitterm_at_prompt=1
     }
 
