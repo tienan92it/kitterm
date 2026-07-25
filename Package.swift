@@ -53,7 +53,13 @@ let package = Package(
         ),
         .testTarget(
             name: "KittermDaemonTests",
-            dependencies: ["KittermDaemon", "KittermSpawnHelper"]
+            dependencies: [
+                "KittermDaemon",
+                "KittermSpawnHelper",
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOHTTP1", package: "swift-nio"),
+                .product(name: "NIOEmbedded", package: "swift-nio"),
+            ]
         ),
     ]
 )
