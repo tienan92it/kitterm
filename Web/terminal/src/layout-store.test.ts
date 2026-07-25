@@ -32,7 +32,7 @@ describe("saveLayout / loadLayout", () => {
       root,
       focus: "p2",
       sessions: new Map([
-        ["p1", { sessionId: "abc", cwd: "/tmp", histKey: "k1" }],
+        ["p1", { sessionId: "abc", cwd: "/tmp", histKey: "k1", profile: "vm" }],
         ["p2", { sessionId: null }],
       ]),
     });
@@ -44,6 +44,7 @@ describe("saveLayout / loadLayout", () => {
       sessionId: "abc",
       cwd: "/tmp",
       histKey: "k1",
+      profile: "vm",
     });
     expect(loaded?.sessions.get("p2")).toEqual({
       sessionId: null,

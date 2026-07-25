@@ -32,6 +32,11 @@ public enum DaemonPaths: Sendable {
         stateDirectory.appendingPathComponent("lastlogin")
     }
 
+    /// User-authored session profiles (named connect commands).
+    public static var profilesFile: URL {
+        stateDirectory.appendingPathComponent("profiles.json")
+    }
+
     /// Per-pane shell history files, keyed by the client's durable pane key.
     public static var historyDirectory: URL {
         stateDirectory.appendingPathComponent("history", isDirectory: true)

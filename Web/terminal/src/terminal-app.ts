@@ -149,18 +149,33 @@ export class TerminalApp implements PaneHost {
     const params = new URLSearchParams(window.location.search);
     const linkSession = params.get("session");
     const linkCwd = params.get("cwd");
+    const linkProfile = params.get("profile");
     const cmd = Number.parseInt(params.get("cmd") ?? "", 10);
     this.pendingCommandScroll = Number.isFinite(cmd) && cmd > 0 ? cmd : null;
 
     // A share link or a cwd deep link is always a single fresh pane, and does
     // not disturb whatever layout this tab already had saved.
-    if (linkSession || linkCwd) {
+    if (linkSession || (linkCwd && !linkProfile)) {
       this.linkBoot = true;
       const id = this.nextPaneId();
       return {
         root: leaf(id),
         focus: id,
         panes: [{ id, session: { sessionId: linkSession, cwd: linkCwd ?? undefined } }],
+      };
+    }
+
+    // A profile link seeds this tab's own layout (unlike a share link): the
+    // pane persists, so a reload reattaches to its session and a respawn
+    // after a daemon restart re-runs the profile's connect command.
+    if (linkProfile) {
+      const id = this.nextPaneId();
+      return {
+        root: leaf(id),
+        focus: id,
+        panes: [
+          { id, session: { sessionId: null, cwd: linkCwd ?? undefined, profile: linkProfile } },
+        ],
       };
     }
 
@@ -212,6 +227,7 @@ export class TerminalApp implements PaneHost {
       // fresh pane. Never sent for a `/?session=` link pane (linkBoot), whose
       // history belongs to the shell being observed, not to us.
       histKey: this.linkBoot ? null : (session.histKey ?? newHistKey()),
+      profile: session.profile ?? null,
       // A `?cmd=N` deep link applies to the single link-boot pane only.
       commandScroll: this.linkBoot ? this.pendingCommandScroll : null,
     });
@@ -330,12 +346,15 @@ export class TerminalApp implements PaneHost {
       case "new-tab": {
         // Synchronous with the keydown gesture — any await/rAF here and the
         // popup blocker kills the tab. Full path, not the folder basename.
+        // A profile pane opens another tab of that profile; its cwd may be
+        // remote (OSC 7 through the transport) and means nothing locally.
         const cwd = pane.lastCwd;
-        window.open(
-          cwd ? `/?cwd=${encodeURIComponent(cwd)}` : "/",
-          "_blank",
-          "noopener",
-        );
+        const url = pane.profile
+          ? `/?profile=${encodeURIComponent(pane.profile)}`
+          : cwd
+            ? `/?cwd=${encodeURIComponent(cwd)}`
+            : "/";
+        window.open(url, "_blank", "noopener");
         break;
       }
     }
@@ -425,8 +444,15 @@ export class TerminalApp implements PaneHost {
     const source = this.panes.get(target);
     const id = this.nextPaneId();
     this.root = splitPane(this.root, target, dir, id);
-    // A new pane starts where the one it came from is, matching tmux.
-    this.createPane(id, { sessionId: null, cwd: source?.lastCwd ?? undefined });
+    // A new pane starts where the one it came from is, matching tmux — and a
+    // split of a profile pane opens another shell of that profile (iTerm2
+    // semantics): splitting an ssh pane should give a second remote shell,
+    // not a local one stranded at a remote-looking path.
+    this.createPane(id, {
+      sessionId: null,
+      cwd: source?.lastCwd ?? undefined,
+      profile: source?.profile ?? undefined,
+    });
     this.view.render(this.root);
     this.setFocus(id);
     for (const pane of this.panes.values()) pane.scheduleFit();
@@ -504,6 +530,7 @@ export class TerminalApp implements PaneHost {
         sessionId: pane.sessionId,
         cwd: pane.lastCwd ?? undefined,
         histKey: pane.histKey ?? undefined,
+        profile: pane.profile ?? undefined,
       });
     }
     saveLayout({ root: this.root, focus: this.focusedId, sessions });

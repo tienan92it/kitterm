@@ -33,6 +33,11 @@ enum KittermMain {
                 try service(args.dropFirst())
             case "upgrade", "update":
                 try upgrade()
+            case "integrate":
+                // Snippet only, nothing else on stdout — it is made for piping:
+                //   kitterm integrate >> ~/.zshrc
+                //   kitterm integrate | ssh vm 'cat >> ~/.zshrc'
+                print(ShellIntegration.zsh, terminator: "")
             case "version", "--version", "-v":
                 print(installedVersion() ?? "dev")
             case "serve":
@@ -71,6 +76,7 @@ enum KittermMain {
               kitterm service install [--port PORT] [--lan] [--record] [--agent-control]
               kitterm service uninstall | status
               kitterm upgrade         # install the latest release
+              kitterm integrate       # print the zsh OSC 133/633 snippet
               kitterm version
 
             service install starts kitterm on login via a LaunchAgent.
@@ -81,6 +87,14 @@ enum KittermMain {
             (asciinema v2 — replay with `asciinema play`).
             --agent-control enables POST /api/sessions/<id>/input, letting any
             client the access policy admits type into any shell as your user.
+
+            integrate prints shell integration for shells without native
+            OSC 133 marks. Local: kitterm integrate >> ~/.zshrc
+            Remote VM/container: kitterm integrate | ssh vm 'cat >> ~/.zshrc'
+
+            Session profiles (~/.kitterm/profiles.json) name connect commands
+            run at session start — open /?profile=<name> or use /sessions:
+              { "profiles": [ { "name": "vm", "command": "ssh dev-vm" } ] }
 
             Default port: \(KittermConstants.defaultPort)
             State: ~/.kitterm/{pid,port,server.log}

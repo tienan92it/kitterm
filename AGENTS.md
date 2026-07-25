@@ -8,6 +8,7 @@ Guidance for coding agents working in this repo.
 - Tab open = new shell; session id in `sessionStorage` keeps "tab = shell"
 - Transient disconnects (sleep/wake, reload) **detach** the PTY: every output byte flows through a per-session **4MiB ring with absolute stream offsets** (`SessionLog`) — detached reads never pause, the ring rotates. The client counts received bytes and reconnects with `?since=<offset>`; the daemon replays exactly the gap (or the full ring + a resync flag when the offset rotated out, announced via the `logState` frame). Client auto-reconnects with backoff + on focus/online/visible; unreattached sessions are reaped after 5 min (suspending clock)
 - **Sessions are URLs**: `/?cwd=<path>` deep-links a new shell (`kitterm open <path>`); `/?session=<uuid>` joins a session — first client is controller, later ones are read-only observers (128KB replay tail, resize broadcast, share button copies the link); `/?hist=<key>` selects a per-pane history file
+- **Session profiles** (`SessionProfiles.swift`): `~/.kitterm/profiles.json` names connect commands (`ssh vm`, `docker exec …`). `/?profile=<name>` spawns a login shell and injects `command\n` as type-ahead input (pre-reader `PtySession.write`, flushed at adoption) — visible, echoed, in the pane's history; if the transport exits you land back in the local shell. The URL carries only the *name*; the command comes only from the file. Reattach ignores the param; a respawn after daemon restart re-runs it. Splits and ⌘⌥T inherit the profile. Fleet page (`/sessions`) shows a launcher (`GET /api/profiles`) and per-row profile chips; unknown names close 1008 with the reason. In-band OSC (133 marks, 9/777 notifications, OSC 7 cwd) flows through any transport, so remote shells stay fully legible — `kitterm integrate | ssh vm 'cat >> ~/.zshrc'` installs the snippet remotely
 - **Split panes** (client): one browser tab holds a binary tree of panes (⌘D / ⌘⇧D split, ⌘⌥↑↓ / click focus, ⌘⌥T new browser tab in the focused pane's cwd). Layout + per-pane `{sessionId, cwd, histKey}` persist in `sessionStorage`; a reload restores the tree and reattaches each pane. Daemon is unchanged — N panes are just N WebSockets
 - **Restart resilience**: the daemon polls each shell's cwd via `proc_pidinfo` (~2s, diff-gated) and pushes `cwd` frames, so a restored pane respawns where it was even when the shell emits no OSC 7. Each pane's `?hist=<key>` maps to `~/.kitterm/history/<key>` (set as `HISTFILE`, seeded once from the user's global history), so up-arrow survives a restart with that pane's own commands
 - `--lan` binds 0.0.0.0 with token auth for non-loopback peers (`?token=` → cookie; `~/.kitterm/token`); loopback stays trusted
@@ -53,11 +54,12 @@ Flow-control defaults: ~2ms / 64KB batching, PTY pause at 4MB buffered outbound,
 - No TLS, no multi-user model — shells run as the invoking user
 - The `/api/sessions/<id>/…` GET routes expose command lines and command **output** behind the same single access policy — anyone the policy admits can read what ran, and what it printed, in any session
 - `--agent-control` adds the one write route (`POST …/input`). It sits behind the same access policy, so on a loopback daemon any local process can then drive any shell as your user; on `--lan` the token still gates it. Default off — enabling it is an explicit trust decision
+- `/api/profiles` exposes profile commands behind the same policy; profile *names* from URLs are only ever looked up in the user-authored file, never executed directly
 
 ## State
 
-`~/.kitterm/{pid,port,token,server.log,lastlogin}` plus `recordings/` and
-`history/<key>` (per-pane) — default port **3418**.
+`~/.kitterm/{pid,port,token,server.log,lastlogin,profiles.json}` plus `recordings/`
+and `history/<key>` (per-pane) — default port **3418**.
 
 ## Distribution
 

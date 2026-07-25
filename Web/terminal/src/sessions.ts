@@ -20,7 +20,10 @@ type SessionRow = {
   marks: number;
   lastCommand?: string;
   lastExit?: number;
+  profile?: string;
 };
+
+type Profile = { name: string; command: string; cwd?: string };
 
 const POLL_MS = 2000;
 
@@ -31,6 +34,22 @@ let lastSignature = "";
 /** One request at a time: a response slower than the poll interval must not
  * overlap the next tick, or an older snapshot could repaint over a newer one. */
 let inFlight = false;
+/** Named session profiles (~/.kitterm/profiles.json), fetched once — they are
+ * the user's own config and change only by editing the file. */
+let profiles: Profile[] = [];
+
+async function fetchProfiles(): Promise<void> {
+  try {
+    const res = await fetch("/api/profiles", { headers: { accept: "application/json" } });
+    if (!res.ok) return;
+    const data = (await res.json()) as { ok: boolean; profiles?: Profile[] };
+    profiles = data.profiles ?? [];
+    // Repaint with the launcher on the next poll even if sessions unchanged.
+    lastSignature = "";
+  } catch {
+    // No profiles is a fine state; the launcher just shows "new shell".
+  }
+}
 
 async function poll(): Promise<void> {
   if (inFlight || document.hidden) return;
@@ -55,7 +74,7 @@ function render(sessions: SessionRow[]): void {
   lastSignature = signature;
 
   root.replaceChildren();
-  root.append(header(sessions.length));
+  root.append(header(sessions.length), launcher());
 
   if (sessions.length === 0) {
     const empty = document.createElement("p");
@@ -82,6 +101,30 @@ function header(count: number): HTMLElement {
   return h;
 }
 
+/** One-click session starters: a plain shell, plus one per profile. */
+function launcher(): HTMLElement {
+  const bar = document.createElement("nav");
+  bar.className = "launcher";
+  bar.append(launchLink("new shell", "/", "Open a local shell"));
+  for (const p of profiles) {
+    bar.append(
+      launchLink(`+ ${p.name}`, `/?profile=${encodeURIComponent(p.name)}`, p.command),
+    );
+  }
+  return bar;
+}
+
+function launchLink(label: string, href: string, title: string): HTMLAnchorElement {
+  const a = document.createElement("a");
+  a.className = "launch";
+  a.href = href;
+  a.target = "_blank";
+  a.rel = "noopener";
+  a.textContent = label;
+  a.title = title;
+  return a;
+}
+
 function row(s: SessionRow): HTMLElement {
   const li = document.createElement("li");
   li.className = "row";
@@ -106,6 +149,12 @@ function row(s: SessionRow): HTMLElement {
   state.className = `state ${stateClass(s)}`;
   state.textContent = stateLabel(s);
   top.append(folder, state);
+  if (s.profile) {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.textContent = s.profile;
+    top.append(chip);
+  }
 
   const sub = document.createElement("div");
   sub.className = "sub";
@@ -179,6 +228,17 @@ function injectStyles(): void {
       padding: 1px 9px; font-size: 12px; font-variant-numeric: tabular-nums;
     }
     .empty { color: #8b949e; padding: 32px 4px; }
+    .launcher { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+    .launch {
+      color: #adbac7; text-decoration: none; font-size: 12.5px;
+      background: #21262d; border: 1px solid #30363d; border-radius: 999px;
+      padding: 3px 12px; transition: border-color .12s, color .12s;
+    }
+    .launch:hover { border-color: #58a6ff; color: #e6edf3; }
+    .chip {
+      background: #21262d; color: #8b949e; border-radius: 999px;
+      padding: 0 8px; font-size: 11px;
+    }
     .list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
     .open {
       display: flex; gap: 12px; align-items: flex-start; text-decoration: none;
@@ -209,7 +269,7 @@ function injectStyles(): void {
   document.head.append(style);
 }
 
-void poll();
+void fetchProfiles().then(() => poll());
 setInterval(() => void poll(), POLL_MS);
 // Hidden tabs skip polling (see poll); refresh immediately on return.
 document.addEventListener("visibilitychange", () => {

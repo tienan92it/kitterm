@@ -134,6 +134,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             )
         case (.GET, "/api/sessions"):
             serveSessions(head: head, context: context)
+        case (.GET, "/api/profiles"):
+            serveProfiles(head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/sessions/") && path.hasSuffix("/marks"):
             serveMarks(path: path, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/sessions/") && path.hasSuffix("/commands"):
@@ -199,6 +201,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 ]
                 if let command = derived.lastCommand { item["lastCommand"] = command }
                 if let exit = derived.lastExit { item["lastExit"] = exit }
+                if let profile = summary.profile { item["profile"] = profile }
                 return item
             }
             let body: String
@@ -478,6 +481,38 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             status: .notFound,
             body: #"{"ok":false,"error":"not found"}"#,
             context: context, version: version, keepAlive: false
+        )
+    }
+
+    /// `GET /api/profiles` — the user's named session profiles, so the fleet
+    /// page can offer one-click "new session as <profile>" launchers. Same
+    /// trust boundary as the session list: the file is the caller's own config
+    /// (commands included), and the policy already gates who may ask.
+    ///
+    /// Synchronous read of a tiny local file on the event loop — the same
+    /// class of I/O as static file serving, and only on explicit request.
+    private func serveProfiles(head: HTTPRequestHead, context: ChannelHandlerContext) {
+        let items: [[String: Any]] = SessionProfiles.load().map { profile in
+            var item: [String: Any] = [
+                "name": profile.name,
+                "command": profile.command,
+            ]
+            if let cwd = profile.cwd { item["cwd"] = cwd }
+            return item
+        }
+        let body: String
+        if let data = try? JSONSerialization.data(withJSONObject: ["ok": true, "profiles": items]),
+           let text = String(data: data, encoding: .utf8) {
+            body = text
+        } else {
+            body = #"{"ok":false,"error":"encoding failed"}"#
+        }
+        writeJSON(
+            status: .ok,
+            body: body,
+            context: context,
+            version: head.version,
+            keepAlive: head.isKeepAlive
         )
     }
 
