@@ -109,6 +109,12 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             serveSessions(head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/sessions/") && path.hasSuffix("/marks"):
             serveMarks(path: path, head: head, context: context)
+        case (.GET, _) where path.hasPrefix("/api/sessions/") && path.hasSuffix("/commands"):
+            serveCommands(path: path, head: head, context: context)
+        case (.GET, _)
+            where path.hasPrefix("/api/sessions/") && path.contains("/commands/")
+                && path.hasSuffix("/output"):
+            serveCommandOutput(path: path, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/"):
             writeJSON(
                 status: .notFound,
@@ -240,6 +246,121 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 keepAlive: head.isKeepAlive
             )
         }
+    }
+
+    /// `GET /api/sessions/<uuid>/commands` — the session's commands as JSON,
+    /// each with its output byte range and exit code (derived from marks). An
+    /// agent reads this to find a command, then fetches its output below.
+    private func serveCommands(
+        path: String,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        let components = path.split(separator: "/")
+        // ["api", "sessions", "<uuid>", "commands"]
+        guard components.count == 4, let id = UUID(uuidString: String(components[2])) else {
+            notFound(context: context, version: head.version)
+            return
+        }
+        let promise = context.eventLoop.makePromise(of: [SessionMark]?.self)
+        promise.completeWithTask { await self.registry.session(id)?.marksSnapshot() }
+        promise.futureResult.whenComplete { result in
+            guard case .success(.some(let marks)) = result else {
+                self.writeJSON(
+                    status: .notFound,
+                    body: #"{"ok":false,"error":"no such session"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+                return
+            }
+            let items: [[String: Any]] = SessionCommands.pair(from: marks).map { cmd in
+                var item: [String: Any] = [
+                    "index": cmd.index,
+                    "startOffset": cmd.startOffset,
+                    "running": cmd.running,
+                ]
+                if let command = cmd.command { item["command"] = command }
+                if let exit = cmd.exit { item["exit"] = exit }
+                if let end = cmd.endOffset { item["endOffset"] = end }
+                return item
+            }
+            let body: String
+            if let data = try? JSONSerialization.data(withJSONObject: ["ok": true, "commands": items]),
+               let text = String(data: data, encoding: .utf8) {
+                body = text
+            } else {
+                body = #"{"ok":false,"error":"encoding failed"}"#
+            }
+            self.writeJSON(
+                status: .ok, body: body, context: context,
+                version: head.version, keepAlive: head.isKeepAlive
+            )
+        }
+    }
+
+    /// `GET /api/sessions/<uuid>/commands/<n>/output` — the raw output bytes of
+    /// command `n` (1-based). Served as `application/octet-stream`, capped at
+    /// `apiCommandOutputMaxBytes` (the tail is returned for a flood); response
+    /// headers report the full size and whether bytes were dropped.
+    private func serveCommandOutput(
+        path: String,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        let components = path.split(separator: "/")
+        // ["api", "sessions", "<uuid>", "commands", "<n>", "output"]
+        guard components.count == 6,
+              let id = UUID(uuidString: String(components[2])),
+              let index = Int(components[4]), index >= 1
+        else {
+            notFound(context: context, version: head.version)
+            return
+        }
+        let cap = KittermConstants.apiCommandOutputMaxBytes
+        let promise = context.eventLoop.makePromise(of: PtySession.OutputRange?.self)
+        promise.completeWithTask {
+            guard let session = await self.registry.session(id) else { return nil }
+            let commands = SessionCommands.pair(from: session.marksSnapshot())
+            guard index <= commands.count else { return nil }
+            let cmd = commands[index - 1]
+            // A running command has no end yet — read up to the current head.
+            let end = cmd.endOffset ?? UInt64.max
+            return session.outputRange(from: cmd.startOffset, to: end, maxBytes: cap)
+        }
+        promise.futureResult.whenComplete { result in
+            guard case .success(.some(let range)) = result else {
+                self.writeJSON(
+                    status: .notFound,
+                    body: #"{"ok":false,"error":"no such session or command"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+                return
+            }
+            var headers = HTTPHeaders()
+            headers.add(name: "Content-Type", value: "application/octet-stream")
+            headers.add(name: "Content-Length", value: "\(range.data.count)")
+            headers.add(name: "X-Kitterm-Total-Bytes", value: "\(range.total)")
+            headers.add(name: "X-Kitterm-Truncated", value: range.truncated ? "1" : "0")
+            headers.add(name: "X-Kitterm-Pruned", value: range.pruned ? "1" : "0")
+            headers.add(name: "Connection", value: head.isKeepAlive ? "keep-alive" : "close")
+            let responseHead = HTTPResponseHead(version: head.version, status: .ok, headers: headers)
+            context.write(self.wrapOutboundOut(.head(responseHead)), promise: nil)
+            var buffer = context.channel.allocator.buffer(capacity: range.data.count)
+            buffer.writeBytes(range.data)
+            context.write(self.wrapOutboundOut(.body(.byteBuffer(buffer))), promise: nil)
+            context.writeAndFlush(self.wrapOutboundOut(.end(nil))).whenComplete { _ in
+                if !head.isKeepAlive { context.close(promise: nil) }
+            }
+        }
+    }
+
+    /// Shared 404 JSON.
+    private func notFound(context: ChannelHandlerContext, version: HTTPVersion) {
+        writeJSON(
+            status: .notFound,
+            body: #"{"ok":false,"error":"not found"}"#,
+            context: context, version: version, keepAlive: false
+        )
     }
 
     private static func markKindName(_ kind: MarkKind) -> String {

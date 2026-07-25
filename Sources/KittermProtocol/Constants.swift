@@ -46,6 +46,10 @@ public enum KittermConstants: Sendable {
     public static let sessionObserverReplayMaxBytes: Int = 128 * 1024
     /// Longest OSC 633;E command line carried in a mark frame.
     public static let maxMarkCommandBytes: Int = 2048
+    /// Cap on a single command-output response (`/api/.../commands/<n>/output`);
+    /// larger output returns its tail so a flood can't serialize megabytes on
+    /// the event loop.
+    public static let apiCommandOutputMaxBytes: Int = 256 * 1024
     /// Shell-integration marks kept per session (FIFO beyond the cap).
     public static let sessionMarkCap: Int = 1000
 

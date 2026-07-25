@@ -38,12 +38,19 @@ Guidance for coding agents working in this repo.
 
 Flow-control defaults: ~2ms / 64KB batching, PTY pause at 4MB buffered outbound, resume at 1MB, hard close at 64MB.
 
+## HTTP API (read-only JSON, off the I/O stream)
+
+- `GET /api/health`, `GET /api/lan`, `GET /api/sessions` (mark-derived state per session)
+- `GET /api/sessions/<id>/marks` — the raw shell-integration marks
+- `GET /api/sessions/<id>/commands` — commands paired from marks: `{index, command, exit, startOffset, endOffset, running}`
+- `GET /api/sessions/<id>/commands/<n>/output` — raw output bytes of command `n` (`application/octet-stream`), capped at `apiCommandOutputMaxBytes` (256KiB, tail on overflow); `X-Kitterm-Total-Bytes` / `-Truncated` / `-Pruned` headers. Precise for substantial output; tiny single-frame commands collapse to an empty range (see `SessionCommands`)
+
 ## Security
 
 - Bind `127.0.0.1` by default; `--lan` is the only path that widens it (0.0.0.0 + token auth)
 - Enforce Host / Origin against loopback hostnames
 - No TLS, no multi-user model — shells run as the invoking user
-- `/api/sessions/<id>/marks` exposes command lines (more sensitive than session counts) behind the same access policy — anyone the policy admits can read what ran in any session
+- The `/api/sessions/<id>/…` routes expose command lines and command **output** (more sensitive than session counts) behind the same single access policy — anyone the policy admits can read what ran, and what it printed, in any session. Still read-only: no route writes to a shell
 
 ## State
 

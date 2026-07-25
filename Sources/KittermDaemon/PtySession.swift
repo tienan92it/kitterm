@@ -410,6 +410,40 @@ public final class PtySession: @unchecked Sendable {
         stateLock.withLock { markStore.marks }
     }
 
+    /// A command's captured output for the agent-facing API. `data` is the tail
+    /// `maxBytes` of the requested range (older bytes are what an agent least
+    /// needs when a command floods); `total` is the full range size and
+    /// `truncated`/`pruned` say whether bytes were dropped for the cap or
+    /// rotated out of the ring.
+    public struct OutputRange: Sendable {
+        public let data: Data
+        public let start: UInt64
+        public let total: Int
+        public let truncated: Bool
+        public let pruned: Bool
+    }
+
+    /// Output bytes in `[from, to)` (pass a large `to` for a still-running
+    /// command to read up to now), bounded to the tail `maxBytes`. Read under
+    /// the lock, like the other log accessors.
+    public func outputRange(from: UInt64, to: UInt64, maxBytes: Int) -> OutputRange {
+        stateLock.withLock {
+            let end = min(to, log.head)
+            let reqStart = min(from, end)
+            let total = Int(end - reqStart)
+            let pruned = from < log.base
+            let boundedStart = total > maxBytes ? end - UInt64(maxBytes) : reqStart
+            let snap = log.range(from: boundedStart, to: end)
+            return OutputRange(
+                data: snap.data,
+                start: snap.start,
+                total: total,
+                truncated: total > maxBytes,
+                pruned: pruned
+            )
+        }
+    }
+
     func attachRecorder(_ recorder: SessionRecorder) {
         stateLock.withLock { self.recorder = recorder }
     }
