@@ -63,4 +63,34 @@ final class SessionRegistryTests: XCTestCase {
         let empty = await registry.summaries()
         XCTAssertTrue(empty.isEmpty)
     }
+
+    /// Control-handoff bookkeeping: after a promoted observer claims control,
+    /// the session counts as attached again (a later joiner becomes an
+    /// observer, not a second controller) and any linger clock stops.
+    func testClaimControlReattachesADetachedSession() async throws {
+        let registry = SessionRegistry()
+        let session = try PtySession.spawn(cols: 80, rows: 24, cwd: NSTemporaryDirectory())
+        defer { session.terminate() }
+        let id = await registry.register(session)
+
+        await registry.markDetached(id)
+        let detached = await registry.summaries()
+        XCTAssertFalse(try XCTUnwrap(detached.first).attached)
+
+        await registry.claimControl(id)
+        let claimed = await registry.summaries()
+        XCTAssertTrue(try XCTUnwrap(claimed.first).attached)
+
+        // The next connection resolves as observer — the claim holds.
+        guard case .observer = await registry.resolve(id) else {
+            return XCTFail("expected .observer after claimControl")
+        }
+    }
+
+    func testClaimControlOnUnknownSessionIsANoOp() async {
+        let registry = SessionRegistry()
+        await registry.claimControl(UUID())
+        let count = await registry.count
+        XCTAssertEqual(count, 0)
+    }
 }

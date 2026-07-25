@@ -48,6 +48,9 @@ public final class DaemonServer: @unchecked Sendable {
 
     public func start() throws {
         let registry = self.registry
+        // One coordinator for all connections; only ever touched on the
+        // single event-loop thread.
+        let handoff = ControlHandoff()
         let policy: AccessPolicy
         if config.allowLAN {
             let token = AccessPolicy.generateToken()
@@ -93,6 +96,7 @@ public final class DaemonServer: @unchecked Sendable {
                 return channel.pipeline.addHandler(
                     WebSocketSessionHandler(
                         registry: registry,
+                        handoff: handoff,
                         reattachID: reattachID,
                         requestedCwd: requestedCwd,
                         freshClient: freshClient,

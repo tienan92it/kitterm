@@ -1,27 +1,20 @@
-# kitterm shell integration for zsh.
+# kitterm shell integration for bash.
 #
 # Emits OSC 133 semantic prompt marks (prompt start / output start / exit)
 # and the OSC 633;E command line, so kitterm can index commands: ⌘↑/⌘↓
 # prompt jumps, failed-command dots, and /api/sessions/<id>/marks.
 #
-# ONLY source this if your shell does not already emit OSC 133. Many setups
-# do (Powerlevel10k, oh-my-zsh integrations, VS Code, iTerm2). Two emitters
-# means every prompt and exit is marked twice, which doubles the entries in
-# /api/sessions/<id>/marks. To check, run this in a kitterm tab:
+# The zsh variant lives in shell-integration.zsh; this one exists mostly for
+# remote Linux boxes and containers where bash is the default shell:
 #
-#   cat -v <<< "$(print -P "$PS1")" | grep -o '133;[A-D]'
+#   kitterm integrate bash | ssh vm 'cat >> ~/.bashrc'
 #
-# or simply try the features first — if ⌘↑/⌘↓ already jump between prompts
-# and failed commands already show a red dot, you need nothing here.
-#
-# Install: source it from ~/.zshrc, guarded to kitterm shells only:
-#
-#   [[ -n $KITTERM_DAEMON_CHILD ]] && source /path/to/shell-integration.zsh
-#
-# fish ≥ 4 and nushell emit OSC 133 natively — no snippet needed there.
-# VS Code's shell integration (OSC 633) also works unchanged.
+# ONLY source this if your shell does not already emit OSC 133 (Starship and
+# VS Code's integration do). preexec fires from a DEBUG trap; BASH_COMMAND is
+# the first simple command of the line, so a pipeline's 633;E reports its
+# first stage — close enough for the fleet view, exact exits regardless.
 
-[[ -o interactive ]] || return 0
+[[ $- == *i* ]] || return 0
 [[ -n $KITTERM_SHELL_INTEGRATION ]] && return 0
 KITTERM_SHELL_INTEGRATION=1
 
@@ -35,8 +28,14 @@ __kitterm_escape_cmd() {
   printf '%s' "${cmd//$'\r'/\\x0d}"
 }
 
+# DEBUG fires before every simple command; the at-prompt gate limits the
+# preexec marks to the first command after each prompt, and COMP_LINE keeps
+# tab-completion callbacks from counting as execution.
 __kitterm_preexec() {
-  printf '\e]633;E;%s\a' "$(__kitterm_escape_cmd "$1")"
+  [[ -n $COMP_LINE ]] && return
+  [[ -z $__kitterm_at_prompt ]] && return
+  __kitterm_at_prompt=
+  printf '\e]633;E;%s\a' "$(__kitterm_escape_cmd "$BASH_COMMAND")"
   printf '\e]133;C\a'
   __kitterm_ran_command=1
 }
@@ -51,9 +50,9 @@ __kitterm_precmd() {
   # OSC 7 cwd report — how kitterm learns where a *remote* shell is (the
   # daemon's local poll only sees the ssh/docker process). Unencoded: fine
   # for ordinary paths; a literal % in the path may display decoded.
-  printf '\e]7;file://%s%s\a' "$HOST" "$PWD"
+  printf '\e]7;file://%s%s\a' "$HOSTNAME" "$PWD"
+  __kitterm_at_prompt=1
 }
 
-autoload -Uz add-zsh-hook
-add-zsh-hook preexec __kitterm_preexec
-add-zsh-hook precmd __kitterm_precmd
+trap '__kitterm_preexec' DEBUG
+PROMPT_COMMAND="__kitterm_precmd${PROMPT_COMMAND:+;$PROMPT_COMMAND}"

@@ -395,6 +395,13 @@ public final class PtySession: @unchecked Sendable {
         stateLock.withLock { !terminated }
     }
 
+    /// Absolute stream offset of the next output byte (the log head). A
+    /// promoted observer attaches with `.sinceOffset(logHead)` — it has been
+    /// receiving live output all along, so any replay would duplicate bytes.
+    public var logHead: UInt64 {
+        stateLock.withLock { log.head }
+    }
+
     public var observerCount: Int {
         stateLock.withLock { observers.count }
     }

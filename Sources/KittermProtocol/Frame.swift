@@ -7,6 +7,7 @@ public enum ClientOpcode: UInt8, Sendable {
     case pause = 2
     case resume = 3
     case mark = 4
+    case requestControl = 5
 }
 
 /// Shell-integration mark kinds (OSC 133 / OSC 633 letters), parsed by the
@@ -63,6 +64,9 @@ public enum ClientFrame: Equatable, Sendable {
     /// time; `exit` is nil except on `.commandEnd`; `command` carries the
     /// OSC 633;E command line when the shell reports one (≤ 2KiB).
     case mark(kind: MarkKind, exit: Int32?, offset: UInt64, command: String?)
+    /// An observer asks to become the controller. The daemon demotes the
+    /// current controller (if any) and re-pushes `role` frames to both.
+    case requestControl
 
     public static func decode(_ data: Data) throws -> ClientFrame {
         guard let opcodeByte = data.first else {
@@ -90,6 +94,9 @@ public enum ClientFrame: Equatable, Sendable {
         case .resume:
             guard payload.isEmpty else { throw FrameError.truncatedPayload }
             return .resume
+        case .requestControl:
+            guard payload.isEmpty else { throw FrameError.truncatedPayload }
+            return .requestControl
         case .mark:
             // kind u8 | exit i32be (Int32.min = absent) | offset u64be | cmdline utf8
             guard payload.count >= 13 else {
@@ -142,6 +149,8 @@ public enum ClientFrame: Equatable, Sendable {
             return Data([ClientOpcode.pause.rawValue])
         case .resume:
             return Data([ClientOpcode.resume.rawValue])
+        case .requestControl:
+            return Data([ClientOpcode.requestControl.rawValue])
         case .mark(let kind, let exit, let offset, let command):
             var out = Data([ClientOpcode.mark.rawValue, kind.rawValue])
             var beExit = (exit ?? Int32.min).bigEndian

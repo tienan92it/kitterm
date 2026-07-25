@@ -314,6 +314,28 @@ body,
   border-color: #58a6ff;
 }
 
+/* Read-only observer overlay: one tap to become the controller. */
+.take-control {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  padding: 4px 14px;
+  border: 1px solid #30363d;
+  border-radius: 999px;
+  background: rgba(22, 27, 34, 0.92);
+  color: #adbac7;
+  font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.take-control:hover {
+  border-color: #58a6ff;
+  color: #e6edf3;
+}
+
 .pane-close {
   position: absolute;
   top: 6px;

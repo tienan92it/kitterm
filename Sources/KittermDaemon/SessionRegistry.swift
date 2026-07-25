@@ -84,6 +84,16 @@ public actor SessionRegistry {
         return .controller(session)
     }
 
+    /// A promoted observer now controls the session (live control handoff):
+    /// record it attached and stop any linger clock. The swap itself ran
+    /// synchronously on the event loop; this bookkeeping arrives a beat later,
+    /// which is harmless against the 300s linger window.
+    public func claimControl(_ id: UUID) {
+        guard sessions[id] != nil else { return }
+        lingerTasks.removeValue(forKey: id)?.cancel()
+        attachedIDs.insert(id)
+    }
+
     /// Controller went away; keep the session for the linger window.
     /// (`PtySession.detach()` has already been called by the handler.)
     public func markDetached(_ id: UUID) {

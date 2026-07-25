@@ -36,8 +36,15 @@ enum KittermMain {
             case "integrate":
                 // Snippet only, nothing else on stdout — it is made for piping:
                 //   kitterm integrate >> ~/.zshrc
-                //   kitterm integrate | ssh vm 'cat >> ~/.zshrc'
-                print(ShellIntegration.zsh, terminator: "")
+                //   kitterm integrate bash | ssh vm 'cat >> ~/.bashrc'
+                switch args.dropFirst().first ?? "zsh" {
+                case "zsh":
+                    print(ShellIntegration.zsh, terminator: "")
+                case "bash":
+                    print(ShellIntegration.bash, terminator: "")
+                case let shell:
+                    throw CLIError.usage("kitterm integrate [zsh|bash] — no snippet for \(shell)")
+                }
             case "version", "--version", "-v":
                 print(installedVersion() ?? "dev")
             case "serve":
@@ -76,7 +83,7 @@ enum KittermMain {
               kitterm service install [--port PORT] [--lan] [--record] [--agent-control]
               kitterm service uninstall | status
               kitterm upgrade         # install the latest release
-              kitterm integrate       # print the zsh OSC 133/633 snippet
+              kitterm integrate [zsh|bash]  # print the OSC 133/633 snippet
               kitterm version
 
             service install starts kitterm on login via a LaunchAgent.
@@ -90,7 +97,7 @@ enum KittermMain {
 
             integrate prints shell integration for shells without native
             OSC 133 marks. Local: kitterm integrate >> ~/.zshrc
-            Remote VM/container: kitterm integrate | ssh vm 'cat >> ~/.zshrc'
+            Remote VM/container: kitterm integrate bash | ssh vm 'cat >> ~/.bashrc'
 
             Session profiles (~/.kitterm/profiles.json) name connect commands
             run at session start — open /?profile=<name> or use /sessions:
@@ -781,6 +788,7 @@ enum CLIError: Error, LocalizedError {
     case serviceFailed(action: String, detail: String)
     case upgradeUnavailable(detail: String)
     case upgradeFailed(detail: String)
+    case usage(String)
 
     var errorDescription: String? {
         switch self {
@@ -799,6 +807,8 @@ enum CLIError: Error, LocalizedError {
             return "cannot upgrade: \(detail)"
         case .upgradeFailed(let detail):
             return "upgrade failed: \(detail)"
+        case .usage(let detail):
+            return detail
         }
     }
 }

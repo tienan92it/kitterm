@@ -141,6 +141,11 @@ export class TerminalPane {
   /** Session profile name, sent to the daemon as `?profile=`. */
   private readonly profileValue: string | null;
   private readOnlyValue = false;
+  /** The current connection has received its role frame — distinguishes an
+   * initial "you are an observer" from a live mid-session demotion. */
+  private roleKnown = false;
+  /** Overlay shown on read-only panes; clicking it requests control. */
+  private takeControlBtn: HTMLButtonElement | null = null;
   private folderValue: string | null = null;
   private reconnectTimer: number | null = null;
   private reconnectAttempt = 0;
@@ -159,8 +164,11 @@ export class TerminalPane {
   /** Coalesces a burst of ResizeObserver callbacks into one fit per frame. */
   private fitHandle: number | null = null;
 
+  private readonly containerEl: HTMLElement;
+
   constructor(options: TerminalPaneOptions) {
     this.id = options.id;
+    this.containerEl = options.container;
     this.host = options.host;
     this.isMac = options.isMac;
     this.sessionIdValue = options.sessionId ?? null;
@@ -192,6 +200,7 @@ export class TerminalPane {
     this.session = new KittermSession({
       onOpen: () => {
         this.hasEverConnected = true;
+        this.roleKnown = false;
         this.reconnectAttempt = 0;
         this.clearReconnectTimer();
         this.flowControl.reset();
@@ -284,10 +293,34 @@ export class TerminalPane {
     }, delayMs);
   }
 
+  /** The read-only overlay: visible whenever this pane is an observer of a
+   * live session, one tap/click away from taking over. */
+  private syncTakeControlButton(): void {
+    if (this.readOnlyValue && !this.exitedValue && !this.disposed) {
+      if (this.takeControlBtn) return;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "take-control";
+      btn.textContent = "Take control";
+      btn.title = "Become the controller of this session";
+      btn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this.session.sendRequestControl();
+      });
+      this.containerEl.append(btn);
+      this.takeControlBtn = btn;
+    } else {
+      this.takeControlBtn?.remove();
+      this.takeControlBtn = null;
+    }
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     this.clearReconnectTimer();
+    this.takeControlBtn?.remove();
+    this.takeControlBtn = null;
     if (this.fitHandle !== null) cancelAnimationFrame(this.fitHandle);
     this.resizeObserver?.disconnect();
     this.releaseWebgl();
@@ -508,16 +541,26 @@ export class TerminalPane {
         }
         break;
       }
-      case "role":
+      case "role": {
+        const wasReadOnly = this.readOnlyValue;
         this.readOnlyValue = frame.role === "observer";
         this.host.paneRoleChanged(this);
+        this.syncTakeControlButton();
         if (this.readOnlyValue) {
           this.host.paneStatus(this, "Observing — read-only");
+          // A live demotion (not the initial role of this connection) means
+          // another device took over — say so, don't just grey out.
+          if (this.roleKnown && !wasReadOnly) {
+            this.host.paneFlash("Another device took control");
+          }
         } else {
           this.host.paneStatus(this, null);
+          // Now the controller: assert this pane's size on the session.
           this.scheduleFit();
         }
+        this.roleKnown = true;
         break;
+      }
       case "resize":
         if (this.readOnlyValue && frame.cols > 0 && frame.rows > 0) {
           this.terminal.resize(frame.cols, frame.rows);
@@ -528,6 +571,11 @@ export class TerminalPane {
         // from the custom name plus the cwd, so there is nothing to do.
         break;
       case "cwd":
+        // Latest report wins, whatever the source. The daemon only re-sends
+        // when the *local* process changes directory (ssh/docker never do),
+        // while a remote shell with kitterm integration reports OSC 7 every
+        // prompt — so the far end naturally out-reports the poll while you
+        // are inside it, and the local shell takes back over when you exit.
         if (frame.cwd) this.setFolderFromCwd(frame.cwd);
         break;
       case "sessionMeta":
@@ -536,6 +584,7 @@ export class TerminalPane {
       case "exit":
         this.exitedValue = true;
         this.sessionIdValue = null;
+        this.syncTakeControlButton();
         // The shell only surfaces this for the last pane; any other exiting
         // pane is closed and the message never shows.
         this.host.paneStatus(

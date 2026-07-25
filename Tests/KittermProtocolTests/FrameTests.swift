@@ -128,6 +128,18 @@ final class FrameTests: XCTestCase {
         }
     }
 
+    func testClientRequestControlRoundTrip() throws {
+        let encoded = ClientFrame.requestControl.encode()
+        XCTAssertEqual(encoded, Data([5]))
+        XCTAssertEqual(try ClientFrame.decode(encoded), .requestControl)
+    }
+
+    func testRequestControlRejectsPayload() {
+        XCTAssertThrowsError(try ClientFrame.decode(Data([5, 1]))) { error in
+            XCTAssertEqual(error as? FrameError, .truncatedPayload)
+        }
+    }
+
     func testUnknownOpcode() {
         XCTAssertThrowsError(try ClientFrame.decode(Data([99]))) { error in
             XCTAssertEqual(error as? FrameError, .unknownOpcode(99))
