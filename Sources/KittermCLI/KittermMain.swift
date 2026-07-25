@@ -45,6 +45,8 @@ enum KittermMain {
                 case let shell:
                     throw CLIError.usage("kitterm integrate [zsh|bash] — no snippet for \(shell)")
                 }
+            case "token":
+                try tokenCommand(args.dropFirst())
             case "version", "--version", "-v":
                 print(installedVersion() ?? "dev")
             case "serve":
@@ -69,6 +71,72 @@ enum KittermMain {
         }
     }
 
+    /// `kitterm token create|list|revoke` — named persistent LAN tokens.
+    /// Only hashes are stored; the plaintext prints once on stdout (pipeable)
+    /// with guidance on stderr. Revocation applies to a running daemon on its
+    /// next request (the store reloads on file change).
+    private static func tokenCommand<S: Sequence>(_ args: S) throws where S.Element == String {
+        let array = Array(args)
+        switch array.first {
+        case "create":
+            guard let name = array.dropFirst().first(where: { !$0.hasPrefix("-") }) else {
+                throw CLIError.usage("usage: kitterm token create <name> [--watch]")
+            }
+            guard TokenStore.isValidName(name) else {
+                throw CLIError.usage(
+                    "invalid token name \"\(name)\" (letters, digits, . _ -, ≤\(TokenStore.maxNameLength) chars)"
+                )
+            }
+            var tokens = TokenStore.load()
+            guard !tokens.contains(where: { $0.name == name }) else {
+                throw CLIError.usage("token \"\(name)\" already exists — revoke it first")
+            }
+            let grade: TokenGrade = hasFlag("--watch", array) ? .watch : .full
+            let token = TokenStore.generate(grade: grade)
+            tokens.append(
+                NamedToken(name: name, hash: TokenStore.hash(token), grade: grade, created: Date())
+            )
+            try TokenStore.save(tokens)
+            print(token)
+            let hint = grade == .watch
+                ? "watch-only: can observe sessions and read the API, never type or take control"
+                : "full access"
+            FileHandle.standardError.write(Data("""
+            token "\(name)" created (\(hint)).
+            Shown once — only its hash is stored. Use on another device:
+              http://<lan-ip>:<port>/sessions?token=\(token)
+            Revoke anytime with: kitterm token revoke \(name)
+
+            """.utf8))
+        case "list":
+            let tokens = TokenStore.load()
+            if tokens.isEmpty {
+                print("no named tokens — create one with: kitterm token create <name> [--watch]")
+                return
+            }
+            let formatter = ISO8601DateFormatter()
+            for token in tokens.sorted(by: { $0.created < $1.created }) {
+                let created = token.created == .distantPast
+                    ? "-"
+                    : formatter.string(from: token.created)
+                print("\(token.name)\t\(token.grade.rawValue)\t\(created)")
+            }
+        case "revoke":
+            guard let name = array.dropFirst().first(where: { !$0.hasPrefix("-") }) else {
+                throw CLIError.usage("usage: kitterm token revoke <name>")
+            }
+            var tokens = TokenStore.load()
+            guard tokens.contains(where: { $0.name == name }) else {
+                throw CLIError.usage("no token named \"\(name)\" (see: kitterm token list)")
+            }
+            tokens.removeAll { $0.name == name }
+            try TokenStore.save(tokens)
+            print("revoked \"\(name)\" — applies to a running daemon immediately")
+        default:
+            throw CLIError.usage("usage: kitterm token create <name> [--watch] | list | revoke <name>")
+        }
+    }
+
     private static func printUsage() {
         print(
             """
@@ -84,12 +152,16 @@ enum KittermMain {
               kitterm service uninstall | status
               kitterm upgrade         # install the latest release
               kitterm integrate [zsh|bash]  # print the OSC 133/633 snippet
+              kitterm token create <name> [--watch] | list | revoke <name>
               kitterm version
 
             service install starts kitterm on login via a LaunchAgent.
 
-            --lan binds all interfaces; non-loopback clients need the token
-            printed at start (also in ~/.kitterm/token).
+            --lan binds all interfaces; non-loopback clients need a token:
+            the ephemeral one printed at start (~/.kitterm/token), the
+            watch-only one (~/.kitterm/token-watch, observers who can never
+            type or take control), or a named token from `kitterm token`
+            (hashed, persistent, revocable without restart).
             --record writes each session to ~/.kitterm/recordings/*.cast
             (asciinema v2 — replay with `asciinema play`).
             --agent-control enables POST /api/sessions/<id>/input, letting any

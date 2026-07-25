@@ -54,15 +54,19 @@ public final class DaemonServer: @unchecked Sendable {
         let policy: AccessPolicy
         if config.allowLAN {
             let token = AccessPolicy.generateToken()
+            let watchToken = TokenStore.generate(grade: .watch)
             try DaemonPaths.ensureStateDirectory()
-            try token.write(to: DaemonPaths.tokenFile, atomically: true, encoding: .utf8)
-            try FileManager.default.setAttributes(
-                [.posixPermissions: 0o600],
-                ofItemAtPath: DaemonPaths.tokenFile.path
-            )
-            policy = .lan(token: token)
+            for (value, file) in [(token, DaemonPaths.tokenFile), (watchToken, DaemonPaths.watchTokenFile)] {
+                try value.write(to: file, atomically: true, encoding: .utf8)
+                try FileManager.default.setAttributes(
+                    [.posixPermissions: 0o600],
+                    ofItemAtPath: file.path
+                )
+            }
+            policy = .lan(token: token, watchToken: watchToken, namedTokens: CachedTokenStore())
         } else {
             try? FileManager.default.removeItem(at: DaemonPaths.tokenFile)
+            try? FileManager.default.removeItem(at: DaemonPaths.watchTokenFile)
             policy = .loopbackOnly
         }
 
@@ -86,6 +90,19 @@ public final class DaemonServer: @unchecked Sendable {
                 return channel.eventLoop.makeSucceededFuture(HTTPHeaders())
             },
             upgradePipelineHandler: { [config, group] channel, head in
+                // shouldUpgrade already admitted this request; re-derive the
+                // grade so a watch token gets a watch-only connection.
+                let watchOnly: Bool
+                switch policy.decide(
+                    remote: channel.remoteAddress,
+                    headers: head.headers,
+                    uri: head.uri
+                ) {
+                case .allow(let grade), .allowSettingCookie(let grade, cookie: _):
+                    watchOnly = grade == .watch
+                case .reject:
+                    watchOnly = true // unreachable; fail closed
+                }
                 let reattachID = Self.reattachSessionID(fromRequestURI: head.uri)
                 let requestedCwd = Self.queryValue("cwd", fromRequestURI: head.uri)
                 let freshClient = Self.queryValue("fresh", fromRequestURI: head.uri) == "1"
@@ -104,6 +121,7 @@ public final class DaemonServer: @unchecked Sendable {
                         profileName: profileName,
                         sinceOffset: sinceOffset,
                         recordSessions: config.recordSessions,
+                        watchOnly: watchOnly,
                         eventLoopGroup: group
                     )
                 )

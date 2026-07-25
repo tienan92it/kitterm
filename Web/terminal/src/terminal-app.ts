@@ -103,6 +103,9 @@ export class TerminalApp implements PaneHost {
   private linkBoot = false;
   /** `?cmd=N` from the boot URL, applied to the link-boot pane. */
   private pendingCommandScroll: number | null = null;
+  /** `?watch=1` from the boot URL: this is a watch-only link — the server
+   * enforces it; the flag just hides the take-control affordance. */
+  private watchBoot = false;
   /** Per-pane persistent status, shown when that pane is focused. */
   private readonly paneStatuses = new Map<PaneId, string | null>();
 
@@ -152,6 +155,7 @@ export class TerminalApp implements PaneHost {
     const linkProfile = params.get("profile");
     const cmd = Number.parseInt(params.get("cmd") ?? "", 10);
     this.pendingCommandScroll = Number.isFinite(cmd) && cmd > 0 ? cmd : null;
+    this.watchBoot = params.get("watch") === "1";
 
     // A share link or a cwd deep link is always a single fresh pane, and does
     // not disturb whatever layout this tab already had saved.
@@ -230,6 +234,7 @@ export class TerminalApp implements PaneHost {
       profile: session.profile ?? null,
       // A `?cmd=N` deep link applies to the single link-boot pane only.
       commandScroll: this.linkBoot ? this.pendingCommandScroll : null,
+      watchHint: this.linkBoot && this.watchBoot,
     });
     this.panes.set(id, pane);
     this.webgl.acquire(id, pane);
@@ -603,6 +608,7 @@ export class TerminalApp implements PaneHost {
       onTabTitleShowFolderChange: (showFolder) =>
         this.applyTabTitleShowFolder(showFolder),
       onCopySessionLink: () => this.copySessionLink(),
+      onCopyWatchLink: () => this.copyWatchLink(),
     });
   }
 
@@ -766,12 +772,30 @@ export class TerminalApp implements PaneHost {
     });
   }
 
+  /** Watch-only variant: carries the daemon's watch token, whose grade the
+   * server enforces — recipients can look, never type or take over. */
+  private copyWatchLink(): void {
+    const sessionId = this.focusedPane?.sessionId;
+    if (!sessionId) {
+      this.paneFlash("No session to share yet");
+      return;
+    }
+    void this.buildShareLink(sessionId, { watch: true }).then(({ url, lan }) => {
+      void navigator.clipboard.writeText(url).then(
+        () => this.paneFlash(lan ? "Watch-only LAN link copied" : "Watch-only link copied"),
+        () => this.paneFlash(url, 8000),
+      );
+    });
+  }
+
   /** A `kitterm.localhost` link is unreachable from other devices; in LAN
    * mode, share the daemon's LAN URL (token included) instead. */
   private async buildShareLink(
     sessionId: string,
+    options: { watch?: boolean } = {},
   ): Promise<{ url: string; lan: boolean }> {
-    const sameOrigin = `${window.location.origin}/?session=${encodeURIComponent(sessionId)}`;
+    const watchParam = options.watch ? "&watch=1" : "";
+    const sameOrigin = `${window.location.origin}/?session=${encodeURIComponent(sessionId)}${watchParam}`;
     if (!isLoopbackHostname(window.location.hostname)) {
       return { url: sameOrigin, lan: false };
     }
@@ -781,11 +805,13 @@ export class TerminalApp implements PaneHost {
         enabled?: boolean;
         url?: string;
         token?: string;
+        watchToken?: string;
       };
       if (info.enabled && info.url) {
-        const token = info.token ? `&token=${encodeURIComponent(info.token)}` : "";
+        const tokenValue = options.watch ? info.watchToken : info.token;
+        const token = tokenValue ? `&token=${encodeURIComponent(tokenValue)}` : "";
         return {
-          url: `${info.url}/?session=${encodeURIComponent(sessionId)}${token}`,
+          url: `${info.url}/?session=${encodeURIComponent(sessionId)}${token}${watchParam}`,
           lan: true,
         };
       }

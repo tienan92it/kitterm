@@ -104,6 +104,9 @@ export type TerminalPaneOptions = {
   profile?: string | null;
   /** `?cmd=N` — scroll to the N-th command once it is replayed. */
   commandScroll?: number | null;
+  /** This pane came from a watch-only link (`?watch=1`). Enforcement is the
+   * server's; this only hides the take-control affordance. */
+  watchHint?: boolean;
 };
 
 export class TerminalPane {
@@ -146,6 +149,7 @@ export class TerminalPane {
   private roleKnown = false;
   /** Overlay shown on read-only panes; clicking it requests control. */
   private takeControlBtn: HTMLButtonElement | null = null;
+  private readonly watchHint: boolean;
   private folderValue: string | null = null;
   private reconnectTimer: number | null = null;
   private reconnectAttempt = 0;
@@ -176,6 +180,7 @@ export class TerminalPane {
     this.histKeyValue = options.histKey ?? null;
     this.profileValue = options.profile ?? null;
     this.pendingCommandScroll = options.commandScroll ?? null;
+    this.watchHint = options.watchHint ?? false;
 
     const settings = this.host.settings;
     const theme = findThemeById(settings.themeId);
@@ -294,9 +299,11 @@ export class TerminalPane {
   }
 
   /** The read-only overlay: visible whenever this pane is an observer of a
-   * live session, one tap/click away from taking over. */
+   * live session, one tap/click away from taking over. Hidden on declared
+   * watch-only links; for undeclared watch tokens (a named token navigating
+   * from /sessions) the click simply never promotes, so tell the user. */
   private syncTakeControlButton(): void {
-    if (this.readOnlyValue && !this.exitedValue && !this.disposed) {
+    if (this.readOnlyValue && !this.exitedValue && !this.disposed && !this.watchHint) {
       if (this.takeControlBtn) return;
       const btn = document.createElement("button");
       btn.type = "button";
@@ -306,6 +313,13 @@ export class TerminalPane {
       btn.addEventListener("click", (event) => {
         event.stopPropagation();
         this.session.sendRequestControl();
+        // The daemon answers a granted takeover with a role frame almost
+        // immediately; silence means this connection's token is watch-grade.
+        window.setTimeout(() => {
+          if (!this.disposed && this.readOnlyValue) {
+            this.host.paneFlash("Still observing — this access is watch-only");
+          }
+        }, 1500);
       });
       this.containerEl.append(btn);
       this.takeControlBtn = btn;

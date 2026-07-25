@@ -2,25 +2,47 @@ import Foundation
 import NIOCore
 import NIOHTTP1
 
-/// Who may talk to the daemon.
+/// Who may talk to the daemon, and with what grade.
 ///
-/// Loopback peers are always trusted (same-user model, as today). With
-/// `--lan`, non-loopback peers must present the start-time token — once via
-/// `?token=…`, afterwards via the cookie the daemon sets.
-public struct AccessPolicy: Sendable {
+/// Loopback peers are always trusted with full access (same-user model). With
+/// `--lan`, non-loopback peers must present a token — once via `?token=…`,
+/// afterwards via the cookie the daemon sets. Three kinds of token exist:
+/// the ephemeral control token (full), the ephemeral watch token (watch-only
+/// share links), and named persistent tokens from `kitterm token …` whose
+/// grade is stored beside their hash.
+public struct AccessPolicy: @unchecked Sendable {
     public let lanEnabled: Bool
+    /// Ephemeral full-access token for this `--lan` run.
     public let token: String?
+    /// Ephemeral watch-only token for this `--lan` run.
+    public let watchToken: String?
+    /// Named persistent tokens; nil outside LAN mode. Loop-confined cache
+    /// (hence `@unchecked Sendable` on the struct).
+    let namedTokens: CachedTokenStore?
 
-    public static let loopbackOnly = AccessPolicy(lanEnabled: false, token: nil)
+    public static let loopbackOnly = AccessPolicy(
+        lanEnabled: false, token: nil, watchToken: nil, namedTokens: nil
+    )
 
-    public static func lan(token: String) -> AccessPolicy {
-        AccessPolicy(lanEnabled: true, token: token)
+    public static func lan(
+        token: String,
+        watchToken: String? = nil,
+        namedTokens: CachedTokenStore? = nil
+    ) -> AccessPolicy {
+        AccessPolicy(
+            lanEnabled: true,
+            token: token,
+            watchToken: watchToken,
+            namedTokens: namedTokens
+        )
     }
 
     public enum Decision: Equatable, Sendable {
-        case allow
-        /// Authorized via `?token=…` — the response should set the auth cookie.
-        case allowSettingCookie
+        case allow(TokenGrade)
+        /// Authorized via `?token=…` — the response should set the auth cookie
+        /// to exactly the presented token, so a watch token can never ride a
+        /// full-access cookie.
+        case allowSettingCookie(TokenGrade, cookie: String)
         case reject(String)
     }
 
@@ -43,10 +65,10 @@ public struct AccessPolicy: Sendable {
                ) {
                 return .reject(reason)
             }
-            return .allow
+            return .allow(.full)
         }
 
-        guard lanEnabled, let token else {
+        guard lanEnabled else {
             return .reject("loopback only")
         }
         // Same-origin only: a present Origin must match the request Host.
@@ -58,18 +80,25 @@ public struct AccessPolicy: Sendable {
                 return .reject("cross-origin")
             }
         }
-        if Self.cookieToken(headers) == token {
-            return .allow
+        if let presented = Self.cookieToken(headers), let grade = grade(of: presented) {
+            return .allow(grade)
         }
-        if Self.queryToken(uri) == token {
-            return .allowSettingCookie
+        if let presented = Self.queryToken(uri), let grade = grade(of: presented) {
+            return .allowSettingCookie(grade, cookie: presented)
         }
         return .reject("missing or invalid token")
     }
 
-    public var setCookieHeaderValue: String? {
-        guard let token else { return nil }
-        return "\(Self.cookieName)=\(token); Path=/; HttpOnly; SameSite=Strict"
+    /// What a presented token is worth: the run's control token, its watch
+    /// token, or a named token's stored grade.
+    func grade(of presented: String) -> TokenGrade? {
+        if let token, presented == token { return .full }
+        if let watchToken, presented == watchToken { return .watch }
+        return namedTokens?.verify(presented)
+    }
+
+    public static func setCookieHeaderValue(for token: String) -> String {
+        "\(cookieName)=\(token); Path=/; HttpOnly; SameSite=Strict"
     }
 
     static func isLoopback(_ address: SocketAddress?) -> Bool {

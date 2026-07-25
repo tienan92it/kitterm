@@ -25,6 +25,9 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     /// daemon replays exactly the gap after it. Takes precedence over `fresh`.
     private let sinceOffset: UInt64?
     private let recordSessions: Bool
+    /// Watch-grade auth: this connection may only observe an existing session
+    /// — never claim control, never take over, never spawn a shell.
+    private let watchOnly: Bool
     private let eventLoopGroup: EventLoopGroup
     private var sessionID: UUID?
     private var pty: PtySession?
@@ -51,6 +54,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         profileName: String? = nil,
         sinceOffset: UInt64? = nil,
         recordSessions: Bool = false,
+        watchOnly: Bool = false,
         eventLoopGroup: EventLoopGroup
     ) {
         self.registry = registry
@@ -62,10 +66,31 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         self.profileName = profileName
         self.sinceOffset = sinceOffset
         self.recordSessions = recordSessions
+        self.watchOnly = watchOnly
         self.eventLoopGroup = eventLoopGroup
     }
 
     func handlerAdded(context: ChannelHandlerContext) {
+        if watchOnly {
+            // Watch grade: observe an existing session or nothing. This path
+            // never claims control and never reaches spawnNew.
+            guard let reattachID else {
+                closePolicy(context: context, reason: "watch-only access needs a session link")
+                return
+            }
+            let registry = self.registry
+            let promise = context.eventLoop.makePromise(of: PtySession?.self)
+            promise.completeWithTask { await registry.observe(reattachID) }
+            promise.futureResult.whenSuccess { [weak self] session in
+                guard let self, !self.closed else { return }
+                guard let session else {
+                    self.closePolicy(context: context, reason: "session unavailable")
+                    return
+                }
+                self.adoptAsObserver(session: session, id: reattachID, context: context)
+            }
+            return
+        }
         let claimPromise = context.eventLoop.makePromise(of: SessionRegistry.SessionResolution.self)
         let registry = self.registry
         let reattachID = self.reattachID
@@ -300,8 +325,10 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     private func handleClientPayload(_ data: Data, context: ChannelHandlerContext) {
         // Observers are read-only: their input never reaches the PTY. The one
         // frame an observer may send is requestControl — take over the session.
+        // Watch-grade connections don't even get that: enforcement lives here,
+        // not in the client's hidden button.
         guard role == .controller else {
-            if (try? ClientFrame.decode(data)) == .requestControl {
+            if !watchOnly, (try? ClientFrame.decode(data)) == .requestControl {
                 takeControl(context: context)
             }
             return

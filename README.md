@@ -39,7 +39,8 @@ kitterm stop | status | restart
 kitterm open [PATH]
 kitterm service install | uninstall | status
 kitterm upgrade | version
-kitterm integrate
+kitterm integrate [zsh|bash]
+kitterm token create <name> [--watch] | list | revoke <name>
 ```
 
 State lives in `~/.kitterm/`; the default port is `3418`.
@@ -54,6 +55,7 @@ State lives in `~/.kitterm/`; the default port is `3418`.
 | **Open in a directory** | `kitterm open ~/proj`, or link `/?cwd=/path` |
 | **Session profiles** | Name connect commands in `~/.kitterm/profiles.json` — `{"profiles":[{"name":"vm","command":"ssh dev-vm"}]}` — then open `/?profile=vm` or one-click from `/sessions`. The command runs at session start, so a tab *is* that VM/container; splits and restarts re-run it |
 | **Share a session** | ⧉ copies `/?session=<id>` — first client controls, others observe read-only. A "Take control" tap hands the session over live: pick up on your phone exactly where the laptop left off |
+| **Watch-only links** | 👁 copies a link whose token can *only* observe — never type, take control, or open shells. The daemon enforces it. Durable tokens: `kitterm token create review --watch` (hashed, revocable without restart) |
 | **Phone / LAN access** | `kitterm start --lan` prints a token-gated URL |
 | **Record sessions** | `kitterm start --record` → asciinema casts in `~/.kitterm/recordings/` |
 | **Start on login** | `kitterm service install` |
