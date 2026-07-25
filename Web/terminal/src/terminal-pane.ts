@@ -99,6 +99,9 @@ export type TerminalPaneOptions = {
   cwd?: string | null;
   /** Durable key selecting this pane's own history file on the daemon. */
   histKey?: string | null;
+  /** Session profile name, sent as `?profile=`; on a fresh spawn the daemon
+   * runs the profile's connect command as initial input. */
+  profile?: string | null;
   /** `?cmd=N` — scroll to the N-th command once it is replayed. */
   commandScroll?: number | null;
 };
@@ -135,6 +138,8 @@ export class TerminalPane {
   private cwd: string | null;
   /** Durable per-pane history key, sent to the daemon as `?hist=`. */
   private readonly histKeyValue: string | null;
+  /** Session profile name, sent to the daemon as `?profile=`. */
+  private readonly profileValue: string | null;
   private readOnlyValue = false;
   private folderValue: string | null = null;
   private reconnectTimer: number | null = null;
@@ -161,6 +166,7 @@ export class TerminalPane {
     this.sessionIdValue = options.sessionId ?? null;
     this.cwd = options.cwd ?? null;
     this.histKeyValue = options.histKey ?? null;
+    this.profileValue = options.profile ?? null;
     this.pendingCommandScroll = options.commandScroll ?? null;
 
     const settings = this.host.settings;
@@ -195,7 +201,7 @@ export class TerminalPane {
         this.scheduleCommandScrollFallback();
       },
       onFrame: (frame) => this.handleFrame(frame),
-      onClose: () => this.handleDisconnect(),
+      onClose: (event) => this.handleDisconnect(event),
       onError: () => {
         // onClose follows and drives the reconnect; no separate handling.
       },
@@ -225,6 +231,10 @@ export class TerminalPane {
 
   get histKey(): string | null {
     return this.histKeyValue;
+  }
+
+  get profile(): string | null {
+    return this.profileValue;
   }
 
   get folder(): string | null {
@@ -369,6 +379,9 @@ export class TerminalPane {
     if (this.cwd) params.set("cwd", this.cwd);
     // Selects this pane's own history file so up-arrow survives a restart.
     if (this.histKeyValue) params.set("hist", this.histKeyValue);
+    // Like cwd, sent alongside a session id: a reattach ignores it, and a
+    // respawn after a daemon restart re-runs the profile's connect command.
+    if (this.profileValue) params.set("profile", this.profileValue);
     const query = params.toString();
     this.session.connect(query ? `${defaultWsUrl()}?${query}` : defaultWsUrl());
   }
@@ -384,9 +397,12 @@ export class TerminalPane {
     this.connect();
   }
 
-  private handleDisconnect(): void {
+  private handleDisconnect(event?: CloseEvent): void {
     if (this.disposed || this.exitedValue) return;
-    this.host.paneStatus(this, "Reconnecting…");
+    // 1008 is the daemon saying why it refused (unknown profile, spawn
+    // failure) — show the reason instead of a mute reconnect spinner.
+    const refusal = event?.code === 1008 && event.reason ? event.reason : null;
+    this.host.paneStatus(this, refusal ? `${refusal} — retrying…` : "Reconnecting…");
     this.setConnectionState("reconnecting");
     this.scheduleReconnect();
   }

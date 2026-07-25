@@ -12,6 +12,10 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     private let requestedCwd: String?
     /// Selects this pane's own history file; nil falls back to the shell default.
     private let histKey: String?
+    /// Named session profile (`?profile=`): a fresh spawn runs the profile's
+    /// connect command as initial input. Ignored on reattach — a live session
+    /// already ran it.
+    private let profileName: String?
     /// Client page has no screen state (reload / adopted link) — reattach
     /// replays the recent tail instead of only the detached bytes.
     private let freshClient: Bool
@@ -41,6 +45,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         requestedCwd: String? = nil,
         freshClient: Bool = false,
         histKey: String? = nil,
+        profileName: String? = nil,
         sinceOffset: UInt64? = nil,
         recordSessions: Bool = false,
         eventLoopGroup: EventLoopGroup
@@ -50,6 +55,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         self.requestedCwd = requestedCwd
         self.freshClient = freshClient
         self.histKey = histKey
+        self.profileName = profileName
         self.sinceOffset = sinceOffset
         self.recordSessions = recordSessions
         self.eventLoopGroup = eventLoopGroup
@@ -185,11 +191,30 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     }
 
     private func spawnNew(context: ChannelHandlerContext) {
+        // The query names a profile; the command comes only from the user's
+        // profiles.json. An unknown name closes loudly rather than silently
+        // spawning a plain shell the client believes is the profile.
+        var profile: SessionProfile?
+        if let profileName {
+            guard let found = SessionProfiles.find(profileName) else {
+                closePolicy(context: context, reason: "unknown profile: \(profileName)")
+                return
+            }
+            profile = found
+        }
         do {
             let session = try PtySession.spawn(
-                cwd: Self.validatedCwd(requestedCwd),
-                histFile: Self.historyFile(for: histKey)
+                cwd: Self.validatedCwd(requestedCwd) ?? Self.validatedCwd(profile?.cwd),
+                histFile: Self.historyFile(for: histKey),
+                profileName: profile?.name
             )
+            // Queued as type-ahead: it flushes when the reader channel adopts
+            // the PTY and the shell executes it at its first read — visible,
+            // echoed, and in this pane's history like a typed command. Ahead
+            // of any queued client frames, which are handled after wire().
+            if let profile {
+                try? session.write(Data((profile.command + "\n").utf8))
+            }
             self.pty = session
             if recordSessions,
                let recorder = SessionRecorder(

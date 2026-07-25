@@ -39,6 +39,7 @@ kitterm stop | status | restart
 kitterm open [PATH]
 kitterm service install | uninstall | status
 kitterm upgrade | version
+kitterm integrate
 ```
 
 State lives in `~/.kitterm/`; the default port is `3418`.
@@ -49,8 +50,9 @@ State lives in `~/.kitterm/`; the default port is `3418`.
 | **Split panes** | ⌘D / ⌘⇧D split; ⌘⌥T opens a new tab in the same directory |
 | **Survives restart** | Reload after `kitterm restart` — each pane returns in its last directory, with its own history |
 | **Survives disconnects** | Every session keeps a 4 MiB output log; a reconnect replays exactly the bytes you missed |
-| **Command marks** | Any shell emitting OSC 133 (most modern prompts do): ⌘↑/⌘↓ jump between prompts, failed commands get a red dot, `/api/sessions/<id>/marks` lists what ran and how it exited. Shells without it can source [shell-integration.zsh](scripts/shell-integration.zsh) |
+| **Command marks** | Any shell emitting OSC 133 (most modern prompts do): ⌘↑/⌘↓ jump between prompts, failed commands get a red dot, `/api/sessions/<id>/marks` lists what ran and how it exited. Shells without it: `kitterm integrate >> ~/.zshrc` locally, or `kitterm integrate \| ssh vm 'cat >> ~/.zshrc'` for a remote box — marks travel in-band, so they work through ssh/docker too |
 | **Open in a directory** | `kitterm open ~/proj`, or link `/?cwd=/path` |
+| **Session profiles** | Name connect commands in `~/.kitterm/profiles.json` — `{"profiles":[{"name":"vm","command":"ssh dev-vm"}]}` — then open `/?profile=vm` or one-click from `/sessions`. The command runs at session start, so a tab *is* that VM/container; splits and restarts re-run it |
 | **Share a session** | ⧉ copies `/?session=<id>` — first client controls, others observe read-only |
 | **Phone / LAN access** | `kitterm start --lan` prints a token-gated URL |
 | **Record sessions** | `kitterm start --record` → asciinema casts in `~/.kitterm/recordings/` |

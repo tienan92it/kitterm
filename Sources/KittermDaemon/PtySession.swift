@@ -33,6 +33,10 @@ public final class PtySession: @unchecked Sendable {
     public let pid: pid_t
     public let shellPath: String
     public let initialCwd: String
+    /// Name of the session profile this shell was started from, if any.
+    /// Metadata only (fleet view); the profile's command was injected as
+    /// initial input by the spawner.
+    public let profileName: String?
     public private(set) var cols: UInt16
     public private(set) var rows: UInt16
 
@@ -104,6 +108,7 @@ public final class PtySession: @unchecked Sendable {
         masterFD: Int32,
         shellPath: String,
         initialCwd: String,
+        profileName: String?,
         cols: UInt16,
         rows: UInt16
     ) {
@@ -111,6 +116,7 @@ public final class PtySession: @unchecked Sendable {
         self.masterFD = masterFD
         self.shellPath = shellPath
         self.initialCwd = initialCwd
+        self.profileName = profileName
         self.cols = cols
         self.rows = rows
     }
@@ -123,7 +129,8 @@ public final class PtySession: @unchecked Sendable {
         cols: UInt16 = KittermConstants.defaultCols,
         rows: UInt16 = KittermConstants.defaultRows,
         cwd: String? = nil,
-        histFile: String? = nil
+        histFile: String? = nil,
+        profileName: String? = nil
     ) throws -> PtySession {
         let shell = resolvedShell()
         let startCwd = cwd ?? FileManager.default.homeDirectoryForCurrentUser.path
@@ -237,6 +244,7 @@ public final class PtySession: @unchecked Sendable {
             masterFD: master,
             shellPath: shell,
             initialCwd: startCwd,
+            profileName: profileName,
             cols: cols,
             rows: rows
         )

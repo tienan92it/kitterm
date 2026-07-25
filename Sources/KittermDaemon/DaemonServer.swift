@@ -87,6 +87,7 @@ public final class DaemonServer: @unchecked Sendable {
                 let requestedCwd = Self.queryValue("cwd", fromRequestURI: head.uri)
                 let freshClient = Self.queryValue("fresh", fromRequestURI: head.uri) == "1"
                 let histKey = Self.queryValue("hist", fromRequestURI: head.uri)
+                let profileName = Self.queryValue("profile", fromRequestURI: head.uri)
                 let sinceOffset = Self.queryValue("since", fromRequestURI: head.uri)
                     .flatMap(UInt64.init)
                 return channel.pipeline.addHandler(
@@ -96,6 +97,7 @@ public final class DaemonServer: @unchecked Sendable {
                         requestedCwd: requestedCwd,
                         freshClient: freshClient,
                         histKey: histKey,
+                        profileName: profileName,
                         sinceOffset: sinceOffset,
                         recordSessions: config.recordSessions,
                         eventLoopGroup: group

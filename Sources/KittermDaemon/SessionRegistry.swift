@@ -36,6 +36,8 @@ public actor SessionRegistry {
         /// A controller is attached (vs. detached, awaiting reattach).
         public let attached: Bool
         public let observerCount: Int
+        /// Session profile this shell was started from, if any.
+        public let profile: String?
         /// Shell-integration marks, newest last — the caller derives state.
         public let marks: [SessionMark]
     }
@@ -51,6 +53,7 @@ public actor SessionRegistry {
                     pid: session.pid,
                     attached: attachedIDs.contains(id),
                     observerCount: session.observerCount,
+                    profile: session.profileName,
                     marks: session.marksSnapshot()
                 )
             }

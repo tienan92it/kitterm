@@ -27,6 +27,9 @@ export type PaneSession = {
   /** Durable key for this pane's own history file, so up-arrow survives a
    * restart with the commands run in THIS pane. Generated once per pane. */
   histKey?: string;
+  /** Session profile this pane was opened as. Kept so a respawn after a
+   * daemon restart re-runs the profile's connect command. */
+  profile?: string;
 };
 
 export type StoredLayout = {
@@ -87,6 +90,7 @@ export const loadLayout = (): StoredLayout | null => {
         sessionId: typeof record.sessionId === "string" ? record.sessionId : null,
         cwd: typeof record.cwd === "string" ? record.cwd : undefined,
         histKey: typeof record.histKey === "string" ? record.histKey : undefined,
+        profile: typeof record.profile === "string" ? record.profile : undefined,
       });
     }
   }
@@ -107,6 +111,7 @@ export const saveLayout = ({ root, focus, sessions }: StoredLayout): void => {
         sessionId: session.sessionId,
         ...(session.cwd ? { cwd: session.cwd } : {}),
         ...(session.histKey ? { histKey: session.histKey } : {}),
+        ...(session.profile ? { profile: session.profile } : {}),
       })),
     }),
   );

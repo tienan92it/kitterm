@@ -492,6 +492,28 @@ final class PtySessionTests: XCTestCase {
         wait(for: [seen], timeout: 30)
     }
 
+    /// The session-profile mechanism: `spawnNew` writes the profile's connect
+    /// command right after spawn, *before* the reader channel exists. The
+    /// bytes must queue as type-ahead, flush when the reader adopts the PTY,
+    /// and be executed by the shell at its first read — the split marker
+    /// proves execution, not just echo.
+    func testInputWrittenBeforeReaderIsExecutedAtStartup() throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        defer { try? group.syncShutdownGracefully() }
+
+        let head = "KITTERM_PROFILE"
+        let tail = "_RAN"
+        let seen = expectation(description: "shell ran the pre-reader command")
+        let sink = MarkerSink(marker: head + tail) { seen.fulfill() }
+
+        session.attach(onOutput: sink.append, onExit: { _ in })
+        // Written before makeReader — the profile injection path.
+        try session.write(Data("printf '%s%s\\n' \(head) \(tail)\n".utf8))
+        try session.makeReader(group: group, eventLoop: group.next()).wait()
+
+        wait(for: [seen], timeout: 30)
+    }
+
     /// A paste larger than the PTY buffer makes the non-blocking master fd
     /// return `EAGAIN` part-way through. Writing straight to the fd dropped the
     /// remainder, silently truncating input.
