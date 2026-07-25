@@ -6,6 +6,7 @@ import {
   decodeServerFrame,
   encodeInput,
   encodePause,
+  encodeRequestControl,
   encodeResize,
   encodeResume,
 } from "./protocol";
@@ -37,6 +38,12 @@ describe("client encoders", () => {
     // 300 = 0x012C, 80 = 0x0050
     expect([...new Uint8Array(encodeResize(300, 80))]).toEqual([
       ClientOpcode.resize, 0x01, 0x2c, 0x00, 0x50,
+    ]);
+  });
+
+  it("encodes requestControl as a bare opcode", () => {
+    expect([...new Uint8Array(encodeRequestControl())]).toEqual([
+      ClientOpcode.requestControl,
     ]);
   });
 

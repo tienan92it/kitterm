@@ -3,6 +3,7 @@ import {
   encodeInput,
   encodeMark,
   encodePause,
+  encodeRequestControl,
   encodeResize,
   encodeResume,
   type ServerFrame,
@@ -88,6 +89,12 @@ export class KittermSession {
 
   sendResume(): void {
     this.send(encodeResume());
+  }
+
+  /** Observer → controller takeover request; the daemon answers with `role`
+   * frames to both connections. */
+  sendRequestControl(): void {
+    this.send(encodeRequestControl());
   }
 
   close(): void {

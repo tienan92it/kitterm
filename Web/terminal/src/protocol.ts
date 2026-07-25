@@ -6,6 +6,7 @@ export const ClientOpcode = {
   pause: 2,
   resume: 3,
   mark: 4,
+  requestControl: 5,
 } as const;
 
 /** Sentinel for "no exit code" in a mark frame (Int32.min). */
@@ -91,6 +92,11 @@ export function encodeMark(
 
 export function encodeResume(): ArrayBuffer {
   return new Uint8Array([ClientOpcode.resume]).buffer;
+}
+
+/** Ask the daemon to make this connection the controller (observer only). */
+export function encodeRequestControl(): ArrayBuffer {
+  return new Uint8Array([ClientOpcode.requestControl]).buffer;
 }
 
 function readU16BE(view: DataView, offset: number): number {

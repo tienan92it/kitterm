@@ -8,6 +8,8 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     typealias OutboundOut = WebSocketFrame
 
     private let registry: SessionRegistry
+    /// Loop-confined control-transfer coordinator, shared by all handlers.
+    private let handoff: ControlHandoff
     private let reattachID: UUID?
     private let requestedCwd: String?
     /// Selects this pane's own history file; nil falls back to the shell default.
@@ -41,6 +43,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
 
     init(
         registry: SessionRegistry,
+        handoff: ControlHandoff = ControlHandoff(),
         reattachID: UUID? = nil,
         requestedCwd: String? = nil,
         freshClient: Bool = false,
@@ -51,6 +54,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         eventLoopGroup: EventLoopGroup
     ) {
         self.registry = registry
+        self.handoff = handoff
         self.reattachID = reattachID
         self.requestedCwd = requestedCwd
         self.freshClient = freshClient
@@ -143,6 +147,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         sendRole(.controller, context: context)
         sendMeta(context: context, session: session)
         wire(session: session, context: context)
+        registerAsController(context: context)
     }
 
     /// Read-only mirror: replay the recent tail, then stream live output.
@@ -164,24 +169,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         }
         self.batcher = batcher
 
-        let replay = session.addObserver(
-            observerID,
-            handlers: PtySession.ObserverHandlers(
-                onOutput: { [weak self] data in
-                    self?.batcher?.append(data)
-                },
-                onExit: { [weak self, weak context] code in
-                    guard let context else { return }
-                    self?.handlePtyExit(code, context: context)
-                },
-                onResize: { [weak self, weak context] cols, rows in
-                    guard let self, let context, !self.closed else { return }
-                    if let encoded = try? ServerFrame.resize(cols: cols, rows: rows).encode() {
-                        self.writeBinary(encoded, context: context)
-                    }
-                }
-            )
-        )
+        let replay = session.addObserver(observerID, handlers: observerHandlers(context: context))
         sendLogState(resync: true, snapshot: replay, context: context)
         if !replay.data.isEmpty {
             batcher.append(replay.data)
@@ -249,6 +237,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
                 self.sendRole(.controller, context: context)
                 self.sendMeta(context: context, session: session)
                 self.wire(session: session, context: context)
+                self.registerAsController(context: context)
             }
         } catch {
             let reason = (error as? LocalizedError)?.errorDescription ?? "pty spawn failed"
@@ -309,8 +298,14 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     }
 
     private func handleClientPayload(_ data: Data, context: ChannelHandlerContext) {
-        // Observers are read-only: their input never reaches the PTY.
-        guard role == .controller else { return }
+        // Observers are read-only: their input never reaches the PTY. The one
+        // frame an observer may send is requestControl — take over the session.
+        guard role == .controller else {
+            if (try? ClientFrame.decode(data)) == .requestControl {
+                takeControl(context: context)
+            }
+            return
+        }
         // Oversized frames are dropped (not session-killing). Clients should chunk pastes.
         guard data.count <= KittermConstants.maxInputBytes + 1 else {
             return
@@ -335,10 +330,109 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
                 pty?.appendMark(
                     SessionMark(offset: offset, kind: kind, exit: exit, command: command)
                 )
+            case .requestControl:
+                break // controller already; only observers transfer (below)
             }
         } catch {
             // Ignore malformed frames; keep session alive.
         }
+    }
+
+    // MARK: - Control handoff
+    //
+    // The whole swap runs inside one event-loop tick: take the current
+    // controller's step-down closure, run it (detach → observe, role frame),
+    // then promote this connection (stop observing → attach with no replay,
+    // role frame). Handlers and the PTY reader share the single event-loop
+    // thread, so no output, input, or exit can interleave mid-swap — which is
+    // what keeps this outside PtySession's documented deadlock territory: it
+    // is only the existing detach/attach/addObserver/removeObserver calls in
+    // a new order, never a new lock or a blocking wait.
+
+    /// An observer becomes the controller (client opcode 5).
+    private func takeControl(context: ChannelHandlerContext) {
+        guard !closed, role == .observer, pty != nil, let sessionID else { return }
+        // Nil when the previous controller already disconnected — the session
+        // is detached and plain attach below is the normal adopt path.
+        let stepDown = handoff.takeStepDown(sessionID)
+        stepDown?()
+        promoteToController(context: context)
+    }
+
+    /// This connection stops controlling and becomes a read-only mirror.
+    /// Invoked synchronously (same tick) by the requester via `ControlHandoff`.
+    private func stepDownToObserver(context: ChannelHandlerContext) {
+        guard !closed, role == .controller, let pty else { return }
+        role = .observer
+        // A pause the old controller had in force must not outlive its rule.
+        clientPaused = false
+        ptyReadPaused = false
+        pty.detach()
+        // Discard the returned tail replay: this screen is already current.
+        _ = pty.addObserver(observerID, handlers: observerHandlers(context: context))
+        applyWriteWatermarks(context: context, role: .observer)
+        sendRole(.observer, context: context)
+    }
+
+    private func promoteToController(context: ChannelHandlerContext) {
+        guard !closed, role == .observer, let pty, let sessionID else { return }
+        pty.removeObserver(observerID)
+        role = .controller
+        applyWriteWatermarks(context: context, role: .controller)
+        // No replay: this connection observed every byte live, so it attaches
+        // at the head. Nothing can land between reading logHead and attach —
+        // the PTY reader runs on this same thread.
+        let snapshot = pty.attach(
+            onOutput: { [weak self] data in
+                self?.batcher?.append(data)
+            },
+            onExit: { [weak self, weak context] code in
+                guard let context else { return }
+                self?.handlePtyExit(code, context: context)
+            },
+            onCwd: { [weak self, weak context] cwd in
+                guard let self, let context, let encoded = try? ServerFrame.cwd(cwd).encode() else {
+                    return
+                }
+                self.writeBinary(encoded, context: context)
+            },
+            replay: .sinceOffset(pty.logHead)
+        )
+        // Empty replay, but the frame still re-anchors the client's offset.
+        sendLogState(resync: false, snapshot: snapshot, context: context)
+        sendRole(.controller, context: context)
+        registerAsController(context: context)
+        // Attached/linger bookkeeping catches up asynchronously; the swap
+        // itself is already complete.
+        let registry = registry
+        Task { await registry.claimControl(sessionID) }
+        updateBackpressure(context: context)
+    }
+
+    private func registerAsController(context: ChannelHandlerContext) {
+        guard let sessionID else { return }
+        handoff.setController(sessionID) { [weak self, weak context] in
+            guard let self, let context else { return }
+            self.stepDownToObserver(context: context)
+        }
+    }
+
+    private func observerHandlers(context: ChannelHandlerContext) -> PtySession.ObserverHandlers {
+        PtySession.ObserverHandlers(
+            onOutput: { [weak self] data in
+                self?.batcher?.append(data)
+            },
+            onExit: { [weak self, weak context] code in
+                guard let context else { return }
+                self?.handlePtyExit(code, context: context)
+            },
+            onResize: { [weak self, weak context] cols, rows in
+                guard let self, let context, !self.closed else { return }
+                if let encoded = try? ServerFrame.resize(cols: cols, rows: rows).encode() {
+                    self.writeBinary(encoded, context: context)
+                }
+            }
+        )
     }
 
     /// Deep-link cwd (`/?cwd=…`): expand `~`, require an existing directory;
@@ -546,6 +640,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
                 }
             }
         } else if let pty, let sessionID {
+            handoff.clearController(sessionID)
             if ptyExited {
                 pty.terminate()
                 Task { await registry.remove(sessionID) }

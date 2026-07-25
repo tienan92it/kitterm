@@ -344,6 +344,71 @@ final class PtySessionTests: XCTestCase {
         XCTAssertTrue(observed.data.isEmpty)
     }
 
+    // MARK: - Control handoff (the swap sequence the WS handlers perform)
+
+    /// The live-takeover op order: old controller detaches and re-joins as an
+    /// observer (discarding the tail replay), the promoted observer stops
+    /// observing and attaches at the log head. Every byte must be delivered
+    /// exactly once to each side across the seam — no gap, no duplicate.
+    func testControlSwapRoutesBytesExactlyOnceAcrossTheSeam() {
+        let oldController = Captured()
+        let newController = Captured()
+        let observerID = UUID()
+
+        session.attach(onOutput: oldController.append, onExit: { _ in })
+        _ = session.addObserver(observerID, handlers: .capturing(newController.append))
+        feed("before-")
+
+        // stepDownToObserver
+        session.detach()
+        let discardedTail = session.addObserver(UUID(), handlers: .capturing(oldController.append))
+        XCTAssertEqual(discardedTail.data, Data("before-".utf8), "tail is returned but the handler discards it")
+
+        // promoteToController
+        session.removeObserver(observerID)
+        let snapshot = session.attach(
+            onOutput: newController.append,
+            onExit: { _ in },
+            replay: .sinceOffset(session.logHead)
+        )
+        XCTAssertTrue(snapshot.data.isEmpty, "promoted observer saw everything live — no replay")
+        XCTAssertFalse(snapshot.pruned)
+
+        feed("after")
+        XCTAssertEqual(oldController.data, Data("before-after".utf8))
+        XCTAssertEqual(newController.data, Data("before-after".utf8))
+    }
+
+    /// Takeover of a session whose controller already disconnected: the
+    /// detach-gap belongs to nobody, and the promoted observer (who received
+    /// those bytes live) must not get them replayed.
+    func testControlClaimOverDetachedSessionReplaysNothing() {
+        let observed = Captured()
+        let observerID = UUID()
+        session.attach(onOutput: { _ in }, onExit: { _ in })
+        session.detach()
+        _ = session.addObserver(observerID, handlers: .capturing(observed.append))
+        feed("while-detached")
+        XCTAssertEqual(observed.data, Data("while-detached".utf8))
+
+        session.removeObserver(observerID)
+        let snapshot = session.attach(
+            onOutput: observed.append,
+            onExit: { _ in },
+            replay: .sinceOffset(session.logHead)
+        )
+        XCTAssertTrue(snapshot.data.isEmpty)
+
+        feed("-now-controlling")
+        XCTAssertEqual(observed.data, Data("while-detached-now-controlling".utf8))
+    }
+
+    func testLogHeadTracksAppendedBytes() {
+        XCTAssertEqual(session.logHead, 0)
+        feed("12345")
+        XCTAssertEqual(session.logHead, 5)
+    }
+
     // MARK: - Resize
 
     func testResizeUpdatesDimensionsAndNotifiesObservers() throws {
