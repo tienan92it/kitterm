@@ -38,19 +38,21 @@ Guidance for coding agents working in this repo.
 
 Flow-control defaults: ~2ms / 64KB batching, PTY pause at 4MB buffered outbound, resume at 1MB, hard close at 64MB.
 
-## HTTP API (read-only JSON, off the I/O stream)
+## HTTP API (JSON off the I/O stream; read-only unless noted)
 
 - `GET /api/health`, `GET /api/lan`, `GET /api/sessions` (mark-derived state per session)
 - `GET /api/sessions/<id>/marks` — the raw shell-integration marks
 - `GET /api/sessions/<id>/commands` — commands paired from marks: `{index, command, exit, startOffset, endOffset, running}`
 - `GET /api/sessions/<id>/commands/<n>/output` — raw output bytes of command `n` (`application/octet-stream`), capped at `apiCommandOutputMaxBytes` (256KiB, tail on overflow); `X-Kitterm-Total-Bytes` / `-Truncated` / `-Pruned` headers. Precise for substantial output; tiny single-frame commands collapse to an empty range (see `SessionCommands`)
+- `POST /api/sessions/<id>/input` — **write.** The request body is raw bytes typed into the shell (include your own `\n`; send `\x03` for Ctrl-C). Capped at `maxInputBytes` (64KiB → 413). Returns `{ok,bytes}`; 404 unknown session, 409 closed. **Off unless the daemon was started with `--agent-control`** (else 403). Input interleaves with any attached controller — no separate role
 
 ## Security
 
 - Bind `127.0.0.1` by default; `--lan` is the only path that widens it (0.0.0.0 + token auth)
 - Enforce Host / Origin against loopback hostnames
 - No TLS, no multi-user model — shells run as the invoking user
-- The `/api/sessions/<id>/…` routes expose command lines and command **output** (more sensitive than session counts) behind the same single access policy — anyone the policy admits can read what ran, and what it printed, in any session. Still read-only: no route writes to a shell
+- The `/api/sessions/<id>/…` GET routes expose command lines and command **output** behind the same single access policy — anyone the policy admits can read what ran, and what it printed, in any session
+- `--agent-control` adds the one write route (`POST …/input`). It sits behind the same access policy, so on a loopback daemon any local process can then drive any shell as your user; on `--lan` the token still gates it. Default off — enabling it is an explicit trust decision
 
 ## State
 
