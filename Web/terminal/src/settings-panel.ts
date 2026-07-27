@@ -23,6 +23,7 @@ export type SettingsPanelCallbacks = {
   onTabTitleShowFolderChange: (showFolder: boolean) => void;
   /** Copy a link to the focused pane's session, for observing elsewhere. */
   onCopySessionLink: () => void;
+  onCopyWatchLink: () => void;
 };
 
 export class SettingsPanel {
@@ -123,6 +124,7 @@ export class SettingsPanel {
       </div>
       <div class="settings-share">
         <button type="button" id="settings-share">⧉ Copy session link</button>
+        <button type="button" id="settings-share-watch" title="Recipients can watch this session but never type or take control">👁 Copy watch-only link</button>
         <p class="settings-note">Opens the focused pane read-only for whoever you send it to.</p>
       </div>
     `;
@@ -144,6 +146,9 @@ export class SettingsPanel {
     this.dialog
       .querySelector("#settings-share")
       ?.addEventListener("click", () => this.callbacks.onCopySessionLink());
+    this.root
+      .querySelector("#settings-share-watch")
+      ?.addEventListener("click", () => this.callbacks.onCopyWatchLink());
 
     if (this.tabTitleInput) {
       this.tabTitleInput.value = initial.tabTitle;

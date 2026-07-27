@@ -11,7 +11,7 @@ Guidance for coding agents working in this repo.
 - **Session profiles** (`SessionProfiles.swift`): `~/.kitterm/profiles.json` names connect commands (`ssh vm`, `docker exec …`). `/?profile=<name>` spawns a login shell and injects `command\n` as type-ahead input (pre-reader `PtySession.write`, flushed at adoption) — visible, echoed, in the pane's history; if the transport exits you land back in the local shell. The URL carries only the *name*; the command comes only from the file. Reattach ignores the param; a respawn after daemon restart re-runs it. Splits and ⌘⌥T inherit the profile. Fleet page (`/sessions`) shows a launcher (`GET /api/profiles`) and per-row profile chips; unknown names close 1008 with the reason. In-band OSC (133 marks, 9/777 notifications, OSC 7 cwd) flows through any transport, so remote shells stay fully legible — `kitterm integrate | ssh vm 'cat >> ~/.zshrc'` installs the snippet remotely
 - **Split panes** (client): one browser tab holds a binary tree of panes (⌘D / ⌘⇧D split, ⌘⌥↑↓ / click focus, ⌘⌥T new browser tab in the focused pane's cwd). Layout + per-pane `{sessionId, cwd, histKey}` persist in `sessionStorage`; a reload restores the tree and reattaches each pane. Daemon is unchanged — N panes are just N WebSockets
 - **Restart resilience**: the daemon polls each shell's cwd via `proc_pidinfo` (~2s, diff-gated) and pushes `cwd` frames, so a restored pane respawns where it was even when the shell emits no OSC 7. Each pane's `?hist=<key>` maps to `~/.kitterm/history/<key>` (set as `HISTFILE`, seeded once from the user's global history), so up-arrow survives a restart with that pane's own commands
-- `--lan` binds 0.0.0.0 with token auth for non-loopback peers (`?token=` → cookie; `~/.kitterm/token`); loopback stays trusted
+- `--lan` binds 0.0.0.0 with token auth for non-loopback peers (`?token=` → cookie; `~/.kitterm/token`); loopback stays trusted. Tokens carry a **grade**: `full` (everything) or `watch` (observe + read API only — never input, never `requestControl`, never spawn; the WS handler takes a watch-only path that can't reach `spawnNew`, and `POST …/input` answers 403). Three token kinds: ephemeral control (`~/.kitterm/token`), ephemeral watch (`~/.kitterm/token-watch`, powers the 👁 watch-link share button via `/api/lan` `watchToken`), and named persistent tokens (`kitterm token create <name> [--watch]`, SHA-256 hashes only in `~/.kitterm/tokens.json`, mtime-cached reload so revocation needs no restart). The auth cookie is set to exactly the presented token — a watch token can never ride a full-access cookie
 - `--record` writes asciinema v2 casts to `~/.kitterm/recordings/`
 - Tab title is per-session (custom name + optional cwd folder), stored per session id; observers adopt the controller's title and cannot edit it
 - `kitterm service install` runs the daemon from a per-user LaunchAgent — see **Service** below
@@ -59,8 +59,8 @@ Flow-control defaults: ~2ms / 64KB batching, PTY pause at 4MB buffered outbound,
 
 ## State
 
-`~/.kitterm/{pid,port,token,server.log,lastlogin,profiles.json}` plus `recordings/`
-and `history/<key>` (per-pane) — default port **3418**.
+`~/.kitterm/{pid,port,token,token-watch,tokens.json,server.log,lastlogin,profiles.json}`
+plus `recordings/` and `history/<key>` (per-pane) — default port **3418**.
 
 ## Distribution
 

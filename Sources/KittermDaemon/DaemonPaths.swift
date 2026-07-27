@@ -23,6 +23,16 @@ public enum DaemonPaths: Sendable {
         stateDirectory.appendingPathComponent("token")
     }
 
+    /// Ephemeral watch-only token for the current `--lan` run.
+    public static var watchTokenFile: URL {
+        stateDirectory.appendingPathComponent("token-watch")
+    }
+
+    /// Named persistent tokens (`kitterm token …`), hashes only.
+    public static var tokensFile: URL {
+        stateDirectory.appendingPathComponent("tokens.json")
+    }
+
     public static var recordingsDirectory: URL {
         stateDirectory.appendingPathComponent("recordings", isDirectory: true)
     }

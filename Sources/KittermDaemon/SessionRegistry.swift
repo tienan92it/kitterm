@@ -27,6 +27,14 @@ public actor SessionRegistry {
         sessions[id]
     }
 
+    /// Watch-grade lookup: the session for observing, without ever claiming
+    /// control. Cancels the linger clock — someone is watching.
+    public func observe(_ id: UUID) -> PtySession? {
+        guard let session = sessions[id], session.isRunning else { return nil }
+        lingerTasks.removeValue(forKey: id)?.cancel()
+        return session
+    }
+
     /// A point-in-time view of one session for the listing API.
     public struct SessionSummary: Sendable {
         public let id: UUID

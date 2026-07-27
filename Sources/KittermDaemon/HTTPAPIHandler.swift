@@ -66,16 +66,18 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         bodyOverflow: Bool,
         context: ChannelHandlerContext
     ) {
-        var setAuthCookie = false
+        let grade: TokenGrade
+        var authCookie: String?
         switch policy.decide(
             remote: context.channel.remoteAddress,
             headers: head.headers,
             uri: head.uri
         ) {
-        case .allow:
-            break
-        case .allowSettingCookie:
-            setAuthCookie = true
+        case .allow(let allowed):
+            grade = allowed
+        case .allowSettingCookie(let allowed, let cookie):
+            grade = allowed
+            authCookie = cookie
         case .reject(let reason):
             writeJSON(
                 status: .forbidden,
@@ -117,10 +119,17 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             // for loopback callers (the machine's own user).
             let body: String
             if policy.lanEnabled, let ip = NetworkInterfaces.primaryLANIPv4() {
+                // Tokens only for loopback callers (the machine's own user):
+                // the full token for control links, the watch token for
+                // read-only share links.
                 let isLocal = AccessPolicy.isLoopback(context.channel.remoteAddress)
-                let tokenField = isLocal && policy.token != nil
-                    ? #","token":"\#(policy.token!)""#
-                    : ""
+                var tokenField = ""
+                if isLocal, let token = policy.token {
+                    tokenField += #","token":"\#(token)""#
+                }
+                if isLocal, let watch = policy.watchToken {
+                    tokenField += #","watchToken":"\#(watch)""#
+                }
                 body = #"{"ok":true,"enabled":true,"url":"http://\#(ip):\#(port)"\#(tokenField)}"#
             } else {
                 body = #"{"ok":true,"enabled":false}"#
@@ -135,6 +144,18 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         case (.GET, "/api/sessions"):
             serveSessions(head: head, context: context)
         case (.GET, "/api/profiles"):
+            // Full grade only. Profiles are connect commands (ssh hosts,
+            // docker invocations) a watch client could never run anyway —
+            // serving them would leak infrastructure for no benefit, and the
+            // 403 is what tells the fleet page to hide the launcher.
+            guard grade == .full else {
+                writeJSON(
+                    status: .forbidden,
+                    body: #"{"ok":false,"error":"watch-only token"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+                return
+            }
             serveProfiles(head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/sessions/") && path.hasSuffix("/marks"):
             serveMarks(path: path, head: head, context: context)
@@ -149,6 +170,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 path: path,
                 body: body,
                 bodyOverflow: bodyOverflow,
+                grade: grade,
                 head: head,
                 context: context
             )
@@ -163,9 +185,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         case (.GET, "/sessions"):
             // The fleet view is a distinct page; `/` stays "open a tab, get a
             // shell". Extensionless URL, static file behind it.
-            serveStatic(path: "/sessions.html", head: head, context: context, setAuthCookie: setAuthCookie)
+            serveStatic(path: "/sessions.html", head: head, context: context, authCookie: authCookie)
         case (.GET, _):
-            serveStatic(path: path, head: head, context: context, setAuthCookie: setAuthCookie)
+            serveStatic(path: path, head: head, context: context, authCookie: authCookie)
         default:
             writeJSON(
                 status: .notFound,
@@ -406,9 +428,19 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         path: String,
         body: Data,
         bodyOverflow: Bool,
+        grade: TokenGrade,
         head: HTTPRequestHead,
         context: ChannelHandlerContext
     ) {
+        // The one write route: full grade only, on top of the opt-in flag.
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
         guard agentControl else {
             writeJSON(
                 status: .forbidden,
@@ -529,7 +561,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         path: String,
         head: HTTPRequestHead,
         context: ChannelHandlerContext,
-        setAuthCookie: Bool = false
+        authCookie: String? = nil
     ) {
         guard let root = staticRoot else {
             writeJSON(
@@ -561,8 +593,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             ? "no-cache"
             : "public, max-age=3600")
         headers.add(name: "Connection", value: head.isKeepAlive ? "keep-alive" : "close")
-        if setAuthCookie, let cookie = policy.setCookieHeaderValue {
-            headers.add(name: "Set-Cookie", value: cookie)
+        // The cookie carries exactly the token that was presented — a watch
+        // token must never be upgraded to the control cookie.
+        if let authCookie {
+            headers.add(name: "Set-Cookie", value: AccessPolicy.setCookieHeaderValue(for: authCookie))
         }
 
         let responseHead = HTTPResponseHead(version: head.version, status: .ok, headers: headers)
