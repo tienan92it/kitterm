@@ -63,13 +63,36 @@ State lives in `~/.kitterm/`; the default port is `3418`.
 
 ## Security
 
-kitterm binds `127.0.0.1` and validates `Host`/`Origin` against loopback names, so a
-malicious page can't reach the daemon from your browser. `--lan` widens this
-deliberately and adds token auth for non-loopback peers.
+**By default kitterm binds `127.0.0.1`** and validates `Host`/`Origin` against loopback
+names, so a malicious page can't reach the daemon from your browser (the standard
+DNS-rebinding defense). `http://kitterm.localhost:3418` is a browser *secure context*,
+so clipboard and share links work without TLS. There is no multi-user model: kitterm
+serves shells as the user running it, and anyone who can reach it has one.
+
+**Tokens.** `--lan` mints a control token and a watch token per run; `kitterm token
+create <name> [--watch]` makes durable ones — stored as SHA-256 hashes, shown once,
+revocable while the daemon runs. A **watch** token is enforced daemon-side: it can
+observe sessions and read the API, but can never type, take control, or open a shell.
+
+**Reaching kitterm from another device**, best first:
+
+1. **SSH tunnel** — `ssh -L 3418:localhost:3418 your-mac`, then use `localhost:3418`
+   on the other machine. Encrypted, no token in a URL, nothing new to install. No good
+   on a phone or iPad.
+2. **Private overlay network** (Tailscale, WireGuard, ZeroTier) — put both devices on
+   it and use `kitterm start --lan` bound to that interface's address. The overlay
+   provides the encryption; kitterm's token provides the authorization.
+3. **`--lan` on a network you fully trust** — home Wi-Fi, not a café.
 
 > [!WARNING]
-> There is no TLS and no multi-user model — kitterm serves shells as the user running
-> it, and anyone with a `--lan` link gets one. Don't expose it to an untrusted network.
+> **`--lan` speaks plain HTTP: the access token and every keystroke cross the network
+> unencrypted**, so anyone sniffing that network can capture the token and get a shell
+> as you. Browsers additionally withhold the clipboard API from non-HTTPS LAN origins,
+> which disables terminal copy/paste there. Native TLS and reverse-proxy support are
+> planned; until then treat `--lan` as trusted-network-only and prefer 1 or 2 above.
+
+Never put kitterm on a public IP — a public URL in front of a shell is one leaked
+token away from remote code execution.
 
 ## Building from source
 

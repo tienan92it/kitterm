@@ -378,6 +378,12 @@ enum KittermMain {
         let ip = lanIPAddress() ?? "<lan-ip>"
         print("LAN access: http://\(ip):\(port)/?token=\(token)")
         print("(anyone with this link gets a shell as your user — share carefully)")
+        // Plaintext HTTP: the token and every keystroke cross the network in
+        // the clear, so the warning belongs next to the link, not only in the
+        // README. Browsers also withhold the clipboard API from non-HTTPS LAN
+        // origins, which silently disables copy/paste in the terminal there.
+        print("WARNING: plain HTTP — token and keystrokes are unencrypted on this network.")
+        print("         Trusted networks only; prefer an SSH tunnel or a private overlay network.")
     }
 
     private static func lanIPAddress() -> String? {

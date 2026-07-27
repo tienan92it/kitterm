@@ -52,7 +52,7 @@ Flow-control defaults: ~2ms / 64KB batching, PTY pause at 4MB buffered outbound,
 
 - Bind `127.0.0.1` by default; `--lan` is the only path that widens it (0.0.0.0 + token auth)
 - Enforce Host / Origin against loopback hostnames
-- No TLS, no multi-user model — shells run as the invoking user
+- No TLS, no multi-user model — shells run as the invoking user. **`--lan` is plaintext**: token + keystrokes travel in the clear, and browsers withhold the clipboard API from non-HTTPS LAN origins (terminal copy/paste silently breaks there). Native TLS (user-supplied certs, so `tailscale cert` output works) and a `--trusted-host` reverse-proxy mode are the planned fix; recommend SSH tunnels or an overlay network meanwhile
 - The `/api/sessions/<id>/…` GET routes expose command lines and command **output** behind the same single access policy — anyone the policy admits can read what ran, and what it printed, in any session
 - `--agent-control` adds the one write route (`POST …/input`). It sits behind the same access policy, so on a loopback daemon any local process can then drive any shell as your user; on `--lan` the token still gates it. Default off — enabling it is an explicit trust decision
 - `/api/profiles` exposes profile commands behind the same policy; profile *names* from URLs are only ever looked up in the user-authored file, never executed directly

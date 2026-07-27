@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>kitterm — browser terminal for macOS</title>
-<meta name="description" content="Your macOS terminal, in a browser tab. Each tab is a shell — lightweight, AI-agent friendly, watchable from any device.">
+<meta name="description" content="Your macOS terminal, in a browser tab. Each tab is a shell — lightweight, AI-agent friendly, watchable from any device. Supervise agents in a VM or container from your phone.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='1' y='1' width='30' height='30' rx='7' fill='%23161b22' stroke='%2330363d' stroke-width='2'/%3E%3Cpath d='M8 9 L14 16 L8 23' fill='none' stroke='%233fb950' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M19 9.5 L19 22.5' fill='none' stroke='%233fb950' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
 :root{--accent:#3fb950}
@@ -19,6 +19,9 @@ a:hover{color:#f0f6fc;text-decoration:underline}
 .copy-btn:hover{color:#e6edf3;border-color:#58a6ff}
 .gh-btn{background:var(--accent);color:#0d1117;font-weight:700;font-size:13px;padding:11px 20px;border-radius:4px;display:inline-block}
 .gh-btn:hover{text-decoration:none;opacity:.85;color:#0d1117}
+.feat{display:flex;flex-direction:column;gap:11px;font-size:12.5px;line-height:1.7;color:#8b949e}
+.feat b{color:#e6edf3;font-weight:400}
+.feat span{color:var(--accent)}
 </style>
 </head>
 <body>
@@ -42,6 +45,13 @@ a:hover{color:#f0f6fc;text-decoration:underline}
         <div style="margin-top:8px"><span style="color:var(--accent)">$</span> <span style="color:#e6edf3">kitterm start</span></div>
         <div style="color:#8b949e">→ http://kitterm.localhost:3418/<span class="cursor sm"></span></div>
       </div>
+    </div>
+    <div class="feat">
+      <div><span>→</span> <b>A tab is a shell.</b> Split panes, real TTY, job control. Reload and it is still there.</div>
+      <div><span>→</span> <b>Any device.</b> Phone-ready: touch scroll, extra keys, home-screen install, notifications when a command needs you.</div>
+      <div><span>→</span> <b>Somewhere else.</b> Name a connect command — <code>ssh dev-vm</code>, <code>docker exec …</code> — and a tab becomes that machine.</div>
+      <div><span>→</span> <b>Hand it over.</b> Share a session; take control from another device mid-command, or send a watch-only link that can look but never type.</div>
+      <div><span>→</span> <b>Legible to agents.</b> Every command indexed with its exit code and output, over a plain HTTP API.</div>
     </div>
     <div style="display:flex;gap:12px;align-items:center">
       <a class="gh-btn" href="https://github.com/tienan92it/kitterm">View on GitHub ↗</a>
