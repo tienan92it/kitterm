@@ -37,10 +37,19 @@ let inFlight = false;
 /** Named session profiles (~/.kitterm/profiles.json), fetched once — they are
  * the user's own config and change only by editing the file. */
 let profiles: Profile[] = [];
+/** This client's token is watch-only (the daemon 403s the profiles route for
+ * it). Watch clients cannot start shells at all, so the launcher is hidden
+ * rather than shown with buttons that would be refused. */
+let watchOnly = false;
 
 async function fetchProfiles(): Promise<void> {
   try {
     const res = await fetch("/api/profiles", { headers: { accept: "application/json" } });
+    if (res.status === 403) {
+      watchOnly = true;
+      lastSignature = "";
+      return;
+    }
     if (!res.ok) return;
     const data = (await res.json()) as { ok: boolean; profiles?: Profile[] };
     profiles = data.profiles ?? [];
@@ -74,12 +83,15 @@ function render(sessions: SessionRow[]): void {
   lastSignature = signature;
 
   root.replaceChildren();
-  root.append(header(sessions.length), launcher());
+  root.append(header(sessions.length));
+  if (!watchOnly) root.append(launcher());
 
   if (sessions.length === 0) {
     const empty = document.createElement("p");
     empty.className = "empty";
-    empty.textContent = "No live sessions. Open a tab to start a shell.";
+    empty.textContent = watchOnly
+      ? "No live sessions to watch."
+      : "No live sessions. Open a tab to start a shell.";
     root.append(empty);
     return;
   }

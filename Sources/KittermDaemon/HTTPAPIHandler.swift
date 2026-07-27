@@ -144,6 +144,18 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         case (.GET, "/api/sessions"):
             serveSessions(head: head, context: context)
         case (.GET, "/api/profiles"):
+            // Full grade only. Profiles are connect commands (ssh hosts,
+            // docker invocations) a watch client could never run anyway —
+            // serving them would leak infrastructure for no benefit, and the
+            // 403 is what tells the fleet page to hide the launcher.
+            guard grade == .full else {
+                writeJSON(
+                    status: .forbidden,
+                    body: #"{"ok":false,"error":"watch-only token"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+                return
+            }
             serveProfiles(head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/sessions/") && path.hasSuffix("/marks"):
             serveMarks(path: path, head: head, context: context)
