@@ -242,21 +242,28 @@ public func runDaemon(config: DaemonConfig) throws {
     let server = DaemonServer(config: config)
     try server.start()
 
-    let signals = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
-    signals.setEventHandler {
-        try? server.stop()
-        exit(0)
+    // Not the main queue: this thread parks in `waitUntilClosed()` and never
+    // drains it, so a `.main` source would never fire — the daemon would
+    // ignore SIGTERM (it is SIG_IGN'd below) and every `kitterm stop` would
+    // fall through to the SIGKILL fallback, skipping `terminateAll()` and so
+    // the SIGHUP that makes zsh flush each pane's history. A dedicated queue
+    // is serviced by libdispatch's own threads. (Doubly required on Linux,
+    // where the main queue only runs under `dispatchMain()`.)
+    let signalQueue = DispatchQueue(label: "kitterm.signals")
+    var sources: [DispatchSourceSignal] = []
+    for signalNumber in [SIGTERM, SIGINT] {
+        let source = DispatchSource.makeSignalSource(signal: signalNumber, queue: signalQueue)
+        source.setEventHandler {
+            try? server.stop()
+            exit(0)
+        }
+        source.resume()
+        sources.append(source)
+        // Ignore the default disposition only once the source is live.
+        signal(signalNumber, SIG_IGN)
     }
-    signals.resume()
-    signal(SIGTERM, SIG_IGN)
-
-    let sigint = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
-    sigint.setEventHandler {
-        try? server.stop()
-        exit(0)
+    // The sources must outlive this call — a released source stops delivering.
+    try withExtendedLifetime(sources) {
+        try server.waitUntilClosed()
     }
-    sigint.resume()
-    signal(SIGINT, SIG_IGN)
-
-    try server.waitUntilClosed()
 }
