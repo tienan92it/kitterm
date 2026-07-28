@@ -19,22 +19,49 @@ public struct AccessPolicy: @unchecked Sendable {
     /// Named persistent tokens; nil outside LAN mode. Loop-confined cache
     /// (hence `@unchecked Sendable` on the struct).
     let namedTokens: CachedTokenStore?
+    /// Public names this daemon answers to (`--trusted-host`), for requests
+    /// arriving through a reverse proxy or an overlay network. Lowercased,
+    /// port-stripped.
+    public let trustedHosts: Set<String>
 
     public static let loopbackOnly = AccessPolicy(
-        lanEnabled: false, token: nil, watchToken: nil, namedTokens: nil
+        lanEnabled: false, token: nil, watchToken: nil, namedTokens: nil, trustedHosts: []
     )
 
     public static func lan(
         token: String,
         watchToken: String? = nil,
-        namedTokens: CachedTokenStore? = nil
+        namedTokens: CachedTokenStore? = nil,
+        trustedHosts: Set<String> = []
     ) -> AccessPolicy {
         AccessPolicy(
             lanEnabled: true,
             token: token,
             watchToken: watchToken,
-            namedTokens: namedTokens
+            namedTokens: namedTokens,
+            trustedHosts: Self.normalize(trustedHosts)
         )
+    }
+
+    /// Loopback-bound, but reachable under public names through a proxy: those
+    /// requests are treated as remote and must present a token.
+    public static func proxied(
+        token: String,
+        watchToken: String? = nil,
+        namedTokens: CachedTokenStore? = nil,
+        trustedHosts: Set<String>
+    ) -> AccessPolicy {
+        AccessPolicy(
+            lanEnabled: false,
+            token: token,
+            watchToken: watchToken,
+            namedTokens: namedTokens,
+            trustedHosts: Self.normalize(trustedHosts)
+        )
+    }
+
+    static func normalize(_ hosts: Set<String>) -> Set<String> {
+        Set(hosts.map { stripPort($0).lowercased() })
     }
 
     public enum Decision: Equatable, Sendable {
@@ -54,8 +81,14 @@ public struct AccessPolicy: @unchecked Sendable {
         uri: String
     ) -> Decision {
         let (host, origin) = LoopbackSecurity.hostAndOrigin(from: headers)
+        // A request naming one of our public hosts came in from outside —
+        // through a reverse proxy or an overlay network — even when the TCP
+        // peer is the local proxy process. It gets no local trust: without
+        // this, anyone who reaches the proxy would inherit loopback's
+        // unauthenticated full access, and the proxy could not be a boundary.
+        let viaTrustedHost = host.map(isTrustedHost) ?? false
 
-        if Self.isLoopback(remote) {
+        if Self.isLoopback(remote), !viaTrustedHost {
             // Loopback keeps today's Host/Origin rules unless LAN mode is on
             // (then the page may legitimately be served under the LAN IP).
             if !lanEnabled,
@@ -68,7 +101,7 @@ public struct AccessPolicy: @unchecked Sendable {
             return .allow(.full)
         }
 
-        guard lanEnabled else {
+        guard lanEnabled || viaTrustedHost else {
             return .reject("loopback only")
         }
         // Same-origin only: a present Origin must match the request Host.
@@ -89,6 +122,12 @@ public struct AccessPolicy: @unchecked Sendable {
         return .reject("missing or invalid token")
     }
 
+    /// Does this `Host` header name one of our configured public hosts?
+    func isTrustedHost(_ hostHeader: String) -> Bool {
+        guard !trustedHosts.isEmpty else { return false }
+        return trustedHosts.contains(Self.stripPort(hostHeader).lowercased())
+    }
+
     /// What a presented token is worth: the run's control token, its watch
     /// token, or a named token's stored grade.
     func grade(of presented: String) -> TokenGrade? {
@@ -97,8 +136,11 @@ public struct AccessPolicy: @unchecked Sendable {
         return namedTokens?.verify(presented)
     }
 
-    public static func setCookieHeaderValue(for token: String) -> String {
-        "\(cookieName)=\(token); Path=/; HttpOnly; SameSite=Strict"
+    /// `secure` is set for connections that reached us over TLS (directly or
+    /// through a proxy that terminated it), so the browser will not send the
+    /// cookie back over plaintext.
+    public static func setCookieHeaderValue(for token: String, secure: Bool = false) -> String {
+        "\(cookieName)=\(token); Path=/; HttpOnly; SameSite=Strict" + (secure ? "; Secure" : "")
     }
 
     static func isLoopback(_ address: SocketAddress?) -> Bool {

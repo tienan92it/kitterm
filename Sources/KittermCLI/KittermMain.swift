@@ -15,12 +15,7 @@ enum KittermMain {
         do {
             switch command {
             case "start":
-                try start(
-                    parsePort(args.dropFirst()),
-                    lan: hasFlag("--lan", args),
-                    record: hasFlag("--record", args),
-                    agentControl: hasFlag("--agent-control", args)
-                )
+                try start(parsePort(args.dropFirst()), flags: DaemonFlags.parse(args))
             case "stop":
                 try stop()
             case "status":
@@ -51,13 +46,7 @@ enum KittermMain {
                 print(installedVersion() ?? "dev")
             case "serve":
                 // Internal: foreground daemon process.
-                let port = parsePort(args.dropFirst())
-                try serve(
-                    port: port,
-                    lan: hasFlag("--lan", args),
-                    record: hasFlag("--record", args),
-                    agentControl: hasFlag("--agent-control", args)
-                )
+                try serve(port: parsePort(args.dropFirst()), flags: DaemonFlags.parse(args))
             case "help", "-h", "--help":
                 printUsage()
             default:
@@ -144,11 +133,12 @@ enum KittermMain {
 
             Usage:
               kitterm start [--port PORT] [--lan] [--record] [--agent-control]
+                            [--trusted-host NAME] [--tls-cert FILE --tls-key FILE [--tls-port PORT]]
               kitterm stop
               kitterm status
-              kitterm restart [--port PORT] [--lan] [--record] [--agent-control]
+              kitterm restart [same flags as start]
               kitterm open [PATH]     # browser shell in PATH (default: cwd)
-              kitterm service install [--port PORT] [--lan] [--record] [--agent-control]
+              kitterm service install [same flags as start]
               kitterm service uninstall | status
               kitterm upgrade         # install the latest release
               kitterm integrate [zsh|bash]  # print the OSC 133/633 snippet
@@ -162,6 +152,14 @@ enum KittermMain {
             watch-only one (~/.kitterm/token-watch, observers who can never
             type or take control), or a named token from `kitterm token`
             (hashed, persistent, revocable without restart).
+            --tls-cert/--tls-key add an encrypted listener on PORT+1 (or
+            --tls-port) for other devices, while the plain listener stays on
+            loopback. Bring a real certificate — `tailscale cert <name>` is
+            free and publicly trusted; kitterm never generates one.
+            --trusted-host NAME lets the daemon answer to a public name behind
+            a reverse proxy or on an overlay network (repeatable). Those
+            requests are treated as remote: they must present a token, so the
+            proxy cannot become an unauthenticated way in.
             --record writes each session to ~/.kitterm/recordings/*.cast
             (asciinema v2 — replay with `asciinema play`).
             --agent-control enables POST /api/sessions/<id>/input, letting any
@@ -187,6 +185,45 @@ enum KittermMain {
         args.contains(flag)
     }
 
+    /// `--trusted-host <name>` (repeatable, or `--trusted-host=<name>`): the
+    /// public names this daemon answers to behind a proxy or on an overlay
+    /// network. Requests naming one are treated as remote and need a token.
+    /// `--name value` or `--name=value`.
+    static func parseOption<S: Sequence>(_ name: String, _ args: S) -> String?
+    where S.Element == String {
+        let array = Array(args)
+        for (index, arg) in array.enumerated() {
+            if arg == name, index + 1 < array.count, !array[index + 1].hasPrefix("--") {
+                return array[index + 1]
+            }
+            if arg.hasPrefix("\(name)=") {
+                let value = String(arg.dropFirst(name.count + 1))
+                if !value.isEmpty { return value }
+            }
+        }
+        return nil
+    }
+
+    static func parseTrustedHosts<S: Sequence>(_ args: S) -> Set<String>
+    where S.Element == String {
+        var hosts: Set<String> = []
+        let array = Array(args)
+        var i = 0
+        while i < array.count {
+            if array[i] == "--trusted-host", i + 1 < array.count, !array[i + 1].hasPrefix("--") {
+                hosts.insert(array[i + 1])
+                i += 2
+                continue
+            }
+            if array[i].hasPrefix("--trusted-host=") {
+                let value = String(array[i].dropFirst("--trusted-host=".count))
+                if !value.isEmpty { hosts.insert(value) }
+            }
+            i += 1
+        }
+        return hosts
+    }
+
     private static func parsePort<S: Sequence>(_ args: S) -> Int where S.Element == String {
         var port = KittermConstants.defaultPort
         let array = Array(args)
@@ -205,12 +242,7 @@ enum KittermMain {
         return port
     }
 
-    private static func serve(
-        port: Int,
-        lan: Bool = false,
-        record: Bool = false,
-        agentControl: Bool = false
-    ) throws {
+    private static func serve(port: Int, flags: DaemonFlags) throws {
         try DaemonPaths.ensureStateDirectory()
         redirectLogs(to: DaemonPaths.logFile)
 
@@ -218,15 +250,22 @@ enum KittermMain {
         try "\(pid)".write(to: DaemonPaths.pidFile, atomically: true, encoding: .utf8)
         try "\(port)".write(to: DaemonPaths.portFile, atomically: true, encoding: .utf8)
 
-        try runDaemon(
-            config: DaemonConfig(
-                host: KittermConstants.defaultHost,
-                port: port,
-                allowLAN: lan,
-                recordSessions: record,
-                agentControl: agentControl
-            )
-        )
+        try runDaemon(config: flags.daemonConfig(port: port))
+    }
+
+    /// Both listeners, labelled, after a successful start.
+    private static func printListeners(port: Int, flags: DaemonFlags) {
+        print("Local:  http://kitterm.localhost:\(port)/  (loopback only)")
+        if let tlsPort = try? flags.tlsConfig(port: port)?.port {
+            let host = flags.trustedHosts.sorted().first ?? "<your-host>"
+            print("Remote: https://\(host):\(tlsPort)/  (TLS)")
+            if flags.trustedHosts.isEmpty {
+                print("        add --trusted-host <name-on-your-certificate> so share links are correct")
+            }
+            if let token = awaitToken() {
+                print("Token:  \(token)")
+            }
+        }
     }
 
     /// `kitterm restart` — restarts whichever mechanism owns the daemon.
@@ -265,19 +304,22 @@ enum KittermMain {
         try stop(ignoreMissing: true)
         try start(
             parsePort(array),
-            lan: hasFlag("--lan", array),
-            record: hasFlag("--record", array),
-            agentControl: hasFlag("--agent-control", array)
+            flags: DaemonFlags.parse(array)
         )
     }
 
     private static func start(
         _ port: Int,
-        lan: Bool = false,
-        record: Bool = false,
-        agentControl: Bool = false,
+        flags: DaemonFlags,
         openBrowser: Bool = true
     ) throws {
+        // Validate here, in the terminal the user is looking at: `serve`
+        // redirects its own output to ~/.kitterm/server.log, so a bad flag or
+        // an unreadable certificate would otherwise fail invisibly and only
+        // surface as "daemon exited before becoming healthy".
+        if let tls = try flags.tlsConfig(port: port) {
+            _ = try tls.makeSSLContext()
+        }
         try DaemonPaths.ensureStateDirectory()
         if let existing = livePid() {
             print("kitterm already running (pid \(existing), port \(readPort() ?? port))")
@@ -302,17 +344,7 @@ enum KittermMain {
         // forkpty in practice on macOS when stdio is inherited from Process.
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
-        var serveArgs = ["serve", "--port", "\(port)"]
-        if lan {
-            serveArgs.append("--lan")
-        }
-        if record {
-            serveArgs.append("--record")
-        }
-        if agentControl {
-            serveArgs.append("--agent-control")
-        }
-        process.arguments = serveArgs
+        process.arguments = ["serve", "--port", "\(port)"] + flags.serveArguments
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
@@ -351,27 +383,54 @@ enum KittermMain {
         }
 
         let pid = livePid() ?? process.processIdentifier
-        print("kitterm started on \(lan ? "0.0.0.0" : KittermConstants.defaultHost):\(port) (pid \(pid))")
-        if lan {
+        let plainlyExternal = flags.lan && flags.tlsCert == nil
+        print("kitterm started on \(plainlyExternal ? "0.0.0.0" : KittermConstants.defaultHost):\(port) (pid \(pid))")
+        if flags.tlsCert != nil {
+            printListeners(port: port, flags: flags)
+            if flags.lan {
+                print("(--lan is redundant with TLS: plaintext stays on loopback)")
+            }
+        } else if flags.lan {
             printLANAccess(port: port)
+        }
+        if !flags.trustedHosts.isEmpty, flags.tlsCert == nil {
+            printProxyAccess(port: port, hosts: flags.trustedHosts)
         }
         if openBrowser {
             openBrowserIfPossible(port: port)
         }
     }
 
-    /// Best-effort LAN URL with the auth token for other devices.
-    private static func printLANAccess(port: Int) {
-        // Token is written by the daemon at bind time; wait briefly for it.
-        var token: String?
+    /// The daemon writes the token at bind time; give it a moment.
+    private static func awaitToken() -> String? {
         let deadline = Date().addingTimeInterval(1)
         while Date() < deadline {
-            token = try? String(contentsOf: DaemonPaths.tokenFile, encoding: .utf8)
+            let token = (try? String(contentsOf: DaemonPaths.tokenFile, encoding: .utf8))?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            if let token, !token.isEmpty { break }
+            if let token, !token.isEmpty { return token }
             Thread.sleep(forTimeInterval: 0.05)
         }
-        guard let token, !token.isEmpty else {
+        return nil
+    }
+
+    /// Behind a proxy / on an overlay network the daemon stays on loopback,
+    /// so the useful line is the public name plus the token those requests
+    /// must carry — they get no local trust.
+    private static func printProxyAccess(port: Int, hosts: Set<String>) {
+        for host in hosts.sorted() {
+            print("Trusted host: \(host) (requests naming it need a token)")
+        }
+        if let token = awaitToken() {
+            print("Token: \(token)  — append ?token=<token> once; a cookie carries it after that")
+        } else {
+            print("Token: see ~/.kitterm/token")
+        }
+        print("Point your proxy or `tailscale serve` at http://127.0.0.1:\(port)")
+    }
+
+    /// Best-effort LAN URL with the auth token for other devices.
+    private static func printLANAccess(port: Int) {
+        guard let token = awaitToken() else {
             print("LAN token: see ~/.kitterm/token")
             return
         }
@@ -428,7 +487,7 @@ enum KittermMain {
 
         let port = readPort() ?? KittermConstants.defaultPort
         if livePid() == nil {
-            try start(port, openBrowser: false)
+            try start(port, flags: DaemonFlags(), openBrowser: false)
         }
 
         var components = URLComponents(string: "http://kitterm.localhost:\(port)/")!
@@ -468,12 +527,7 @@ enum KittermMain {
         let array = Array(args)
         switch array.first ?? "status" {
         case "install":
-            try installService(
-                port: parsePort(array),
-                lan: hasFlag("--lan", array),
-                record: hasFlag("--record", array),
-                agentControl: hasFlag("--agent-control", array)
-            )
+            try installService(port: parsePort(array), flags: DaemonFlags.parse(array))
         case "uninstall":
             try uninstallService()
         case "status":
@@ -582,9 +636,7 @@ enum KittermMain {
 
     private static func installService(
         port: Int,
-        lan: Bool,
-        record: Bool,
-        agentControl: Bool
+        flags: DaemonFlags
     ) throws {
         let executable = try serviceExecutablePath()
         let plist = launchAgentPlist
@@ -594,10 +646,7 @@ enum KittermMain {
         )
 
         // A foreground `serve` under launchd — KeepAlive restarts it on crash.
-        var programArgs = [executable, "serve", "--port", "\(port)"]
-        if lan { programArgs.append("--lan") }
-        if record { programArgs.append("--record") }
-        if agentControl { programArgs.append("--agent-control") }
+        let programArgs = [executable, "serve", "--port", "\(port)"] + flags.serveArguments
 
         let entries = programArgs
             .map { "\t\t<string>\(xmlEscaped($0))</string>" }
