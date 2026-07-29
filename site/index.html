@@ -4,210 +4,194 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>kitterm — browser terminal for macOS</title>
-<meta name="description" content="Your macOS terminal, in a browser tab. Each tab is a shell — lightweight, AI-agent friendly, watchable from any device. Try the sandbox in your browser, or open the terminal already running on your Mac.">
+<meta name="description" content="Your macOS terminal, in a browser tab. Each tab is a shell — fast, local-only, watchable from any device.">
 <meta property="og:title" content="kitterm — browser terminal for macOS">
-<meta property="og:description" content="Your macOS terminal, in a browser tab. Each tab is a shell — lightweight, AI-agent friendly, watchable from any device.">
+<meta property="og:description" content="Your macOS terminal, in a browser tab. Each tab is a shell — fast, local-only, watchable from any device.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://kitterm.dev/">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='1' y='1' width='30' height='30' rx='7' fill='%23161b22' stroke='%2330363d' stroke-width='2'/%3E%3Cpath d='M8 9 L14 16 L8 23' fill='none' stroke='%233fb950' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M19 9.5 L19 22.5' fill='none' stroke='%233fb950' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
 :root{
-  --accent:#3fb950;--bg:#0d1117;--panel:#161b22;--line:#30363d;--line-soft:#21262d;
-  --fg:#e6edf3;--fg-bright:#f0f6fc;--muted:#8b949e;--dim:#6e7681;--blue:#58a6ff;--red:#f85149;
+  --accent:#3fb950;--bg:#0d1117;--panel:#12171e;--line:#242c37;
+  --fg:#e6edf3;--fg-bright:#f0f6fc;--muted:#8b949e;--dim:#6e7681;--red:#f85149;
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font-family:Menlo,Monaco,'Courier New',ui-monospace,monospace;-webkit-text-size-adjust:100%}
-a{color:var(--accent);text-decoration:none}
-a:hover{color:var(--fg-bright);text-decoration:underline}
-h1,h2{text-wrap:pretty}
-::selection{background:#264f78;color:var(--fg)}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font-family:ui-monospace,Menlo,Monaco,'Courier New',monospace;font-size:14px;line-height:1.6}
+a{color:inherit;text-decoration:none}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+:focus-visible{outline:1.5px solid var(--accent);outline-offset:3px;border-radius:3px}
 @keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
-.cursor{display:inline-block;width:.5em;height:.8em;background:var(--accent);margin-left:5px;animation:blink 1.1s step-end infinite;vertical-align:baseline}
-.cursor.sm{width:7px;height:13px;vertical-align:middle}
-@media (prefers-reduced-motion:reduce){.cursor{animation:none}}
+.caret{display:inline-block;width:.52em;height:1em;background:var(--accent);
+  margin-left:6px;vertical-align:-.14em;animation:blink 1.15s step-end infinite}
+@media (prefers-reduced-motion:reduce){.caret{animation:none}}
 
-.wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:48px 20px}
-.col{width:100%;max-width:620px;display:flex;flex-direction:column;gap:36px}
-.brand{display:flex;align-items:center;gap:12px}
-.brand span{color:var(--fg-bright);font-weight:700;font-size:16px}
+/* ---- shell ---- */
+.top{max-width:600px;margin:0 auto;padding:22px 22px 0;display:flex;align-items:center;justify-content:space-between}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--fg-bright);font-size:15px}
+.gh{display:flex;align-items:center;padding:6px;border-radius:6px;color:var(--muted)}
+.gh:hover{color:var(--fg-bright);background:var(--panel)}
+main{max-width:600px;margin:0 auto;padding:56px 22px 64px;display:flex;flex-direction:column;gap:44px}
 
-/* Cards */
-.card{border:1px solid var(--line);border-radius:8px;background:var(--bg);overflow:hidden}
-.card-bar{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--line-soft);background:var(--panel);font-size:11px;color:var(--dim)}
-.card-body{padding:16px 18px;font-size:13px;line-height:1.9}
+/* ---- hero ---- */
+h1{margin:0;font-size:27px;line-height:1.35;font-weight:700;color:var(--fg-bright);letter-spacing:-.4px;text-wrap:balance}
+.sub{margin:14px 0 0;color:var(--muted);text-wrap:pretty}
 
-/* Buttons */
-button,input{font-family:inherit}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:5px;font-size:13px;font-weight:700;padding:12px 18px;cursor:pointer;border:1px solid transparent;text-align:center}
-.btn-primary{background:var(--accent);color:#0d1117}
-.btn-primary:hover{opacity:.85;color:#0d1117;text-decoration:none}
-.btn-ghost{background:#21262d;border-color:var(--line);color:var(--fg)}
-.btn-ghost:hover{border-color:var(--blue);color:var(--fg-bright);text-decoration:none}
-.btn:focus-visible,.chip:focus-visible,.mini:focus-visible,#cmd:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
-.cta{display:flex;gap:12px;flex-wrap:wrap}
-.cta .btn{flex:1 1 200px}
-.mini{font-size:11px;color:var(--muted);background:#21262d;border:1px solid var(--line);border-radius:4px;padding:4px 10px;cursor:pointer}
-.mini:hover{color:var(--fg);border-color:var(--blue)}
+/* ---- action ---- */
+.action{display:flex;flex-direction:column;gap:14px}
+.cmd{display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+  background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:15px 16px}
+.cmd:hover{border-color:#39424f}
+.cmd code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.cmd .p{color:var(--accent)}
+.cmd .ic{color:var(--dim);flex-shrink:0}
+.cmd:hover .ic{color:var(--muted)}
+.cmd.done{border-color:var(--accent)}
+.cmd.done .ic{color:var(--accent)}
+.second{font-size:12.5px;color:var(--muted)}
+.second a{color:var(--accent);border-bottom:1px solid transparent}
+.second a:hover{border-bottom-color:var(--accent)}
+.fallback{margin:0;font-size:12px;color:var(--dim);display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.fallback[hidden]{display:none}
+.port{width:56px;background:var(--bg);border:1px solid var(--line);border-radius:4px;
+  color:var(--fg);font:inherit;font-size:11px;padding:3px 5px;text-align:center}
 
-/* Launcher */
-.port{width:62px;background:var(--bg);border:1px solid var(--line);border-radius:4px;color:var(--fg);font-size:11px;padding:3px 6px;text-align:center}
-.hint{margin:14px 0 0;font-size:12px;line-height:1.8;color:var(--muted)}
-.hint[hidden]{display:none}
-.cmdline{word-break:break-all}
-.cmdline .p{color:var(--accent)}
-
-/* Sandbox terminal */
-.term-body{height:290px;overflow-y:auto;padding:14px 16px;font-size:12.5px;line-height:1.75;background:var(--bg)}
-.term-body::-webkit-scrollbar{width:9px}
-.term-body::-webkit-scrollbar-thumb{background:#30363d;border-radius:5px}
-.ln{white-space:pre-wrap;word-break:break-word}
-.ln.echo{color:var(--fg-bright);margin-top:6px}
-.ln.out{color:var(--muted)}
+/* ---- sandbox ---- */
+.lbl{margin-bottom:10px;font-size:11.5px;color:var(--dim)}
+.term{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel)}
+.out{height:158px;overflow-y:auto;padding:13px 15px;font-size:12.5px;line-height:1.7}
+.out::-webkit-scrollbar{width:8px}
+.out::-webkit-scrollbar-thumb{background:#2b3441;border-radius:4px}
+.ln{white-space:pre-wrap;word-break:break-word;color:var(--muted)}
+.ln.echo{color:var(--fg-bright);margin-top:5px}
 .ln.ok{color:var(--accent)}
 .ln.err{color:var(--red)}
-.ln.info{color:var(--blue)}
-.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:7px;vertical-align:middle;background:transparent}
+.ln.note{color:var(--dim)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:7px;vertical-align:middle}
 .dot.pass{background:var(--accent)}
 .dot.fail{background:var(--red)}
-.code{color:var(--red);font-size:11px;margin-left:8px}
-.inrow{display:flex;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid var(--line-soft);background:var(--panel)}
-.inrow .p{color:var(--accent);font-size:12.5px}
-#cmd{flex:1;min-width:0;background:transparent;border:0;color:var(--fg);font-size:12.5px;padding:2px 0}
+.code{color:var(--red);font-size:11px;margin-left:7px}
+.row{display:flex;align-items:center;gap:8px;padding:10px 15px;border-top:1px solid var(--line)}
+.row .p{color:var(--accent);font-size:12.5px;flex-shrink:0}
+#cmd{flex:1;min-width:0;background:none;border:0;color:var(--fg);font:inherit;font-size:12.5px;padding:2px 0}
 #cmd::placeholder{color:var(--dim)}
-.chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 16px 12px;background:var(--panel)}
-.chip{font-size:11px;color:var(--muted);background:var(--bg);border:1px solid var(--line);border-radius:20px;padding:4px 11px;cursor:pointer}
-.chip:hover{color:var(--fg-bright);border-color:var(--accent)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.chip{font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:20px;padding:4px 11px}
+.chip:hover{color:var(--fg);border-color:var(--muted)}
 
-/* Features */
-.feat{display:flex;flex-direction:column;gap:11px;font-size:12.5px;line-height:1.7;color:var(--muted)}
-.feat b{color:var(--fg);font-weight:400}
-.feat .a{color:var(--accent)}
-.foot{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-code{color:var(--fg)}
-@media (max-width:560px){.term-body{height:240px}}
+/* ---- facts ---- */
+.facts{display:flex;flex-direction:column;gap:13px;font-size:12.5px;color:var(--muted)}
+.facts b{color:var(--fg);font-weight:400}
+.facts .a{color:var(--accent);margin-right:8px}
+footer{font-size:11.5px;color:var(--dim)}
+@media (max-width:520px){
+  main{padding:40px 22px 52px;gap:36px}
+  h1{font-size:23px}
+  .out{height:148px}
+}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="col">
 
-    <div class="brand">
-      <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="7" fill="#161b22" stroke="#30363d" stroke-width="2"></rect><path d="M8 9 L14 16 L8 23" fill="none" stroke="var(--accent)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path><path d="M19 9.5 L19 22.5" fill="none" stroke="var(--accent)" stroke-width="2.6" stroke-linecap="round"></path></svg>
-      <span>kitterm</span>
-    </div>
-
-    <div>
-      <h1 style="margin:0;font-size:26px;line-height:1.4;font-weight:700;color:var(--fg-bright)">Your macOS terminal, in a browser tab.<span class="cursor"></span></h1>
-      <p style="margin:16px 0 0;font-size:13px;line-height:1.8;color:var(--muted)">Each tab is a shell. Lightweight, AI-agent friendly, watchable from any device.</p>
-    </div>
-
-    <!-- D: launcher into the locally-running daemon -->
-    <div>
-      <div class="cta">
-        <a class="btn btn-primary" id="open" href="http://kitterm.localhost:3418/" target="_blank" rel="noopener">Open my terminal ↗</a>
-        <button class="btn btn-ghost" id="try">Try the sandbox ↓</button>
-      </div>
-      <p class="hint" style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
-        <label for="port">Already installed? It opens on port</label>
-        <input class="port" id="port" inputmode="numeric" value="3418" aria-label="kitterm port">
-      </p>
-      <p class="hint" id="miss" hidden>
-        Blank tab or a connection error? kitterm isn’t running on this Mac yet —
-        install it below, then <code>kitterm start</code>.
-      </p>
-    </div>
-
-    <!-- A: in-browser sandbox -->
-    <div class="card">
-      <div class="card-bar">
-        <span>sandbox · runs in this tab, <strong style="color:var(--muted)">not</strong> on your Mac</span>
-        <button class="mini" id="reset">reset</button>
-      </div>
-      <div class="term-body" id="out" role="log" aria-live="polite" aria-label="Sandbox terminal output"></div>
-      <div class="inrow">
-        <span class="p" aria-hidden="true">~/proj $</span>
-        <input id="cmd" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="type a command, or tap one below" aria-label="Sandbox command input">
-      </div>
-      <div class="chips" id="chips"></div>
-    </div>
-
-    <!-- Install -->
-    <div class="card">
-      <div class="card-bar">
-        <span>install · macOS</span>
-        <button class="mini" id="copy">copy</button>
-      </div>
-      <div class="card-body">
-        <div class="cmdline"><span class="p" style="color:var(--accent)">$</span> curl -fsSL https://kitterm.dev/install.sh | sh</div>
-        <div><span class="p" style="color:var(--accent)">$</span> kitterm start</div>
-        <div style="color:var(--muted)">→ http://kitterm.localhost:3418/<span class="cursor sm"></span></div>
-      </div>
-    </div>
-
-    <div class="feat">
-      <div><span class="a">→</span> <b>A tab is a shell.</b> Split panes, real TTY, job control. Reload and it is still there.</div>
-      <div><span class="a">→</span> <b>Any device.</b> Phone-ready: touch scroll, extra keys, home-screen install, notifications when a command needs you.</div>
-      <div><span class="a">→</span> <b>Somewhere else.</b> Name a connect command — <code>ssh dev-vm</code>, <code>docker exec …</code> — and a tab becomes that machine.</div>
-      <div><span class="a">→</span> <b>Hand it over.</b> Share a session; take control from another device mid-command, or send a watch-only link that can look but never type.</div>
-      <div><span class="a">→</span> <b>Legible to agents.</b> Every command indexed with its exit code and output, over a plain HTTP API.</div>
-    </div>
-
-    <div class="feat" style="font-size:11.5px;border-top:1px solid var(--line-soft);padding-top:20px">
-      <div><span class="a">✓</span> Runs entirely on your machine. Binds loopback; nothing leaves the Mac unless you turn on LAN sharing.</div>
-    </div>
-
-    <div class="foot">
-      <a class="btn btn-primary" href="https://github.com/tienan92it/kitterm">View on GitHub ↗</a>
-      <span style="font-size:11.5px;color:var(--dim)">MIT license</span>
-    </div>
-
+<div class="top">
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="7" fill="#161b22" stroke="#30363d" stroke-width="2"/><path d="M8 9 L14 16 L8 23" fill="none" stroke="#3fb950" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M19 9.5 L19 22.5" fill="none" stroke="#3fb950" stroke-width="2.6" stroke-linecap="round"/></svg>
+    kitterm
   </div>
+  <a class="gh" href="https://github.com/tienan92it/kitterm" aria-label="kitterm on GitHub">
+    <svg width="21" height="21" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+  </a>
 </div>
+
+<main>
+
+  <div>
+    <h1>Your macOS terminal,<br>in a browser tab.<span class="caret"></span></h1>
+    <p class="sub">Each tab is a shell. Fast, local-only, watchable from any device.</p>
+  </div>
+
+  <div class="action">
+    <button class="cmd" id="copy" aria-label="Copy install command">
+      <span class="p" aria-hidden="true">$</span>
+      <code>curl -fsSL https://kitterm.dev/install.sh | sh</code>
+      <span class="ic" id="ic" aria-hidden="true">copy</span>
+    </button>
+    <p class="second" style="margin:0">
+      Already installed? <a id="open" href="http://kitterm.localhost:3418/" target="_blank" rel="noopener">Open my terminal ↗</a>
+    </p>
+    <p class="fallback" id="miss" hidden>
+      Nothing there — run <code>kitterm start</code> first. Other port?
+      <input class="port" id="port" inputmode="numeric" value="3418" aria-label="kitterm port">
+    </p>
+  </div>
+
+  <div>
+    <div class="lbl">try it — a sandbox in this tab, not your Mac</div>
+    <div class="term">
+      <div class="out" id="out" role="log" aria-live="polite" aria-label="Sandbox terminal"></div>
+      <div class="row">
+        <span class="p" aria-hidden="true">$</span>
+        <input id="cmd" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="try `help`" aria-label="Sandbox command input">
+      </div>
+    </div>
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <div class="facts">
+    <div><span class="a">→</span><b>A tab is a shell.</b> Split panes, real TTY. Reload — still there.</div>
+    <div><span class="a">→</span><b>Any device.</b> Phone-ready. Take control from another device mid-command.</div>
+    <div><span class="a">→</span><b>Legible to agents.</b> Every command indexed with its exit code and output.</div>
+    <div><span class="a">→</span><b>Yours only.</b> Binds loopback. Nothing leaves the Mac unless you share it.</div>
+  </div>
+
+  <footer>MIT · macOS</footer>
+
+</main>
 
 <script>
 (function () {
   "use strict";
 
-  // ---- D: launcher -------------------------------------------------------
-  // A top-level navigation, deliberately not a fetch: the daemon enforces a
-  // loopback Host/Origin, and a cross-origin probe from this page would be
-  // blocked by CORS anyway. So we cannot detect the daemon — we link to it and
-  // explain the failure case instead.
-  var openBtn = document.getElementById("open");
-  var miss = document.getElementById("miss");
-  var port = document.getElementById("port");
-
-  var savedPort = null;
-  try { savedPort = localStorage.getItem("kitterm:port"); } catch (e) { /* private mode */ }
-  if (savedPort) { port.value = savedPort; }
-
-  function href() {
-    var p = String(port.value || "3418").replace(/\D/g, "") || "3418";
-    return "http://kitterm.localhost:" + p + "/";
-  }
-  function syncHref() {
-    openBtn.href = href();
-    try { localStorage.setItem("kitterm:port", String(port.value || "3418")); } catch (e) { /* ignore */ }
-  }
-  port.addEventListener("input", syncHref);
-  openBtn.addEventListener("click", function () { miss.hidden = false; });
-  syncHref();
-
-  // ---- copy install line -------------------------------------------------
+  // ---- install ----
   var INSTALL = "curl -fsSL https://kitterm.dev/install.sh | sh";
   var copy = document.getElementById("copy");
+  var ic = document.getElementById("ic");
   copy.addEventListener("click", function () {
-    var self = this;
     navigator.clipboard.writeText(INSTALL).then(function () {
-      self.textContent = "copied ✓";
-      clearTimeout(self._t);
-      self._t = setTimeout(function () { self.textContent = "copy"; }, 1500);
+      ic.textContent = "copied ✓";
+      copy.classList.add("done");
+      clearTimeout(copy._t);
+      copy._t = setTimeout(function () {
+        ic.textContent = "copy";
+        copy.classList.remove("done");
+      }, 1600);
     });
   });
 
-  // ---- A: sandbox --------------------------------------------------------
-  // A scripted shell, not a VM: it demonstrates kitterm's UI and its command
-  // index (exit codes, per-command output over HTTP) without shipping a
+  // ---- launcher ----
+  // A link, not a fetch: the daemon requires a loopback Host/Origin, and a
+  // cross-origin probe would be blocked by CORS anyway. So we cannot detect
+  // it — we open it and explain the miss.
+  var open = document.getElementById("open");
+  var miss = document.getElementById("miss");
+  var port = document.getElementById("port");
+  try {
+    var saved = localStorage.getItem("kitterm:port");
+    if (saved) { port.value = saved; }
+  } catch (e) { /* private mode */ }
+
+  function sync() {
+    var p = String(port.value || "3418").replace(/\D/g, "") || "3418";
+    open.href = "http://kitterm.localhost:" + p + "/";
+    try { localStorage.setItem("kitterm:port", p); } catch (e) { /* ignore */ }
+  }
+  port.addEventListener("input", sync);
+  open.addEventListener("click", function () { miss.hidden = false; });
+  sync();
+
+  // ---- sandbox ----
+  // Scripted, not a VM: it shows kitterm's command index without shipping a
   // multi-megabyte emulator to every visitor.
   var out = document.getElementById("out");
   var cmd = document.getElementById("cmd");
@@ -218,181 +202,130 @@ code{color:var(--fg)}
     el.className = "ln" + (cls ? " " + cls : "");
     el.textContent = text;
     out.appendChild(el);
-    return el;
   }
 
   var FILES = {
-    "readme.md": ["# demo project", "", "A stand-in so `cat` has something to print."],
-    "server.js": ["const http = require('http');", "http.createServer(() => {}).listen(3000);"]
+    "readme.md": ["# demo project", "", "So `cat` has something to print."]
   };
 
-  var COMMANDS = {
+  var CMDS = {
     help: function () {
       return { exit: 0, out: [
-        "Sandbox commands — this is a demo of the interface, not a real shell.",
-        "",
-        "  ls · cat <file> · echo <text> · git status",
-        "  npm test                      a command that fails, so you can see how",
-        "  curl /api/sessions            kitterm reports it",
-        "  curl /api/sessions/<id>/commands",
-        "  clear"
+        "ls · cat <file> · echo <text> · git status · clear",
+        "npm test                     a command that fails",
+        "curl /api/sessions/<id>/commands"
       ] };
     },
-    ls: function () {
-      return { exit: 0, out: ["readme.md   server.js   node_modules/"] };
+    ls: function () { return { exit: 0, out: ["readme.md   server.js   node_modules/"] }; },
+    cat: function (a) {
+      if (!a[0]) { return { exit: 1, stderr: true, out: ["usage: cat <file>"] }; }
+      if (!FILES[a[0]]) { return { exit: 1, stderr: true, out: ["cat: " + a[0] + ": No such file or directory"] }; }
+      return { exit: 0, out: FILES[a[0]] };
     },
-    cat: function (args) {
-      var name = args[0];
-      if (!name) { return { exit: 1, stderr: true, out: ["usage: cat <file>"] }; }
-      if (!FILES[name]) { return { exit: 1, stderr: true, out: ["cat: " + name + ": No such file or directory"] }; }
-      return { exit: 0, out: FILES[name] };
+    echo: function (a) { return { exit: 0, out: [a.join(" ")] }; },
+    git: function (a) {
+      if (a[0] !== "status") { return { exit: 1, stderr: true, out: ["git: only `git status` here"] }; }
+      return { exit: 0, out: ["On branch main", "nothing to commit, working tree clean"] };
     },
-    echo: function (args) {
-      return { exit: 0, out: [args.join(" ")] };
-    },
-    "git": function (args) {
-      if (args[0] !== "status") { return { exit: 1, stderr: true, out: ["git: only `git status` exists in the sandbox"] }; }
-      return { exit: 0, out: [
-        "On branch main",
-        "Your branch is up to date with 'origin/main'.",
-        "",
-        "nothing to commit, working tree clean"
-      ] };
-    },
-    npm: function (args) {
-      if (args[0] !== "test") { return { exit: 1, stderr: true, out: ["npm: only `npm test` exists in the sandbox"] }; }
+    npm: function (a) {
+      if (a[0] !== "test") { return { exit: 1, stderr: true, out: ["npm: only `npm test` here"] }; }
       return { exit: 1, out: [
-        "> demo@1.0.0 test",
-        "> node --test",
-        "",
         "✓ parses an offset",
         "✗ replays across the wrap seam",
-        "",
-        "  expected 'world' to equal 'wrold'",
-        "",
         "tests 2 · pass 1 · fail 1"
-      ], note: "That non-zero exit is the point — kitterm marks the command red and records the code." };
+      ], note: "kitterm marks it red and records the exit code." };
     },
-    curl: function (args) {
-      var url = args[args.length - 1] || "";
+    curl: function (a) {
+      var url = a[a.length - 1] || "";
       if (/\/commands$/.test(url)) {
         return { exit: 0, json: [
-          "{",
-          '  "ok": true,',
-          '  "commands": [',
-          '    { "index": 1, "command": "git status", "exit": 0,',
-          '      "startOffset": 1204, "endOffset": 1388, "running": false },',
-          '    { "index": 2, "command": "npm test", "exit": 1,',
-          '      "startOffset": 1388, "endOffset": 2517, "running": false }',
-          "  ]",
-          "}"
-        ], note: "Every command, with its exit code and its byte range in the session log. GET /commands/2/output returns exactly those bytes." };
+          '{ "ok": true, "commands": [',
+          '  { "index": 1, "command": "git status", "exit": 0 },',
+          '  { "index": 2, "command": "npm test",   "exit": 1,',
+          '    "startOffset": 1388, "endOffset": 2517 }',
+          "] }"
+        ], note: "…/commands/2/output returns exactly those bytes." };
       }
       if (/\/sessions$/.test(url)) {
         return { exit: 0, json: [
-          "{",
-          '  "ok": true,',
-          '  "sessions": [',
-          '    { "id": "' + SESSION + '",',
-          '      "shell": "/bin/zsh", "cwd": "~/proj", "state": "idle",',
-          '      "lastCommand": "npm test", "lastExit": 1, "attached": true }',
-          "  ]",
-          "}"
-        ], note: "The fleet view: what every shell on the machine is doing right now." };
+          '{ "ok": true, "sessions": [',
+          '  { "shell": "/bin/zsh", "cwd": "~/proj", "state": "idle",',
+          '    "lastCommand": "npm test", "lastExit": 1 }',
+          "] }"
+        ], note: "What every shell on the machine is doing." };
       }
-      return { exit: 0, out: [
-        "Try one of:",
-        "  curl 127.0.0.1:3418/api/sessions",
-        "  curl 127.0.0.1:3418/api/sessions/" + SESSION.slice(0, 8) + "…/commands"
-      ] };
+      return { exit: 0, out: ["try: curl 127.0.0.1:3418/api/sessions"] };
     }
   };
 
   function run(input) {
-    var text = input.trim();
-    var prompt = line("", "echo");
-    var dot = document.createElement("span");
-    dot.className = "dot";
-    prompt.appendChild(dot);
-    prompt.appendChild(document.createTextNode("~/proj $ " + text));
-
-    if (!text) { dot.classList.add("pass"); scroll(); return; }
+    var text = String(input).trim();
     if (text === "clear") { out.textContent = ""; return; }
 
+    var echo = document.createElement("div");
+    echo.className = "ln echo";
+    var dot = document.createElement("span");
+    dot.className = "dot";
+    echo.appendChild(dot);
+    echo.appendChild(document.createTextNode("$ " + text));
+    out.appendChild(echo);
+    if (!text) { dot.classList.add("pass"); out.scrollTop = out.scrollHeight; return; }
+
     var parts = text.split(/\s+/);
-    var handler = COMMANDS[parts[0]];
-    var result = handler
-      ? handler(parts.slice(1))
-      : { exit: 127, stderr: true, out: ["zsh: command not found: " + parts[0] + " — type `help`"] };
+    var fn = CMDS[parts[0]];
+    var r = fn ? fn(parts.slice(1))
+               : { exit: 127, stderr: true, out: ["zsh: command not found: " + parts[0]] };
 
-    // Output is neutral like a real terminal; red is reserved for stderr and
-    // for the failing lines themselves, not for everything a failed run printed.
-    (result.out || []).forEach(function (l) {
-      line(l, result.stderr || /^\s*✗/.test(l) ? "err" : "out");
-    });
-    (result.json || []).forEach(function (l) { line(l, "ok"); });
+    // Red is for stderr and failing lines — not for everything a failed run printed.
+    (r.out || []).forEach(function (l) { line(l, r.stderr || /^\s*✗/.test(l) ? "err" : ""); });
+    (r.json || []).forEach(function (l) { line(l, "ok"); });
 
-    dot.classList.add(result.exit === 0 ? "pass" : "fail");
-    if (result.exit !== 0) {
-      var code = document.createElement("span");
-      code.className = "code";
-      code.textContent = "exit " + result.exit;
-      prompt.appendChild(code);
+    dot.classList.add(r.exit === 0 ? "pass" : "fail");
+    if (r.exit !== 0) {
+      var c = document.createElement("span");
+      c.className = "code";
+      c.textContent = "exit " + r.exit;
+      echo.appendChild(c);
     }
-    if (result.note) { line("→ " + result.note, "info"); }
-    scroll();
+    if (r.note) { line("→ " + r.note, "note"); }
+    out.scrollTop = out.scrollHeight;
   }
 
-  function scroll() { out.scrollTop = out.scrollHeight; }
-
-  var history = [];
-  var cursor = -1;
-
+  var hist = [];
+  var at = -1;
   cmd.addEventListener("keydown", function (e) {
     if (e.key === "Enter") {
-      var value = cmd.value;
-      if (value.trim()) { history.push(value); }
-      cursor = history.length;
+      var v = cmd.value;
+      if (v.trim()) { hist.push(v); }
+      at = hist.length;
       cmd.value = "";
-      run(value);
-    } else if (e.key === "ArrowUp") {
-      if (!history.length) { return; }
+      run(v);
+    } else if (e.key === "ArrowUp" && hist.length) {
       e.preventDefault();
-      cursor = Math.max(0, cursor - 1);
-      cmd.value = history[cursor] || "";
-    } else if (e.key === "ArrowDown") {
-      if (!history.length) { return; }
+      at = Math.max(0, at - 1);
+      cmd.value = hist[at] || "";
+    } else if (e.key === "ArrowDown" && hist.length) {
       e.preventDefault();
-      cursor = Math.min(history.length, cursor + 1);
-      cmd.value = history[cursor] || "";
+      at = Math.min(hist.length, at + 1);
+      cmd.value = hist[at] || "";
     }
   });
 
-  var CHIPS = ["help", "npm test", "curl 127.0.0.1:3418/api/sessions/" + SESSION + "/commands", "git status", "ls", "clear"];
   var chips = document.getElementById("chips");
-  CHIPS.forEach(function (c) {
+  [
+    ["npm test", "npm test"],
+    ["curl …/commands", "curl 127.0.0.1:3418/api/sessions/" + SESSION + "/commands"],
+    ["help", "help"]
+  ].forEach(function (pair) {
     var b = document.createElement("button");
     b.className = "chip";
     b.type = "button";
-    b.textContent = c.length > 34 ? "curl …/commands" : c;
-    b.addEventListener("click", function () { run(c); cmd.focus(); });
+    b.textContent = pair[0];
+    b.addEventListener("click", function () { run(pair[1]); cmd.focus(); });
     chips.appendChild(b);
   });
 
-  function boot() {
-    out.textContent = "";
-    line("kitterm sandbox — a scripted demo of the interface.", "info");
-    line("Nothing here touches your machine. Type `help`, or tap a command below.", "out");
-    run("npm test");
-  }
-
-  document.getElementById("reset").addEventListener("click", function () { boot(); cmd.focus(); });
-  document.getElementById("try").addEventListener("click", function () {
-    out.closest(".card").scrollIntoView({ behavior: "smooth", block: "center" });
-    cmd.focus({ preventScroll: true });
-  });
-
-  boot();
+  run("npm test");
 })();
 </script>
 </body>
