@@ -103,6 +103,135 @@ final class AccessPolicyTests: XCTestCase {
         )
     }
 
+    // MARK: - Trusted hosts (reverse proxy / overlay network)
+
+    private func proxyHeaders(host: String, _ pairs: [(String, String)] = []) -> HTTPHeaders {
+        var headers = HTTPHeaders()
+        headers.add(name: "Host", value: host)
+        for (name, value) in pairs { headers.add(name: name, value: value) }
+        return headers
+    }
+
+    /// The rule the whole feature rests on: a request naming a public host is
+    /// remote even though the proxy connects from loopback. Without this, the
+    /// proxy leaks loopback's unauthenticated full access to the internet.
+    func testProxiedRequestFromLoopbackStillNeedsAToken() {
+        let policy = AccessPolicy.proxied(token: "ctl", trustedHosts: ["mac.tailnet.ts.net"])
+        XCTAssertEqual(
+            policy.decide(
+                remote: loopbackPeer,
+                headers: proxyHeaders(host: "mac.tailnet.ts.net"),
+                uri: "/"
+            ),
+            .reject("missing or invalid token")
+        )
+        XCTAssertEqual(
+            policy.decide(
+                remote: loopbackPeer,
+                headers: proxyHeaders(host: "mac.tailnet.ts.net"),
+                uri: "/?token=ctl"
+            ),
+            .allowSettingCookie(.full, cookie: "ctl")
+        )
+    }
+
+    /// A watch token stays watch-grade through the proxy.
+    func testProxiedWatchTokenKeepsItsGrade() {
+        let policy = AccessPolicy.proxied(
+            token: "ctl",
+            watchToken: "ktw_w",
+            trustedHosts: ["mac.tailnet.ts.net"]
+        )
+        XCTAssertEqual(
+            policy.decide(
+                remote: loopbackPeer,
+                headers: proxyHeaders(host: "mac.tailnet.ts.net"),
+                uri: "/?token=ktw_w"
+            ),
+            .allowSettingCookie(.watch, cookie: "ktw_w")
+        )
+    }
+
+    /// Genuine local use is untouched: same daemon, loopback Host, no token.
+    func testLocalAccessUnaffectedByTrustedHosts() {
+        let policy = AccessPolicy.proxied(token: "ctl", trustedHosts: ["mac.tailnet.ts.net"])
+        XCTAssertEqual(
+            policy.decide(
+                remote: loopbackPeer,
+                headers: proxyHeaders(host: "kitterm.localhost:3418"),
+                uri: "/"
+            ),
+            .allow(.full)
+        )
+    }
+
+    /// An unlisted Host is still refused — the allowlist is not a wildcard.
+    func testUnknownHostStillRejected() {
+        let policy = AccessPolicy.proxied(token: "ctl", trustedHosts: ["mac.tailnet.ts.net"])
+        XCTAssertEqual(
+            policy.decide(
+                remote: loopbackPeer,
+                headers: proxyHeaders(host: "evil.example"),
+                uri: "/?token=ctl"
+            ),
+            .reject("non-loopback Host")
+        )
+    }
+
+    func testTrustedHostMatchIgnoresPortAndCase() {
+        let policy = AccessPolicy.proxied(token: "ctl", trustedHosts: ["Mac.Tailnet.TS.net"])
+        XCTAssertEqual(
+            policy.decide(
+                remote: loopbackPeer,
+                headers: proxyHeaders(host: "mac.tailnet.ts.net:8443"),
+                uri: "/?token=ctl"
+            ),
+            .allowSettingCookie(.full, cookie: "ctl")
+        )
+    }
+
+    /// Cross-origin protection survives the proxy path.
+    func testProxiedCrossOriginRejected() {
+        let policy = AccessPolicy.proxied(token: "ctl", trustedHosts: ["mac.tailnet.ts.net"])
+        XCTAssertEqual(
+            policy.decide(
+                remote: loopbackPeer,
+                headers: proxyHeaders(
+                    host: "mac.tailnet.ts.net",
+                    [("Origin", "http://evil.example")]
+                ),
+                uri: "/?token=ctl"
+            ),
+            .reject("cross-origin")
+        )
+    }
+
+    /// Same-origin under the public name is what a real browser sends.
+    func testProxiedSameOriginAccepted() {
+        let policy = AccessPolicy.proxied(token: "ctl", trustedHosts: ["mac.tailnet.ts.net"])
+        XCTAssertEqual(
+            policy.decide(
+                remote: loopbackPeer,
+                headers: proxyHeaders(
+                    host: "mac.tailnet.ts.net",
+                    [("Origin", "https://mac.tailnet.ts.net")]
+                ),
+                uri: "/?token=ctl"
+            ),
+            .allowSettingCookie(.full, cookie: "ctl")
+        )
+    }
+
+    /// With no --trusted-host configured, nothing changes from today.
+    func testNoTrustedHostsKeepsLoopbackOnlyBehaviour() {
+        var headers = HTTPHeaders()
+        headers.add(name: "Host", value: "mac.tailnet.ts.net")
+        XCTAssertEqual(
+            AccessPolicy.loopbackOnly.decide(remote: loopbackPeer, headers: headers, uri: "/"),
+            .reject("non-loopback Host")
+        )
+    }
+
     func testNonLoopbackWithoutLanRejected() {
         XCTAssertEqual(
             AccessPolicy.loopbackOnly.decide(remote: lanPeer, headers: headers(), uri: "/"),

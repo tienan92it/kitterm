@@ -14,6 +14,12 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// Whether the write route (`POST /api/sessions/<id>/input`) is enabled.
     /// Off unless the daemon was started with `--agent-control`.
     private let agentControl: Bool
+    /// This connection arrived on the TLS listener, so auth cookies may carry
+    /// `Secure`.
+    private let connectionIsTLS: Bool
+    /// Port of the TLS listener, when one is running — used to build the
+    /// external URL that share links are made from.
+    private let tlsPort: Int?
     private var pendingHead: HTTPRequestHead?
     /// Accumulated request body, capped at `maxInputBytes`; only the input
     /// route reads it. `bodyOverflow` trips once the cap is exceeded so a large
@@ -26,13 +32,37 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         policy: AccessPolicy = .loopbackOnly,
         port: Int = KittermConstants.defaultPort,
         agentControl: Bool = false,
+        connectionIsTLS: Bool = false,
+        tlsPort: Int? = nil,
         staticRoot: URL? = StaticFileServer.cachedRoot
     ) {
         self.registry = registry
         self.policy = policy
         self.port = port
         self.agentControl = agentControl
+        self.connectionIsTLS = connectionIsTLS
+        self.tlsPort = tlsPort
         self.staticRoot = staticRoot
+    }
+
+    /// Whether an auth cookie set on this request may carry `Secure`.
+    ///
+    /// True on the TLS listener. Also true when a trusted proxy reports it
+    /// terminated TLS: `X-Forwarded-Proto` is honoured *only* for this, only
+    /// from a loopback peer, and only when public hosts are configured — the
+    /// worst a forged header can do is make a cookie stricter, and it never
+    /// touches an access decision.
+    private func cookiesMayBeSecure(head: HTTPRequestHead, context: ChannelHandlerContext) -> Bool {
+        if connectionIsTLS { return true }
+        guard !policy.trustedHosts.isEmpty,
+              AccessPolicy.isLoopback(context.channel.remoteAddress),
+              let proto = head.headers["x-forwarded-proto"].first
+        else {
+            return false
+        }
+        return proto.split(separator: ",").first?
+            .trimmingCharacters(in: .whitespaces)
+            .lowercased() == "https"
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -118,7 +148,22 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             // Share-link support: the LAN base URL, plus the token — but only
             // for loopback callers (the machine's own user).
             let body: String
-            if policy.lanEnabled, let ip = NetworkInterfaces.primaryLANIPv4() {
+            // Where another device should reach this daemon, in preference
+            // order: the public name over TLS (a cert never matches a bare
+            // IP), then a public name behind a proxy, then the plaintext LAN
+            // IP. The share and watch buttons build their links from this, so
+            // getting it right here is what keeps them correct everywhere.
+            if let external = externalBase() {
+                let isLocal = AccessPolicy.isLoopback(context.channel.remoteAddress)
+                var tokenField = ""
+                if isLocal, let token = policy.token {
+                    tokenField += #","token":"\#(token)""#
+                }
+                if isLocal, let watch = policy.watchToken {
+                    tokenField += #","watchToken":"\#(watch)""#
+                }
+                body = #"{"ok":true,"enabled":true,"url":"\#(external)"\#(tokenField)}"#
+            } else if policy.lanEnabled, let ip = NetworkInterfaces.primaryLANIPv4() {
                 // Tokens only for loopback callers (the machine's own user):
                 // the full token for control links, the watch token for
                 // read-only share links.
@@ -185,9 +230,11 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         case (.GET, "/sessions"):
             // The fleet view is a distinct page; `/` stays "open a tab, get a
             // shell". Extensionless URL, static file behind it.
-            serveStatic(path: "/sessions.html", head: head, context: context, authCookie: authCookie)
+            serveStatic(path: "/sessions.html", head: head, context: context, authCookie: authCookie,
+                        secureCookie: cookiesMayBeSecure(head: head, context: context))
         case (.GET, _):
-            serveStatic(path: path, head: head, context: context, authCookie: authCookie)
+            serveStatic(path: path, head: head, context: context, authCookie: authCookie,
+                        secureCookie: cookiesMayBeSecure(head: head, context: context))
         default:
             writeJSON(
                 status: .notFound,
@@ -197,6 +244,26 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 keepAlive: false
             )
         }
+    }
+
+    /// The base URL other devices should use, when a public name is
+    /// configured. Prefers TLS; nil when only the plaintext LAN path exists
+    /// (the caller then falls back to the IP).
+    private func externalBase() -> String? {
+        guard let host = policy.trustedHosts.sorted().first else { return nil }
+        if let tls = tlsPort {
+            return tls == 443 ? "https://\(host)" : "https://\(host):\(tls)"
+        }
+        if policy.lanEnabled {
+            // Bound externally with no certificate: the name resolves straight
+            // to this daemon, so the honest link is plain HTTP on our own
+            // port. Claiming https here would hand out links that cannot
+            // connect.
+            return port == 80 ? "http://\(host)" : "http://\(host):\(port)"
+        }
+        // Loopback-bound but answering to a public name: something fronts us,
+        // and it owns the scheme and port. The bare name is all we can say.
+        return "https://\(host)"
     }
 
     /// `GET /api/sessions` — every live session with its mark-derived state.
@@ -561,7 +628,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         path: String,
         head: HTTPRequestHead,
         context: ChannelHandlerContext,
-        authCookie: String? = nil
+        authCookie: String? = nil,
+        secureCookie: Bool = false
     ) {
         guard let root = staticRoot else {
             writeJSON(
@@ -596,7 +664,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         // The cookie carries exactly the token that was presented — a watch
         // token must never be upgraded to the control cookie.
         if let authCookie {
-            headers.add(name: "Set-Cookie", value: AccessPolicy.setCookieHeaderValue(for: authCookie))
+            headers.add(
+                name: "Set-Cookie",
+                value: AccessPolicy.setCookieHeaderValue(for: authCookie, secure: secureCookie)
+            )
         }
 
         let responseHead = HTTPResponseHead(version: head.version, status: .ok, headers: headers)

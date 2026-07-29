@@ -34,7 +34,8 @@ kitterm start
 ## Usage
 
 ```sh
-kitterm start [--port PORT] [--lan] [--record]
+kitterm start [--port PORT] [--lan] [--record] [--agent-control]
+              [--trusted-host NAME] [--tls-cert FILE --tls-key FILE [--tls-port PORT]]
 kitterm stop | status | restart
 kitterm open [PATH]
 kitterm service install | uninstall | status
@@ -76,20 +77,77 @@ observe sessions and read the API, but can never type, take control, or open a s
 
 **Reaching kitterm from another device**, best first:
 
-1. **SSH tunnel** — `ssh -L 3418:localhost:3418 your-mac`, then use `localhost:3418`
-   on the other machine. Encrypted, no token in a URL, nothing new to install. No good
-   on a phone or iPad.
-2. **Private overlay network** (Tailscale, WireGuard, ZeroTier) — put both devices on
-   it and use `kitterm start --lan` bound to that interface's address. The overlay
-   provides the encryption; kitterm's token provides the authorization.
-3. **`--lan` on a network you fully trust** — home Wi-Fi, not a café.
+**1. Tailscale Serve — simplest, and what I'd pick.** Tailscale terminates TLS with a
+publicly trusted certificate and proxies to kitterm on loopback. Nothing to install on
+your phone, no certificate files to manage, and renewals are Tailscale's problem:
+
+```sh
+kitterm start --trusted-host mac.tailnet.ts.net    # stays on loopback
+tailscale serve --bg 3418
+# → https://mac.tailnet.ts.net/
+```
+
+Enable HTTPS certificates once for your tailnet first, under
+[DNS → HTTPS Certificates](https://login.tailscale.com/admin/dns). `--trusted-host` is
+what lets kitterm answer to that name; requests naming it still need a token, so the
+proxy can't become an unauthenticated way in.
+
+**2. Any other reverse proxy.** Same shape with Caddy or nginx:
+
+```sh
+kitterm start --trusted-host kitterm.example.com
+```
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:3418;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;      # WebSocket
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 3600s;                    # long-lived sessions
+    proxy_buffering off;                         # stream output, don't batch it
+}
+```
+
+```caddyfile
+kitterm.example.com {
+    reverse_proxy 127.0.0.1:3418
+}
+```
+
+**3. kitterm's own TLS**, when you have a certificate but no proxy. The plain listener
+stays on loopback and an encrypted one serves everyone else, so plaintext never leaves
+the machine. kitterm does not generate certificates:
+
+```sh
+kitterm start --tls-cert mac.crt --tls-key mac.key --trusted-host mac.example.com
+# Local:  http://kitterm.localhost:3418/   (loopback only)
+# Remote: https://mac.example.com:3419/    (TLS)
+```
+
+> [!NOTE]
+> To use a Tailscale certificate here, fetch it through stdout — the macOS Tailscale CLI
+> is sandboxed, so `--cert-file mac.crt` silently writes inside its own container:
+> ```sh
+> tailscale cert --cert-file - mac.tailnet.ts.net > mac.crt
+> tailscale cert --key-file  - mac.tailnet.ts.net > mac.key && chmod 600 mac.key
+> ```
+> A renewed certificate needs a `kitterm restart` to take effect; Serve (option 1) has
+> no such step.
+
+**4. SSH tunnel** — `ssh -L 3418:localhost:3418 your-mac`, then `localhost:3418` on the
+other machine. Nothing to configure, but no phone or iPad.
+
+**5. `--lan`, on a network you fully trust** — home Wi-Fi, not a café.
 
 > [!WARNING]
-> **`--lan` speaks plain HTTP: the access token and every keystroke cross the network
-> unencrypted**, so anyone sniffing that network can capture the token and get a shell
-> as you. Browsers additionally withhold the clipboard API from non-HTTPS LAN origins,
-> which disables terminal copy/paste there. Native TLS and reverse-proxy support are
-> planned; until then treat `--lan` as trusted-network-only and prefer 1 or 2 above.
+> **`--lan` alone speaks plain HTTP: the access token and every keystroke cross the
+> network unencrypted.** Anyone sniffing that network can capture the token and get a
+> shell as you. Browsers also withhold the clipboard API from non-HTTPS LAN origins, so
+> terminal copy/paste stops working there. Add a certificate (option 1) or a proxy
+> (option 2) and both problems go away.
 
 Never put kitterm on a public IP — a public URL in front of a shell is one leaked
 token away from remote code execution.
