@@ -77,23 +77,22 @@ observe sessions and read the API, but can never type, take control, or open a s
 
 **Reaching kitterm from another device**, best first:
 
-**1. TLS with a real certificate.** The plain listener stays on loopback; an encrypted
-one serves everyone else, so plaintext never leaves the machine. kitterm does not
-generate certificates — [`tailscale cert`](https://tailscale.com/kb/1153/enabling-https)
-issues a publicly trusted one for free, with nothing to install on your phone:
+**1. Tailscale Serve — simplest, and what I'd pick.** Tailscale terminates TLS with a
+publicly trusted certificate and proxies to kitterm on loopback. Nothing to install on
+your phone, no certificate files to manage, and renewals are Tailscale's problem:
 
 ```sh
-tailscale cert mac.tailnet.ts.net
-kitterm start --tls-cert mac.tailnet.ts.net.crt \
-              --tls-key  mac.tailnet.ts.net.key \
-              --trusted-host mac.tailnet.ts.net
-# Local:  http://kitterm.localhost:3418/  (loopback only)
-# Remote: https://mac.tailnet.ts.net:3419/  (TLS)
+kitterm start --trusted-host mac.tailnet.ts.net    # stays on loopback
+tailscale serve --bg 3418
+# → https://mac.tailnet.ts.net/
 ```
 
-**2. Behind a reverse proxy.** Terminate TLS in Caddy or nginx, keep kitterm on
-loopback, and name the public host so it accepts those requests — they still need a
-token, so the proxy can't become an unauthenticated way in:
+Enable HTTPS certificates once for your tailnet first, under
+[DNS → HTTPS Certificates](https://login.tailscale.com/admin/dns). `--trusted-host` is
+what lets kitterm answer to that name; requests naming it still need a token, so the
+proxy can't become an unauthenticated way in.
+
+**2. Any other reverse proxy.** Same shape with Caddy or nginx:
 
 ```sh
 kitterm start --trusted-host kitterm.example.com
@@ -118,10 +117,30 @@ kitterm.example.com {
 }
 ```
 
-**3. SSH tunnel** — `ssh -L 3418:localhost:3418 your-mac`, then `localhost:3418` on the
+**3. kitterm's own TLS**, when you have a certificate but no proxy. The plain listener
+stays on loopback and an encrypted one serves everyone else, so plaintext never leaves
+the machine. kitterm does not generate certificates:
+
+```sh
+kitterm start --tls-cert mac.crt --tls-key mac.key --trusted-host mac.example.com
+# Local:  http://kitterm.localhost:3418/   (loopback only)
+# Remote: https://mac.example.com:3419/    (TLS)
+```
+
+> [!NOTE]
+> To use a Tailscale certificate here, fetch it through stdout — the macOS Tailscale CLI
+> is sandboxed, so `--cert-file mac.crt` silently writes inside its own container:
+> ```sh
+> tailscale cert --cert-file - mac.tailnet.ts.net > mac.crt
+> tailscale cert --key-file  - mac.tailnet.ts.net > mac.key && chmod 600 mac.key
+> ```
+> A renewed certificate needs a `kitterm restart` to take effect; Serve (option 1) has
+> no such step.
+
+**4. SSH tunnel** — `ssh -L 3418:localhost:3418 your-mac`, then `localhost:3418` on the
 other machine. Nothing to configure, but no phone or iPad.
 
-**4. `--lan`, on a network you fully trust** — home Wi-Fi, not a café.
+**5. `--lan`, on a network you fully trust** — home Wi-Fi, not a café.
 
 > [!WARNING]
 > **`--lan` alone speaks plain HTTP: the access token and every keystroke cross the
