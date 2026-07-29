@@ -1,5 +1,6 @@
 import "./tokens.css";
 import "./sessions.css";
+import { resolveFontFamily } from "./fonts";
 import { loadSettings } from "./settings-store";
 import { applyThemeTokens } from "./theme-tokens";
 import { findThemeById } from "./themes";
@@ -35,7 +36,12 @@ const POLL_MS = 2000;
 
 const settings = loadSettings();
 const activeTheme = findThemeById(settings.themeId);
-applyThemeTokens(activeTheme.colors, { accent: activeTheme.accent });
+applyThemeTokens(activeTheme.colors, {
+  accent: activeTheme.accent,
+  // Same font the terminal is using, so command text on this page matches
+  // what it looks like in a session.
+  fontFamily: resolveFontFamily(settings.fontId, settings.localFontFamily),
+});
 
 const root = document.getElementById("sessions");
 
