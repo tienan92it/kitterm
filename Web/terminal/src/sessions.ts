@@ -1,3 +1,10 @@
+import "./tokens.css";
+import "./sessions.css";
+import { resolveFontFamily } from "./fonts";
+import { loadSettings } from "./settings-store";
+import { applyThemeTokens } from "./theme-tokens";
+import { findThemeById } from "./themes";
+
 /**
  * The fleet view: every live shell, its mark-derived state, and what it last
  * ran — the supervision surface for watching agents from any device. Polls
@@ -27,8 +34,16 @@ type Profile = { name: string; command: string; cwd?: string };
 
 const POLL_MS = 2000;
 
+const settings = loadSettings();
+const activeTheme = findThemeById(settings.themeId);
+applyThemeTokens(activeTheme.colors, {
+  accent: activeTheme.accent,
+  // Same font the terminal is using, so command text on this page matches
+  // what it looks like in a session.
+  fontFamily: resolveFontFamily(settings.fontId, settings.localFontFamily),
+});
+
 const root = document.getElementById("sessions");
-injectStyles();
 
 let lastSignature = "";
 /** One request at a time: a response slower than the poll interval must not
@@ -224,62 +239,6 @@ function renderError(): void {
   root.append(p);
 }
 
-function injectStyles(): void {
-  const style = document.createElement("style");
-  style.textContent = `
-    :root { color-scheme: dark; }
-    body {
-      margin: 0; background: #0d1117; color: #e6edf3;
-      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-    #sessions { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
-    header { display: flex; align-items: center; gap: 10px; margin: 8px 0 20px; }
-    h1 { font-size: 20px; margin: 0; font-weight: 600; }
-    .count {
-      background: #21262d; color: #8b949e; border-radius: 999px;
-      padding: 1px 9px; font-size: 12px; font-variant-numeric: tabular-nums;
-    }
-    .empty { color: #8b949e; padding: 32px 4px; }
-    .launcher { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
-    .launch {
-      color: #adbac7; text-decoration: none; font-size: 12.5px;
-      background: #21262d; border: 1px solid #30363d; border-radius: 999px;
-      padding: 3px 12px; transition: border-color .12s, color .12s;
-    }
-    .launch:hover { border-color: #58a6ff; color: #e6edf3; }
-    .chip {
-      background: #21262d; color: #8b949e; border-radius: 999px;
-      padding: 0 8px; font-size: 11px;
-    }
-    .list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-    .open {
-      display: flex; gap: 12px; align-items: flex-start; text-decoration: none;
-      color: inherit; background: #161b22; border: 1px solid #30363d;
-      border-radius: 10px; padding: 12px 14px; transition: border-color .12s, background .12s;
-    }
-    .open:hover { border-color: #58a6ff; background: #1c2230; }
-    .dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 6px; flex: none; }
-    .dot.running { background: #58a6ff; box-shadow: 0 0 0 3px rgba(88,166,255,.18); }
-    .dot.idle { background: #3fb950; }
-    .dot.failed { background: #f85149; }
-    .dot.unknown { background: #6e7681; }
-    .main { min-width: 0; flex: 1; }
-    .top { display: flex; align-items: baseline; gap: 10px; }
-    .folder { font-weight: 600; font-size: 15px; }
-    .state { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
-    .state.running { color: #58a6ff; }
-    .state.idle { color: #3fb950; }
-    .state.failed { color: #f85149; }
-    .state.unknown { color: #6e7681; }
-    .sub {
-      color: #adbac7; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 12.5px; margin-top: 3px; white-space: nowrap; overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .meta { color: #6e7681; font-size: 11.5px; margin-top: 4px; }
-  `;
-  document.head.append(style);
-}
 
 void fetchProfiles().then(() => poll());
 setInterval(() => void poll(), POLL_MS);

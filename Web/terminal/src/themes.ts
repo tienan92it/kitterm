@@ -1,10 +1,11 @@
 import type { ITheme } from "@xterm/xterm";
 import { githubDarkTheme } from "./theme-github-dark";
 
-const theme = <Id extends string>(id: Id, label: string, colors: ITheme) => ({
+const theme = <Id extends string>(id: Id, label: string, colors: ITheme, accent?: string) => ({
   id,
   label,
   colors,
+  accent,
 });
 
 const solarizedDark: ITheme = {
@@ -394,7 +395,7 @@ const rosePine: ITheme = {
 const THEME_LIST = [
   theme("github-dark", "GitHub Dark", githubDarkTheme),
   theme("github-dark-dimmed", "GitHub Dark Dimmed", githubDarkDimmed),
-  theme("vesper", "Vesper", vesper),
+  theme("vesper", "Vesper", vesper, "#ffc799"),
   theme("solarized-dark", "Solarized Dark", solarizedDark),
   theme("dracula", "Dracula", dracula),
   theme("nord", "Nord", nord),
@@ -417,6 +418,10 @@ export interface TerminalTheme {
   id: TerminalThemeId;
   label: string;
   colors: ITheme;
+  /** Overrides the accent the UI derives from the palette. Set it where the
+   * theme's own blue is not a colour — Vesper's is `#a0a0a0`, pure grey, and
+   * would leave the interface colourless. */
+  accent?: string;
 }
 
 export const TERMINAL_THEMES: readonly TerminalTheme[] = THEME_LIST;

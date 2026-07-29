@@ -1,0 +1,92 @@
+/**
+ * Design tokens.
+ *
+ * Three tiers: `--term-*` are the raw colours of the active terminal theme,
+ * published from JS whenever the theme changes; `--ui-*` are semantic roles
+ * derived from them in pure CSS; component classes consume only the semantic
+ * tier. Pick the theme and the chrome follows, including user themes we have
+ * never seen.
+ *
+ * No dependency and no build step: every design system worth having ships a
+ * *fixed* palette, which cannot track a terminal theme chosen at runtime, so
+ * the colour tier had to be generated here regardless. The step semantics
+ * (background / surface / hover / border / text / accent) follow Radix's
+ * scale, and the non-colour names follow Open Props.
+ *
+ * Derivation rests on `color-mix()`, Baseline since 2023 (~91% of browsers).
+ * Relative colour syntax would express some of this better but Safari 16.4-17.6
+ * shipped an older spec where channel arithmetic silently misbehaves, so it is
+ * deliberately not used.
+ *
+ * Every token carries the pre-token hex as its fallback, so the UI is
+ * unchanged until JS starts publishing the `--term-*` tier.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* Which way "raised" points. JS flips it to black for light themes, so one
+     set of formulas covers both polarities. */
+  --ui-lift: #fff;
+
+  /* --- surfaces ------------------------------------------------------- */
+  /* Elevation mixes toward --ui-lift rather than toward the theme's own
+     foreground: on a low-contrast theme like Solarized Dark, mixing toward
+     that muddy foreground makes a panel almost invisible. Mixing toward pure
+     white keeps the step perceptually even across every theme. */
+  --ui-bg: var(--term-bg, #0d1117);
+  --ui-bg-sunken: color-mix(in oklab, var(--ui-bg) 94%, black);
+  --ui-surface: color-mix(in oklab, var(--ui-bg) 93%, var(--ui-lift));
+  --ui-surface-2: color-mix(in oklab, var(--ui-bg) 88%, var(--ui-lift));
+  --ui-hover: color-mix(in oklab, var(--ui-bg) 83%, var(--ui-lift));
+  --ui-active: color-mix(in oklab, var(--ui-bg) 77%, var(--ui-lift));
+
+  /* --- borders -------------------------------------------------------- */
+  --ui-border: color-mix(in oklab, var(--ui-bg) 82%, var(--ui-lift));
+
+  /* --- text ----------------------------------------------------------- */
+  /* Text steps mix the theme's foreground toward its background, so muted
+     text stays in the theme's own family and inverts correctly on light
+     themes without a branch. */
+  --ui-text: var(--term-fg, #e6edf3);
+  --ui-text-muted: color-mix(in oklab, var(--ui-text) 66%, var(--ui-bg));
+  --ui-text-faint: color-mix(in oklab, var(--ui-text) 46%, var(--ui-bg));
+
+  /* --- accent --------------------------------------------------------- */
+  /* `--term-accent` is chosen per theme, not assumed to be blue: Vesper's
+     blue is pure grey, which would leave the UI colourless. */
+  --ui-accent: var(--term-accent, var(--term-blue, #58a6ff));
+  --ui-accent-hover: color-mix(in oklab, var(--ui-accent) 88%, var(--ui-lift));
+  --ui-accent-soft: color-mix(in srgb, var(--ui-accent) 18%, transparent);
+  --ui-accent-on: #fff;
+
+  /* --- status --------------------------------------------------------- */
+  --ui-danger: var(--term-red, #f85149);
+  --ui-success: var(--term-green, #3fb950);
+
+  /* --- overlays ------------------------------------------------------- */
+  /* A scrim should darken, not tint, so it stays absolute. The veil is the
+     background at partial alpha, for chrome floating over terminal output. */
+  --ui-scrim: color-mix(in srgb, black 45%, transparent);
+  --ui-veil: color-mix(in srgb, var(--ui-bg) 92%, transparent);
+
+  /* --- non-colour primitives ------------------------------------------ */
+  --radius-1: 4px;
+  --radius-2: 8px;
+  --radius-round: 999px;
+  /* WCAG 2.2 SC 2.5.8 puts the floor at 24px. */
+  --tap-min: 24px;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* The terminal's own font, published by JS; chrome that shows terminal
+     material (commands, paths, keys) uses it so the two never disagree. */
+  --font-mono: var(--term-font, ui-monospace, SFMono-Regular, Menlo, Monaco, monospace);
+}
+
+/* Text on a solid accent fill. `contrast-color()` reached Baseline only in
+   2026, so it is an enhancement over the white default. The test must use a
+   literal — `@supports` cannot see inside a custom property. */
+@supports (color: contrast-color(white)) {
+  :root {
+    --ui-accent-on: contrast-color(var(--ui-accent));
+  }
+}

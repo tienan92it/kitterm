@@ -1,4 +1,5 @@
 import { TerminalApp } from "./terminal-app";
+import "./tokens.css";
 import "./styles.css";
 
 const container = document.getElementById("terminal");

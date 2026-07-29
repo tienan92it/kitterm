@@ -1,0 +1,52 @@
+/* Fleet view. Colours come from the shared token layer, so the page
+   follows the terminal theme like the rest of the chrome. */
+
+body {
+  margin: 0; background: var(--ui-bg); color: var(--ui-text);
+  font: 14px/1.5 var(--font-ui);
+}
+#sessions { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+header { display: flex; align-items: center; gap: 10px; margin: 8px 0 20px; }
+h1 { font-size: 20px; margin: 0; font-weight: 600; }
+.count {
+  background: var(--ui-surface-2); color: var(--ui-text-muted); border-radius: var(--radius-round);
+  padding: 1px 9px; font-size: 12px; font-variant-numeric: tabular-nums;
+}
+.empty { color: var(--ui-text-muted); padding: 32px 4px; }
+.launcher { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+.launch {
+  color: var(--ui-text); text-decoration: none; font-size: 12.5px;
+  background: var(--ui-surface-2); border: 1px solid var(--ui-border); border-radius: var(--radius-round);
+  padding: 3px 12px; transition: border-color .12s, color .12s;
+}
+.launch:hover { border-color: var(--ui-accent); color: var(--ui-text); }
+.chip {
+  background: var(--ui-surface-2); color: var(--ui-text-muted); border-radius: var(--radius-round);
+  padding: 0 8px; font-size: 11px;
+}
+.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.open {
+  display: flex; gap: 12px; align-items: flex-start; text-decoration: none;
+  color: inherit; background: var(--ui-surface); border: 1px solid var(--ui-border);
+  border-radius: 10px; padding: 12px 14px; transition: border-color .12s, background .12s;
+}
+.open:hover { border-color: var(--ui-accent); background: var(--ui-hover); }
+.dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 6px; flex: none; }
+.dot.running { background: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-accent-soft); }
+.dot.idle { background: var(--ui-success); }
+.dot.failed { background: var(--ui-danger); }
+.dot.unknown { background: var(--ui-text-faint); }
+.main { min-width: 0; flex: 1; }
+.top { display: flex; align-items: baseline; gap: 10px; }
+.folder { font-weight: 600; font-size: 15px; }
+.state { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.state.running { color: var(--ui-accent); }
+.state.idle { color: var(--ui-success); }
+.state.failed { color: var(--ui-danger); }
+.state.unknown { color: var(--ui-text-faint); }
+.sub {
+  color: var(--ui-text); font-family: var(--font-mono);
+  font-size: 12.5px; margin-top: 3px; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis;
+}
+.meta { color: var(--ui-text-faint); font-size: 11.5px; margin-top: 4px; }

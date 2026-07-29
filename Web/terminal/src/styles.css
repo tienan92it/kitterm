@@ -10,8 +10,8 @@ body,
   margin: 0;
   height: 100%;
   width: 100%;
-  background: #0d1117;
-  color: #e6edf3;
+  background: var(--ui-bg);
+  color: var(--ui-text);
   overflow: hidden;
 }
 
@@ -26,29 +26,55 @@ body,
   gap: 8px;
 }
 
+/* Sits on top of terminal output, so it stays faint until you reach for it.
+   Opacity (not a translucent background) so the glyph and border fade
+   together — a see-through background with a solid glyph reads as a smudge
+   over text. */
 .settings-gear {
   width: 32px;
   height: 32px;
   padding: 0;
-  border: 1px solid #30363d;
-  border-radius: 4px;
-  background: rgba(13, 17, 23, 0.95);
-  color: #e6edf3;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-1);
+  background: var(--ui-veil);
+  color: var(--ui-text);
   font-size: 16px;
   line-height: 1;
   cursor: pointer;
+  opacity: 0.35;
+  transition: opacity 0.12s ease, background-color 0.12s ease, border-color 0.12s ease;
 }
 
-.settings-gear:hover {
-  background: #21262d;
-  border-color: #58a6ff;
+.settings-gear:hover,
+.settings-gear:focus-visible,
+.settings-gear[aria-expanded="true"] {
+  opacity: 1;
+  background: var(--ui-surface-2);
+  border-color: var(--ui-accent);
+}
+
+/* No hover on touch: keep it findable, and give it a real tap target. */
+@media (pointer: coarse) {
+  .settings-gear {
+    width: 40px;
+    height: 40px;
+    opacity: 0.65;
+  }
+}
+
+/* Someone who asked for less motion still gets the state change, just not the
+   fade. */
+@media (prefers-reduced-motion: reduce) {
+  .settings-gear {
+    transition: none;
+  }
 }
 
 .settings-backdrop {
   position: fixed;
   inset: 0;
   z-index: 5;
-  background: rgba(1, 4, 9, 0.45);
+  background: var(--ui-scrim);
 }
 
 .settings-backdrop[hidden],
@@ -58,6 +84,11 @@ body,
 
 /* Opens upward from the gear, which sits in the bottom-right corner. */
 .settings-dialog {
+  /* Chrome floats over the terminal. Containment keeps a restyle or reflow
+     inside it from invalidating pane geometry — the panes are engineered to
+     avoid reflow so a focus change never refits the terminal, and this makes
+     that an enforced boundary rather than a hope. */
+  contain: layout style paint;
   position: fixed;
   bottom: 52px;
   right: 12px;
@@ -66,9 +97,9 @@ body,
   max-height: calc(100vh - 84px);
   overflow: auto;
   padding: 12px 14px 14px;
-  background: #161b22;
-  border: 1px solid #30363d;
-  border-radius: 8px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-2);
 }
 
 .settings-header {
@@ -80,23 +111,25 @@ body,
 
 .settings-header h2 {
   margin: 0;
-  font: 600 14px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #e6edf3;
+  font: 600 14px/1.3 var(--font-ui);
+  color: var(--ui-text);
 }
 
 .settings-close {
-  width: 28px;
-  height: 28px;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  min-width: 28px;
+  min-height: 28px;
   padding: 0;
-  border: 1px solid #30363d;
-  border-radius: 4px;
-  background: #21262d;
-  color: #e6edf3;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-1);
+  background: var(--ui-surface-2);
+  color: var(--ui-text);
   cursor: pointer;
 }
 
 .settings-close:hover {
-  background: #30363d;
+  background: var(--ui-border);
 }
 
 .settings-field {
@@ -104,8 +137,8 @@ body,
   flex-direction: column;
   gap: 6px;
   margin-bottom: 12px;
-  font: 12px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #8b949e;
+  font: 12px/1.3 var(--font-ui);
+  color: var(--ui-text-muted);
 }
 
 .settings-field:last-child {
@@ -116,17 +149,17 @@ body,
 .settings-field input[type="number"] {
   width: 100%;
   padding: 6px 8px;
-  border: 1px solid #30363d;
-  border-radius: 4px;
-  background: #0d1117;
-  color: #e6edf3;
-  font: 13px/1.3 Menlo, Monaco, monospace;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-1);
+  background: var(--ui-bg);
+  color: var(--ui-text);
+  font: 13px/1.3 var(--font-mono);
   outline: none;
 }
 
 .settings-field select:focus,
 .settings-field input[type="number"]:focus {
-  border-color: #58a6ff;
+  border-color: var(--ui-accent);
 }
 
 .settings-stepper {
@@ -151,16 +184,16 @@ body,
   width: 32px;
   height: 32px;
   padding: 0;
-  border: 1px solid #30363d;
-  border-radius: 4px;
-  background: #21262d;
-  color: #e6edf3;
-  font: 16px/1 Menlo, Monaco, monospace;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-1);
+  background: var(--ui-surface-2);
+  color: var(--ui-text);
+  font: 16px/1 var(--font-mono);
   cursor: pointer;
 }
 
 .settings-stepper button:hover {
-  background: #30363d;
+  background: var(--ui-border);
 }
 
 .settings-local-font {
@@ -171,9 +204,9 @@ body,
   max-height: 160px;
   overflow: auto;
   margin: 0 0 10px;
-  border: 1px solid #30363d;
-  border-radius: 4px;
-  background: #0d1117;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-1);
+  background: var(--ui-bg);
 }
 
 .settings-local-item {
@@ -181,9 +214,9 @@ body,
   width: 100%;
   padding: 6px 8px;
   border: 0;
-  border-bottom: 1px solid #21262d;
+  border-bottom: 1px solid var(--ui-surface-2);
   background: transparent;
-  color: #e6edf3;
+  color: var(--ui-text);
   font-size: 13px;
   line-height: 1.3;
   text-align: left;
@@ -195,36 +228,36 @@ body,
 }
 
 .settings-local-item:hover {
-  background: #21262d;
+  background: var(--ui-surface-2);
 }
 
 .settings-local-item.is-selected {
-  background: #1f3a5f;
-  color: #58a6ff;
+  background: var(--ui-accent-soft);
+  color: var(--ui-accent);
 }
 
 .settings-local-more,
 .settings-local-status {
   margin: 0 0 8px;
-  font: 11px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #8b949e;
+  font: 11px/1.4 var(--font-ui);
+  color: var(--ui-text-muted);
 }
 
 .settings-field input[type="search"],
 .settings-field input[type="text"] {
   width: 100%;
   padding: 6px 8px;
-  border: 1px solid #30363d;
-  border-radius: 4px;
-  background: #0d1117;
-  color: #e6edf3;
-  font: 13px/1.3 Menlo, Monaco, monospace;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-1);
+  background: var(--ui-bg);
+  color: var(--ui-text);
+  font: 13px/1.3 var(--font-mono);
   outline: none;
 }
 
 .settings-field input[type="search"]:focus,
 .settings-field input[type="text"]:focus {
-  border-color: #58a6ff;
+  border-color: var(--ui-accent);
 }
 
 #search {
@@ -236,9 +269,9 @@ body,
   gap: 4px;
   align-items: center;
   padding: 4px 6px;
-  background: rgba(13, 17, 23, 0.95);
-  border: 1px solid #30363d;
-  border-radius: 4px;
+  background: var(--ui-veil);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-1);
 }
 
 #search[hidden] {
@@ -249,30 +282,30 @@ body,
   width: 200px;
   max-width: 40vw;
   padding: 4px 8px;
-  border: 1px solid #30363d;
+  border: 1px solid var(--ui-border);
   border-radius: 3px;
-  background: #161b22;
-  color: #e6edf3;
-  font: 12px/1.4 Menlo, Monaco, monospace;
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  font: 12px/1.4 var(--font-mono);
   outline: none;
 }
 
 #search input:focus {
-  border-color: #58a6ff;
+  border-color: var(--ui-accent);
 }
 
 #search button {
   padding: 4px 8px;
-  border: 1px solid #30363d;
+  border: 1px solid var(--ui-border);
   border-radius: 3px;
-  background: #21262d;
-  color: #e6edf3;
-  font: 12px/1 Menlo, Monaco, monospace;
+  background: var(--ui-surface-2);
+  color: var(--ui-text);
+  font: 12px/1 var(--font-mono);
   cursor: pointer;
 }
 
 #search button:hover {
-  background: #30363d;
+  background: var(--ui-border);
 }
 
 /* Layout container: panes are positioned absolutely from the layout tree, so
@@ -301,17 +334,17 @@ body,
   position: absolute;
   inset: 0;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--radius-1);
   overflow: hidden;
 }
 
 .pane.is-split .pane-inner {
   inset: 3px;
-  border-color: #30363d;
+  border-color: var(--ui-border);
 }
 
 .pane.is-split.is-focused .pane-inner {
-  border-color: #58a6ff;
+  border-color: var(--ui-accent);
 }
 
 /* Read-only observer overlay: one tap to become the controller. */
@@ -322,18 +355,18 @@ body,
   transform: translateX(-50%);
   z-index: 3;
   padding: 4px 14px;
-  border: 1px solid #30363d;
-  border-radius: 999px;
-  background: rgba(22, 27, 34, 0.92);
-  color: #adbac7;
-  font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-round);
+  background: var(--ui-veil);
+  color: var(--ui-text);
+  font: 12px/1.4 var(--font-ui);
   cursor: pointer;
   transition: border-color 0.12s, color 0.12s;
 }
 
 .take-control:hover {
-  border-color: #58a6ff;
-  color: #e6edf3;
+  border-color: var(--ui-accent);
+  color: var(--ui-text);
 }
 
 .pane-close {
@@ -342,24 +375,39 @@ body,
   right: 8px;
   z-index: 3;
   display: none;
-  width: 20px;
-  height: 20px;
+  /* WCAG 2.2 SC 2.5.8 puts the floor at 24px; this was 20. */
+  width: var(--tap-min);
+  height: var(--tap-min);
   padding: 0;
-  border: 1px solid #30363d;
-  border-radius: 4px;
-  background: rgba(13, 17, 23, 0.9);
-  color: #8b949e;
-  font: 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-1);
+  background: var(--ui-veil);
+  color: var(--ui-text-muted);
+  font: 11px/1 var(--font-ui);
   cursor: pointer;
 }
 
-.pane.is-split:hover .pane-close {
-  display: block;
+/* Revealed on hover where there is a pointer to hover with. On touch there is
+   none, so the button would be permanently unreachable — show it outright and
+   let it fade like the gear does. */
+@media (hover: hover) {
+  .pane.is-split:hover .pane-close {
+    display: block;
+  }
+}
+
+@media (hover: none) {
+  .pane.is-split .pane-close {
+    display: block;
+    width: var(--tap-min);
+    height: var(--tap-min);
+    opacity: 0.55;
+  }
 }
 
 .pane-close:hover {
-  color: #e6edf3;
-  border-color: #58a6ff;
+  color: var(--ui-text);
+  border-color: var(--ui-accent);
 }
 
 .pane-splitter {
@@ -381,7 +429,7 @@ body,
 }
 
 .pane-splitter:hover {
-  background: rgba(88, 166, 255, 0.25);
+  background: var(--ui-accent-soft);
 }
 
 /* While dragging, keep xterm's selection handling from eating the pointer. */
@@ -404,15 +452,20 @@ body.pane-dragging .pane-inner {
 }
 
 #status {
+  /* Chrome floats over the terminal. Containment keeps a restyle or reflow
+     inside it from invalidating pane geometry — the panes are engineered to
+     avoid reflow so a focus change never refits the terminal, and this makes
+     that an enforced boundary rather than a hope. */
+  contain: layout style paint;
   position: absolute;
   left: 12px;
   bottom: 12px;
   z-index: 2;
   padding: 6px 10px;
-  font: 12px/1.4 Menlo, Monaco, monospace;
-  background: rgba(13, 17, 23, 0.92);
-  border: 1px solid #30363d;
-  border-radius: 4px;
+  font: 12px/1.4 var(--font-mono);
+  background: var(--ui-veil);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-1);
   pointer-events: none;
 }
 
@@ -430,22 +483,22 @@ body.pane-dragging .pane-inner {
 .settings-check input[type="checkbox"] {
   width: auto;
   margin: 0;
-  accent-color: #58a6ff;
+  accent-color: var(--ui-accent);
 }
 
 /* Declares the family explicitly: `body` sets none, so inheriting here would
    fall back to the browser's default serif. */
 .settings-note {
   margin: 4px 0 0;
-  font: 11px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #6e7681;
+  font: 11px/1.4 var(--font-ui);
+  color: var(--ui-text-faint);
 }
 
 /* Last row of the dialog: an action, not a setting — separated accordingly. */
 .settings-share {
   margin-top: 14px;
   padding-top: 12px;
-  border-top: 1px solid #21262d;
+  border-top: 1px solid var(--ui-surface-2);
 }
 
 .settings-share button + button {
@@ -455,17 +508,17 @@ body.pane-dragging .pane-inner {
 .settings-share button {
   width: 100%;
   padding: 7px 10px;
-  border: 1px solid #30363d;
-  border-radius: 4px;
-  background: rgba(13, 17, 23, 0.95);
-  color: #e6edf3;
-  font: 12px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-1);
+  background: var(--ui-veil);
+  color: var(--ui-text);
+  font: 12px/1.3 var(--font-ui);
   cursor: pointer;
 }
 
 .settings-share button:hover {
-  background: #21262d;
-  border-color: #58a6ff;
+  background: var(--ui-surface-2);
+  border-color: var(--ui-accent);
 }
 
 .settings-check input[type="checkbox"]:disabled,
@@ -487,18 +540,18 @@ body.pane-dragging .pane-inner {
   margin-top: 3px;
   margin-left: -3px;
   border-radius: 50%;
-  background: #f85149;
+  background: var(--ui-danger);
   pointer-events: auto;
 }
 .kitterm-cmd-failed:hover {
-  box-shadow: 0 0 0 3px rgba(248, 81, 73, 0.25);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-danger) 25%, transparent);
 }
 
 /* Command permalink target: a brief highlight on the linked command's prompt
    line (?cmd=N deep link). */
 .kitterm-cmd-target {
-  background: rgba(88, 166, 255, 0.22);
-  border-left: 2px solid #58a6ff;
+  background: var(--ui-accent-soft);
+  border-left: 2px solid var(--ui-accent);
   width: 100% !important;
   pointer-events: none;
 }
@@ -509,11 +562,31 @@ body.pane-dragging .pane-inner {
   --extra-keys-height: 52px;
   --keyboard-height: 0px;
 }
+/* How much of the bottom edge the touch chrome owns: the key row, the safe
+   area it pads itself with, and the software keyboard when it is open.
+   Everything anchored to the bottom — terminal, gear, status — clears this,
+   or it ends up underneath a bar that is `position: fixed` above it. */
+body.has-extra-keys {
+  --bottom-chrome: calc(
+    var(--extra-keys-height) + env(safe-area-inset-bottom) + var(--keyboard-height)
+  );
+}
 /* Terminal sits above the extra-keys row and the software keyboard. */
 body.has-extra-keys #terminal {
-  bottom: calc(var(--extra-keys-height) + var(--keyboard-height));
+  bottom: var(--bottom-chrome);
+}
+/* The gear and the status line are absolutely positioned inside #app, so they
+   do not inherit the terminal's inset and were being covered outright. */
+body.has-extra-keys .settings-host,
+body.has-extra-keys #status {
+  bottom: calc(var(--bottom-chrome) + 12px);
 }
 .extra-keys {
+  /* Chrome floats over the terminal. Containment keeps a restyle or reflow
+     inside it from invalidating pane geometry — the panes are engineered to
+     avoid reflow so a focus change never refits the terminal, and this makes
+     that an enforced boundary rather than a hope. */
+  contain: layout style paint;
   position: fixed;
   left: 0;
   right: 0;
@@ -525,8 +598,8 @@ body.has-extra-keys #terminal {
   gap: 4px;
   padding: 4px calc(4px + env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom))
     calc(4px + env(safe-area-inset-left));
-  background: #10151c;
-  border-top: 1px solid #30363d;
+  background: var(--ui-bg-sunken);
+  border-top: 1px solid var(--ui-border);
   touch-action: manipulation;
 }
 .extra-keys-row {
@@ -538,20 +611,20 @@ body.has-extra-keys #terminal {
   min-width: 0;
   height: 44px;
   padding: 0;
-  border: 1px solid #30363d;
-  border-radius: 8px;
-  background: #1c2230;
-  color: #e6edf3;
-  font: 16px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-2);
+  background: var(--ui-hover);
+  color: var(--ui-text);
+  font: 16px/1 var(--font-ui);
   -webkit-tap-highlight-color: transparent;
   user-select: none;
   touch-action: none;
 }
 .extra-key:active {
-  background: #2a3242;
+  background: var(--ui-active);
 }
 .extra-key-mod.armed {
-  background: #1f6feb;
-  border-color: #388bfd;
-  color: #fff;
+  background: var(--ui-accent);
+  border-color: var(--ui-accent-hover);
+  color: var(--ui-accent-on);
 }
