@@ -254,8 +254,15 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         if let tls = tlsPort {
             return tls == 443 ? "https://\(host)" : "https://\(host):\(tls)"
         }
-        // Proxy in front: it owns the scheme and port, so the bare name is the
-        // only honest answer.
+        if policy.lanEnabled {
+            // Bound externally with no certificate: the name resolves straight
+            // to this daemon, so the honest link is plain HTTP on our own
+            // port. Claiming https here would hand out links that cannot
+            // connect.
+            return port == 80 ? "http://\(host)" : "http://\(host):\(port)"
+        }
+        // Loopback-bound but answering to a public name: something fronts us,
+        // and it owns the scheme and port. The bare name is all we can say.
         return "https://\(host)"
     }
 
