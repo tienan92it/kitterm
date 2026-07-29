@@ -52,6 +52,7 @@ export class SettingsPanel {
   /** True while the user is picking a local font that is not applied yet. */
   private browsingLocalFonts = false;
   private open = false;
+  private gear: HTMLButtonElement | null = null;
   private loadingLocal = false;
 
   constructor(root: HTMLElement, initial: KittermSettings, callbacks: SettingsPanelCallbacks) {
@@ -66,9 +67,11 @@ export class SettingsPanel {
     gear.type = "button";
     gear.className = "settings-gear";
     gear.setAttribute("aria-label", "Terminal settings");
+    gear.setAttribute("aria-expanded", "false");
     gear.title = "Settings";
     gear.textContent = "⚙";
     gear.addEventListener("click", () => this.toggle());
+    this.gear = gear;
 
     this.backdrop = document.createElement("div");
     this.backdrop.className = "settings-backdrop";
@@ -263,6 +266,9 @@ export class SettingsPanel {
 
   show(): void {
     this.open = true;
+    // Keeps the gear at full opacity while the panel is up, and tells screen
+    // readers the button controls an expanded surface.
+    this.gear?.setAttribute("aria-expanded", "true");
     this.backdrop.hidden = false;
     this.dialog.hidden = false;
     this.themeSelect?.focus();
@@ -273,6 +279,7 @@ export class SettingsPanel {
 
   close(): void {
     this.open = false;
+    this.gear?.setAttribute("aria-expanded", "false");
     this.backdrop.hidden = true;
     this.dialog.hidden = true;
     if (this.browsingLocalFonts) {
