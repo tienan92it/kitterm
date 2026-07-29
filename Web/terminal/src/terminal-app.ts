@@ -39,6 +39,7 @@ import {
 import { TerminalPane, type PaneHost } from "./terminal-pane";
 import { findThemeById, type TerminalThemeId } from "./themes";
 import { composeTabTitle } from "./title";
+import { applyThemeTokens } from "./theme-tokens";
 import { createWakeLock } from "./wake-lock";
 import { WebglBudget } from "./webgl-budget";
 
@@ -124,7 +125,7 @@ export class TerminalApp implements PaneHost {
       onClosePane: (id) => this.closePane(id),
     });
 
-    this.applyPageBackground(findThemeById(this.settingsValue.themeId).colors.background);
+    this.applyThemeTokens();
     this.wireSettings();
     this.wireSearch();
     this.wireGlobalListeners();
@@ -619,7 +620,7 @@ export class TerminalApp implements PaneHost {
   private applyTheme(themeId: TerminalThemeId): void {
     const theme = findThemeById(themeId);
     this.settingsValue = { ...this.settingsValue, themeId: theme.id };
-    this.applyPageBackground(theme.colors.background);
+    this.applyThemeTokens();
     this.applyToAllPanes();
     saveThemeId(theme.id);
     this.settingsPanel?.sync(this.settingsValue);
@@ -627,6 +628,7 @@ export class TerminalApp implements PaneHost {
 
   private applyFont(fontId: TerminalFontId): void {
     this.settingsValue = { ...this.settingsValue, fontId };
+    this.applyThemeTokens();
     this.applyToAllPanes();
     saveFontId(fontId);
     this.settingsPanel?.sync(this.settingsValue);
@@ -643,6 +645,7 @@ export class TerminalApp implements PaneHost {
     // Touch resolveFontFamily so an invalid family surfaces here rather than
     // silently inside every pane.
     resolveFontFamily(LOCAL_FONT_ID, trimmed);
+    this.applyThemeTokens();
     this.applyToAllPanes();
     saveFontId(LOCAL_FONT_ID);
     saveLocalFontFamily(trimmed);
@@ -656,12 +659,19 @@ export class TerminalApp implements PaneHost {
     this.settingsPanel?.sync(this.settingsValue);
   }
 
-  private applyPageBackground(background: string | undefined): void {
-    const color = background ?? "#0d1117";
-    document.documentElement.style.background = color;
-    document.body.style.background = color;
-    const app = document.getElementById("app");
-    if (app) app.style.background = color;
+  /** Publish the active theme (and font) as design tokens; the stylesheet
+   * derives every chrome colour from them, so the panel, status line and
+   * touch keys follow the terminal instead of drifting from it. One `:root`
+   * write per theme change — never per frame. */
+  private applyThemeTokens(): void {
+    const theme = findThemeById(this.settingsValue.themeId);
+    applyThemeTokens(theme.colors, {
+      accent: theme.accent,
+      fontFamily: resolveFontFamily(
+        this.settingsValue.fontId,
+        this.settingsValue.localFontFamily,
+      ),
+    });
   }
 
   // MARK: Tab title — global, driven by the focused pane
