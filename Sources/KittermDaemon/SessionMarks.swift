@@ -3,10 +3,12 @@ import KittermProtocol
 
 /// One shell-integration mark, positioned in the session log by offset.
 ///
-/// The client's emulator parses OSC 133/633 and reports marks over the wire;
-/// the daemon just indexes them. Offsets are the client's receive-side count,
-/// so they can overshoot the true parse position by up to one frame — they
-/// are monotonic and stream-consistent, which is all an index needs.
+/// Found by `OscMarkScanner` as the bytes arrive, so the index exists whether
+/// or not a client is watching. Offsets are exact positions in the log, and
+/// they anchor to opposite ends of their own sequence by kind: a `preExec`
+/// mark sits just after its sequence, where the command's output begins, and a
+/// `commandEnd` mark sits where its sequence starts, where that output ended.
+/// A command's output is therefore exactly the bytes between them.
 public struct SessionMark: Sendable {
     public let offset: UInt64
     public let kind: MarkKind

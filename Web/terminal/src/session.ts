@@ -1,7 +1,6 @@
 import {
   decodeServerFrame,
   encodeInput,
-  encodeMark,
   encodePause,
   encodeRequestControl,
   encodeResize,
@@ -79,9 +78,6 @@ export class KittermSession {
     this.send(encodeResize(cols, rows));
   }
 
-  sendMark(kind: number, exit: number | null, offset: number, command?: string | null): void {
-    this.send(encodeMark(kind, exit, offset, command));
-  }
 
   sendPause(): void {
     this.send(encodePause());
