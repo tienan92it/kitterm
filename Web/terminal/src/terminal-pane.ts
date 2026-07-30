@@ -675,8 +675,8 @@ export class TerminalPane {
     // 633;E carries the command text, which only the daemon's index needs
     // now; this pane draws its markers from the semantic letters alone.
     if (parsed.type === "commandLine") return;
-    // Local navigation state first — observers and replayed bytes get
-    // markers and decorations too; only the reporting below is gated.
+    // Purely local: observers and replayed bytes get markers and decorations
+    // too, because none of this leaves the page.
     if (parsed.kind === MarkKind.promptStart) {
       this.addPromptMarker();
     } else if (
