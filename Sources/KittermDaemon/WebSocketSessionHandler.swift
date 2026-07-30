@@ -18,6 +18,9 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     /// connect command as initial input. Ignored on reattach — a live session
     /// already ran it.
     private let profileName: String?
+    /// Orchestrator tags for a fresh spawn; ignored on reattach, where the
+    /// session already carries whatever it was created with.
+    private let labels: SessionLabels
     /// Client page has no screen state (reload / adopted link) — reattach
     /// replays the recent tail instead of only the detached bytes.
     private let freshClient: Bool
@@ -52,6 +55,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         freshClient: Bool = false,
         histKey: String? = nil,
         profileName: String? = nil,
+        labels: SessionLabels = SessionLabels(),
         sinceOffset: UInt64? = nil,
         recordSessions: Bool = false,
         watchOnly: Bool = false,
@@ -64,6 +68,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         self.freshClient = freshClient
         self.histKey = histKey
         self.profileName = profileName
+        self.labels = labels
         self.sinceOffset = sinceOffset
         self.recordSessions = recordSessions
         self.watchOnly = watchOnly
@@ -219,7 +224,8 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
             let session = try PtySession.spawn(
                 cwd: Self.validatedCwd(requestedCwd) ?? Self.validatedCwd(profile?.cwd),
                 histFile: Self.historyFile(for: histKey),
-                profileName: profile?.name
+                profileName: profile?.name,
+                labels: labels
             )
             // Queued as type-ahead: it flushes when the reader channel adopts
             // the PTY and the shell executes it at its first read — visible,

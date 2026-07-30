@@ -5,11 +5,20 @@ import KittermProtocol
 /// (sleep/wake, network blip): it is marked detached and reaped only if no
 /// client reattaches within the linger window.
 public actor SessionRegistry {
+    /// How long a session created by a program is held after its last client
+    /// disconnects. Far longer than the browser window: an orchestrator that
+    /// crashes and restarts must find its nodes still running, which is the
+    /// whole reason to prefer kitterm over a runner whose sessions die with it.
+    /// Bounded rather than infinite so a crash cannot leak shells forever.
+    private let orchestratedLinger: Int
+
+    public init(orchestratedLingerSeconds: Int = KittermConstants.orchestratedSessionLingerSeconds) {
+        self.orchestratedLinger = orchestratedLingerSeconds
+    }
+
     private var sessions: [UUID: PtySession] = [:]
     private var attachedIDs: Set<UUID> = []
     private var lingerTasks: [UUID: Task<Void, Never>] = [:]
-
-    public init() {}
 
     public var count: Int {
         sessions.count
@@ -46,6 +55,8 @@ public actor SessionRegistry {
         public let observerCount: Int
         /// Session profile this shell was started from, if any.
         public let profile: String?
+        /// Orchestrator tags, for attributing a session to a graph node.
+        public let labels: [String: String]
         /// Shell-integration marks, newest last — the caller derives state.
         public let marks: [SessionMark]
     }
@@ -62,6 +73,7 @@ public actor SessionRegistry {
                     attached: attachedIDs.contains(id),
                     observerCount: session.observerCount,
                     profile: session.profileName,
+                    labels: session.labels.values,
                     marks: session.marksSnapshot()
                 )
             }
@@ -122,12 +134,14 @@ public actor SessionRegistry {
 
     private func scheduleLinger(_ id: UUID) {
         lingerTasks[id]?.cancel()
+        // A tab that went away is probably closed for good; a program's session
+        // is probably mid-run with its caller restarting.
+        let window = sessions[id]?.labels.isEmpty == false
+            ? orchestratedLinger
+            : KittermConstants.sessionDetachLingerSeconds
         lingerTasks[id] = Task { [weak self] in
             // Suspending clock: machine sleep must not consume the window.
-            try? await Task.sleep(
-                for: .seconds(KittermConstants.sessionDetachLingerSeconds),
-                clock: .suspending
-            )
+            try? await Task.sleep(for: .seconds(window), clock: .suspending)
             guard !Task.isCancelled else { return }
             await self?.reapIfStillDetached(id)
         }

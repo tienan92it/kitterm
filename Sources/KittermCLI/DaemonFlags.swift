@@ -17,6 +17,8 @@ struct DaemonFlags {
     var tlsKey: String?
     /// Defaults to `port + 1` when a certificate is supplied.
     var tlsPort: Int?
+    /// Detach window for program-created (labelled) sessions, in seconds.
+    var sessionLinger: Int?
 
     static func parse<S: Sequence>(_ args: S) -> DaemonFlags where S.Element == String {
         let array = Array(args)
@@ -27,7 +29,8 @@ struct DaemonFlags {
             trustedHosts: KittermMain.parseTrustedHosts(array),
             tlsCert: KittermMain.parseOption("--tls-cert", array),
             tlsKey: KittermMain.parseOption("--tls-key", array),
-            tlsPort: KittermMain.parseOption("--tls-port", array).flatMap(Int.init)
+            tlsPort: KittermMain.parseOption("--tls-port", array).flatMap(Int.init),
+            sessionLinger: KittermMain.parseOption("--session-linger", array).flatMap(Int.init)
         )
     }
 
@@ -62,6 +65,7 @@ struct DaemonFlags {
         if let tlsCert { args.append(contentsOf: ["--tls-cert", tlsCert]) }
         if let tlsKey { args.append(contentsOf: ["--tls-key", tlsKey]) }
         if let tlsPort { args.append(contentsOf: ["--tls-port", "\(tlsPort)"]) }
+        if let sessionLinger { args.append(contentsOf: ["--session-linger", "\(sessionLinger)"]) }
         return args
     }
 
@@ -73,7 +77,9 @@ struct DaemonFlags {
             recordSessions: record,
             agentControl: agentControl,
             trustedHosts: trustedHosts,
-            tls: try tlsConfig(port: port)
+            tls: try tlsConfig(port: port),
+            orchestratedLingerSeconds: sessionLinger
+                ?? KittermConstants.orchestratedSessionLingerSeconds
         )
     }
 }

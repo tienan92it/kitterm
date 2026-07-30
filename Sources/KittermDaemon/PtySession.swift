@@ -37,6 +37,10 @@ public final class PtySession: @unchecked Sendable {
     /// Metadata only (fleet view); the profile's command was injected as
     /// initial input by the spawner.
     public let profileName: String?
+    /// Orchestrator tags (`?label=run:abc,node:build`). Their presence also
+    /// means a program created this session, which the registry uses to decide
+    /// how long to hold it after its client goes away.
+    public let labels: SessionLabels
     public private(set) var cols: UInt16
     public private(set) var rows: UInt16
 
@@ -104,6 +108,10 @@ public final class PtySession: @unchecked Sendable {
     /// Reads OSC 133/633 out of the PTY stream. Touched only from
     /// `handleRead`, i.e. only on the event loop, so it lives outside the lock.
     private var markScanner = OscMarkScanner()
+    /// Callers blocked on "tell me when command N finishes". Completed from
+    /// `handleRead` as soon as the mark closing that command is indexed, which
+    /// is only possible because the daemon reads marks itself.
+    private var commandWaiters: [(index: Int, promise: EventLoopPromise<Void>)] = []
     /// Optional asciinema recorder (daemon `--record`).
     private var recorder: SessionRecorder?
 
@@ -113,6 +121,7 @@ public final class PtySession: @unchecked Sendable {
         shellPath: String,
         initialCwd: String,
         profileName: String?,
+        labels: SessionLabels,
         cols: UInt16,
         rows: UInt16
     ) {
@@ -121,6 +130,7 @@ public final class PtySession: @unchecked Sendable {
         self.shellPath = shellPath
         self.initialCwd = initialCwd
         self.profileName = profileName
+        self.labels = labels
         self.cols = cols
         self.rows = rows
     }
@@ -134,7 +144,8 @@ public final class PtySession: @unchecked Sendable {
         rows: UInt16 = KittermConstants.defaultRows,
         cwd: String? = nil,
         histFile: String? = nil,
-        profileName: String? = nil
+        profileName: String? = nil,
+        labels: SessionLabels = SessionLabels()
     ) throws -> PtySession {
         let shell = resolvedShell()
         let startCwd = cwd ?? FileManager.default.homeDirectoryForCurrentUser.path
@@ -249,6 +260,7 @@ public final class PtySession: @unchecked Sendable {
             shellPath: shell,
             initialCwd: startCwd,
             profileName: profileName,
+            labels: labels,
             cols: cols,
             rows: rows
         )
@@ -329,6 +341,7 @@ public final class PtySession: @unchecked Sendable {
         // handlers below re-enter this class. Detached output only rotates the
         // log — reads never pause for it, so a long-running program keeps
         // making progress while no client is watching.
+        var readyWaiters: [EventLoopPromise<Void>] = []
         let dispatch: (recorder: SessionRecorder?,
                        observers: [(Data) -> Void],
                        controller: ((Data) -> Void)?)? = stateLock.withLock {
@@ -344,10 +357,26 @@ public final class PtySession: @unchecked Sendable {
                     )
                 )
             }
+            // Only a closing mark can satisfy a waiter, so the pairing pass is
+            // skipped entirely for the prompt marks that make up most traffic.
+            if markHits.contains(where: { $0.kind == .commandEnd }), !commandWaiters.isEmpty {
+                let finished = Set(
+                    SessionCommands.pair(from: markStore.marks)
+                        .filter { !$0.running }
+                        .map(\.index)
+                )
+                commandWaiters.removeAll { waiter in
+                    guard finished.contains(waiter.index) else { return false }
+                    readyWaiters.append(waiter.promise)
+                    return true
+                }
+            }
             let observerOutputs = observers.values.map(\.onOutput)
             let controller = attached ? onOutput : nil
             return (recorder, observerOutputs, controller)
         }
+        // Outside the lock: these callbacks re-enter this class.
+        for promise in readyWaiters { promise.succeed(()) }
         guard let dispatch else { return }
 
         dispatch.recorder?.recordOutput(chunk)
@@ -447,6 +476,53 @@ public final class PtySession: @unchecked Sendable {
 
     public func removeObserver(_ id: UUID) {
         stateLock.withLock { _ = observers.removeValue(forKey: id) }
+    }
+
+    /// Bounded so a caller cannot pile up connections against one session.
+    public static let maxCommandWaiters = 64
+
+    /// Ask to be told when command `index` (1-based) has finished.
+    ///
+    /// Returns `nil` when it already has — the caller answers immediately —
+    /// and throws nothing: waiting for a command that has not started yet is
+    /// legitimate, since a caller may write input and wait for the command it
+    /// just created.
+    public func awaitCommandEnd(
+        index: Int,
+        on eventLoop: EventLoop
+    ) -> EventLoopFuture<Void>?? {
+        let outcome: EventLoopFuture<Void>?? = stateLock.withLock {
+            let commands = SessionCommands.pair(from: markStore.marks)
+            if let existing = commands.first(where: { $0.index == index }), !existing.running {
+                return .some(nil)  // already finished
+            }
+            guard commandWaiters.count < Self.maxCommandWaiters else {
+                return nil  // too many waiters
+            }
+            let promise = eventLoop.makePromise(of: Void.self)
+            commandWaiters.append((index, promise))
+            return .some(promise.futureResult)
+        }
+        return outcome
+    }
+
+    /// Drop a waiter that timed out, so a long-lived session does not keep dead
+    /// entries against its cap.
+    ///
+    /// The promise is completed rather than discarded: an uncompleted promise is
+    /// a leak NIO traps on, and every timed-out wait would have created one.
+    /// The caller has already answered, so its `whenComplete` is a no-op.
+    public func cancelCommandWait(_ future: EventLoopFuture<Void>) {
+        let removed = stateLock.withLock { () -> [EventLoopPromise<Void>] in
+            var taken: [EventLoopPromise<Void>] = []
+            commandWaiters.removeAll { waiter in
+                guard waiter.promise.futureResult === future else { return false }
+                taken.append(waiter.promise)
+                return true
+            }
+            return taken
+        }
+        for promise in removed { promise.succeed(()) }
     }
 
     public func appendMark(_ mark: SessionMark) {
@@ -694,6 +770,10 @@ public final class PtySession: @unchecked Sendable {
         }
         guard let shutdown else { return }
 
+        // A promise that is dropped rather than completed is a NIO leak, and a
+        // caller blocked on a session being torn down deserves an answer now.
+        // `deliverExit` also does this, but a terminate may never reach it.
+        failCommandWaiters()
         shutdown.recorder?.close()
         // Thread-safe and non-blocking: NIO hops to the loop itself.
         shutdown.channel?.close(promise: nil)
@@ -734,6 +814,17 @@ public final class PtySession: @unchecked Sendable {
         }
     }
 
+    /// A dead shell will never finish anyone's command; release the waiters so
+    /// callers learn now instead of at their timeout.
+    private func failCommandWaiters() {
+        let promises = stateLock.withLock { () -> [EventLoopPromise<Void>] in
+            let pending = commandWaiters.map(\.promise)
+            commandWaiters.removeAll()
+            return pending
+        }
+        for promise in promises { promise.succeed(()) }
+    }
+
     private func deliverExit(_ code: Int32) {
         let handlers: (controller: ((Int32) -> Void)?, observers: [(Int32) -> Void])? =
             stateLock.withLock {
@@ -742,6 +833,7 @@ public final class PtySession: @unchecked Sendable {
                 return (onExit, observers.values.map(\.onExit))
             }
         guard let handlers else { return }
+        failCommandWaiters()
         handlers.controller?(code)
         for observerExit in handlers.observers {
             observerExit(code)
