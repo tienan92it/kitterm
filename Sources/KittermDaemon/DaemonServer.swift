@@ -191,7 +191,8 @@ public final class DaemonServer: @unchecked Sendable {
                         port: config.port,
                         agentControl: config.agentControl,
                         connectionIsTLS: sslContext != nil,
-                        tlsPort: config.tls?.port
+                        tlsPort: config.tls?.port,
+                        webSocketUpgrader: upgrader
                     )
                     let upgradeConfig = NIOHTTPServerUpgradeConfiguration(
                         upgraders: [upgrader as any HTTPServerProtocolUpgrader],

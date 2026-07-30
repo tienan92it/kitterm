@@ -20,6 +20,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// Port of the TLS listener, when one is running — used to build the
     /// external URL that share links are made from.
     private let tlsPort: Int?
+    /// The WebSocket upgrader, so that a session can still be opened on a
+    /// connection that has already served an API request. See
+    /// `restoreUpgradeHandler(context:)`.
+    private let webSocketUpgrader: (any HTTPServerProtocolUpgrader)?
     private var pendingHead: HTTPRequestHead?
     /// Accumulated request body, capped at `maxInputBytes`; only the input
     /// route reads it. `bodyOverflow` trips once the cap is exceeded so a large
@@ -34,7 +38,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         agentControl: Bool = false,
         connectionIsTLS: Bool = false,
         tlsPort: Int? = nil,
-        staticRoot: URL? = StaticFileServer.cachedRoot
+        staticRoot: URL? = StaticFileServer.cachedRoot,
+        webSocketUpgrader: (any HTTPServerProtocolUpgrader)? = nil
     ) {
         self.registry = registry
         self.policy = policy
@@ -43,6 +48,53 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.connectionIsTLS = connectionIsTLS
         self.tlsPort = tlsPort
         self.staticRoot = staticRoot
+        self.webSocketUpgrader = webSocketUpgrader
+    }
+
+    /// Put a fresh upgrade handler back in front of us, so the *next* request
+    /// on this connection can still open a session.
+    ///
+    /// `HTTPServerUpgradeHandler` is one-shot per connection: the first request
+    /// that isn't an upgrade removes it from the pipeline permanently. A browser
+    /// never notices, because it opens a WebSocket on its own socket. A client
+    /// that pools keep-alive connections — Node's `fetch` and `WebSocket` share
+    /// one pool, and that is exactly the orchestrator shape — calls the REST API
+    /// first, then sends `GET /ws` down the same warm connection, where there is
+    /// no upgrader left and the request falls through to us as a 404.
+    ///
+    /// Reinstalling after every request makes upgrade available on any request
+    /// of a connection rather than only the first. The handshake itself still
+    /// runs through NIO's audited code; nothing here rebuilds it.
+    ///
+    /// Best-effort by design: if the pipeline is not the shape
+    /// `configureHTTPServerPipeline` builds, leave it alone rather than
+    /// half-rebuild it. The cost of doing nothing is today's 404.
+    private func restoreUpgradeHandler(context: ChannelHandlerContext) {
+        guard let upgrader = webSocketUpgrader else { return }
+        let sync = context.pipeline.syncOperations
+        // Still present (the request we just served was the connection's
+        // first, and it upgraded, or nothing has displaced it yet).
+        guard (try? sync.handler(type: HTTPServerUpgradeHandler.self)) == nil else { return }
+        guard let encoder = try? sync.handler(type: HTTPResponseEncoder.self),
+              let decoder = try? sync.handler(type: ByteToMessageHandler<HTTPRequestDecoder>.self)
+        else { return }
+        // Every HTTP handler except the encoder has to come out before frames
+        // flow; one left behind would try to parse WebSocket bytes as HTTP.
+        // This is the same set `configureHTTPServerPipeline` hands the upgrader.
+        var extraHTTPHandlers: [RemovableChannelHandler] = [decoder]
+        if let h = try? sync.handler(type: HTTPServerPipelineHandler.self) { extraHTTPHandlers.append(h) }
+        if let h = try? sync.handler(type: NIOHTTPResponseHeadersValidator.self) { extraHTTPHandlers.append(h) }
+        if let h = try? sync.handler(type: HTTPServerProtocolErrorHandler.self) { extraHTTPHandlers.append(h) }
+        let fresh = HTTPServerUpgradeHandler(
+            upgraders: [upgrader],
+            httpEncoder: encoder,
+            extraHTTPHandlers: extraHTTPHandlers,
+            upgradeCompletionHandler: { [weak self] upgradeContext in
+                guard let self else { return }
+                _ = upgradeContext.pipeline.removeHandler(self)
+            }
+        )
+        try? sync.addHandler(fresh, position: .before(self))
     }
 
     /// Whether an auth cookie set on this request may carry `Secure`.
@@ -86,6 +138,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             let overflow = bodyOverflow
             pendingBody.removeAll(keepingCapacity: true)
             bodyOverflow = false
+            // Before serving, so that a client which pipelines `/ws` behind
+            // this request finds an upgrader waiting for it.
+            restoreUpgradeHandler(context: context)
             handle(head: head, body: body, bodyOverflow: overflow, context: context)
         }
     }
