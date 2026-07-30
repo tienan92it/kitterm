@@ -11,6 +11,7 @@ struct DaemonFlags {
     var lan = false
     var record = false
     var agentControl = false
+    var retainLogs = false
     /// Public names the daemon answers to behind a proxy / overlay network.
     var trustedHosts: Set<String> = []
     var tlsCert: String?
@@ -26,6 +27,7 @@ struct DaemonFlags {
             lan: array.contains("--lan"),
             record: array.contains("--record"),
             agentControl: array.contains("--agent-control"),
+            retainLogs: array.contains("--retain-logs"),
             trustedHosts: KittermMain.parseTrustedHosts(array),
             tlsCert: KittermMain.parseOption("--tls-cert", array),
             tlsKey: KittermMain.parseOption("--tls-key", array),
@@ -59,6 +61,7 @@ struct DaemonFlags {
         if lan { args.append("--lan") }
         if record { args.append("--record") }
         if agentControl { args.append("--agent-control") }
+        if retainLogs { args.append("--retain-logs") }
         for host in trustedHosts.sorted() {
             args.append(contentsOf: ["--trusted-host", host])
         }
@@ -75,6 +78,7 @@ struct DaemonFlags {
             port: port,
             allowLAN: lan,
             recordSessions: record,
+            retainLogs: retainLogs,
             agentControl: agentControl,
             trustedHosts: trustedHosts,
             tls: try tlsConfig(port: port),

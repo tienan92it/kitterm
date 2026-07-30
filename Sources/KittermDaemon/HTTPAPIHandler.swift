@@ -646,7 +646,11 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             let cmd = commands[index - 1]
             // A running command has no end yet — read up to the current head.
             let end = cmd.endOffset ?? UInt64.max
-            return session.outputRange(from: cmd.startOffset, to: end, maxBytes: cap)
+            return await withCheckedContinuation { continuation in
+                session.outputRange(from: cmd.startOffset, to: end, maxBytes: cap) { range in
+                    continuation.resume(returning: range)
+                }
+            }
         }
         promise.futureResult.whenComplete { result in
             guard case .success(.some(let range)) = result else {

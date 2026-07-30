@@ -13,6 +13,8 @@ Guidance for coding agents working in this repo.
 - **Restart resilience**: the daemon polls each shell's cwd via `proc_pidinfo` (~2s, diff-gated) and pushes `cwd` frames, so a restored pane respawns where it was even when the shell emits no OSC 7. Each pane's `?hist=<key>` maps to `~/.kitterm/history/<key>` (set as `HISTFILE`, seeded once from the user's global history), so up-arrow survives a restart with that pane's own commands
 - `--lan` binds 0.0.0.0 with token auth for non-loopback peers (`?token=` → cookie; `~/.kitterm/token`); loopback stays trusted. Tokens carry a **grade**: `full` (everything) or `watch` (observe + read API only — never input, never `requestControl`, never spawn; the WS handler takes a watch-only path that can't reach `spawnNew`, and `POST …/input` answers 403). Three token kinds: ephemeral control (`~/.kitterm/token`), ephemeral watch (`~/.kitterm/token-watch`, powers the 👁 watch-link share button via `/api/lan` `watchToken`), and named persistent tokens (`kitterm token create <name> [--watch]`, SHA-256 hashes only in `~/.kitterm/tokens.json`, mtime-cached reload so revocation needs no restart). The auth cookie is set to exactly the presented token — a watch token can never ride a full-access cookie
 - `--record` writes asciinema v2 casts to `~/.kitterm/recordings/`
+- **Session labels** (`/ws?label=run:abc,node:build`) tag a session so a fleet of shells is attributable to graph nodes. They also declare intent: a labelled session was made by a program, so the registry holds it for `orchestratedSessionLingerSeconds` (1h, `--session-linger`) after its last client leaves instead of the browser's 5 minutes — an orchestrator that crashes and restarts finds its nodes still running. `SessionLabels` validates strictly; a malformed tag is dropped rather than failing the connection
+- `--retain-logs` spills each session's output to `~/.kitterm/logs/<id>.log` (0600, 64 MiB cap, rotating, deleted when the session is reaped) so `/commands/<n>/output` still answers for ranges the 4 MiB ring dropped. **Off by default** — shell output on disk, same reason `--record` is opt-in. All I/O is a `queue.async` hand-off, never awaited on the loop. **The file does not start at stream offset 0** (a shell prints before the session has an id to name a file after), so `SessionLogStore` tracks an `origin` and translates; assuming otherwise returns plausible wrong bytes
 - Tab title is per-session (custom name + optional cwd folder), stored per session id; observers adopt the controller's title and cannot edit it
 - `kitterm service install` runs the daemon from a per-user LaunchAgent — see **Service** below
 - **The daemon does not emulate a terminal.** No grid, no cursor, no CSI/SGR, no character sets — screen state is entirely the client's business. The one bounded exception is `OscMarkScanner`, which matches OSC 133/633 in the output stream so shell-integration marks exist for sessions nobody is watching (an orchestrator-driven session used to record none, leaving `/api/sessions` state, `lastExit` and `/commands` empty). It scans for two ids and their terminators and nothing else; it runs outside `stateLock` on the event loop, and its cost is below KittermBench's noise floor because it `memchr`s for `ESC` rather than walking bytes
@@ -43,9 +45,11 @@ Flow-control defaults: ~2ms / 64KB batching, PTY pause at 4MB buffered outbound,
 
 ## HTTP API (JSON off the I/O stream; read-only unless noted)
 
-- `GET /api/health`, `GET /api/lan`, `GET /api/sessions` (mark-derived state per session)
+- `GET /api/health`, `GET /api/lan`, `GET /api/sessions` (mark-derived state per session; `?label=run:abc` filters, and each row carries its `labels`)
 - `GET /api/sessions/<id>/marks` — the raw shell-integration marks
-- `GET /api/sessions/<id>/commands` — commands paired from marks: `{index, command, exit, startOffset, endOffset, running}`
+- `GET /api/sessions/<id>/commands` — commands paired from marks: `{index, command, exit, startOffset, endOffset, running, startedAt, endedAt, durationMs, outputUrl}`. The timings and URL exist so a **caller can hang its own span on a command** — kitterm emits no traces, because whoever called it owns the trace context. Pass `traceparent:<w3c>` as a label and it comes back on every row, which is all the correlation a tracer needs
+- `GET /api/sessions/<id>/commands/<n>/wait?timeout=<s>` — hold the response until command `n` finishes (default 30s, max 300). With the input route this is the `execute()` contract every agent framework wants: write a command, block for its exit code, read its output. Read-only, so no `--agent-control`. A timeout is **not** an error — `{running:true,timedOut:true}`, ask again. Waiting on a command that has not started yet is legitimate. Waiters are capped per session (503 past it)
+- `DELETE /api/sessions/<id>` — end a session and its shell now, the counterpart to the long detach window a labelled session gets. Destructive, so `--agent-control` + full grade, like the input route
 - `GET /api/sessions/<id>/commands/<n>/output` — raw output bytes of command `n` (`application/octet-stream`), capped at `apiCommandOutputMaxBytes` (256KiB, tail on overflow); `X-Kitterm-Total-Bytes` / `-Truncated` / `-Pruned` headers. Precise for substantial output; tiny single-frame commands collapse to an empty range (see `SessionCommands`)
 - `POST /api/sessions/<id>/input` — **write.** The request body is raw bytes typed into the shell (include your own `\n`; send `\x03` for Ctrl-C). Capped at `maxInputBytes` (64KiB → 413). Returns `{ok,bytes}`; 404 unknown session, 409 closed. **Off unless the daemon was started with `--agent-control`** (else 403). Input interleaves with any attached controller — no separate role
 
@@ -64,7 +68,8 @@ Flow-control defaults: ~2ms / 64KB batching, PTY pause at 4MB buffered outbound,
 ## State
 
 `~/.kitterm/{pid,port,token,token-watch,tokens.json,server.log,lastlogin,profiles.json}`
-plus `recordings/` and `history/<key>` (per-pane) — default port **3418**.
+plus `recordings/`, `logs/<session>.log` (`--retain-logs`) and `history/<key>` (per-pane) —
+default port **3418**.
 
 ## Distribution
 

@@ -34,7 +34,7 @@ kitterm start
 ## Usage
 
 ```sh
-kitterm start [--port PORT] [--lan] [--record] [--agent-control]
+kitterm start [--port PORT] [--lan] [--record] [--agent-control] [--retain-logs]
               [--trusted-host NAME] [--tls-cert FILE --tls-key FILE [--tls-port PORT]]
 kitterm stop | status | restart
 kitterm open [PATH]
@@ -58,6 +58,7 @@ State lives in `~/.kitterm/`; the default port is `3418`.
 | **Share a session** | ⧉ copies `/?session=<id>` — first client controls, others observe read-only. A "Take control" tap hands the session over live: pick up on your phone exactly where the laptop left off |
 | **Watch-only links** | 👁 copies a link whose token can *only* observe — never type, take control, or open shells. The daemon enforces it. Durable tokens: `kitterm token create review --watch` (hashed, revocable without restart) |
 | **Phone / LAN access** | `kitterm start --lan` prints a token-gated URL |
+| **Drive it from a program** | Tag a session (`/ws?label=run:1,node:build`), then `POST /api/sessions/<id>/input` to run a command, `GET …/commands/<n>/wait` to block for its exit code, and `GET …/commands/<n>/output` for the bytes. Labelled sessions outlive the program that made them, so a crashed orchestrator finds its work still running. `--retain-logs` keeps output past the 4 MiB in-memory window |
 | **Record sessions** | `kitterm start --record` → asciinema casts in `~/.kitterm/recordings/` |
 | **Start on login** | `kitterm service install` |
 | **Self-update** | `kitterm upgrade` installs the latest release |

@@ -26,12 +26,17 @@ public struct DaemonConfig: Sendable {
     public var tls: TLSConfig?
     /// Detach window for sessions a program created (see `SessionRegistry`).
     public var orchestratedLingerSeconds: Int
+    /// Spill each session's output to `~/.kitterm/logs/` so ranges older than
+    /// the in-memory ring stay readable. Off by default: this is shell output
+    /// on disk, the same reason `--record` is opt-in.
+    public var retainLogs: Bool
 
     public init(
         host: String = KittermConstants.defaultHost,
         port: Int = KittermConstants.defaultPort,
         allowLAN: Bool = false,
         recordSessions: Bool = false,
+        retainLogs: Bool = false,
         agentControl: Bool = false,
         trustedHosts: Set<String> = [],
         tls: TLSConfig? = nil,
@@ -41,10 +46,12 @@ public struct DaemonConfig: Sendable {
         self.port = port
         self.allowLAN = allowLAN
         self.recordSessions = recordSessions
+        self.retainLogs = retainLogs
         self.agentControl = agentControl
         self.trustedHosts = trustedHosts
         self.tls = tls
         self.orchestratedLingerSeconds = orchestratedLingerSeconds
+        self.retainLogs = retainLogs
     }
 }
 
@@ -159,6 +166,7 @@ public final class DaemonServer: @unchecked Sendable {
                         labels: labels,
                         sinceOffset: sinceOffset,
                         recordSessions: config.recordSessions,
+                        retainLogs: config.retainLogs,
                         watchOnly: watchOnly,
                         eventLoopGroup: group
                     )

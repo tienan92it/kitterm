@@ -114,6 +114,9 @@ public final class PtySession: @unchecked Sendable {
     private var commandWaiters: [(index: Int, promise: EventLoopPromise<Void>)] = []
     /// Optional asciinema recorder (daemon `--record`).
     private var recorder: SessionRecorder?
+    /// Optional disk spill (`--retain-logs`) so ranges older than the ring are
+    /// still readable. Set once at attach time and never mutated after.
+    private var logStore: SessionLogStore?
 
     private init(
         pid: pid_t,
@@ -343,6 +346,7 @@ public final class PtySession: @unchecked Sendable {
         // making progress while no client is watching.
         var readyWaiters: [EventLoopPromise<Void>] = []
         let dispatch: (recorder: SessionRecorder?,
+                       logStore: SessionLogStore?,
                        observers: [(Data) -> Void],
                        controller: ((Data) -> Void)?)? = stateLock.withLock {
             guard !terminated, !readingPaused else { return nil }
@@ -373,13 +377,14 @@ public final class PtySession: @unchecked Sendable {
             }
             let observerOutputs = observers.values.map(\.onOutput)
             let controller = attached ? onOutput : nil
-            return (recorder, observerOutputs, controller)
+            return (recorder, logStore, observerOutputs, controller)
         }
         // Outside the lock: these callbacks re-enter this class.
         for promise in readyWaiters { promise.succeed(()) }
         guard let dispatch else { return }
 
         dispatch.recorder?.recordOutput(chunk)
+        dispatch.logStore?.append(chunk)
         for observer in dispatch.observers {
             observer(chunk)
         }
@@ -549,6 +554,38 @@ public final class PtySession: @unchecked Sendable {
     /// Output bytes in `[from, to)` (pass a large `to` for a still-running
     /// command to read up to now), bounded to the tail `maxBytes`. Read under
     /// the lock, like the other log accessors.
+    /// `outputRange`, falling back to retained output on disk when the range
+    /// has rotated out of the ring. Asynchronous because that fallback reads a
+    /// file, which must not happen on the event loop; `completion` fires on the
+    /// store's queue, so callers hop back to their own loop.
+    public func outputRange(
+        from: UInt64,
+        to: UInt64,
+        maxBytes: Int,
+        completion: @escaping (OutputRange) -> Void
+    ) {
+        let ring = outputRange(from: from, to: to, maxBytes: maxBytes)
+        let store = stateLock.withLock { logStore }
+        guard ring.pruned, let store else { return completion(ring) }
+        // The file holds the stream from offset zero, so its offsets are the
+        // stream's — no translation, just seek.
+        let end = min(to, logHead)
+        let start = end > UInt64(maxBytes) ? max(from, end - UInt64(maxBytes)) : from
+        store.read(from: start, to: end) { data, actualStart in
+            let total = Int(end - min(from, end))
+            completion(
+                OutputRange(
+                    data: data,
+                    start: actualStart,
+                    total: total,
+                    truncated: total > maxBytes,
+                    // Only still pruned if even the file no longer has it.
+                    pruned: actualStart > from
+                )
+            )
+        }
+    }
+
     public func outputRange(from: UInt64, to: UInt64, maxBytes: Int) -> OutputRange {
         stateLock.withLock {
             let end = min(to, log.head)
@@ -569,6 +606,15 @@ public final class PtySession: @unchecked Sendable {
 
     func attachRecorder(_ recorder: SessionRecorder) {
         stateLock.withLock { self.recorder = recorder }
+    }
+
+    /// The store's first byte is whatever arrives next, so the caller needs
+    /// this session's current head to build one — a shell has usually printed
+    /// its banner before the session has an id to name a file after.
+    func attachLogStore(_ make: (UInt64) -> SessionLogStore?) {
+        stateLock.withLock {
+            if let store = make(log.head) { self.logStore = store }
+        }
     }
 
     /// How a newly attaching controller wants missed output replayed.
@@ -756,17 +802,19 @@ public final class PtySession: @unchecked Sendable {
         // Everything that can block — closing the channel, signalling the child
         // — happens after the lock is released. Waiting on the event loop while
         // holding it deadlocks against `write()`, which the loop itself calls.
-        let shutdown: (channel: Channel?, recorder: SessionRecorder?)? = stateLock.withLock {
+        let shutdown: (channel: Channel?, recorder: SessionRecorder?, logStore: SessionLogStore?)? = stateLock.withLock {
             guard !terminated else { return nil }
             terminated = true
             let channel = readChannel
             let recorder = self.recorder
+            let store = self.logStore
             self.readChannel = nil
             self.recorder = nil
+            self.logStore = nil
             // The shell is going away; undelivered input has nowhere to go.
             pendingInput = Data()
             _ = Darwin.close(masterFD)
-            return (channel, recorder)
+            return (channel, recorder, store)
         }
         guard let shutdown else { return }
 
@@ -775,6 +823,7 @@ public final class PtySession: @unchecked Sendable {
         // `deliverExit` also does this, but a terminate may never reach it.
         failCommandWaiters()
         shutdown.recorder?.close()
+        shutdown.logStore?.close()
         // Thread-safe and non-blocking: NIO hops to the loop itself.
         shutdown.channel?.close(promise: nil)
         if kill(pid, 0) == 0 {

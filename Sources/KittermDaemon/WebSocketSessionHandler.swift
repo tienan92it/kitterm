@@ -28,6 +28,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     /// daemon replays exactly the gap after it. Takes precedence over `fresh`.
     private let sinceOffset: UInt64?
     private let recordSessions: Bool
+    private let retainLogs: Bool
     /// Watch-grade auth: this connection may only observe an existing session
     /// — never claim control, never take over, never spawn a shell.
     private let watchOnly: Bool
@@ -58,6 +59,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         labels: SessionLabels = SessionLabels(),
         sinceOffset: UInt64? = nil,
         recordSessions: Bool = false,
+        retainLogs: Bool = false,
         watchOnly: Bool = false,
         eventLoopGroup: EventLoopGroup
     ) {
@@ -71,6 +73,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         self.labels = labels
         self.sinceOffset = sinceOffset
         self.recordSessions = recordSessions
+        self.retainLogs = retainLogs
         self.watchOnly = watchOnly
         self.eventLoopGroup = eventLoopGroup
     }
@@ -264,6 +267,16 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
                     return
                 }
                 self.sessionID = id
+                if self.retainLogs {
+                    session.attachLogStore { origin in
+                        SessionLogStore(
+                            directory: DaemonPaths.logsDirectory,
+                            sessionID: id,
+                            maxBytes: KittermConstants.retainedLogBytes,
+                            origin: origin
+                        )
+                    }
+                }
                 self.sendSessionId(id, context: context)
                 self.sendRole(.controller, context: context)
                 self.sendMeta(context: context, session: session)

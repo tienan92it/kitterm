@@ -79,6 +79,9 @@ public enum KittermConstants: Sendable {
         "LOCALTERM_DAEMON_CHILD",
     ]
 
+    /// Ceiling on one session's retained output on disk (`--retain-logs`).
+    public static let retainedLogBytes = 64 * 1024 * 1024
+
     /// Long-poll window for `…/commands/<n>/wait` when the caller names none,
     /// and the ceiling it may ask for.
     public static let commandWaitDefaultSeconds = 30
