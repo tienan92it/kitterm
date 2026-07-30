@@ -569,9 +569,18 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             .flatMap(Int.init) ?? KittermConstants.commandWaitDefaultSeconds
         let timeout = max(1, min(requested, KittermConstants.commandWaitMaxSeconds))
 
-        let lookup = context.eventLoop.makePromise(of: PtySession?.self)
+        // Everything below runs on this connection's event loop: the lookup
+        // promise, the timeout task and the waiter all complete there. But the
+        // closures NIO takes are `@Sendable` and a `ChannelHandlerContext` is
+        // not, so the capture has to state the affinity it already relies on
+        // rather than leave the compiler to infer it. Swift 6.2 lets the bare
+        // capture through as a warning; 6.0 — what CI builds with — rejects it.
+        let loop = context.eventLoop
+        let boundContext = NIOLoopBound(context, eventLoop: loop)
+        let lookup = loop.makePromise(of: PtySession?.self)
         lookup.completeWithTask { await self.registry.session(id) }
         lookup.futureResult.whenComplete { result in
+            let context = boundContext.value
             guard case .success(.some(let session)) = result else {
                 self.writeJSON(
                     status: .notFound,
@@ -593,11 +602,13 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 self.respondWithCommand(index: index, session: session, id: id, head: head, context: context)
                 return
             }
-            // First of the two wins; the other is harmless.
-            var answered = false
-            let answer: (Bool) -> Void = { timedOut in
-                guard !answered else { return }
-                answered = true
+            // First of the two wins; the other is harmless. The flag is shared
+            // by the timeout task and the waiter, both on this loop.
+            let answered = NIOLoopBoundBox(false, eventLoop: loop)
+            let answer: @Sendable (Bool) -> Void = { timedOut in
+                let context = boundContext.value
+                guard !answered.value else { return }
+                answered.value = true
                 if timedOut {
                     session.cancelCommandWait(future)
                     self.writeJSON(
@@ -611,7 +622,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                     )
                 }
             }
-            let timeoutTask = context.eventLoop.scheduleTask(in: .seconds(Int64(timeout))) {
+            let timeoutTask = loop.scheduleTask(in: .seconds(Int64(timeout))) {
                 answer(true)
             }
             future.whenComplete { _ in
