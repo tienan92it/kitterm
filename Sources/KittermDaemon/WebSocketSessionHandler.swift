@@ -351,12 +351,13 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
             case .resume:
                 clientPaused = false
                 updateBackpressure(context: context)
-            case .mark(let kind, let exit, let offset, let command):
-                // Controller-only (guarded above); the client's emulator did
-                // the ANSI parsing — the daemon just indexes the result.
-                pty?.appendMark(
-                    SessionMark(offset: offset, kind: kind, exit: exit, command: command)
-                )
+            case .mark:
+                // Ignored: the daemon reads marks out of the PTY stream itself
+                // (`OscMarkScanner`), so a session nobody is watching still has
+                // an index. Accepting these too would double every mark for an
+                // older client that is still reporting them, and the daemon's
+                // own offsets are the more accurate of the two.
+                break
             case .requestControl:
                 break // controller already; only observers transfer (below)
             }

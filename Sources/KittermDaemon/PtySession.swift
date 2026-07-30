@@ -98,8 +98,12 @@ public final class PtySession: @unchecked Sendable {
 
     /// Read-only mirrors of this session (observer mode).
     private var observers: [UUID: ObserverHandlers] = [:]
-    /// Shell-integration marks reported by the controller's emulator.
+    /// Shell-integration marks, indexed from the output stream itself so a
+    /// session nobody is watching is still legible (see `OscMarkScanner`).
     private var markStore = SessionMarkStore()
+    /// Reads OSC 133/633 out of the PTY stream. Touched only from
+    /// `handleRead`, i.e. only on the event loop, so it lives outside the lock.
+    private var markScanner = OscMarkScanner()
     /// Optional asciinema recorder (daemon `--record`).
     private var recorder: SessionRecorder?
 
@@ -310,6 +314,17 @@ public final class PtySession: @unchecked Sendable {
         guard buffer.readableBytes > 0 else { return }
         let chunk = Data(buffer: buffer)
 
+        // Read marks out of the stream before taking the lock. The scanner is
+        // loop-confined (only this method feeds it, always on the event loop),
+        // so it needs no lock, and scanning outside means the lock is held for
+        // no longer than it was before marks were the daemon's business.
+        //
+        // `logHeadUnlocked` is exact here for the same reason the attach
+        // snapshot is safe: the PTY reader and everything that appends to the
+        // log share this one thread, so nothing can slip in between reading the
+        // head and appending the chunk below.
+        let markHits = markScanner.scan(chunk, baseOffset: logHeadUnlocked)
+
         // Snapshot under the lock, then call out with it released: the output
         // handlers below re-enter this class. Detached output only rotates the
         // log — reads never pause for it, so a long-running program keeps
@@ -319,6 +334,16 @@ public final class PtySession: @unchecked Sendable {
                        controller: ((Data) -> Void)?)? = stateLock.withLock {
             guard !terminated, !readingPaused else { return nil }
             log.append(chunk)
+            for hit in markHits {
+                markStore.append(
+                    SessionMark(
+                        offset: hit.offset,
+                        kind: hit.kind,
+                        exit: hit.exit,
+                        command: hit.command
+                    )
+                )
+            }
             let observerOutputs = observers.values.map(\.onOutput)
             let controller = attached ? onOutput : nil
             return (recorder, observerOutputs, controller)
@@ -400,6 +425,13 @@ public final class PtySession: @unchecked Sendable {
     /// receiving live output all along, so any replay would duplicate bytes.
     public var logHead: UInt64 {
         stateLock.withLock { log.head }
+    }
+
+    /// The log head read without the lock. Only correct on the event-loop
+    /// thread, where nothing else can append; `handleRead` uses it to position
+    /// marks it found before it takes the lock to append their bytes.
+    private var logHeadUnlocked: UInt64 {
+        log.head
     }
 
     public var observerCount: Int {

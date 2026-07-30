@@ -20,7 +20,6 @@ import { OutputFlowControl } from "./flow-control";
 import { resolveFontFamily } from "./fonts";
 import { matchPaneCommand, type PaneCommand } from "./pane-keys";
 import {
-  MAX_MARK_COMMAND_BYTES,
   MarkKind,
   parseOsc133,
   parseOsc633,
@@ -126,11 +125,6 @@ export class TerminalPane {
   });
   private readonly replayGuard = new ReplayGuard();
   private readonly osc99 = new Osc99Assembler();
-  /** 633;E command line awaiting its preExec mark. */
-  private pendingCommandLine: string | null = null;
-  /** The current replay window was announced with resync=1 (stale-screen
-   * rebuild) — marks parsed from it were already reported once. */
-  private replayIsResync = false;
   /** Markers on prompt lines for ⌘↑/⌘↓ navigation. */
   private promptMarkers: IMarker[] = [];
   /** A `?cmd=N` deep link to scroll to once the command appears. */
@@ -537,10 +531,6 @@ export class TerminalPane {
           this.kitty.reset();
         }
         this.outputBytes = frame.offset;
-        this.replayIsResync = frame.resync;
-        // A 633;E buffered on the old connection must not attach to the next
-        // live command.
-        this.pendingCommandLine = null;
         // Replayed bytes may contain device queries; swallow xterm's answers
         // to them until the whole replay window has parsed.
         this.replayGuard.arm(frame.replayLen);
@@ -682,13 +672,11 @@ export class TerminalPane {
 
   private handleParsedMark(parsed: ParsedMark | null): void {
     if (!parsed) return;
-    if (parsed.type === "commandLine") {
-      // Attached to the next preExec mark rather than reported on its own.
-      this.pendingCommandLine = parsed.command;
-      return;
-    }
-    // Local navigation state first — observers and replayed bytes get
-    // markers and decorations too; only the reporting below is gated.
+    // 633;E carries the command text, which only the daemon's index needs
+    // now; this pane draws its markers from the semantic letters alone.
+    if (parsed.type === "commandLine") return;
+    // Purely local: observers and replayed bytes get markers and decorations
+    // too, because none of this leaves the page.
     if (parsed.kind === MarkKind.promptStart) {
       this.addPromptMarker();
     } else if (
@@ -698,24 +686,6 @@ export class TerminalPane {
     ) {
       this.decorateFailedCommand(parsed.exit);
     }
-    // Consume a buffered 633;E even when the mark itself is not reported,
-    // so a replayed command line cannot leak onto the next live command.
-    let command: string | null = null;
-    if (parsed.kind === MarkKind.preExec && this.pendingCommandLine) {
-      command = this.pendingCommandLine;
-      this.pendingCommandLine = null;
-      // The daemon rejects oversized command lines; keep the mark, drop the
-      // text, rather than losing the mark to a byte-cap violation.
-      if (new TextEncoder().encode(command).byteLength > MAX_MARK_COMMAND_BYTES) {
-        command = null;
-      }
-    }
-    if (this.readOnlyValue || this.exitedValue) return;
-    // A resync replay re-covers bytes a previous connection already parsed
-    // and reported — re-reporting them would duplicate marks in the daemon's
-    // index. Gap replays (resync=0) are bytes nobody reported; keep those.
-    if (this.replayGuard.active && this.replayIsResync) return;
-    this.session.sendMark(parsed.kind, parsed.exit, this.outputBytes, command);
   }
 
   /** Prompt lines, oldest first; markers dispose themselves as their lines

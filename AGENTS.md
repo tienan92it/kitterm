@@ -15,6 +15,7 @@ Guidance for coding agents working in this repo.
 - `--record` writes asciinema v2 casts to `~/.kitterm/recordings/`
 - Tab title is per-session (custom name + optional cwd folder), stored per session id; observers adopt the controller's title and cannot edit it
 - `kitterm service install` runs the daemon from a per-user LaunchAgent — see **Service** below
+- **The daemon does not emulate a terminal.** No grid, no cursor, no CSI/SGR, no character sets — screen state is entirely the client's business. The one bounded exception is `OscMarkScanner`, which matches OSC 133/633 in the output stream so shell-integration marks exist for sessions nobody is watching (an orchestrator-driven session used to record none, leaving `/api/sessions` state, `lastExit` and `/commands` empty). It scans for two ids and their terminators and nothing else; it runs outside `stateLock` on the event loop, and its cost is below KittermBench's noise floor because it `memchr`s for `ESC` rather than walking bytes
 - **No Node on the hot path** (daemon is Swift + NIO)
 - No native Mac app
 - PTY spawn uses `kitterm-spawn-helper` (must be beside `kitterm`) so the shell gets a controlling TTY — required for Ctrl+C → SIGINT
@@ -26,7 +27,7 @@ Guidance for coding agents working in this repo.
 | C→S | `0` | UTF-8 / raw input |
 | C→S | `1` | `cols:u16` `rows:u16` (big-endian) |
 | C→S | `2` / `3` | pause / resume (empty) |
-| C→S | `4` | mark `kind:u8` (0 A, 1 B, 2 C, 3 D) `exit:i32` BE (Int32.min = absent) `offset:u64` BE `cmdline:utf8` (≤2KiB) — OSC 133/633 parsed by the client, indexed by the daemon (`/api/sessions/<id>/marks`; the daemon never parses ANSI) |
+| C→S | `4` | mark — **deprecated and ignored.** The daemon reads marks out of the PTY stream itself (`OscMarkScanner`), so an unwatched session still has an index; accepting these too would double every mark for an older client still sending them. Payload kept in the codec for old clients: `kind:u8` (0 A, 1 B, 2 C, 3 D) `exit:i32` BE (Int32.min = absent) `offset:u64` BE `cmdline:utf8` (≤2KiB) |
 | C→S | `5` | requestControl (empty) — an observer takes over: the current controller is demoted to observer, both get fresh `role` frames. The whole swap runs in one event-loop tick (`ControlHandoff`, loop-confined), so no output/input can interleave mid-swap; the promoted side attaches `.sinceOffset(logHead)` = zero replay |
 | S→C | `0` | raw PTY output |
 | S→C | `1` | title UTF-8 |
