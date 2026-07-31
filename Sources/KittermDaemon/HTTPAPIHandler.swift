@@ -365,6 +365,11 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 if let exit = derived.lastExit { item["lastExit"] = exit }
                 if let profile = summary.profile { item["profile"] = profile }
                 if !summary.labels.isEmpty { item["labels"] = summary.labels }
+                if summary.exited {
+                    // Kept only so its records can still be read.
+                    item["exited"] = true
+                    if let code = summary.exitCode { item["exitCode"] = Int(code) }
+                }
                 return item
             }
             let body: String
@@ -594,6 +599,14 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             // it would block to the deadline and then report it still running.
             guard index >= session.firstRetainedCommandIndex else {
                 self.writeCommandMissing(gone: true, context: context, version: head.version)
+                return
+            }
+            // The shell is gone, so nothing will ever close a command here.
+            // Answer from the record rather than blocking to the deadline.
+            guard session.isRunning else {
+                self.respondWithCommand(
+                    index: index, session: session, id: id, head: head, context: context
+                )
                 return
             }
             let future: EventLoopFuture<Void>

@@ -63,6 +63,11 @@ public actor SessionRegistry {
         public let labels: [String: String]
         /// Shell-integration marks, newest last — the caller derives state.
         public let marks: [SessionMark]
+        /// The shell has exited; the session is kept only so its records can
+        /// still be read, and it cannot be attached to.
+        public let exited: Bool
+        /// How the shell exited, when it has.
+        public let exitCode: Int32?
     }
 
     /// Every live session, for `/api/sessions`. Ordered by id for stability.
@@ -78,7 +83,9 @@ public actor SessionRegistry {
                     observerCount: session.observerCount,
                     profile: session.profileName,
                     labels: session.labels.values,
-                    marks: session.marksSnapshot()
+                    marks: session.marksSnapshot(),
+                    exited: !session.isRunning,
+                    exitCode: session.exitCode
                 )
             }
             .sorted { $0.id.uuidString < $1.id.uuidString }
@@ -97,7 +104,9 @@ public actor SessionRegistry {
     public func resolve(_ id: UUID) -> SessionResolution {
         guard let session = sessions[id] else { return .notFound }
         guard session.isRunning else {
-            removeInternal(id)
+            // A labelled session is kept after its shell dies so its records
+            // can still be read, so looking at it must not reap it.
+            if session.labels.isEmpty { removeInternal(id) }
             return .notFound
         }
         lingerTasks.removeValue(forKey: id)?.cancel()
@@ -151,6 +160,20 @@ public actor SessionRegistry {
         }
     }
 
+    /// The shell exited. A program-created session stays for its linger window
+    /// so `/commands` and retained output still answer — a node that crashed is
+    /// exactly the one a caller wants to inspect. A browser tab's session goes
+    /// now, as before; nobody wants a corpse in the fleet view.
+    public func sessionDidExit(_ id: UUID) {
+        guard let session = sessions[id] else { return }
+        guard !session.labels.isEmpty else {
+            removeInternal(id)
+            return
+        }
+        attachedIDs.remove(id)
+        scheduleLinger(id)
+    }
+
     public func remove(_ id: UUID) {
         removeInternal(id)
     }
@@ -158,6 +181,7 @@ public actor SessionRegistry {
     public func terminateAll() {
         for (_, session) in sessions {
             session.terminate()
+            session.discardRetainedOutput()
         }
         for (_, task) in lingerTasks {
             task.cancel()
@@ -168,6 +192,13 @@ public actor SessionRegistry {
     }
 
     private func reapIfStillDetached(_ id: UUID) {
+        // An exited session is reaped when its window is up regardless: its
+        // shell is already gone, and a reader must not hold the records open
+        // forever.
+        if let session = sessions[id], !session.isRunning {
+            removeInternal(id)
+            return
+        }
         guard !attachedIDs.contains(id) else { return }
         if let session = sessions[id], session.observerCount > 0 { return }
         removeInternal(id)
@@ -178,6 +209,7 @@ public actor SessionRegistry {
         attachedIDs.remove(id)
         if let session = sessions.removeValue(forKey: id) {
             session.terminate()
+            session.discardRetainedOutput()
         }
     }
 }
