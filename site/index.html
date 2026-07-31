@@ -3,92 +3,105 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>kitterm — browser terminal for macOS</title>
-<meta name="description" content="Your macOS terminal, in a browser tab. Each tab is a shell — fast, local-only, watchable from any device.">
-<meta property="og:title" content="kitterm — browser terminal for macOS">
-<meta property="og:description" content="Your macOS terminal, in a browser tab. Each tab is a shell — fast, local-only, watchable from any device.">
+<title>kitterm — your Mac's terminal, in any browser tab</title>
+<meta name="description" content="A real shell in a browser tab that outlives the tab you opened it in. Keeps running, follows you to your phone, and answers to programs. macOS, local by default.">
+<meta property="og:title" content="kitterm — your Mac's terminal, in any browser tab">
+<meta property="og:description" content="A real shell that outlives the tab you opened it in. Keeps running, follows you to your phone, and answers to programs.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://kitterm.dev/">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='1' y='1' width='30' height='30' rx='7' fill='%23161b22' stroke='%2330363d' stroke-width='2'/%3E%3Cpath d='M8 9 L14 16 L8 23' fill='none' stroke='%233fb950' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M19 9.5 L19 22.5' fill='none' stroke='%233fb950' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
 :root{
-  --accent:#3fb950;--bg:#0d1117;--panel:#12171e;--line:#242c37;
-  --fg:#e6edf3;--fg-bright:#f0f6fc;--muted:#8b949e;--dim:#6e7681;--red:#f85149;
+  --accent:#3fb950;--bg:#0d1117;--panel:#131922;--line:#232b36;--line-soft:#1b222c;
+  --fg:#e6edf3;--fg-bright:#fff;--muted:#9aa5b1;--dim:#6e7681;--red:#f85149;
+  /* macOS-only product → the system stack resolves to SF Pro natively. No
+     webfont, no layout shift, and monospace stays reserved for what you type. */
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,'Courier New',monospace;
 }
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--fg);
-  font-family:ui-monospace,Menlo,Monaco,'Courier New',monospace;font-size:14px;line-height:1.6}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);
+  font-size:15.5px;line-height:1.65;-webkit-font-smoothing:antialiased}
 a{color:inherit;text-decoration:none}
 button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+code{font-family:var(--mono)}
 :focus-visible{outline:1.5px solid var(--accent);outline-offset:3px;border-radius:3px}
 @keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
-.caret{display:inline-block;width:.52em;height:1em;background:var(--accent);
-  margin-left:6px;vertical-align:-.14em;animation:blink 1.15s step-end infinite}
+.caret{display:inline-block;width:3px;height:.82em;background:var(--accent);
+  margin-left:8px;vertical-align:-.04em;animation:blink 1.15s step-end infinite}
 @media (prefers-reduced-motion:reduce){.caret{animation:none}}
 
-/* ---- shell ---- */
-.top{max-width:600px;margin:0 auto;padding:22px 22px 0;display:flex;align-items:center;justify-content:space-between}
-.brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--fg-bright);font-size:15px}
-.gh{display:flex;align-items:center;padding:6px;border-radius:6px;color:var(--muted)}
+/* ---- frame ---- */
+.top{max-width:660px;margin:0 auto;padding:24px 24px 0;display:flex;align-items:center;justify-content:space-between}
+.brand{display:flex;align-items:center;gap:9px;font-weight:600;color:var(--fg-bright);font-size:15px;letter-spacing:-.2px}
+.gh{display:flex;padding:7px;border-radius:7px;color:var(--dim)}
 .gh:hover{color:var(--fg-bright);background:var(--panel)}
-main{max-width:600px;margin:0 auto;padding:56px 22px 64px;display:flex;flex-direction:column;gap:44px}
+main{max-width:660px;margin:0 auto;padding:64px 24px 72px;display:flex;flex-direction:column;gap:60px}
 
 /* ---- hero ---- */
-h1{margin:0;font-size:27px;line-height:1.35;font-weight:700;color:var(--fg-bright);letter-spacing:-.4px;text-wrap:balance}
-.sub{margin:14px 0 0;color:var(--muted);text-wrap:pretty}
+h1{margin:0;font-size:clamp(30px,6.4vw,46px);line-height:1.08;font-weight:500;
+  letter-spacing:-1.4px;color:var(--fg-bright);text-wrap:balance}
+.sub{margin:20px 0 0;font-size:16.5px;color:var(--muted);max-width:30em;text-wrap:pretty}
 
 /* ---- action ---- */
-.action{display:flex;flex-direction:column;gap:14px}
-.cmd{display:flex;align-items:center;gap:12px;width:100%;text-align:left;
-  background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:15px 16px}
-.cmd:hover{border-color:#39424f}
-.cmd code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.cmd{display:flex;align-items:center;gap:12px;width:100%;text-align:left;font-family:var(--mono);
+  background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:15px 16px}
+.cmd:hover{border-color:#313b49}
+.cmd code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px}
 .cmd .p{color:var(--accent)}
-.cmd .ic{color:var(--dim);flex-shrink:0}
+.cmd .ic{color:var(--dim);font-size:12px;flex-shrink:0;font-family:var(--sans)}
 .cmd:hover .ic{color:var(--muted)}
 .cmd.done{border-color:var(--accent)}
 .cmd.done .ic{color:var(--accent)}
-.second{font-size:12.5px;color:var(--muted)}
-.second a{color:var(--accent);border-bottom:1px solid transparent}
-.second a:hover{border-bottom-color:var(--accent)}
-.fallback{margin:0;font-size:12px;color:var(--dim);display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.under{margin:13px 0 0;font-size:13.5px;color:var(--dim)}
+.under a{color:var(--accent);border-bottom:1px solid transparent}
+.under a:hover{border-bottom-color:var(--accent)}
+.fallback{margin:10px 0 0;font-size:12.5px;color:var(--dim);display:flex;align-items:center;gap:7px;flex-wrap:wrap}
 .fallback[hidden]{display:none}
-.port{width:56px;background:var(--bg);border:1px solid var(--line);border-radius:4px;
-  color:var(--fg);font:inherit;font-size:11px;padding:3px 5px;text-align:center}
+.port{width:54px;background:var(--bg);border:1px solid var(--line);border-radius:4px;
+  color:var(--fg);font-family:var(--mono);font-size:11.5px;padding:3px 5px;text-align:center}
 
 /* ---- sandbox ---- */
-.lbl{margin-bottom:10px;font-size:11.5px;color:var(--dim)}
-.term{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel)}
-.out{height:158px;overflow-y:auto;padding:13px 15px;font-size:12.5px;line-height:1.7}
+.lbl{margin:0 0 11px;font-size:12.5px;color:var(--dim);text-wrap:pretty}
+.term{border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--panel);font-family:var(--mono)}
+.out{height:170px;overflow-y:auto;padding:14px 16px;font-size:12.5px;line-height:1.72}
 .out::-webkit-scrollbar{width:8px}
 .out::-webkit-scrollbar-thumb{background:#2b3441;border-radius:4px}
 .ln{white-space:pre-wrap;word-break:break-word;color:var(--muted)}
-.ln.echo{color:var(--fg-bright);margin-top:5px}
+.ln.echo{color:var(--fg-bright);margin-top:6px}
 .ln.ok{color:var(--accent)}
 .ln.err{color:var(--red)}
-.ln.note{color:var(--dim)}
-.dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:7px;vertical-align:middle}
+.ln.note{color:var(--dim);font-family:var(--sans);font-size:12.5px}
+.dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:8px;vertical-align:middle}
 .dot.pass{background:var(--accent)}
 .dot.fail{background:var(--red)}
-.code{color:var(--red);font-size:11px;margin-left:7px}
-.row{display:flex;align-items:center;gap:8px;padding:10px 15px;border-top:1px solid var(--line)}
+.code{color:var(--red);font-size:11px;margin-left:8px}
+.row{display:flex;align-items:center;gap:9px;padding:11px 16px;border-top:1px solid var(--line-soft)}
 .row .p{color:var(--accent);font-size:12.5px;flex-shrink:0}
-#cmd{flex:1;min-width:0;background:none;border:0;color:var(--fg);font:inherit;font-size:12.5px;padding:2px 0}
+#cmd{flex:1;min-width:0;background:none;border:0;color:var(--fg);font-family:var(--mono);font-size:12.5px;padding:2px 0}
 #cmd::placeholder{color:var(--dim)}
-.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
-.chip{font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:20px;padding:4px 11px}
+.chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}
+.chip{font-family:var(--mono);font-size:11.5px;color:var(--dim);border:1px solid var(--line);
+  border-radius:20px;padding:4px 12px}
 .chip:hover{color:var(--fg);border-color:var(--muted)}
 
-/* ---- facts ---- */
-.facts{display:flex;flex-direction:column;gap:13px;font-size:12.5px;color:var(--muted)}
-.facts b{color:var(--fg);font-weight:400}
-.facts .a{color:var(--accent);margin-right:8px}
-footer{font-size:11.5px;color:var(--dim)}
+/* ---- ideas ---- */
+.ideas{display:flex;flex-direction:column;gap:30px}
+.idea h2{margin:0 0 7px;font-size:16px;font-weight:600;color:var(--fg-bright);letter-spacing:-.2px}
+.idea p{margin:0;font-size:14.5px;color:var(--muted);text-wrap:pretty}
+.trust{margin:0;padding-top:28px;border-top:1px solid var(--line-soft);font-size:13.5px;color:var(--dim);text-wrap:pretty}
+.trust b{color:var(--muted);font-weight:600}
+footer{font-size:12.5px;color:var(--dim);display:flex;gap:16px}
 @media (max-width:520px){
-  main{padding:40px 22px 52px;gap:36px}
-  h1{font-size:23px}
-  .out{height:148px}
+  main{padding:44px 22px 56px;gap:48px}
+  .top{padding:20px 22px 0}
+  .sub{font-size:15.5px}
+  .out{height:152px}
+  /* Never ellipsis a `curl | sh` line — hiding half the URL is the one thing
+     a reader needs to see before running it. Wrap instead. */
+  .cmd{align-items:flex-start}
+  .cmd code{white-space:normal;overflow:visible;text-overflow:clip;word-break:break-all}
 }
 </style>
 </head>
@@ -96,38 +109,36 @@ footer{font-size:11.5px;color:var(--dim)}
 
 <div class="top">
   <div class="brand">
-    <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="7" fill="#161b22" stroke="#30363d" stroke-width="2"/><path d="M8 9 L14 16 L8 23" fill="none" stroke="#3fb950" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M19 9.5 L19 22.5" fill="none" stroke="#3fb950" stroke-width="2.6" stroke-linecap="round"/></svg>
+    <svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="7" fill="#161b22" stroke="#30363d" stroke-width="2"/><path d="M8 9 L14 16 L8 23" fill="none" stroke="#3fb950" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M19 9.5 L19 22.5" fill="none" stroke="#3fb950" stroke-width="2.6" stroke-linecap="round"/></svg>
     kitterm
   </div>
   <a class="gh" href="https://github.com/tienan92it/kitterm" aria-label="kitterm on GitHub">
-    <svg width="21" height="21" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+    <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
   </a>
 </div>
 
 <main>
 
-  <div>
-    <h1>Your macOS terminal,<br>in a browser tab.<span class="caret"></span></h1>
-    <p class="sub">Each tab is a shell. Fast, local-only, watchable from any device.</p>
-  </div>
+  <section>
+    <h1>Your Mac's terminal,<br>in any browser tab.<span class="caret"></span></h1>
+    <p class="sub">A real shell — job control, TUIs, all of it — that outlives the tab you opened it in.</p>
+  </section>
 
-  <div class="action">
+  <section>
     <button class="cmd" id="copy" aria-label="Copy install command">
       <span class="p" aria-hidden="true">$</span>
       <code>curl -fsSL https://kitterm.dev/install.sh | sh</code>
       <span class="ic" id="ic" aria-hidden="true">copy</span>
     </button>
-    <p class="second" style="margin:0">
-      Already installed? <a id="open" href="http://kitterm.localhost:3418/" target="_blank" rel="noopener">Open my terminal ↗</a>
-    </p>
+    <p class="under">Already installed? <a id="open" href="http://kitterm.localhost:3418/" target="_blank" rel="noopener">Open my terminal ↗</a></p>
     <p class="fallback" id="miss" hidden>
       Nothing there — run <code>kitterm start</code> first. Other port?
       <input class="port" id="port" inputmode="numeric" value="3418" aria-label="kitterm port">
     </p>
-  </div>
+  </section>
 
-  <div>
-    <div class="lbl">try it — a sandbox in this tab, not your Mac</div>
+  <section>
+    <p class="lbl">A command, the way kitterm records it — this sandbox runs in the tab, not on your Mac.</p>
     <div class="term">
       <div class="out" id="out" role="log" aria-live="polite" aria-label="Sandbox terminal"></div>
       <div class="row">
@@ -136,16 +147,28 @@ footer{font-size:11.5px;color:var(--dim)}
       </div>
     </div>
     <div class="chips" id="chips"></div>
-  </div>
+  </section>
 
-  <div class="facts">
-    <div><span class="a">→</span><b>A tab is a shell.</b> Split panes, real TTY. Reload — still there.</div>
-    <div><span class="a">→</span><b>Any device.</b> Phone-ready. Take control from another device mid-command.</div>
-    <div><span class="a">→</span><b>Legible to agents.</b> Every command indexed with its exit code and output.</div>
-    <div><span class="a">→</span><b>Yours only.</b> Binds loopback. Nothing leaves the Mac unless you share it.</div>
-  </div>
+  <section class="ideas">
+    <div class="idea">
+      <h2>It keeps running.</h2>
+      <p>Reload the page, restart the daemon, drop off Wi-Fi — the session is still there, and replays the exact bytes you missed. A long build doesn't need you sitting in front of it.</p>
+    </div>
+    <div class="idea">
+      <h2>It follows you.</h2>
+      <p>Open the same session on your phone and take control mid-command, right where the laptop left off. Or hand out a link that can watch and never type.</p>
+    </div>
+    <div class="idea">
+      <h2>It answers to programs.</h2>
+      <p>Every command is indexed with its exit code and its output, over plain HTTP. An agent can start a build, wait for it to exit, and read the result — instead of scraping a screen and guessing.</p>
+    </div>
+    <p class="trust"><b>Local by default.</b> kitterm binds loopback and checks <code>Host</code>/<code>Origin</code>, so no web page can reach your shell. Nothing leaves the Mac until you turn on sharing.</p>
+  </section>
 
-  <footer>MIT · macOS</footer>
+  <footer>
+    <span>MIT</span><span>macOS 13+</span>
+    <a href="https://github.com/tienan92it/kitterm">Source ↗</a>
+  </footer>
 
 </main>
 
@@ -159,7 +182,7 @@ footer{font-size:11.5px;color:var(--dim)}
   var ic = document.getElementById("ic");
   copy.addEventListener("click", function () {
     navigator.clipboard.writeText(INSTALL).then(function () {
-      ic.textContent = "copied ✓";
+      ic.textContent = "copied";
       copy.classList.add("done");
       clearTimeout(copy._t);
       copy._t = setTimeout(function () {
@@ -170,9 +193,9 @@ footer{font-size:11.5px;color:var(--dim)}
   });
 
   // ---- launcher ----
-  // A link, not a fetch: the daemon requires a loopback Host/Origin, and a
-  // cross-origin probe would be blocked by CORS anyway. So we cannot detect
-  // it — we open it and explain the miss.
+  // A link, not a fetch: the daemon requires a loopback Host/Origin and a
+  // cross-origin probe would be blocked by CORS, so the page cannot detect the
+  // daemon. It opens it and explains the miss instead.
   var open = document.getElementById("open");
   var miss = document.getElementById("miss");
   var port = document.getElementById("port");
@@ -191,8 +214,8 @@ footer{font-size:11.5px;color:var(--dim)}
   sync();
 
   // ---- sandbox ----
-  // Scripted, not a VM: it shows kitterm's command index without shipping a
-  // multi-megabyte emulator to every visitor.
+  // Scripted, not a VM: it shows how kitterm records a command without shipping
+  // a multi-megabyte emulator to every visitor.
   var out = document.getElementById("out");
   var cmd = document.getElementById("cmd");
   var SESSION = "a4f1c2de-77b0-4c31-9f2a-8e5d1b6c0392";
@@ -204,9 +227,7 @@ footer{font-size:11.5px;color:var(--dim)}
     out.appendChild(el);
   }
 
-  var FILES = {
-    "readme.md": ["# demo project", "", "So `cat` has something to print."]
-  };
+  var FILES = { "readme.md": ["# demo project", "", "So `cat` has something to print."] };
 
   var CMDS = {
     help: function () {
@@ -233,7 +254,7 @@ footer{font-size:11.5px;color:var(--dim)}
         "✓ parses an offset",
         "✗ replays across the wrap seam",
         "tests 2 · pass 1 · fail 1"
-      ], note: "kitterm marks it red and records the exit code." };
+      ], note: "Failed — kitterm marks it and keeps the exit code." };
     },
     curl: function (a) {
       var url = a[a.length - 1] || "";
@@ -244,7 +265,7 @@ footer{font-size:11.5px;color:var(--dim)}
           '  { "index": 2, "command": "npm test",   "exit": 1,',
           '    "startOffset": 1388, "endOffset": 2517 }',
           "] }"
-        ], note: "…/commands/2/output returns exactly those bytes." };
+        ], note: "This is what an agent reads instead of scraping the screen." };
       }
       if (/\/sessions$/.test(url)) {
         return { exit: 0, json: [
@@ -252,7 +273,7 @@ footer{font-size:11.5px;color:var(--dim)}
           '  { "shell": "/bin/zsh", "cwd": "~/proj", "state": "idle",',
           '    "lastCommand": "npm test", "lastExit": 1 }',
           "] }"
-        ], note: "What every shell on the machine is doing." };
+        ], note: "Every shell on the machine, and what it is doing." };
       }
       return { exit: 0, out: ["try: curl 127.0.0.1:3418/api/sessions"] };
     }
@@ -276,7 +297,7 @@ footer{font-size:11.5px;color:var(--dim)}
     var r = fn ? fn(parts.slice(1))
                : { exit: 127, stderr: true, out: ["zsh: command not found: " + parts[0]] };
 
-    // Red is for stderr and failing lines — not for everything a failed run printed.
+    // Red is for stderr and failing lines — not everything a failed run printed.
     (r.out || []).forEach(function (l) { line(l, r.stderr || /^\s*✗/.test(l) ? "err" : ""); });
     (r.json || []).forEach(function (l) { line(l, "ok"); });
 
