@@ -24,7 +24,18 @@ public actor SessionRegistry {
         sessions.count
     }
 
-    public func register(_ session: PtySession) -> UUID {
+    /// Admit a session, or refuse when the daemon is already holding
+    /// `maxConcurrentSessions`.
+    ///
+    /// Every live session is a shell and a PTY on someone's machine, and
+    /// program-created ones are now held for an hour after their client goes
+    /// away — so a caller that crash-loops could otherwise accumulate them
+    /// until the machine complains. The check lives here rather than at the
+    /// call site because the registry is the only place it can be atomic:
+    /// counting and inserting as two separate awaits lets concurrent opens
+    /// slip past the cap.
+    public func register(_ session: PtySession) -> UUID? {
+        guard sessions.count < KittermConstants.maxConcurrentSessions else { return nil }
         let id = UUID()
         sessions[id] = session
         attachedIDs.insert(id)

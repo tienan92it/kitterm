@@ -23,7 +23,7 @@ final class SessionRegistryTests: XCTestCase {
         let tmp = NSTemporaryDirectory()
         let session = try PtySession.spawn(cols: 80, rows: 24, cwd: tmp)
         defer { session.terminate() }
-        let id = await registry.register(session)
+        let id = await registry.register(session)!
 
         session.appendMark(SessionMark(offset: 0, kind: .preExec, exit: nil, command: "ls"))
         session.appendMark(SessionMark(offset: 1, kind: .commandEnd, exit: 0, command: nil))
@@ -71,7 +71,7 @@ final class SessionRegistryTests: XCTestCase {
         let registry = SessionRegistry()
         let session = try PtySession.spawn(cols: 80, rows: 24, cwd: NSTemporaryDirectory())
         defer { session.terminate() }
-        let id = await registry.register(session)
+        let id = await registry.register(session)!
 
         await registry.markDetached(id)
         let detached = await registry.summaries()
@@ -92,5 +92,30 @@ final class SessionRegistryTests: XCTestCase {
         await registry.claimControl(UUID())
         let count = await registry.count
         XCTAssertEqual(count, 0)
+    }
+
+    /// The ceiling is the only thing standing between a crash-looping caller
+    /// and an unbounded pile of shells — program-created sessions are now held
+    /// for an hour after their client goes away.
+    func testRegistrationStopsAtTheSessionCeiling() async throws {
+        let registry = SessionRegistry()
+        var spawned: [PtySession] = []
+        defer { for session in spawned { session.terminate() } }
+
+        for _ in 0..<KittermConstants.maxConcurrentSessions {
+            let session = try PtySession.spawn(cwd: NSTemporaryDirectory())
+            spawned.append(session)
+            let id = await registry.register(session)
+            XCTAssertNotNil(id, "under the ceiling every session is admitted")
+        }
+        let overflow = try PtySession.spawn(cwd: NSTemporaryDirectory())
+        spawned.append(overflow)
+        let refused = await registry.register(overflow)
+        XCTAssertNil(refused, "past the ceiling the registry must refuse")
+
+        // Freeing one makes room again, so the cap is a ceiling and not a
+        // one-way latch.
+        let count = await registry.count
+        XCTAssertEqual(count, KittermConstants.maxConcurrentSessions)
     }
 }

@@ -335,6 +335,16 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         // syntax sessions are created with, so a caller filters with the string
         // it already has.
         let filter = DaemonServer.queryValue("label", fromRequestURI: head.uri)
+        // A malformed filter is a caller mistake, and answering it with an
+        // empty list is indistinguishable from "that run has no sessions".
+        if let filter, !SessionLabels.isValidFilter(filter) {
+            writeJSON(
+                status: .badRequest,
+                body: #"{"ok":false,"error":"label filter must be key:value"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
         let promise = context.eventLoop.makePromise(of: [SessionRegistry.SessionSummary].self)
         promise.completeWithTask {
             await self.registry.summaries()
@@ -510,10 +520,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             notFound(context: context, version: head.version)
             return
         }
-        let promise = context.eventLoop.makePromise(of: [SessionMark]?.self)
-        promise.completeWithTask { await self.registry.session(id)?.marksSnapshot() }
+        let promise = context.eventLoop.makePromise(of: [SessionCommand]?.self)
+        promise.completeWithTask { await self.registry.session(id)?.commandsSnapshot() }
         promise.futureResult.whenComplete { result in
-            guard case .success(.some(let marks)) = result else {
+            guard case .success(.some(let commands)) = result else {
                 self.writeJSON(
                     status: .notFound,
                     body: #"{"ok":false,"error":"no such session"}"#,
@@ -521,9 +531,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 )
                 return
             }
-            let items = SessionCommands.pair(from: marks).map {
-                self.commandJSON($0, sessionID: id)
-            }
+            let items = commands.map { self.commandJSON($0, sessionID: id) }
             let body: String
             if let data = try? JSONSerialization.data(withJSONObject: ["ok": true, "commands": items]),
                let text = String(data: data, encoding: .utf8) {
@@ -589,18 +597,35 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 )
                 return
             }
-            guard let registration = session.awaitCommandEnd(index: index, on: context.eventLoop)
-            else {
+            // An index below the retained window names a command that ran and
+            // has since aged out. Nothing will ever close it, so registering a
+            // waiter would block the caller until its own deadline and then
+            // report the command as still running — a stale index deserves an
+            // answer, not a timeout that looks like a slow command.
+            guard index >= session.firstRetainedCommandIndex else {
+                self.writeJSON(
+                    status: .gone,
+                    body: #"{"ok":false,"error":"command aged out of this session's history"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+                return
+            }
+            let future: EventLoopFuture<Void>
+            switch session.awaitCommandEnd(index: index, on: context.eventLoop) {
+            case .tooManyWaiters:
                 self.writeJSON(
                     status: .serviceUnavailable,
                     body: #"{"ok":false,"error":"too many waiters on this session"}"#,
                     context: context, version: head.version, keepAlive: false
                 )
                 return
-            }
-            guard let future = registration else {
-                self.respondWithCommand(index: index, session: session, id: id, head: head, context: context)
+            case .finished:
+                self.respondWithCommand(
+                    index: index, session: session, id: id, head: head, context: context
+                )
                 return
+            case .waiting(let registered):
+                future = registered
             }
             // First of the two wins; the other is harmless. The flag is shared
             // by the timeout task and the waiter, both on this loop.
@@ -641,11 +666,17 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         head: HTTPRequestHead,
         context: ChannelHandlerContext
     ) {
-        let commands = SessionCommands.pair(from: session.marksSnapshot())
+        let commands = session.commandsSnapshot()
         guard let cmd = commands.first(where: { $0.index == index }) else {
+            // An index below the retained window is not "no such command" — it
+            // ran, and its record has since aged out. Saying so keeps a caller
+            // from reading the 404 as "that command never existed".
+            let gone = index < session.firstRetainedCommandIndex
             writeJSON(
-                status: .notFound,
-                body: #"{"ok":false,"error":"no such command"}"#,
+                status: gone ? .gone : .notFound,
+                body: gone
+                    ? #"{"ok":false,"error":"command aged out of this session's history"}"#
+                    : #"{"ok":false,"error":"no such command"}"#,
                 context: context, version: head.version, keepAlive: false
             )
             return
@@ -707,9 +738,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         let promise = context.eventLoop.makePromise(of: PtySession.OutputRange?.self)
         promise.completeWithTask {
             guard let session = await self.registry.session(id) else { return nil }
-            let commands = SessionCommands.pair(from: session.marksSnapshot())
-            guard index <= commands.count else { return nil }
-            let cmd = commands[index - 1]
+            // By index, not array position: numbering survives the mark
+            // window sliding, so position and index diverge once it has.
+            guard let cmd = session.commandsSnapshot().first(where: { $0.index == index })
+            else { return nil }
             // A running command has no end yet — read up to the current head.
             let end = cmd.endOffset ?? UInt64.max
             return await withCheckedContinuation { continuation in

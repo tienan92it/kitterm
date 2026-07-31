@@ -39,15 +39,31 @@ public enum SessionCommands {
     /// of the stream, so they are exact byte positions rather than a client's
     /// frame-granular count — a one-line `echo` pairs as precisely as a build
     /// log does.
-    public static func pair(from marks: [SessionMark]) -> [SessionCommand] {
+    ///
+    /// `firstIndex` is the number the oldest still-retained command carries,
+    /// which the caller takes from `SessionMarkStore.firstRetainedIndex`.
+    /// Numbering has to survive the mark window sliding: a caller waits on an
+    /// index it computed earlier, and `outputUrl` embeds one in a link it may
+    /// follow later. Renumbering from 1 would quietly point those at different
+    /// commands.
+    public static func pair(
+        from marks: [SessionMark],
+        firstIndex: Int = 1
+    ) -> [SessionCommand] {
         var commands: [SessionCommand] = []
         var pending: (offset: UInt64, command: String?, at: Date)?
+        var nextIndex = firstIndex
+
+        func take() -> Int {
+            defer { nextIndex += 1 }
+            return nextIndex
+        }
 
         func flushRunning() {
             guard let start = pending else { return }
             commands.append(
                 SessionCommand(
-                    index: commands.count + 1,
+                    index: take(),
                     command: start.command,
                     exit: nil,
                     startOffset: start.offset,
@@ -91,10 +107,16 @@ public enum SessionCommands {
                     pending = (mark.offset, mark.command, mark.at)
                 }
             case .commandEnd:
-                guard let start = pending else { break } // end with no start: skip
+                guard let start = pending else {
+                    // The window slid between this command's start and its end.
+                    // The command still happened and still owns its number, so
+                    // spend it rather than let every later command shift down.
+                    _ = take()
+                    break
+                }
                 commands.append(
                     SessionCommand(
-                        index: commands.count + 1,
+                        index: take(),
                         command: start.command,
                         exit: mark.exit,
                         startOffset: start.offset,

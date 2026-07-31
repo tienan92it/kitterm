@@ -320,6 +320,7 @@ enum KittermMain {
         if let tls = try flags.tlsConfig(port: port) {
             _ = try tls.makeSSLContext()
         }
+        _ = try flags.validatedSessionLinger()
         try DaemonPaths.ensureStateDirectory()
         if let existing = livePid() {
             print("kitterm already running (pid \(existing), port \(readPort() ?? port))")

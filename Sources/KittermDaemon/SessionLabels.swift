@@ -63,6 +63,18 @@ public struct SessionLabels: Sendable, Equatable {
         !value.isEmpty && value.count <= maxValueLength && value.allSatisfy(valueAllowed.contains)
     }
 
+    /// Is this a well-formed `key:value` filter?
+    ///
+    /// Separate from matching so a caller can tell a typo from a genuinely
+    /// empty result: `?label=run` matching nothing looks exactly like a run
+    /// with no sessions, which is the wrong answer to give a program.
+    public static func isValidFilter(_ raw: String) -> Bool {
+        guard let separator = raw.firstIndex(of: ":") else { return false }
+        let key = String(raw[raw.startIndex..<separator])
+        let value = String(raw[raw.index(after: separator)...])
+        return isValidKey(key.lowercased()) && isValidValue(value)
+    }
+
     /// Does this session match a `key:value` filter?
     public func matches(filter raw: String) -> Bool {
         guard let separator = raw.firstIndex(of: ":") else { return false }

@@ -90,6 +90,10 @@ public enum KittermConstants: Sendable {
     /// Detach window for sessions a program created (they carry labels). An
     /// orchestrator restart must not cost you your in-flight nodes.
     public static let orchestratedSessionLingerSeconds = 3600
+    /// Ceiling for `--session-linger`. A day is already generous for holding a
+    /// shell open with nobody attached; past that the flag is a way to leak
+    /// processes rather than a way to survive an orchestrator restart.
+    public static let maxSessionLingerSeconds = 86_400
 
     public static let loopbackHosts: Set<String> = [
         "127.0.0.1",

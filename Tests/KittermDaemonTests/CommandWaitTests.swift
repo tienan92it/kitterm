@@ -40,12 +40,25 @@ final class CommandWaitTests: XCTestCase {
 
     private func osc(_ payload: String) -> String { "\u{1b}]\(payload)\u{07}" }
 
+    /// The registered future, failing the test if the wait was refused or the
+    /// command had already finished.
+    private func waiter(
+        _ outcome: PtySession.CommandWaitOutcome,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> EventLoopFuture<Void> {
+        guard case .waiting(let future) = outcome else {
+            XCTFail("expected a registered waiter, got \(outcome)", file: file, line: line)
+            throw XCTSkip("no waiter")
+        }
+        return future
+    }
+
     func testWaiterFiresWhenTheClosingMarkArrives() throws {
         let loop = group.next()
         feed(osc("633;E;make test") + osc("133;C") + "building…\n")
 
-        let registration = session.awaitCommandEnd(index: 1, on: loop)
-        let future = try XCTUnwrap(XCTUnwrap(registration), "should have registered a waiter")
+        let future = try waiter(session.awaitCommandEnd(index: 1, on: loop))
 
         let done = expectation(description: "waiter fired")
         future.whenComplete { _ in done.fulfill() }
@@ -53,7 +66,7 @@ final class CommandWaitTests: XCTestCase {
         feed(osc("133;D;0"))
         wait(for: [done], timeout: 5)
 
-        let cmd = try XCTUnwrap(SessionCommands.pair(from: session.marksSnapshot()).first)
+        let cmd = try XCTUnwrap(session.commandsSnapshot().first)
         XCTAssertFalse(cmd.running)
         XCTAssertEqual(cmd.exit, 0)
         XCTAssertEqual(cmd.command, "make test")
@@ -61,15 +74,15 @@ final class CommandWaitTests: XCTestCase {
 
     func testAlreadyFinishedCommandRegistersNoWaiter() throws {
         feed(osc("133;C") + "out" + osc("133;D;3"))
-        let registration = session.awaitCommandEnd(index: 1, on: group.next())
-        let inner = try XCTUnwrap(registration, "must not report the cap was hit")
-        XCTAssertNil(inner, "a finished command answers immediately, without a waiter")
+        guard case .finished = session.awaitCommandEnd(index: 1, on: group.next()) else {
+            return XCTFail("a finished command answers immediately, without a waiter")
+        }
     }
 
     func testWaitingForACommandThatHasNotStartedYet() throws {
         let loop = group.next()
         // Legitimate: a caller writes input and waits on the command it created.
-        let future = try XCTUnwrap(XCTUnwrap(session.awaitCommandEnd(index: 1, on: loop)))
+        let future = try waiter(session.awaitCommandEnd(index: 1, on: loop))
         let done = expectation(description: "waiter fired for a later command")
         future.whenComplete { _ in done.fulfill() }
         feed(osc("133;C") + "work" + osc("133;D;0"))
@@ -79,8 +92,8 @@ final class CommandWaitTests: XCTestCase {
     func testOnlyTheMatchingWaiterFires() throws {
         let loop = group.next()
         feed(osc("133;C"))
-        let first = try XCTUnwrap(XCTUnwrap(session.awaitCommandEnd(index: 1, on: loop)))
-        let second = try XCTUnwrap(XCTUnwrap(session.awaitCommandEnd(index: 2, on: loop)))
+        let first = try waiter(session.awaitCommandEnd(index: 1, on: loop))
+        let second = try waiter(session.awaitCommandEnd(index: 2, on: loop))
 
         let firstDone = expectation(description: "command 1")
         first.whenComplete { _ in firstDone.fulfill() }
@@ -95,12 +108,11 @@ final class CommandWaitTests: XCTestCase {
     func testWaiterCapIsEnforced() throws {
         let loop = group.next()
         for _ in 0..<PtySession.maxCommandWaiters {
-            XCTAssertNotNil(session.awaitCommandEnd(index: 99, on: loop))
+            _ = try waiter(session.awaitCommandEnd(index: 99, on: loop))
         }
-        XCTAssertNil(
-            session.awaitCommandEnd(index: 99, on: loop),
-            "past the cap the caller must be turned away, not queued"
-        )
+        guard case .tooManyWaiters = session.awaitCommandEnd(index: 99, on: loop) else {
+            return XCTFail("past the cap the caller must be turned away, not queued")
+        }
     }
 
     /// A dead shell will never close anyone's command; waiters must be released
@@ -108,7 +120,7 @@ final class CommandWaitTests: XCTestCase {
     func testShellExitReleasesWaiters() throws {
         let loop = group.next()
         feed(osc("133;C"))
-        let future = try XCTUnwrap(XCTUnwrap(session.awaitCommandEnd(index: 1, on: loop)))
+        let future = try waiter(session.awaitCommandEnd(index: 1, on: loop))
         let released = expectation(description: "waiter released on exit")
         future.whenComplete { _ in released.fulfill() }
         session.terminate()
@@ -119,13 +131,14 @@ final class CommandWaitTests: XCTestCase {
         let loop = group.next()
         var futures: [EventLoopFuture<Void>] = []
         for _ in 0..<PtySession.maxCommandWaiters {
-            futures.append(try XCTUnwrap(XCTUnwrap(session.awaitCommandEnd(index: 99, on: loop))))
+            futures.append(try waiter(session.awaitCommandEnd(index: 99, on: loop)))
         }
-        XCTAssertNil(session.awaitCommandEnd(index: 99, on: loop))
+        guard case .tooManyWaiters = session.awaitCommandEnd(index: 99, on: loop) else {
+            return XCTFail("the cap should be full")
+        }
         session.cancelCommandWait(futures[0])
-        XCTAssertNotNil(
-            session.awaitCommandEnd(index: 99, on: loop),
-            "a timed-out waiter must free its slot"
-        )
+        _ = try waiter(
+            session.awaitCommandEnd(index: 99, on: loop)
+        )  // a timed-out waiter must free its slot
     }
 }

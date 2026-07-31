@@ -36,6 +36,24 @@ struct DaemonFlags {
         )
     }
 
+    /// Reject a linger the daemon cannot honour, rather than passing it to
+    /// `Task.sleep` where a negative window means "drop the session at once"
+    /// and an enormous one means "never". A shell held open is a real process
+    /// on someone's machine, so the ceiling is stated, not implied.
+    func validatedSessionLinger() throws -> Int? {
+        guard let sessionLinger else { return nil }
+        guard sessionLinger >= 1, sessionLinger <= KittermConstants.maxSessionLingerSeconds else {
+            throw CLIError.usage(
+                """
+                --session-linger must be between 1 and \
+                \(KittermConstants.maxSessionLingerSeconds) seconds \
+                (got \(sessionLinger))
+                """
+            )
+        }
+        return sessionLinger
+    }
+
     /// Both halves or neither; the port defaults beside the plain one.
     func tlsConfig(port: Int) throws -> TLSConfig? {
         switch (tlsCert, tlsKey) {
@@ -82,7 +100,7 @@ struct DaemonFlags {
             agentControl: agentControl,
             trustedHosts: trustedHosts,
             tls: try tlsConfig(port: port),
-            orchestratedLingerSeconds: sessionLinger
+            orchestratedLingerSeconds: try validatedSessionLinger()
                 ?? KittermConstants.orchestratedSessionLingerSeconds
         )
     }

@@ -248,8 +248,8 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
                 session.attachRecorder(recorder)
             }
             let registry = self.registry
-            let setup = session.makeReader(group: eventLoopGroup, eventLoop: context.eventLoop).flatMap { () -> EventLoopFuture<UUID> in
-                let idPromise = context.eventLoop.makePromise(of: UUID.self)
+            let setup = session.makeReader(group: eventLoopGroup, eventLoop: context.eventLoop).flatMap { () -> EventLoopFuture<UUID?> in
+                let idPromise = context.eventLoop.makePromise(of: UUID?.self)
                 idPromise.completeWithTask {
                     await registry.register(session)
                 }
@@ -261,7 +261,23 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
                 FileHandle.standardError.write(Data("kitterm: \(reason)\n".utf8))
                 self.closePolicy(context: context, reason: reason)
             }
-            setup.whenSuccess { [weak self, weak context] id in
+            setup.whenSuccess { [weak self, weak context] registered in
+                // Refused: the daemon is at its session ceiling. The shell was
+                // spawned to make the check atomic, so it has to go back.
+                guard let id = registered else {
+                    session.terminate()
+                    if let self, let context {
+                        self.closePolicy(
+                            context: context,
+                            reason: """
+                                too many sessions open \
+                                (limit \(KittermConstants.maxConcurrentSessions)); \
+                                close one or delete an idle session
+                                """
+                        )
+                    }
+                    return
+                }
                 guard let self, let context, !self.closed else {
                     Task { await registry.remove(id) }
                     return

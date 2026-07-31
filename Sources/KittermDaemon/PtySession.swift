@@ -365,7 +365,10 @@ public final class PtySession: @unchecked Sendable {
             // skipped entirely for the prompt marks that make up most traffic.
             if markHits.contains(where: { $0.kind == .commandEnd }), !commandWaiters.isEmpty {
                 let finished = Set(
-                    SessionCommands.pair(from: markStore.marks)
+                    SessionCommands.pair(
+                        from: markStore.marks,
+                        firstIndex: markStore.firstRetainedIndex
+                    )
                         .filter { !$0.running }
                         .map(\.index)
                 )
@@ -486,29 +489,40 @@ public final class PtySession: @unchecked Sendable {
     /// Bounded so a caller cannot pile up connections against one session.
     public static let maxCommandWaiters = 64
 
+    /// What asking to wait on a command got you.
+    public enum CommandWaitOutcome {
+        /// Already finished — answer the caller now.
+        case finished
+        /// Registered; this completes when the closing mark is indexed.
+        case waiting(EventLoopFuture<Void>)
+        /// This session already has `maxCommandWaiters` callers blocked on it.
+        case tooManyWaiters
+    }
+
     /// Ask to be told when command `index` (1-based) has finished.
     ///
-    /// Returns `nil` when it already has — the caller answers immediately —
-    /// and throws nothing: waiting for a command that has not started yet is
-    /// legitimate, since a caller may write input and wait for the command it
-    /// just created.
+    /// Waiting on a command that has not started yet is legitimate, not an
+    /// error: a caller writes input and immediately waits on the command it
+    /// just created, and the two race by nature.
     public func awaitCommandEnd(
         index: Int,
         on eventLoop: EventLoop
-    ) -> EventLoopFuture<Void>?? {
-        let outcome: EventLoopFuture<Void>?? = stateLock.withLock {
-            let commands = SessionCommands.pair(from: markStore.marks)
+    ) -> CommandWaitOutcome {
+        stateLock.withLock {
+            let commands = SessionCommands.pair(
+                from: markStore.marks,
+                firstIndex: markStore.firstRetainedIndex
+            )
             if let existing = commands.first(where: { $0.index == index }), !existing.running {
-                return .some(nil)  // already finished
+                return .finished
             }
             guard commandWaiters.count < Self.maxCommandWaiters else {
-                return nil  // too many waiters
+                return .tooManyWaiters
             }
             let promise = eventLoop.makePromise(of: Void.self)
             commandWaiters.append((index, promise))
-            return .some(promise.futureResult)
+            return .waiting(promise.futureResult)
         }
-        return outcome
     }
 
     /// Drop a waiter that timed out, so a long-lived session does not keep dead
@@ -538,6 +552,27 @@ public final class PtySession: @unchecked Sendable {
         stateLock.withLock { markStore.marks }
     }
 
+    /// This session's commands, numbered so an index means the same command for
+    /// the session's whole life. Use this rather than pairing `marksSnapshot()`
+    /// by hand: pairing without the store's base renumbers from 1 whenever the
+    /// mark window slides, which silently re-points an index at a different
+    /// command.
+    public func commandsSnapshot() -> [SessionCommand] {
+        stateLock.withLock {
+            SessionCommands.pair(
+                from: markStore.marks,
+                firstIndex: markStore.firstRetainedIndex
+            )
+        }
+    }
+
+    /// Number of the oldest command still retained; anything below it has aged
+    /// out and can be reported as gone rather than silently resolved to
+    /// whichever command now sits at that position.
+    public var firstRetainedCommandIndex: Int {
+        stateLock.withLock { markStore.firstRetainedIndex }
+    }
+
     /// A command's captured output for the agent-facing API. `data` is the tail
     /// `maxBytes` of the requested range (older bytes are what an agent least
     /// needs when a command floods); `total` is the full range size and
@@ -551,13 +586,12 @@ public final class PtySession: @unchecked Sendable {
         public let pruned: Bool
     }
 
-    /// Output bytes in `[from, to)` (pass a large `to` for a still-running
-    /// command to read up to now), bounded to the tail `maxBytes`. Read under
-    /// the lock, like the other log accessors.
-    /// `outputRange`, falling back to retained output on disk when the range
-    /// has rotated out of the ring. Asynchronous because that fallback reads a
-    /// file, which must not happen on the event loop; `completion` fires on the
-    /// store's queue, so callers hop back to their own loop.
+    /// Output bytes in `[from, to)`, falling back to retained output on disk
+    /// when the range has rotated out of the ring.
+    ///
+    /// Asynchronous because that fallback reads a file, which must not happen
+    /// on the event loop; `completion` fires on the store's queue, so callers
+    /// hop back to their own loop.
     public func outputRange(
         from: UInt64,
         to: UInt64,
@@ -567,8 +601,11 @@ public final class PtySession: @unchecked Sendable {
         let ring = outputRange(from: from, to: to, maxBytes: maxBytes)
         let store = stateLock.withLock { logStore }
         guard ring.pruned, let store else { return completion(ring) }
-        // The file holds the stream from offset zero, so its offsets are the
-        // stream's — no translation, just seek.
+        // The store attached partway through the stream — a shell prints its
+        // banner before the session has an id to name a file after — so its
+        // first byte is not stream offset zero. `SessionLogStore` holds that
+        // origin and translates; asking it in stream offsets is correct, and
+        // assuming the file starts at zero returns plausible wrong bytes.
         let end = min(to, logHead)
         let start = end > UInt64(maxBytes) ? max(from, end - UInt64(maxBytes)) : from
         store.read(from: start, to: end) { data, actualStart in
@@ -586,6 +623,10 @@ public final class PtySession: @unchecked Sendable {
         }
     }
 
+    /// Output bytes in `[from, to)` (pass a large `to` for a still-running
+    /// command to read up to now), bounded to the tail `maxBytes`. Ring only —
+    /// use the asynchronous overload to fall back to retained output. Read
+    /// under the lock, like the other log accessors.
     public func outputRange(from: UInt64, to: UInt64, maxBytes: Int) -> OutputRange {
         stateLock.withLock {
             let end = min(to, log.head)
