@@ -65,6 +65,9 @@ public final class PtySession: @unchecked Sendable {
     /// How the shell exited, once it has. Readable after the shell is gone so a
     /// caller can see why a node stopped.
     private var shellExitCode: Int32?
+    /// The last command a program submitted through the input route, used to
+    /// name the next command when the shell does not report one itself.
+    private var submittedCommand: String?
 
     /// Every output byte flows through this ring; reattach gap-replay,
     /// observer catch-up, and tail replay are all snapshots of it. Offsets
@@ -354,12 +357,22 @@ public final class PtySession: @unchecked Sendable {
             guard !terminated, !readingPaused else { return nil }
             log.append(chunk)
             for hit in markHits {
+                // Only kitterm's own snippet and VS Code emit the command line
+                // (OSC 633;E). A shell carrying someone else's OSC 133 — iTerm2,
+                // Powerlevel10k — marks the command but never names it. When a
+                // program submitted the command we already know the text, so
+                // use it rather than leave the record anonymous.
+                var command = hit.command
+                if hit.kind == .preExec, command == nil, let submitted = submittedCommand {
+                    command = submitted
+                    submittedCommand = nil
+                }
                 markStore.append(
                     SessionMark(
                         offset: hit.offset,
                         kind: hit.kind,
                         exit: hit.exit,
-                        command: hit.command
+                        command: command
                     )
                 )
             }
@@ -888,6 +901,19 @@ public final class PtySession: @unchecked Sendable {
                 self.deliverExit(code)
             }
         }
+    }
+
+    /// Remember what a program asked the shell to run, so the command it
+    /// creates can be named even when the shell does not report one.
+    ///
+    /// Only whole submissions count: a partial write, or a keystroke answering
+    /// a prompt, is not a command. Multi-line input names the first command
+    /// only — the shell reports the rest, or they stay anonymous.
+    public func noteSubmittedCommand(_ data: Data) {
+        guard let text = String(data: data, encoding: .utf8), text.hasSuffix("\n") else { return }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= KittermConstants.maxTitleLength else { return }
+        stateLock.withLock { submittedCommand = trimmed }
     }
 
     /// Exit code, once the shell has exited.

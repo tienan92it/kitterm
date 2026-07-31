@@ -848,6 +848,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         promise.completeWithTask {
             guard let session = await self.registry.session(id) else { return .noSession }
             do {
+                session.noteSubmittedCommand(body)
                 try session.write(body)
                 return .ok(body.count)
             } catch {
