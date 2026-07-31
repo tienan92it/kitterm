@@ -50,6 +50,7 @@ public enum SessionCommands {
         var commands: [SessionCommand] = []
         var pending: (offset: UInt64, command: String?, at: Date)?
         var nextIndex = firstIndex
+        var sawStart = false
 
         func take() -> Int {
             defer { nextIndex += 1 }
@@ -76,6 +77,7 @@ public enum SessionCommands {
         for mark in marks {
             switch mark.kind {
             case .preExec:
+                sawStart = true
                 // Two starts with no end between them: different names mean two
                 // real commands, so close the first as running. Matching (or
                 // absent) names mean one command announced twice by a shell
@@ -96,9 +98,13 @@ public enum SessionCommands {
                 }
             case .commandEnd:
                 guard let start = pending else {
-                    // Start aged out but the end survived: the command still
-                    // owns its number, so spend it rather than shift the rest.
-                    _ = take()
+                    // An end with no start, before any start in this window,
+                    // and only once something has aged out: that command's
+                    // start was evicted, so it still owns its number. A shell
+                    // also emits one of these at its first prompt, and that one
+                    // must not consume a number — the first real command has to
+                    // be index 1.
+                    if !sawStart, firstIndex > 1 { _ = take() }
                     break
                 }
                 commands.append(

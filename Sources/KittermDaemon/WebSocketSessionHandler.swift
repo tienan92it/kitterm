@@ -709,10 +709,10 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
             handoff.clearController(sessionID)
             if ptyExited {
                 pty.terminate()
-                handoff.enqueueBookkeeping { await registry.remove(sessionID) }
+                handoff.enqueueBookkeeping { await registry.sessionDidExit(sessionID) }
             } else {
                 pty.detach(onExitWhileDetached: { _ in
-                    Task { await registry.remove(sessionID) }
+                    Task { await registry.sessionDidExit(sessionID) }
                 })
                 handoff.enqueueBookkeeping { await registry.markDetached(sessionID) }
             }

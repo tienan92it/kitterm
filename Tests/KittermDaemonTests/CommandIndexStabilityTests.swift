@@ -99,4 +99,23 @@ final class CommandIndexStabilityTests: XCTestCase {
         XCTAssertEqual(commands(store).map(\.index), [1, 2, 3, 4, 5])
         XCTAssertEqual(store.firstRetainedIndex, 1)
     }
+
+    /// A real shell emits a `commandEnd` at its first prompt, before any
+    /// command has run. That orphan must not consume a number: an orchestrator
+    /// counts the commands and waits on `count + 1`, so the first real command
+    /// has to be index 1 or every wait is off by one and blocks forever.
+    func testALeadingPromptEndDoesNotConsumeANumber() {
+        var store = SessionMarkStore(cap: 100)
+        // What a fresh shell actually sends: prompt marks and a stray end.
+        store.append(SessionMark(offset: 0, kind: .promptStart, exit: nil, command: nil))
+        store.append(SessionMark(offset: 0, kind: .commandEnd, exit: 0, command: nil))
+        XCTAssertTrue(commands(store).isEmpty, "no command has run yet")
+
+        var offset: UInt64 = 10
+        appendCommand(&store, 1, offset: &offset)
+        XCTAssertEqual(
+            commands(store).map(\.index), [1],
+            "the first real command must be index 1"
+        )
+    }
 }

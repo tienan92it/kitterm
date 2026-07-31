@@ -62,6 +62,9 @@ public final class PtySession: @unchecked Sendable {
     private var readingPaused = false
     private var terminated = false
     private var exitNotified = false
+    /// How the shell exited, once it has. Readable after the shell is gone so a
+    /// caller can see why a node stopped.
+    private var shellExitCode: Int32?
 
     /// Every output byte flows through this ring; reattach gap-replay,
     /// observer catch-up, and tail replay are all snapshots of it. Offsets
@@ -835,14 +838,12 @@ public final class PtySession: @unchecked Sendable {
             terminated = true
             let channel = readChannel
             let recorder = self.recorder
-            let store = self.logStore
             self.readChannel = nil
             self.recorder = nil
-            self.logStore = nil
             // The shell is going away; undelivered input has nowhere to go.
             pendingInput = Data()
             _ = Darwin.close(masterFD)
-            return (channel, recorder, store)
+            return (channel, recorder, nil)
         }
         guard let shutdown else { return }
 
@@ -850,7 +851,6 @@ public final class PtySession: @unchecked Sendable {
         // terminate may never reach it, and a dropped promise is a NIO leak.
         failCommandWaiters()
         shutdown.recorder?.close()
-        shutdown.logStore?.close()
         // Thread-safe and non-blocking: NIO hops to the loop itself.
         shutdown.channel?.close(promise: nil)
         if kill(pid, 0) == 0 {
@@ -890,6 +890,23 @@ public final class PtySession: @unchecked Sendable {
         }
     }
 
+    /// Exit code, once the shell has exited.
+    public var exitCode: Int32? {
+        stateLock.withLock { shellExitCode }
+    }
+
+    /// Drop retained output. Separate from `terminate()` so a session can
+    /// outlive its shell with its records intact; the registry calls this when
+    /// it finally reaps the session.
+    public func discardRetainedOutput() {
+        let store = stateLock.withLock { () -> SessionLogStore? in
+            let store = logStore
+            logStore = nil
+            return store
+        }
+        store?.close()
+    }
+
     /// A dead shell finishes nobody's command; release waiters now rather than
     /// leaving them to time out.
     private func failCommandWaiters() {
@@ -906,6 +923,24 @@ public final class PtySession: @unchecked Sendable {
             stateLock.withLock {
                 guard !exitNotified else { return nil }
                 exitNotified = true
+                shellExitCode = code
+                // A shell that dies mid-command never sends the mark closing
+                // it, which would leave that command running forever and give
+                // a waiter nothing to read. Close it with the shell's own exit.
+                let open = SessionCommands.pair(
+                    from: markStore.marks,
+                    firstIndex: markStore.firstRetainedIndex
+                ).last
+                if open?.running == true {
+                    markStore.append(
+                        SessionMark(
+                            offset: logHeadUnlocked,
+                            kind: .commandEnd,
+                            exit: code,
+                            command: nil
+                        )
+                    )
+                }
                 return (onExit, observers.values.map(\.onExit))
             }
         guard let handlers else { return }
