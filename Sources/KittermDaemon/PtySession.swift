@@ -37,6 +37,10 @@ public final class PtySession: @unchecked Sendable {
     /// Metadata only (fleet view); the profile's command was injected as
     /// initial input by the spawner.
     public let profileName: String?
+    /// Orchestrator tags (`?label=run:abc,node:build`). Their presence also
+    /// means a program created this session, which the registry uses to decide
+    /// how long to hold it after its client goes away.
+    public let labels: SessionLabels
     public private(set) var cols: UInt16
     public private(set) var rows: UInt16
 
@@ -104,8 +108,14 @@ public final class PtySession: @unchecked Sendable {
     /// Reads OSC 133/633 out of the PTY stream. Touched only from
     /// `handleRead`, i.e. only on the event loop, so it lives outside the lock.
     private var markScanner = OscMarkScanner()
+    /// Callers blocked on "tell me when command N finishes", completed from
+    /// `handleRead` as the closing mark is indexed.
+    private var commandWaiters: [(index: Int, promise: EventLoopPromise<Void>)] = []
     /// Optional asciinema recorder (daemon `--record`).
     private var recorder: SessionRecorder?
+    /// Optional disk spill (`--retain-logs`) so ranges older than the ring are
+    /// still readable. Set once at attach time and never mutated after.
+    private var logStore: SessionLogStore?
 
     private init(
         pid: pid_t,
@@ -113,6 +123,7 @@ public final class PtySession: @unchecked Sendable {
         shellPath: String,
         initialCwd: String,
         profileName: String?,
+        labels: SessionLabels,
         cols: UInt16,
         rows: UInt16
     ) {
@@ -121,6 +132,7 @@ public final class PtySession: @unchecked Sendable {
         self.shellPath = shellPath
         self.initialCwd = initialCwd
         self.profileName = profileName
+        self.labels = labels
         self.cols = cols
         self.rows = rows
     }
@@ -134,7 +146,8 @@ public final class PtySession: @unchecked Sendable {
         rows: UInt16 = KittermConstants.defaultRows,
         cwd: String? = nil,
         histFile: String? = nil,
-        profileName: String? = nil
+        profileName: String? = nil,
+        labels: SessionLabels = SessionLabels()
     ) throws -> PtySession {
         let shell = resolvedShell()
         let startCwd = cwd ?? FileManager.default.homeDirectoryForCurrentUser.path
@@ -249,6 +262,7 @@ public final class PtySession: @unchecked Sendable {
             shellPath: shell,
             initialCwd: startCwd,
             profileName: profileName,
+            labels: labels,
             cols: cols,
             rows: rows
         )
@@ -329,7 +343,9 @@ public final class PtySession: @unchecked Sendable {
         // handlers below re-enter this class. Detached output only rotates the
         // log — reads never pause for it, so a long-running program keeps
         // making progress while no client is watching.
+        var readyWaiters: [EventLoopPromise<Void>] = []
         let dispatch: (recorder: SessionRecorder?,
+                       logStore: SessionLogStore?,
                        observers: [(Data) -> Void],
                        controller: ((Data) -> Void)?)? = stateLock.withLock {
             guard !terminated, !readingPaused else { return nil }
@@ -344,13 +360,33 @@ public final class PtySession: @unchecked Sendable {
                     )
                 )
             }
+            // Only a closing mark can satisfy a waiter, so the pairing pass is
+            // skipped entirely for the prompt marks that make up most traffic.
+            if markHits.contains(where: { $0.kind == .commandEnd }), !commandWaiters.isEmpty {
+                let finished = Set(
+                    SessionCommands.pair(
+                        from: markStore.marks,
+                        firstIndex: markStore.firstRetainedIndex
+                    )
+                        .filter { !$0.running }
+                        .map(\.index)
+                )
+                commandWaiters.removeAll { waiter in
+                    guard finished.contains(waiter.index) else { return false }
+                    readyWaiters.append(waiter.promise)
+                    return true
+                }
+            }
             let observerOutputs = observers.values.map(\.onOutput)
             let controller = attached ? onOutput : nil
-            return (recorder, observerOutputs, controller)
+            return (recorder, logStore, observerOutputs, controller)
         }
+        // Outside the lock: these callbacks re-enter this class.
+        for promise in readyWaiters { promise.succeed(()) }
         guard let dispatch else { return }
 
         dispatch.recorder?.recordOutput(chunk)
+        dispatch.logStore?.append(chunk)
         for observer in dispatch.observers {
             observer(chunk)
         }
@@ -449,12 +485,81 @@ public final class PtySession: @unchecked Sendable {
         stateLock.withLock { _ = observers.removeValue(forKey: id) }
     }
 
+    /// Bounded so a caller cannot pile up connections against one session.
+    public static let maxCommandWaiters = 64
+
+    /// What asking to wait on a command got you.
+    public enum CommandWaitOutcome {
+        /// Already finished — answer the caller now.
+        case finished
+        /// Registered; this completes when the closing mark is indexed.
+        case waiting(EventLoopFuture<Void>)
+        /// This session already has `maxCommandWaiters` callers blocked on it.
+        case tooManyWaiters
+    }
+
+    /// Ask to be told when command `index` (1-based) has finished. Waiting on
+    /// one that has not started is legitimate: a caller writes input and waits
+    /// on the command it just created, and those race by nature.
+    public func awaitCommandEnd(
+        index: Int,
+        on eventLoop: EventLoop
+    ) -> CommandWaitOutcome {
+        stateLock.withLock {
+            let commands = SessionCommands.pair(
+                from: markStore.marks,
+                firstIndex: markStore.firstRetainedIndex
+            )
+            if let existing = commands.first(where: { $0.index == index }), !existing.running {
+                return .finished
+            }
+            guard commandWaiters.count < Self.maxCommandWaiters else {
+                return .tooManyWaiters
+            }
+            let promise = eventLoop.makePromise(of: Void.self)
+            commandWaiters.append((index, promise))
+            return .waiting(promise.futureResult)
+        }
+    }
+
+    /// Drop a timed-out waiter so it stops counting against the cap. The
+    /// promise is completed, not discarded — NIO traps an uncompleted one, and
+    /// the caller has already answered, so its `whenComplete` is a no-op.
+    public func cancelCommandWait(_ future: EventLoopFuture<Void>) {
+        let removed = stateLock.withLock { () -> [EventLoopPromise<Void>] in
+            var taken: [EventLoopPromise<Void>] = []
+            commandWaiters.removeAll { waiter in
+                guard waiter.promise.futureResult === future else { return false }
+                taken.append(waiter.promise)
+                return true
+            }
+            return taken
+        }
+        for promise in removed { promise.succeed(()) }
+    }
+
     public func appendMark(_ mark: SessionMark) {
         stateLock.withLock { markStore.append(mark) }
     }
 
     public func marksSnapshot() -> [SessionMark] {
         stateLock.withLock { markStore.marks }
+    }
+
+    /// This session's commands, numbered stably. Prefer this to pairing
+    /// `marksSnapshot()` by hand, which renumbers from 1 once the window slides.
+    public func commandsSnapshot() -> [SessionCommand] {
+        stateLock.withLock {
+            SessionCommands.pair(
+                from: markStore.marks,
+                firstIndex: markStore.firstRetainedIndex
+            )
+        }
+    }
+
+    /// Oldest command still retained; anything below it has aged out.
+    public var firstRetainedCommandIndex: Int {
+        stateLock.withLock { markStore.firstRetainedIndex }
     }
 
     /// A command's captured output for the agent-facing API. `data` is the tail
@@ -470,9 +575,45 @@ public final class PtySession: @unchecked Sendable {
         public let pruned: Bool
     }
 
+    /// Output bytes in `[from, to)`, falling back to retained output on disk
+    /// when the range has rotated out of the ring.
+    ///
+    /// Asynchronous because that fallback reads a file, which must not happen
+    /// on the event loop; `completion` fires on the store's queue, so callers
+    /// hop back to their own loop.
+    public func outputRange(
+        from: UInt64,
+        to: UInt64,
+        maxBytes: Int,
+        completion: @escaping (OutputRange) -> Void
+    ) {
+        let ring = outputRange(from: from, to: to, maxBytes: maxBytes)
+        let store = stateLock.withLock { logStore }
+        guard ring.pruned, let store else { return completion(ring) }
+        // The file does not begin at stream offset zero — the store attaches
+        // after the shell has already printed — so `SessionLogStore` holds that
+        // origin and translates. Ask it in stream offsets.
+        let end = min(to, logHead)
+        let start = end > UInt64(maxBytes) ? max(from, end - UInt64(maxBytes)) : from
+        store.read(from: start, to: end) { data, actualStart in
+            let total = Int(end - min(from, end))
+            completion(
+                OutputRange(
+                    data: data,
+                    start: actualStart,
+                    total: total,
+                    truncated: total > maxBytes,
+                    // Only still pruned if even the file no longer has it.
+                    pruned: actualStart > from
+                )
+            )
+        }
+    }
+
     /// Output bytes in `[from, to)` (pass a large `to` for a still-running
-    /// command to read up to now), bounded to the tail `maxBytes`. Read under
-    /// the lock, like the other log accessors.
+    /// command to read up to now), bounded to the tail `maxBytes`. Ring only —
+    /// use the asynchronous overload to fall back to retained output. Read
+    /// under the lock, like the other log accessors.
     public func outputRange(from: UInt64, to: UInt64, maxBytes: Int) -> OutputRange {
         stateLock.withLock {
             let end = min(to, log.head)
@@ -493,6 +634,14 @@ public final class PtySession: @unchecked Sendable {
 
     func attachRecorder(_ recorder: SessionRecorder) {
         stateLock.withLock { self.recorder = recorder }
+    }
+
+    /// The store's first byte is whatever arrives next, so `make` is handed
+    /// the current head to use as the file's origin.
+    func attachLogStore(_ make: (UInt64) -> SessionLogStore?) {
+        stateLock.withLock {
+            if let store = make(log.head) { self.logStore = store }
+        }
     }
 
     /// How a newly attaching controller wants missed output replayed.
@@ -680,21 +829,28 @@ public final class PtySession: @unchecked Sendable {
         // Everything that can block — closing the channel, signalling the child
         // — happens after the lock is released. Waiting on the event loop while
         // holding it deadlocks against `write()`, which the loop itself calls.
-        let shutdown: (channel: Channel?, recorder: SessionRecorder?)? = stateLock.withLock {
+        typealias Shutdown = (channel: Channel?, recorder: SessionRecorder?, logStore: SessionLogStore?)
+        let shutdown: Shutdown? = stateLock.withLock {
             guard !terminated else { return nil }
             terminated = true
             let channel = readChannel
             let recorder = self.recorder
+            let store = self.logStore
             self.readChannel = nil
             self.recorder = nil
+            self.logStore = nil
             // The shell is going away; undelivered input has nowhere to go.
             pendingInput = Data()
             _ = Darwin.close(masterFD)
-            return (channel, recorder)
+            return (channel, recorder, store)
         }
         guard let shutdown else { return }
 
+        // Answer blocked callers now. `deliverExit` does this too, but a
+        // terminate may never reach it, and a dropped promise is a NIO leak.
+        failCommandWaiters()
         shutdown.recorder?.close()
+        shutdown.logStore?.close()
         // Thread-safe and non-blocking: NIO hops to the loop itself.
         shutdown.channel?.close(promise: nil)
         if kill(pid, 0) == 0 {
@@ -734,6 +890,17 @@ public final class PtySession: @unchecked Sendable {
         }
     }
 
+    /// A dead shell finishes nobody's command; release waiters now rather than
+    /// leaving them to time out.
+    private func failCommandWaiters() {
+        let promises = stateLock.withLock { () -> [EventLoopPromise<Void>] in
+            let pending = commandWaiters.map(\.promise)
+            commandWaiters.removeAll()
+            return pending
+        }
+        for promise in promises { promise.succeed(()) }
+    }
+
     private func deliverExit(_ code: Int32) {
         let handlers: (controller: ((Int32) -> Void)?, observers: [(Int32) -> Void])? =
             stateLock.withLock {
@@ -742,6 +909,7 @@ public final class PtySession: @unchecked Sendable {
                 return (onExit, observers.values.map(\.onExit))
             }
         guard let handlers else { return }
+        failCommandWaiters()
         handlers.controller?(code)
         for observerExit in handlers.observers {
             observerExit(code)

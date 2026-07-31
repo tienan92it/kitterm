@@ -2,10 +2,9 @@ import Foundation
 import KittermProtocol
 
 /// One command derived from a session's shell-integration marks: its output
-/// byte range in the session log, exit code, and (if the shell reported it)
-/// command line. The agent-facing answer to "what did command N print, and how
-/// did it exit?" — built from marks the client already reports, without the
-/// daemon parsing ANSI.
+/// byte range in the session log, exit code, timings, and (if the shell
+/// reported it) command line. The agent-facing answer to "what did command N
+/// print, and how did it exit?".
 public struct SessionCommand: Sendable {
     /// 1-based position among the commands currently retained.
     public let index: Int
@@ -18,6 +17,16 @@ public struct SessionCommand: Sendable {
     /// Offset where output ends (OSC 133;D); nil while running.
     public let endOffset: UInt64?
     public let running: Bool
+    /// When the command started producing output, and when it finished. Present
+    /// so a caller can put a real duration on a span it owns without kitterm
+    /// emitting traces of its own.
+    public let startedAt: Date
+    public let endedAt: Date?
+
+    public var durationMs: Int? {
+        guard let endedAt else { return nil }
+        return Int(endedAt.timeIntervalSince(startedAt) * 1000)
+    }
 }
 
 public enum SessionCommands {
@@ -26,25 +35,39 @@ public enum SessionCommands {
     /// Output is `[startOffset, endOffset)` — the bytes the command printed,
     /// excluding the echoed command line.
     ///
-    /// Offsets are the client's receive-side byte count, so a command whose
-    /// entire output batches into one WebSocket frame with its start/end marks
-    /// collapses to a zero-length range. In practice that is only tiny, instant
-    /// commands (`echo`, `ls`); substantial output — the build/test logs an
-    /// agent actually wants — spans multiple frames and pairs precisely.
-    public static func pair(from marks: [SessionMark]) -> [SessionCommand] {
+    /// Offsets come from `OscMarkScanner`, which reads the marks straight out
+    /// of the stream, so they are exact byte positions rather than a client's
+    /// frame-granular count — a one-line `echo` pairs as precisely as a build
+    /// log does.
+    ///
+    /// `firstIndex` (from `SessionMarkStore.firstRetainedIndex`) is the number
+    /// the oldest retained command carries, so numbering survives the window
+    /// sliding instead of re-pointing a caller's saved index.
+    public static func pair(
+        from marks: [SessionMark],
+        firstIndex: Int = 1
+    ) -> [SessionCommand] {
         var commands: [SessionCommand] = []
-        var pending: (offset: UInt64, command: String?)?
+        var pending: (offset: UInt64, command: String?, at: Date)?
+        var nextIndex = firstIndex
+
+        func take() -> Int {
+            defer { nextIndex += 1 }
+            return nextIndex
+        }
 
         func flushRunning() {
             guard let start = pending else { return }
             commands.append(
                 SessionCommand(
-                    index: commands.count + 1,
+                    index: take(),
                     command: start.command,
                     exit: nil,
                     startOffset: start.offset,
                     endOffset: nil,
-                    running: true
+                    running: true,
+                    startedAt: start.at,
+                    endedAt: nil
                 )
             )
             pending = nil
@@ -53,20 +76,41 @@ public enum SessionCommands {
         for mark in marks {
             switch mark.kind {
             case .preExec:
-                // Two starts with no end between them shouldn't happen, but if
-                // they do, close the first as running rather than lose it.
-                flushRunning()
-                pending = (mark.offset, mark.command)
+                // Two starts with no end between them: different names mean two
+                // real commands, so close the first as running. Matching (or
+                // absent) names mean one command announced twice by a shell
+                // carrying two integrations — collapse it, because a phantom
+                // command stays "running" forever and nothing can close it.
+                if let previous = pending,
+                   let existing = previous.command,
+                   let incoming = mark.command,
+                   existing != incoming {
+                    flushRunning()
+                    pending = (mark.offset, mark.command, mark.at)
+                } else if let previous = pending {
+                    // Same command: take the later start, where the output we
+                    // see actually begins, and keep whichever carried the text.
+                    pending = (mark.offset, previous.command ?? mark.command, mark.at)
+                } else {
+                    pending = (mark.offset, mark.command, mark.at)
+                }
             case .commandEnd:
-                guard let start = pending else { break } // end with no start: skip
+                guard let start = pending else {
+                    // Start aged out but the end survived: the command still
+                    // owns its number, so spend it rather than shift the rest.
+                    _ = take()
+                    break
+                }
                 commands.append(
                     SessionCommand(
-                        index: commands.count + 1,
+                        index: take(),
                         command: start.command,
                         exit: mark.exit,
                         startOffset: start.offset,
                         endOffset: mark.offset,
-                        running: false
+                        running: false,
+                        startedAt: start.at,
+                        endedAt: mark.at
                     )
                 )
                 pending = nil

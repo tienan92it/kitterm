@@ -11,12 +11,15 @@ struct DaemonFlags {
     var lan = false
     var record = false
     var agentControl = false
+    var retainLogs = false
     /// Public names the daemon answers to behind a proxy / overlay network.
     var trustedHosts: Set<String> = []
     var tlsCert: String?
     var tlsKey: String?
     /// Defaults to `port + 1` when a certificate is supplied.
     var tlsPort: Int?
+    /// Detach window for program-created (labelled) sessions, in seconds.
+    var sessionLinger: Int?
 
     static func parse<S: Sequence>(_ args: S) -> DaemonFlags where S.Element == String {
         let array = Array(args)
@@ -24,11 +27,29 @@ struct DaemonFlags {
             lan: array.contains("--lan"),
             record: array.contains("--record"),
             agentControl: array.contains("--agent-control"),
+            retainLogs: array.contains("--retain-logs"),
             trustedHosts: KittermMain.parseTrustedHosts(array),
             tlsCert: KittermMain.parseOption("--tls-cert", array),
             tlsKey: KittermMain.parseOption("--tls-key", array),
-            tlsPort: KittermMain.parseOption("--tls-port", array).flatMap(Int.init)
+            tlsPort: KittermMain.parseOption("--tls-port", array).flatMap(Int.init),
+            sessionLinger: KittermMain.parseOption("--session-linger", array).flatMap(Int.init)
         )
+    }
+
+    /// Reject a linger the daemon cannot honour: `Task.sleep` reads a negative
+    /// window as "drop it now" and an enormous one as "never".
+    func validatedSessionLinger() throws -> Int? {
+        guard let sessionLinger else { return nil }
+        guard sessionLinger >= 1, sessionLinger <= KittermConstants.maxSessionLingerSeconds else {
+            throw CLIError.usage(
+                """
+                --session-linger must be between 1 and \
+                \(KittermConstants.maxSessionLingerSeconds) seconds \
+                (got \(sessionLinger))
+                """
+            )
+        }
+        return sessionLinger
     }
 
     /// Both halves or neither; the port defaults beside the plain one.
@@ -56,12 +77,14 @@ struct DaemonFlags {
         if lan { args.append("--lan") }
         if record { args.append("--record") }
         if agentControl { args.append("--agent-control") }
+        if retainLogs { args.append("--retain-logs") }
         for host in trustedHosts.sorted() {
             args.append(contentsOf: ["--trusted-host", host])
         }
         if let tlsCert { args.append(contentsOf: ["--tls-cert", tlsCert]) }
         if let tlsKey { args.append(contentsOf: ["--tls-key", tlsKey]) }
         if let tlsPort { args.append(contentsOf: ["--tls-port", "\(tlsPort)"]) }
+        if let sessionLinger { args.append(contentsOf: ["--session-linger", "\(sessionLinger)"]) }
         return args
     }
 
@@ -71,9 +94,12 @@ struct DaemonFlags {
             port: port,
             allowLAN: lan,
             recordSessions: record,
+            retainLogs: retainLogs,
             agentControl: agentControl,
             trustedHosts: trustedHosts,
-            tls: try tlsConfig(port: port)
+            tls: try tlsConfig(port: port),
+            orchestratedLingerSeconds: try validatedSessionLinger()
+                ?? KittermConstants.orchestratedSessionLingerSeconds
         )
     }
 }

@@ -18,6 +18,9 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     /// connect command as initial input. Ignored on reattach — a live session
     /// already ran it.
     private let profileName: String?
+    /// Orchestrator tags for a fresh spawn; ignored on reattach, where the
+    /// session already carries whatever it was created with.
+    private let labels: SessionLabels
     /// Client page has no screen state (reload / adopted link) — reattach
     /// replays the recent tail instead of only the detached bytes.
     private let freshClient: Bool
@@ -25,6 +28,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     /// daemon replays exactly the gap after it. Takes precedence over `fresh`.
     private let sinceOffset: UInt64?
     private let recordSessions: Bool
+    private let retainLogs: Bool
     /// Watch-grade auth: this connection may only observe an existing session
     /// — never claim control, never take over, never spawn a shell.
     private let watchOnly: Bool
@@ -52,8 +56,10 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         freshClient: Bool = false,
         histKey: String? = nil,
         profileName: String? = nil,
+        labels: SessionLabels = SessionLabels(),
         sinceOffset: UInt64? = nil,
         recordSessions: Bool = false,
+        retainLogs: Bool = false,
         watchOnly: Bool = false,
         eventLoopGroup: EventLoopGroup
     ) {
@@ -64,8 +70,10 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         self.freshClient = freshClient
         self.histKey = histKey
         self.profileName = profileName
+        self.labels = labels
         self.sinceOffset = sinceOffset
         self.recordSessions = recordSessions
+        self.retainLogs = retainLogs
         self.watchOnly = watchOnly
         self.eventLoopGroup = eventLoopGroup
     }
@@ -219,7 +227,8 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
             let session = try PtySession.spawn(
                 cwd: Self.validatedCwd(requestedCwd) ?? Self.validatedCwd(profile?.cwd),
                 histFile: Self.historyFile(for: histKey),
-                profileName: profile?.name
+                profileName: profile?.name,
+                labels: labels
             )
             // Queued as type-ahead: it flushes when the reader channel adopts
             // the PTY and the shell executes it at its first read — visible,
@@ -239,11 +248,10 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
                 session.attachRecorder(recorder)
             }
             let registry = self.registry
-            let setup = session.makeReader(group: eventLoopGroup, eventLoop: context.eventLoop).flatMap { () -> EventLoopFuture<UUID> in
-                let idPromise = context.eventLoop.makePromise(of: UUID.self)
-                idPromise.completeWithTask {
-                    await registry.register(session)
-                }
+            let reader = session.makeReader(group: eventLoopGroup, eventLoop: context.eventLoop)
+            let setup = reader.flatMap { () -> EventLoopFuture<UUID?> in
+                let idPromise = context.eventLoop.makePromise(of: UUID?.self)
+                idPromise.completeWithTask { await registry.register(session) }
                 return idPromise.futureResult
             }
             setup.whenFailure { [weak self, weak context] error in
@@ -252,12 +260,38 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
                 FileHandle.standardError.write(Data("kitterm: \(reason)\n".utf8))
                 self.closePolicy(context: context, reason: reason)
             }
-            setup.whenSuccess { [weak self, weak context] id in
+            setup.whenSuccess { [weak self, weak context] registered in
+                // Refused: the daemon is at its session ceiling. The shell was
+                // spawned to make the check atomic, so it has to go back.
+                guard let id = registered else {
+                    session.terminate()
+                    if let self, let context {
+                        self.closePolicy(
+                            context: context,
+                            reason: """
+                                too many sessions open \
+                                (limit \(KittermConstants.maxConcurrentSessions)); \
+                                close one or delete an idle session
+                                """
+                        )
+                    }
+                    return
+                }
                 guard let self, let context, !self.closed else {
                     Task { await registry.remove(id) }
                     return
                 }
                 self.sessionID = id
+                if self.retainLogs {
+                    session.attachLogStore { origin in
+                        SessionLogStore(
+                            directory: DaemonPaths.logsDirectory,
+                            sessionID: id,
+                            maxBytes: KittermConstants.retainedLogBytes,
+                            origin: origin
+                        )
+                    }
+                }
                 self.sendSessionId(id, context: context)
                 self.sendRole(.controller, context: context)
                 self.sendMeta(context: context, session: session)

@@ -24,35 +24,49 @@ public struct DaemonConfig: Sendable {
     /// the plain listener stays on loopback whatever `allowLAN` says: turning
     /// TLS on removes plaintext from the network instead of adding a door.
     public var tls: TLSConfig?
+    /// Detach window for sessions a program created (see `SessionRegistry`).
+    public var orchestratedLingerSeconds: Int
+    /// Spill each session's output to `~/.kitterm/logs/` so ranges older than
+    /// the in-memory ring stay readable. Off by default: this is shell output
+    /// on disk, the same reason `--record` is opt-in.
+    public var retainLogs: Bool
 
     public init(
         host: String = KittermConstants.defaultHost,
         port: Int = KittermConstants.defaultPort,
         allowLAN: Bool = false,
         recordSessions: Bool = false,
+        retainLogs: Bool = false,
         agentControl: Bool = false,
         trustedHosts: Set<String> = [],
-        tls: TLSConfig? = nil
+        tls: TLSConfig? = nil,
+        orchestratedLingerSeconds: Int = KittermConstants.orchestratedSessionLingerSeconds
     ) {
         self.host = host
         self.port = port
         self.allowLAN = allowLAN
         self.recordSessions = recordSessions
+        self.retainLogs = retainLogs
         self.agentControl = agentControl
         self.trustedHosts = trustedHosts
         self.tls = tls
+        self.orchestratedLingerSeconds = orchestratedLingerSeconds
+        self.retainLogs = retainLogs
     }
 }
 
 public final class DaemonServer: @unchecked Sendable {
     private let config: DaemonConfig
     private let group: MultiThreadedEventLoopGroup
-    private let registry = SessionRegistry()
+    private let registry: SessionRegistry
     /// The plain listener, always present; the TLS listener when configured.
     private var channels: [Channel] = []
 
     public init(config: DaemonConfig = DaemonConfig()) {
         self.config = config
+        self.registry = SessionRegistry(
+            orchestratedLingerSeconds: config.orchestratedLingerSeconds
+        )
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
     }
 
@@ -137,6 +151,7 @@ public final class DaemonServer: @unchecked Sendable {
                 let freshClient = Self.queryValue("fresh", fromRequestURI: head.uri) == "1"
                 let histKey = Self.queryValue("hist", fromRequestURI: head.uri)
                 let profileName = Self.queryValue("profile", fromRequestURI: head.uri)
+                let labels = SessionLabels.parse(Self.queryValue("label", fromRequestURI: head.uri))
                 let sinceOffset = Self.queryValue("since", fromRequestURI: head.uri)
                     .flatMap(UInt64.init)
                 return channel.pipeline.addHandler(
@@ -148,8 +163,10 @@ public final class DaemonServer: @unchecked Sendable {
                         freshClient: freshClient,
                         histKey: histKey,
                         profileName: profileName,
+                        labels: labels,
                         sinceOffset: sinceOffset,
                         recordSessions: config.recordSessions,
+                        retainLogs: config.retainLogs,
                         watchOnly: watchOnly,
                         eventLoopGroup: group
                     )
@@ -174,7 +191,8 @@ public final class DaemonServer: @unchecked Sendable {
                         port: config.port,
                         agentControl: config.agentControl,
                         connectionIsTLS: sslContext != nil,
-                        tlsPort: config.tls?.port
+                        tlsPort: config.tls?.port,
+                        webSocketUpgrader: upgrader
                     )
                     let upgradeConfig = NIOHTTPServerUpgradeConfiguration(
                         upgraders: [upgrader as any HTTPServerProtocolUpgrader],

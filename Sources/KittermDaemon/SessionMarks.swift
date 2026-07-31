@@ -31,17 +31,29 @@ public struct SessionMark: Sendable {
 /// under its `stateLock`; not internally synchronized.
 struct SessionMarkStore {
     private(set) var marks: [SessionMark] = []
+    /// Commands that have aged out, so numbering can continue past them
+    /// instead of restarting at 1 and re-pointing a caller's saved index.
+    /// Counted by `commandEnd`: a finished command consumes exactly one, while
+    /// a shell with two integrations emits two starts.
+    private(set) var droppedCommands = 0
     private let cap: Int
 
     init(cap: Int = KittermConstants.sessionMarkCap) {
         self.cap = cap
     }
 
+    /// Index the first still-retained command would carry (1-based).
+    var firstRetainedIndex: Int { droppedCommands + 1 }
+
     mutating func append(_ mark: SessionMark) {
         marks.append(mark)
         if marks.count > cap {
             // O(cap) on tiny structs at human command rates — fine.
-            marks.removeFirst(marks.count - cap)
+            let dropCount = marks.count - cap
+            for dropped in marks[0..<dropCount] where dropped.kind == .commandEnd {
+                droppedCommands += 1
+            }
+            marks.removeFirst(dropCount)
         }
     }
 }

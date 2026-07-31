@@ -47,6 +47,11 @@ public enum DaemonPaths: Sendable {
         stateDirectory.appendingPathComponent("profiles.json")
     }
 
+    /// Retained session output (`--retain-logs`), one file per session.
+    public static var logsDirectory: URL {
+        stateDirectory.appendingPathComponent("logs", isDirectory: true)
+    }
+
     /// Per-pane shell history files, keyed by the client's durable pane key.
     public static var historyDirectory: URL {
         stateDirectory.appendingPathComponent("history", isDirectory: true)

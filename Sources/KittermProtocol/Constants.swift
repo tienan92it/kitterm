@@ -79,6 +79,21 @@ public enum KittermConstants: Sendable {
         "LOCALTERM_DAEMON_CHILD",
     ]
 
+    /// Ceiling on one session's retained output on disk (`--retain-logs`).
+    public static let retainedLogBytes = 64 * 1024 * 1024
+
+    /// Long-poll window for `…/commands/<n>/wait` when the caller names none,
+    /// and the ceiling it may ask for.
+    public static let commandWaitDefaultSeconds = 30
+    public static let commandWaitMaxSeconds = 300
+
+    /// Detach window for sessions a program created (they carry labels). An
+    /// orchestrator restart must not cost you your in-flight nodes.
+    public static let orchestratedSessionLingerSeconds = 3600
+    /// Ceiling for `--session-linger`; a day of holding an unattached shell is
+    /// already generous.
+    public static let maxSessionLingerSeconds = 86_400
+
     public static let loopbackHosts: Set<String> = [
         "127.0.0.1",
         "localhost",

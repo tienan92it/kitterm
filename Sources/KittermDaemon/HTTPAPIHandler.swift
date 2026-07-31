@@ -20,6 +20,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// Port of the TLS listener, when one is running — used to build the
     /// external URL that share links are made from.
     private let tlsPort: Int?
+    /// The WebSocket upgrader, so that a session can still be opened on a
+    /// connection that has already served an API request. See
+    /// `restoreUpgradeHandler(context:)`.
+    private let webSocketUpgrader: (any HTTPServerProtocolUpgrader)?
     private var pendingHead: HTTPRequestHead?
     /// Accumulated request body, capped at `maxInputBytes`; only the input
     /// route reads it. `bodyOverflow` trips once the cap is exceeded so a large
@@ -34,7 +38,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         agentControl: Bool = false,
         connectionIsTLS: Bool = false,
         tlsPort: Int? = nil,
-        staticRoot: URL? = StaticFileServer.cachedRoot
+        staticRoot: URL? = StaticFileServer.cachedRoot,
+        webSocketUpgrader: (any HTTPServerProtocolUpgrader)? = nil
     ) {
         self.registry = registry
         self.policy = policy
@@ -43,6 +48,49 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.connectionIsTLS = connectionIsTLS
         self.tlsPort = tlsPort
         self.staticRoot = staticRoot
+        self.webSocketUpgrader = webSocketUpgrader
+    }
+
+    /// Put a fresh upgrade handler back in front of us so the *next* request on
+    /// this connection can still open a session.
+    ///
+    /// `HTTPServerUpgradeHandler` is one-shot: the first non-upgrade request
+    /// removes it for good. Browsers never notice, since a WebSocket gets its
+    /// own socket — but a client pooling one connection for both the REST API
+    /// and `/ws` (Node's `fetch` and `WebSocket` share a pool) then 404s on
+    /// every session after the first. The handshake still runs through NIO's
+    /// own code; this only decides when an upgrader is present.
+    ///
+    /// Best-effort: if the pipeline is not the shape
+    /// `configureHTTPServerPipeline` builds, leave it alone. The cost of doing
+    /// nothing is the 404 we had before.
+    private func restoreUpgradeHandler(context: ChannelHandlerContext) {
+        guard let upgrader = webSocketUpgrader else { return }
+        let sync = context.pipeline.syncOperations
+        // Nothing has displaced it yet.
+        guard (try? sync.handler(type: HTTPServerUpgradeHandler.self)) == nil else { return }
+        guard let encoder = try? sync.handler(type: HTTPResponseEncoder.self),
+              let decoder = try? sync.handler(type: ByteToMessageHandler<HTTPRequestDecoder>.self)
+        else { return }
+        // Every HTTP handler but the encoder must come out before frames flow,
+        // or it will parse WebSocket bytes as HTTP. Same set
+        // `configureHTTPServerPipeline` hands the upgrader.
+        let optionalHandlers: [RemovableChannelHandler?] = [
+            try? sync.handler(type: HTTPServerPipelineHandler.self),
+            try? sync.handler(type: NIOHTTPResponseHeadersValidator.self),
+            try? sync.handler(type: HTTPServerProtocolErrorHandler.self),
+        ]
+        let extraHTTPHandlers: [RemovableChannelHandler] = [decoder] + optionalHandlers.compactMap { $0 }
+        let fresh = HTTPServerUpgradeHandler(
+            upgraders: [upgrader],
+            httpEncoder: encoder,
+            extraHTTPHandlers: extraHTTPHandlers,
+            upgradeCompletionHandler: { [weak self] upgradeContext in
+                guard let self else { return }
+                _ = upgradeContext.pipeline.removeHandler(self)
+            }
+        )
+        try? sync.addHandler(fresh, position: .before(self))
     }
 
     /// Whether an auth cookie set on this request may carry `Secure`.
@@ -86,6 +134,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             let overflow = bodyOverflow
             pendingBody.removeAll(keepingCapacity: true)
             bodyOverflow = false
+            // Before serving, so a client pipelining `/ws` behind this request
+            // finds an upgrader waiting.
+            restoreUpgradeHandler(context: context)
             handle(head: head, body: body, bodyOverflow: overflow, context: context)
         }
     }
@@ -208,8 +259,14 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             serveCommands(path: path, head: head, context: context)
         case (.GET, _)
             where path.hasPrefix("/api/sessions/") && path.contains("/commands/")
+                && path.hasSuffix("/wait"):
+            serveCommandWait(path: path, head: head, context: context)
+        case (.GET, _)
+            where path.hasPrefix("/api/sessions/") && path.contains("/commands/")
                 && path.hasSuffix("/output"):
             serveCommandOutput(path: path, head: head, context: context)
+        case (.DELETE, _) where path.hasPrefix("/api/sessions/"):
+            serveDelete(path: path, grade: grade, head: head, context: context)
         case (.POST, _) where path.hasPrefix("/api/sessions/") && path.hasSuffix("/input"):
             serveInput(
                 path: path,
@@ -270,12 +327,28 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// The supervision surface: which shells are running, idle, or waiting,
     /// and what each last ran. Read-only.
     private func serveSessions(head: HTTPRequestHead, context: ChannelHandlerContext) {
+        // `?label=run:abc` narrows the listing to one graph run — the same
+        // syntax sessions are created with, so a caller filters with the string
+        // it already has.
+        let filter = DaemonServer.queryValue("label", fromRequestURI: head.uri)
+        // An empty list would be indistinguishable from "no sessions matched".
+        if let filter, !SessionLabels.isValidFilter(filter) {
+            writeJSON(
+                status: .badRequest,
+                body: #"{"ok":false,"error":"label filter must be key:value"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
         let promise = context.eventLoop.makePromise(of: [SessionRegistry.SessionSummary].self)
         promise.completeWithTask {
             await self.registry.summaries()
         }
         promise.futureResult.whenComplete { result in
-            let summaries = (try? result.get()) ?? []
+            var summaries = (try? result.get()) ?? []
+            if let filter {
+                summaries = summaries.filter { SessionLabels($0.labels).matches(filter: filter) }
+            }
             let items: [[String: Any]] = summaries.map { summary in
                 let derived = DerivedSessionState.derive(from: summary.marks)
                 var item: [String: Any] = [
@@ -291,6 +364,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 if let command = derived.lastCommand { item["lastCommand"] = command }
                 if let exit = derived.lastExit { item["lastExit"] = exit }
                 if let profile = summary.profile { item["profile"] = profile }
+                if !summary.labels.isEmpty { item["labels"] = summary.labels }
                 return item
             }
             let body: String
@@ -306,6 +380,58 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 context: context,
                 version: head.version,
                 keepAlive: head.isKeepAlive
+            )
+        }
+    }
+
+    /// `DELETE /api/sessions/<uuid>` — end a session and its shell now.
+    ///
+    /// The counterpart to the long detach window a labelled session gets: a
+    /// caller that finished with a node says so, instead of leaving it to time
+    /// out. Destructive, so it needs `--agent-control` and a full-grade token
+    /// exactly like the input route.
+    private func serveDelete(
+        path: String,
+        grade: TokenGrade,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard agentControl else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"agent control disabled; start the daemon with --agent-control"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let components = path.split(separator: "/")
+        // ["api", "sessions", "<uuid>"]
+        guard components.count == 3, let id = UUID(uuidString: String(components[2])) else {
+            notFound(context: context, version: head.version)
+            return
+        }
+        let promise = context.eventLoop.makePromise(of: Bool.self)
+        promise.completeWithTask {
+            guard await self.registry.session(id) != nil else { return false }
+            await self.registry.remove(id)
+            return true
+        }
+        promise.futureResult.whenComplete { result in
+            let existed = (try? result.get()) ?? false
+            self.writeJSON(
+                status: existed ? .ok : .notFound,
+                body: existed
+                    ? #"{"ok":true}"#
+                    : #"{"ok":false,"error":"no such session"}"#,
+                context: context, version: head.version, keepAlive: existed && head.isKeepAlive
             )
         }
     }
@@ -389,10 +515,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             notFound(context: context, version: head.version)
             return
         }
-        let promise = context.eventLoop.makePromise(of: [SessionMark]?.self)
-        promise.completeWithTask { await self.registry.session(id)?.marksSnapshot() }
+        let promise = context.eventLoop.makePromise(of: [SessionCommand]?.self)
+        promise.completeWithTask { await self.registry.session(id)?.commandsSnapshot() }
         promise.futureResult.whenComplete { result in
-            guard case .success(.some(let marks)) = result else {
+            guard case .success(.some(let commands)) = result else {
                 self.writeJSON(
                     status: .notFound,
                     body: #"{"ok":false,"error":"no such session"}"#,
@@ -400,17 +526,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 )
                 return
             }
-            let items: [[String: Any]] = SessionCommands.pair(from: marks).map { cmd in
-                var item: [String: Any] = [
-                    "index": cmd.index,
-                    "startOffset": cmd.startOffset,
-                    "running": cmd.running,
-                ]
-                if let command = cmd.command { item["command"] = command }
-                if let exit = cmd.exit { item["exit"] = exit }
-                if let end = cmd.endOffset { item["endOffset"] = end }
-                return item
-            }
+            let items = commands.map { self.commandJSON($0, sessionID: id) }
             let body: String
             if let data = try? JSONSerialization.data(withJSONObject: ["ok": true, "commands": items]),
                let text = String(data: data, encoding: .utf8) {
@@ -423,6 +539,177 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 version: head.version, keepAlive: head.isKeepAlive
             )
         }
+    }
+
+    /// `GET /api/sessions/<uuid>/commands/<n>/wait?timeout=<seconds>` — hold the
+    /// response until command `n` finishes.
+    ///
+    /// This is what turns kitterm into an `execute()` backend: write a command
+    /// with `POST …/input`, block here for its exit code, then read
+    /// `…/output`. Read-only, so unlike the input route it needs no
+    /// `--agent-control`.
+    ///
+    /// Waiting for a command that has not started is legitimate — a caller
+    /// writes input and immediately waits on the command it just created. A
+    /// timeout is not an error: the response says `running: true` and the
+    /// caller may ask again, which keeps a slow node from looking like a
+    /// failure.
+    private func serveCommandWait(
+        path: String,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        let components = path.split(separator: "/")
+        // ["api", "sessions", "<uuid>", "commands", "<n>", "wait"]
+        guard components.count == 6,
+              let id = UUID(uuidString: String(components[2])),
+              let index = Int(components[4]), index >= 1
+        else {
+            notFound(context: context, version: head.version)
+            return
+        }
+        let requested = DaemonServer.queryValue("timeout", fromRequestURI: head.uri)
+            .flatMap(Int.init) ?? KittermConstants.commandWaitDefaultSeconds
+        let timeout = max(1, min(requested, KittermConstants.commandWaitMaxSeconds))
+
+        // The lookup promise, the timeout task and the waiter all complete on
+        // this connection's loop, but NIO's closures are `@Sendable` and a
+        // `ChannelHandlerContext` is not — so state the affinity rather than
+        // capture it bare, which Swift 6.0 rejects outright.
+        let loop = context.eventLoop
+        let boundContext = NIOLoopBound(context, eventLoop: loop)
+        let lookup = loop.makePromise(of: PtySession?.self)
+        lookup.completeWithTask { await self.registry.session(id) }
+        lookup.futureResult.whenComplete { result in
+            let context = boundContext.value
+            guard case .success(.some(let session)) = result else {
+                self.writeJSON(
+                    status: .notFound,
+                    body: #"{"ok":false,"error":"no such session"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+                return
+            }
+            // An aged-out index will never be closed by anything, so waiting on
+            // it would block to the deadline and then report it still running.
+            guard index >= session.firstRetainedCommandIndex else {
+                self.writeCommandMissing(gone: true, context: context, version: head.version)
+                return
+            }
+            let future: EventLoopFuture<Void>
+            switch session.awaitCommandEnd(index: index, on: context.eventLoop) {
+            case .tooManyWaiters:
+                self.writeJSON(
+                    status: .serviceUnavailable,
+                    body: #"{"ok":false,"error":"too many waiters on this session"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+                return
+            case .finished:
+                self.respondWithCommand(
+                    index: index, session: session, id: id, head: head, context: context
+                )
+                return
+            case .waiting(let registered):
+                future = registered
+            }
+            // First of the two wins; the other is harmless. The flag is shared
+            // by the timeout task and the waiter, both on this loop.
+            let answered = NIOLoopBoundBox(false, eventLoop: loop)
+            let answer: @Sendable (Bool) -> Void = { timedOut in
+                let context = boundContext.value
+                guard !answered.value else { return }
+                answered.value = true
+                if timedOut {
+                    session.cancelCommandWait(future)
+                    self.writeJSON(
+                        status: .ok,
+                        body: #"{"ok":true,"index":\#(index),"running":true,"timedOut":true}"#,
+                        context: context, version: head.version, keepAlive: head.isKeepAlive
+                    )
+                } else {
+                    self.respondWithCommand(
+                        index: index, session: session, id: id, head: head, context: context
+                    )
+                }
+            }
+            let timeoutTask = loop.scheduleTask(in: .seconds(Int64(timeout))) {
+                answer(true)
+            }
+            future.whenComplete { _ in
+                timeoutTask.cancel()
+                answer(false)
+            }
+        }
+    }
+
+    /// Answer a wait with the command's own record, or 404 if the shell died
+    /// before it ever produced one.
+    /// 410 when the index ran and aged out, 404 when it never existed.
+    private func writeCommandMissing(
+        gone: Bool,
+        context: ChannelHandlerContext,
+        version: HTTPVersion
+    ) {
+        writeJSON(
+            status: gone ? .gone : .notFound,
+            body: gone
+                ? #"{"ok":false,"error":"command aged out of this session's history"}"#
+                : #"{"ok":false,"error":"no such command"}"#,
+            context: context, version: version, keepAlive: false
+        )
+    }
+
+    private func respondWithCommand(
+        index: Int,
+        session: PtySession,
+        id: UUID,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        let commands = session.commandsSnapshot()
+        guard let cmd = commands.first(where: { $0.index == index }) else {
+            // A command can age out while its caller is still waiting on it.
+            writeCommandMissing(
+                gone: index < session.firstRetainedCommandIndex,
+                context: context,
+                version: head.version
+            )
+            return
+        }
+        var payload = commandJSON(cmd, sessionID: id)
+        payload["ok"] = true
+        let body = (try? JSONSerialization.data(withJSONObject: payload))
+            .flatMap { String(data: $0, encoding: .utf8) }
+            ?? #"{"ok":false,"error":"encoding failed"}"#
+        writeJSON(
+            status: .ok, body: body, context: context,
+            version: head.version, keepAlive: head.isKeepAlive
+        )
+    }
+
+    /// One command as JSON.
+    ///
+    /// Carries what a caller needs to hang its own span on: exact byte range,
+    /// exit code, real timings, and a stable URL for the raw output. kitterm
+    /// emits no traces of its own — the caller owns the trace context, so the
+    /// useful thing is to make these facts attachable to a span it already has.
+    private func commandJSON(_ cmd: SessionCommand, sessionID: UUID) -> [String: Any] {
+        var item: [String: Any] = [
+            "index": cmd.index,
+            "startOffset": cmd.startOffset,
+            "running": cmd.running,
+            "startedAt": Int(cmd.startedAt.timeIntervalSince1970 * 1000),
+            "outputUrl": "/api/sessions/\(sessionID.uuidString)/commands/\(cmd.index)/output",
+        ]
+        if let command = cmd.command { item["command"] = command }
+        if let exit = cmd.exit { item["exit"] = exit }
+        if let end = cmd.endOffset { item["endOffset"] = end }
+        if let endedAt = cmd.endedAt {
+            item["endedAt"] = Int(endedAt.timeIntervalSince1970 * 1000)
+        }
+        if let durationMs = cmd.durationMs { item["durationMs"] = durationMs }
+        return item
     }
 
     /// `GET /api/sessions/<uuid>/commands/<n>/output` — the raw output bytes of
@@ -447,12 +734,16 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         let promise = context.eventLoop.makePromise(of: PtySession.OutputRange?.self)
         promise.completeWithTask {
             guard let session = await self.registry.session(id) else { return nil }
-            let commands = SessionCommands.pair(from: session.marksSnapshot())
-            guard index <= commands.count else { return nil }
-            let cmd = commands[index - 1]
+            // By index, not position: the two diverge once the window slides.
+            guard let cmd = session.commandsSnapshot().first(where: { $0.index == index })
+            else { return nil }
             // A running command has no end yet — read up to the current head.
             let end = cmd.endOffset ?? UInt64.max
-            return session.outputRange(from: cmd.startOffset, to: end, maxBytes: cap)
+            return await withCheckedContinuation { continuation in
+                session.outputRange(from: cmd.startOffset, to: end, maxBytes: cap) { range in
+                    continuation.resume(returning: range)
+                }
+            }
         }
         promise.futureResult.whenComplete { result in
             guard case .success(.some(let range)) = result else {

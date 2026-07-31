@@ -70,7 +70,9 @@ final class SessionCommandsTests: XCTestCase {
         XCTAssertEqual(cmds[0].command, "ls")
     }
 
-    func testBackToBackStartsCloseTheFirstAsRunning() {
+    /// Two starts naming *different* commands are two commands; the first
+    /// simply never reported an end.
+    func testBackToBackStartsOfDifferentCommandsCloseTheFirstAsRunning() {
         let cmds = SessionCommands.pair(from: [
             mark(.preExec, offset: 10, command: "a"),
             mark(.preExec, offset: 30, command: "b"),
@@ -81,5 +83,31 @@ final class SessionCommandsTests: XCTestCase {
         XCTAssertNil(cmds[0].endOffset)
         XCTAssertFalse(cmds[1].running)
         XCTAssertEqual(cmds[1].endOffset, 40)
+    }
+
+    /// A shell carrying two integrations announces each command twice. The
+    /// earlier start never gets an end, and emitting it as a permanently
+    /// "running" command would give callers an index that can never be waited
+    /// on — so the duplicate collapses instead.
+    func testDuplicateStartsCollapseIntoOneCommand() {
+        let marks = [
+            SessionMark(offset: 10, kind: .preExec, exit: nil, command: "make test"),
+            SessionMark(offset: 14, kind: .preExec, exit: nil, command: nil),
+            SessionMark(offset: 900, kind: .commandEnd, exit: 0, command: nil),
+        ]
+        let commands = SessionCommands.pair(from: marks)
+        XCTAssertEqual(commands.count, 1, "one real command, not one real plus a phantom")
+        XCTAssertFalse(commands[0].running)
+        XCTAssertEqual(commands[0].exit, 0)
+        XCTAssertEqual(commands[0].command, "make test", "the text must survive the collapse")
+    }
+
+    func testTrailingStartIsStillTheRunningCommand() {
+        let marks = [
+            SessionMark(offset: 10, kind: .preExec, exit: nil, command: "sleep 30"),
+        ]
+        let commands = SessionCommands.pair(from: marks)
+        XCTAssertEqual(commands.count, 1)
+        XCTAssertTrue(commands[0].running)
     }
 }
