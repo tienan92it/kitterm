@@ -108,9 +108,8 @@ public final class PtySession: @unchecked Sendable {
     /// Reads OSC 133/633 out of the PTY stream. Touched only from
     /// `handleRead`, i.e. only on the event loop, so it lives outside the lock.
     private var markScanner = OscMarkScanner()
-    /// Callers blocked on "tell me when command N finishes". Completed from
-    /// `handleRead` as soon as the mark closing that command is indexed, which
-    /// is only possible because the daemon reads marks itself.
+    /// Callers blocked on "tell me when command N finishes", completed from
+    /// `handleRead` as the closing mark is indexed.
     private var commandWaiters: [(index: Int, promise: EventLoopPromise<Void>)] = []
     /// Optional asciinema recorder (daemon `--record`).
     private var recorder: SessionRecorder?
@@ -499,11 +498,9 @@ public final class PtySession: @unchecked Sendable {
         case tooManyWaiters
     }
 
-    /// Ask to be told when command `index` (1-based) has finished.
-    ///
-    /// Waiting on a command that has not started yet is legitimate, not an
-    /// error: a caller writes input and immediately waits on the command it
-    /// just created, and the two race by nature.
+    /// Ask to be told when command `index` (1-based) has finished. Waiting on
+    /// one that has not started is legitimate: a caller writes input and waits
+    /// on the command it just created, and those race by nature.
     public func awaitCommandEnd(
         index: Int,
         on eventLoop: EventLoop
@@ -525,12 +522,9 @@ public final class PtySession: @unchecked Sendable {
         }
     }
 
-    /// Drop a waiter that timed out, so a long-lived session does not keep dead
-    /// entries against its cap.
-    ///
-    /// The promise is completed rather than discarded: an uncompleted promise is
-    /// a leak NIO traps on, and every timed-out wait would have created one.
-    /// The caller has already answered, so its `whenComplete` is a no-op.
+    /// Drop a timed-out waiter so it stops counting against the cap. The
+    /// promise is completed, not discarded — NIO traps an uncompleted one, and
+    /// the caller has already answered, so its `whenComplete` is a no-op.
     public func cancelCommandWait(_ future: EventLoopFuture<Void>) {
         let removed = stateLock.withLock { () -> [EventLoopPromise<Void>] in
             var taken: [EventLoopPromise<Void>] = []
@@ -552,11 +546,8 @@ public final class PtySession: @unchecked Sendable {
         stateLock.withLock { markStore.marks }
     }
 
-    /// This session's commands, numbered so an index means the same command for
-    /// the session's whole life. Use this rather than pairing `marksSnapshot()`
-    /// by hand: pairing without the store's base renumbers from 1 whenever the
-    /// mark window slides, which silently re-points an index at a different
-    /// command.
+    /// This session's commands, numbered stably. Prefer this to pairing
+    /// `marksSnapshot()` by hand, which renumbers from 1 once the window slides.
     public func commandsSnapshot() -> [SessionCommand] {
         stateLock.withLock {
             SessionCommands.pair(
@@ -566,9 +557,7 @@ public final class PtySession: @unchecked Sendable {
         }
     }
 
-    /// Number of the oldest command still retained; anything below it has aged
-    /// out and can be reported as gone rather than silently resolved to
-    /// whichever command now sits at that position.
+    /// Oldest command still retained; anything below it has aged out.
     public var firstRetainedCommandIndex: Int {
         stateLock.withLock { markStore.firstRetainedIndex }
     }
@@ -601,11 +590,9 @@ public final class PtySession: @unchecked Sendable {
         let ring = outputRange(from: from, to: to, maxBytes: maxBytes)
         let store = stateLock.withLock { logStore }
         guard ring.pruned, let store else { return completion(ring) }
-        // The store attached partway through the stream — a shell prints its
-        // banner before the session has an id to name a file after — so its
-        // first byte is not stream offset zero. `SessionLogStore` holds that
-        // origin and translates; asking it in stream offsets is correct, and
-        // assuming the file starts at zero returns plausible wrong bytes.
+        // The file does not begin at stream offset zero — the store attaches
+        // after the shell has already printed — so `SessionLogStore` holds that
+        // origin and translates. Ask it in stream offsets.
         let end = min(to, logHead)
         let start = end > UInt64(maxBytes) ? max(from, end - UInt64(maxBytes)) : from
         store.read(from: start, to: end) { data, actualStart in
@@ -649,9 +636,8 @@ public final class PtySession: @unchecked Sendable {
         stateLock.withLock { self.recorder = recorder }
     }
 
-    /// The store's first byte is whatever arrives next, so the caller needs
-    /// this session's current head to build one — a shell has usually printed
-    /// its banner before the session has an id to name a file after.
+    /// The store's first byte is whatever arrives next, so `make` is handed
+    /// the current head to use as the file's origin.
     func attachLogStore(_ make: (UInt64) -> SessionLogStore?) {
         stateLock.withLock {
             if let store = make(log.head) { self.logStore = store }
@@ -843,7 +829,8 @@ public final class PtySession: @unchecked Sendable {
         // Everything that can block — closing the channel, signalling the child
         // — happens after the lock is released. Waiting on the event loop while
         // holding it deadlocks against `write()`, which the loop itself calls.
-        let shutdown: (channel: Channel?, recorder: SessionRecorder?, logStore: SessionLogStore?)? = stateLock.withLock {
+        typealias Shutdown = (channel: Channel?, recorder: SessionRecorder?, logStore: SessionLogStore?)
+        let shutdown: Shutdown? = stateLock.withLock {
             guard !terminated else { return nil }
             terminated = true
             let channel = readChannel
@@ -859,9 +846,8 @@ public final class PtySession: @unchecked Sendable {
         }
         guard let shutdown else { return }
 
-        // A promise that is dropped rather than completed is a NIO leak, and a
-        // caller blocked on a session being torn down deserves an answer now.
-        // `deliverExit` also does this, but a terminate may never reach it.
+        // Answer blocked callers now. `deliverExit` does this too, but a
+        // terminate may never reach it, and a dropped promise is a NIO leak.
         failCommandWaiters()
         shutdown.recorder?.close()
         shutdown.logStore?.close()
@@ -904,8 +890,8 @@ public final class PtySession: @unchecked Sendable {
         }
     }
 
-    /// A dead shell will never finish anyone's command; release the waiters so
-    /// callers learn now instead of at their timeout.
+    /// A dead shell finishes nobody's command; release waiters now rather than
+    /// leaving them to time out.
     private func failCommandWaiters() {
         let promises = stateLock.withLock { () -> [EventLoopPromise<Void>] in
             let pending = commandWaiters.map(\.promise)

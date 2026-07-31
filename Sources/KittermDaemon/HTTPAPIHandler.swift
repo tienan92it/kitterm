@@ -51,40 +51,36 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.webSocketUpgrader = webSocketUpgrader
     }
 
-    /// Put a fresh upgrade handler back in front of us, so the *next* request
-    /// on this connection can still open a session.
+    /// Put a fresh upgrade handler back in front of us so the *next* request on
+    /// this connection can still open a session.
     ///
-    /// `HTTPServerUpgradeHandler` is one-shot per connection: the first request
-    /// that isn't an upgrade removes it from the pipeline permanently. A browser
-    /// never notices, because it opens a WebSocket on its own socket. A client
-    /// that pools keep-alive connections — Node's `fetch` and `WebSocket` share
-    /// one pool, and that is exactly the orchestrator shape — calls the REST API
-    /// first, then sends `GET /ws` down the same warm connection, where there is
-    /// no upgrader left and the request falls through to us as a 404.
+    /// `HTTPServerUpgradeHandler` is one-shot: the first non-upgrade request
+    /// removes it for good. Browsers never notice, since a WebSocket gets its
+    /// own socket — but a client pooling one connection for both the REST API
+    /// and `/ws` (Node's `fetch` and `WebSocket` share a pool) then 404s on
+    /// every session after the first. The handshake still runs through NIO's
+    /// own code; this only decides when an upgrader is present.
     ///
-    /// Reinstalling after every request makes upgrade available on any request
-    /// of a connection rather than only the first. The handshake itself still
-    /// runs through NIO's audited code; nothing here rebuilds it.
-    ///
-    /// Best-effort by design: if the pipeline is not the shape
-    /// `configureHTTPServerPipeline` builds, leave it alone rather than
-    /// half-rebuild it. The cost of doing nothing is today's 404.
+    /// Best-effort: if the pipeline is not the shape
+    /// `configureHTTPServerPipeline` builds, leave it alone. The cost of doing
+    /// nothing is the 404 we had before.
     private func restoreUpgradeHandler(context: ChannelHandlerContext) {
         guard let upgrader = webSocketUpgrader else { return }
         let sync = context.pipeline.syncOperations
-        // Still present (the request we just served was the connection's
-        // first, and it upgraded, or nothing has displaced it yet).
+        // Nothing has displaced it yet.
         guard (try? sync.handler(type: HTTPServerUpgradeHandler.self)) == nil else { return }
         guard let encoder = try? sync.handler(type: HTTPResponseEncoder.self),
               let decoder = try? sync.handler(type: ByteToMessageHandler<HTTPRequestDecoder>.self)
         else { return }
-        // Every HTTP handler except the encoder has to come out before frames
-        // flow; one left behind would try to parse WebSocket bytes as HTTP.
-        // This is the same set `configureHTTPServerPipeline` hands the upgrader.
-        var extraHTTPHandlers: [RemovableChannelHandler] = [decoder]
-        if let h = try? sync.handler(type: HTTPServerPipelineHandler.self) { extraHTTPHandlers.append(h) }
-        if let h = try? sync.handler(type: NIOHTTPResponseHeadersValidator.self) { extraHTTPHandlers.append(h) }
-        if let h = try? sync.handler(type: HTTPServerProtocolErrorHandler.self) { extraHTTPHandlers.append(h) }
+        // Every HTTP handler but the encoder must come out before frames flow,
+        // or it will parse WebSocket bytes as HTTP. Same set
+        // `configureHTTPServerPipeline` hands the upgrader.
+        let optionalHandlers: [RemovableChannelHandler?] = [
+            try? sync.handler(type: HTTPServerPipelineHandler.self),
+            try? sync.handler(type: NIOHTTPResponseHeadersValidator.self),
+            try? sync.handler(type: HTTPServerProtocolErrorHandler.self),
+        ]
+        let extraHTTPHandlers: [RemovableChannelHandler] = [decoder] + optionalHandlers.compactMap { $0 }
         let fresh = HTTPServerUpgradeHandler(
             upgraders: [upgrader],
             httpEncoder: encoder,
@@ -138,8 +134,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             let overflow = bodyOverflow
             pendingBody.removeAll(keepingCapacity: true)
             bodyOverflow = false
-            // Before serving, so that a client which pipelines `/ws` behind
-            // this request finds an upgrader waiting for it.
+            // Before serving, so a client pipelining `/ws` behind this request
+            // finds an upgrader waiting.
             restoreUpgradeHandler(context: context)
             handle(head: head, body: body, bodyOverflow: overflow, context: context)
         }
@@ -335,8 +331,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         // syntax sessions are created with, so a caller filters with the string
         // it already has.
         let filter = DaemonServer.queryValue("label", fromRequestURI: head.uri)
-        // A malformed filter is a caller mistake, and answering it with an
-        // empty list is indistinguishable from "that run has no sessions".
+        // An empty list would be indistinguishable from "no sessions matched".
         if let filter, !SessionLabels.isValidFilter(filter) {
             writeJSON(
                 status: .badRequest,
@@ -577,12 +572,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             .flatMap(Int.init) ?? KittermConstants.commandWaitDefaultSeconds
         let timeout = max(1, min(requested, KittermConstants.commandWaitMaxSeconds))
 
-        // Everything below runs on this connection's event loop: the lookup
-        // promise, the timeout task and the waiter all complete there. But the
-        // closures NIO takes are `@Sendable` and a `ChannelHandlerContext` is
-        // not, so the capture has to state the affinity it already relies on
-        // rather than leave the compiler to infer it. Swift 6.2 lets the bare
-        // capture through as a warning; 6.0 — what CI builds with — rejects it.
+        // The lookup promise, the timeout task and the waiter all complete on
+        // this connection's loop, but NIO's closures are `@Sendable` and a
+        // `ChannelHandlerContext` is not — so state the affinity rather than
+        // capture it bare, which Swift 6.0 rejects outright.
         let loop = context.eventLoop
         let boundContext = NIOLoopBound(context, eventLoop: loop)
         let lookup = loop.makePromise(of: PtySession?.self)
@@ -597,17 +590,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 )
                 return
             }
-            // An index below the retained window names a command that ran and
-            // has since aged out. Nothing will ever close it, so registering a
-            // waiter would block the caller until its own deadline and then
-            // report the command as still running — a stale index deserves an
-            // answer, not a timeout that looks like a slow command.
+            // An aged-out index will never be closed by anything, so waiting on
+            // it would block to the deadline and then report it still running.
             guard index >= session.firstRetainedCommandIndex else {
-                self.writeJSON(
-                    status: .gone,
-                    body: #"{"ok":false,"error":"command aged out of this session's history"}"#,
-                    context: context, version: head.version, keepAlive: false
-                )
+                self.writeCommandMissing(gone: true, context: context, version: head.version)
                 return
             }
             let future: EventLoopFuture<Void>
@@ -659,6 +645,21 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
 
     /// Answer a wait with the command's own record, or 404 if the shell died
     /// before it ever produced one.
+    /// 410 when the index ran and aged out, 404 when it never existed.
+    private func writeCommandMissing(
+        gone: Bool,
+        context: ChannelHandlerContext,
+        version: HTTPVersion
+    ) {
+        writeJSON(
+            status: gone ? .gone : .notFound,
+            body: gone
+                ? #"{"ok":false,"error":"command aged out of this session's history"}"#
+                : #"{"ok":false,"error":"no such command"}"#,
+            context: context, version: version, keepAlive: false
+        )
+    }
+
     private func respondWithCommand(
         index: Int,
         session: PtySession,
@@ -668,16 +669,11 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     ) {
         let commands = session.commandsSnapshot()
         guard let cmd = commands.first(where: { $0.index == index }) else {
-            // An index below the retained window is not "no such command" — it
-            // ran, and its record has since aged out. Saying so keeps a caller
-            // from reading the 404 as "that command never existed".
-            let gone = index < session.firstRetainedCommandIndex
-            writeJSON(
-                status: gone ? .gone : .notFound,
-                body: gone
-                    ? #"{"ok":false,"error":"command aged out of this session's history"}"#
-                    : #"{"ok":false,"error":"no such command"}"#,
-                context: context, version: head.version, keepAlive: false
+            // A command can age out while its caller is still waiting on it.
+            writeCommandMissing(
+                gone: index < session.firstRetainedCommandIndex,
+                context: context,
+                version: head.version
             )
             return
         }
@@ -738,8 +734,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         let promise = context.eventLoop.makePromise(of: PtySession.OutputRange?.self)
         promise.completeWithTask {
             guard let session = await self.registry.session(id) else { return nil }
-            // By index, not array position: numbering survives the mark
-            // window sliding, so position and index diverge once it has.
+            // By index, not position: the two diverge once the window slides.
             guard let cmd = session.commandsSnapshot().first(where: { $0.index == index })
             else { return nil }
             // A running command has no end yet — read up to the current head.

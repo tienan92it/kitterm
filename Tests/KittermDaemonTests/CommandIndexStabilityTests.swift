@@ -4,14 +4,12 @@ import XCTest
 
 @testable import KittermDaemon
 
-/// Command numbers have to mean the same command for a session's whole life.
+/// A command's number must mean the same command for a session's whole life.
 ///
-/// The `execute()` contract is: count the commands, write input, wait on the
-/// index you computed — and `outputUrl` embeds that index in a link a caller
-/// may follow much later. The mark window is bounded, so a long-lived session
-/// eventually slides it. If numbering restarted at 1 each time, a wait would
-/// return a *different* command's exit code rather than an error, which is the
-/// worst way for this to fail: silently, with a plausible answer.
+/// Callers count the commands, write input, then wait on the index they
+/// computed, and `outputUrl` embeds one in a link followed later. The mark
+/// window is bounded, so a long session slides it — and numbering from 1 again
+/// would return a different command's exit code instead of an error.
 final class CommandIndexStabilityTests: XCTestCase {
     /// One command's worth of marks: prompt, start, end.
     private func appendCommand(_ store: inout SessionMarkStore, _ n: Int, offset: inout UInt64) {
@@ -26,8 +24,7 @@ final class CommandIndexStabilityTests: XCTestCase {
         SessionCommands.pair(from: store.marks, firstIndex: store.firstRetainedIndex)
     }
 
-    /// The regression: with a cap of 8 the first three commands age out, and
-    /// the survivors must keep the numbers they were born with.
+    /// The regression: the first three age out, survivors keep their numbers.
     func testNumbersSurviveTheWindowSliding() {
         var store = SessionMarkStore(cap: 8)
         var offset: UInt64 = 0
@@ -59,10 +56,8 @@ final class CommandIndexStabilityTests: XCTestCase {
         }
     }
 
-    /// The awkward boundary: the window slides between a command's start and
-    /// its end, so the end survives with no start to pair against. That command
-    /// still happened and still owns its number — spending it keeps every later
-    /// command where it was.
+    /// The window slides between a command's start and end, leaving an orphan
+    /// end. That command still owns its number, so later ones do not shift.
     func testACommandWhoseStartAgedOutStillSpendsItsNumber() {
         var store = SessionMarkStore(cap: 4)
         var offset: UInt64 = 0
@@ -96,8 +91,7 @@ final class CommandIndexStabilityTests: XCTestCase {
         )
     }
 
-    /// Sanity: an uncapped session numbers from 1 exactly as before, so none of
-    /// this changes what a normal session reports.
+    /// An uncapped session numbers from 1, exactly as before.
     func testUnevictedSessionsAreUnchanged() {
         var store = SessionMarkStore(cap: 1000)
         var offset: UInt64 = 0

@@ -7,12 +7,10 @@ import XCTest
 
 @testable import KittermDaemon
 
-/// Routes that only exist once a real event loop, a real registry and a real
-/// session are wired together — the wait timeout schedules a task and races it
-/// against a waiter, and label filtering runs over live summaries. An
-/// `EmbeddedChannel` cannot host either: the registry is an actor, so its
-/// promises complete from a Swift-concurrency thread, which `EmbeddedEventLoop`
-/// rejects. So this binds a real server on an ephemeral port.
+/// Routes that need a real loop, registry and session: the wait timeout races
+/// a scheduled task against a waiter, and label filtering runs over live
+/// summaries. `EmbeddedChannel` cannot host either — the registry is an actor,
+/// so its promises complete off-loop, which `EmbeddedEventLoop` rejects.
 final class HTTPRoutesIntegrationTests: XCTestCase {
     private var group: MultiThreadedEventLoopGroup!
     private var serverChannel: Channel!
@@ -33,8 +31,13 @@ final class HTTPRoutesIntegrationTests: XCTestCase {
     override func setUpWithError() throws {
         group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         registry = SessionRegistry()
+        serverChannel = try makeServer(agentControl: true)
+        port = serverChannel.localAddress?.port
+    }
+
+    private func makeServer(agentControl: Bool) throws -> Channel {
         let registry = self.registry!
-        serverChannel = try ServerBootstrap(group: group)
+        return try ServerBootstrap(group: group)
             .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             .childChannelInitializer { channel in
                 channel.pipeline.configureHTTPServerPipeline().flatMap {
@@ -42,7 +45,7 @@ final class HTTPRoutesIntegrationTests: XCTestCase {
                         HTTPAPIHandler(
                             registry: registry,
                             policy: .loopbackOnly,
-                            agentControl: true,
+                            agentControl: agentControl,
                             staticRoot: nil
                         )
                     )
@@ -50,7 +53,6 @@ final class HTTPRoutesIntegrationTests: XCTestCase {
             }
             .bind(host: "127.0.0.1", port: 0)
             .wait()
-        port = serverChannel.localAddress?.port
     }
 
     override func tearDownWithError() throws {
@@ -85,6 +87,20 @@ final class HTTPRoutesIntegrationTests: XCTestCase {
         )
     }
 
+    private func delete(
+        _ path: String,
+        port overridePort: Int? = nil
+    ) async throws -> (status: Int, body: String) {
+        let target = overridePort ?? port!
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(target)\(path)")!)
+        request.httpMethod = "DELETE"
+        let (data, response) = try await URLSession.shared.data(for: request)
+        return (
+            (response as? HTTPURLResponse)?.statusCode ?? 0,
+            String(decoding: data, as: UTF8.self)
+        )
+    }
+
     private func json(_ body: String) throws -> [String: Any] {
         try XCTUnwrap(
             JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any]
@@ -93,9 +109,8 @@ final class HTTPRoutesIntegrationTests: XCTestCase {
 
     // MARK: - wait
 
-    /// The timeout arm of the wait route: a command that started and never
-    /// ended must come back as still running rather than as a failure, so a
-    /// slow node does not look like a broken one.
+    /// A command that never ends comes back still running, not failed — a slow
+    /// node must not look like a broken one.
     func testWaitTimesOutWithoutFailingTheCommand() async throws {
         let id = try await makeSession()
         let session = sessions[0]
@@ -140,10 +155,8 @@ final class HTTPRoutesIntegrationTests: XCTestCase {
         XCTAssertNotNil(body["durationMs"])
     }
 
-    /// An index below the retained window ran and aged out. Saying "gone" keeps
-    /// a caller from reading it as "that command never existed" — and, before
-    /// numbering was made stable, this is where a stale index silently resolved
-    /// to a different command.
+    /// An aged-out index answers "gone", not "never existed" — and before
+    /// numbering was stable, it silently resolved to a different command.
     func testAgedOutCommandIsReportedAsGoneNotMissing() async throws {
         let id = try await makeSession()
         let session = sessions[0]
@@ -160,7 +173,7 @@ final class HTTPRoutesIntegrationTests: XCTestCase {
         )
 
         let response = try await get("/api/sessions/\(id.uuidString)/commands/1/wait?timeout=1")
-        XCTAssertEqual(response.status, 410, "expected Gone, got \(response.status): \(response.body)")
+        XCTAssertEqual(response.status, 410, "expected Gone: \(response.body)")
         XCTAssertTrue(response.body.contains("aged out"))
     }
 
@@ -186,15 +199,52 @@ final class HTTPRoutesIntegrationTests: XCTestCase {
         XCTAssertEqual((noMatch["sessions"] as? [[String: Any]])?.count, 0)
     }
 
-    /// A filter with no `key:value` shape is a caller mistake. Answering it
-    /// with an empty list is indistinguishable from "that run has no sessions".
+    /// A filter with no `key:value` shape is a mistake, not an empty result.
     func testMalformedLabelFilterIsRejected() async throws {
         _ = try await makeSession(labels: "run:alpha")
         // `?label=` with no value reads as "unset", not as a malformed
         // filter, so it is not in this list.
         for bad in ["run", ":alpha", "run:", "run=alpha"] {
-            let response = try await get("/api/sessions?label=\(bad.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? bad)")
-            XCTAssertEqual(response.status, 400, "\"\(bad)\" should be rejected, got \(response.status)")
+            let encoded = bad.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? bad
+            let response = try await get("/api/sessions?label=\(encoded)")
+            XCTAssertEqual(response.status, 400, "\(bad) should be rejected")
         }
+    }
+
+    // MARK: - delete
+
+    /// The counterpart to the long detach window: a caller that finished with a
+    /// node ends it now instead of leaving it to time out.
+    func testDeleteEndsTheSession() async throws {
+        let id = try await makeSession(labels: "run:alpha")
+        let before = try await get("/api/sessions/\(id.uuidString)/commands")
+        XCTAssertEqual(before.status, 200)
+
+        let response = try await delete("/api/sessions/\(id.uuidString)")
+        XCTAssertEqual(response.status, 200, response.body)
+
+        let remaining = try json(try await get("/api/sessions").body)
+        XCTAssertEqual((remaining["sessions"] as? [[String: Any]])?.count, 0)
+    }
+
+    /// Destructive, so it needs `--agent-control` exactly like the input route.
+    func testDeleteIsRefusedWithoutAgentControl() async throws {
+        let readOnly = try makeServer(agentControl: false)
+        defer { try? readOnly.close().wait() }
+        let readOnlyPort = try XCTUnwrap(readOnly.localAddress?.port)
+        let id = try await makeSession()
+
+        let response = try await delete("/api/sessions/\(id.uuidString)", port: readOnlyPort)
+        XCTAssertEqual(response.status, 403, response.body)
+        XCTAssertTrue(response.body.contains("agent-control"))
+
+        // And the session is still there.
+        let still = try json(try await get("/api/sessions").body)
+        XCTAssertEqual((still["sessions"] as? [[String: Any]])?.count, 1)
+    }
+
+    func testDeleteOfAnUnknownSessionIs404() async throws {
+        let response = try await delete("/api/sessions/\(UUID().uuidString)")
+        XCTAssertEqual(response.status, 404, response.body)
     }
 }

@@ -1,22 +1,15 @@
 import Foundation
 
-/// Spills a session's output to disk so ranges older than the in-memory ring
-/// can still be read.
+/// Spills a session's output to disk so ranges older than the 4 MiB ring can
+/// still be read — enough for someone scrolling a tab, not for a build log.
 ///
-/// The ring is 4 MiB — ample for a person scrolling a tab, nowhere near enough
-/// for a graph run whose nodes emit verbose build logs. Without this, asking
-/// for the output of a command from twenty commands ago gets you `pruned: true`
-/// and the tail.
+/// The file does not begin at stream offset zero: a shell prints before the
+/// session has an id to name a file after. So the store records where it
+/// started (`origin`) and translates; assuming otherwise returns wrong bytes
+/// rather than none.
 ///
-/// The file does not necessarily begin at stream offset zero: a shell prints
-/// its banner and first prompt before the session has an id to name a file
-/// after. So the store records the stream offset of its first byte (`origin`)
-/// and translates — assuming otherwise silently returns the wrong bytes, which
-/// is worse than returning none.
-///
-/// All I/O is handed to a utility queue and never awaited on the event loop,
-/// the same discipline `SessionRecorder` uses — `AGENTS.md` forbids blocking I/O
-/// on the per-connection path, and this sits on the hottest path there is.
+/// All I/O goes to a utility queue and is never awaited on the event loop, the
+/// same discipline `SessionRecorder` uses.
 final class SessionLogStore: @unchecked Sendable {
     private let queue = DispatchQueue(label: "kitterm.logstore", qos: .utility)
     private let url: URL
@@ -24,8 +17,7 @@ final class SessionLogStore: @unchecked Sendable {
     private var writeHandle: FileHandle?
     private var closed = false
     /// Stream offset of the first byte still on disk: where the store started,
-    /// pushed forward by rotation. A caller asking for anything earlier is told
-    /// the truth about what was dropped.
+    /// pushed forward by rotation.
     private var fileBase: UInt64
     /// Stream offset just past the last byte written.
     private var streamEnd: UInt64
@@ -63,9 +55,8 @@ final class SessionLogStore: @unchecked Sendable {
         }
     }
 
-    /// Drop the front half once the cap is hit. Halving rather than trimming to
-    /// the exact cap keeps rewrites rare — this rewrites the file, which is the
-    /// expensive operation here.
+    /// Drop the front half once the cap is hit. Halving rather than trimming
+    /// exactly keeps these file rewrites rare.
     private func rotate(handle: FileHandle) {
         let keepFrom = streamEnd - UInt64(maxBytes / 2)
         do {
@@ -78,8 +69,8 @@ final class SessionLogStore: @unchecked Sendable {
             handle.write(kept)
             fileBase = keepFrom
         } catch {
-            // A failed rotation must not stop the session; the cap is a
-            // courtesy to the disk, not a correctness property.
+            // The cap is a courtesy to the disk, not a correctness property, so
+            // a failed rotation must not stop the session.
             FileHandle.standardError.write(
                 Data("kitterm: log rotation failed: \(error)\n".utf8)
             )
@@ -97,8 +88,7 @@ final class SessionLogStore: @unchecked Sendable {
             }
             defer { try? handle.close() }
             do {
-                // File position of a stream offset, now that the file may
-                // start mid-stream and may have been rotated.
+                // Stream offset → file position; the file may start mid-stream.
                 try handle.seek(toOffset: start - fileBase)
                 let data = try handle.read(upToCount: Int(to - start)) ?? Data()
                 completion(data, start)
@@ -108,8 +98,7 @@ final class SessionLogStore: @unchecked Sendable {
         }
     }
 
-    /// Delete the file when the session is reaped: retained output should not
-    /// outlive the shell that produced it.
+    /// Retained output should not outlive the shell that produced it.
     func close() {
         queue.async { [self] in
             guard !closed else { return }

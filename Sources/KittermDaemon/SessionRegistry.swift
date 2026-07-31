@@ -5,14 +5,14 @@ import KittermProtocol
 /// (sleep/wake, network blip): it is marked detached and reaped only if no
 /// client reattaches within the linger window.
 public actor SessionRegistry {
-    /// How long a session created by a program is held after its last client
-    /// disconnects. Far longer than the browser window: an orchestrator that
-    /// crashes and restarts must find its nodes still running, which is the
-    /// whole reason to prefer kitterm over a runner whose sessions die with it.
-    /// Bounded rather than infinite so a crash cannot leak shells forever.
+    /// How long a program-created session is held after its last client
+    /// disconnects, so an orchestrator that restarts finds its nodes running.
+    /// Bounded so a crash cannot leak shells forever.
     private let orchestratedLinger: Int
 
-    public init(orchestratedLingerSeconds: Int = KittermConstants.orchestratedSessionLingerSeconds) {
+    public init(
+        orchestratedLingerSeconds: Int = KittermConstants.orchestratedSessionLingerSeconds
+    ) {
         self.orchestratedLinger = orchestratedLingerSeconds
     }
 
@@ -24,16 +24,9 @@ public actor SessionRegistry {
         sessions.count
     }
 
-    /// Admit a session, or refuse when the daemon is already holding
-    /// `maxConcurrentSessions`.
-    ///
-    /// Every live session is a shell and a PTY on someone's machine, and
-    /// program-created ones are now held for an hour after their client goes
-    /// away — so a caller that crash-loops could otherwise accumulate them
-    /// until the machine complains. The check lives here rather than at the
-    /// call site because the registry is the only place it can be atomic:
-    /// counting and inserting as two separate awaits lets concurrent opens
-    /// slip past the cap.
+    /// Admit a session, or return nil at `maxConcurrentSessions`. The check
+    /// lives here because it is the only place it is atomic — counting and
+    /// inserting as separate awaits lets concurrent opens slip past the cap.
     public func register(_ session: PtySession) -> UUID? {
         guard sessions.count < KittermConstants.maxConcurrentSessions else { return nil }
         let id = UUID()

@@ -8,19 +8,15 @@ import XCTest
 
 /// Opening a session over a connection that already served an API request.
 ///
-/// `HTTPServerUpgradeHandler` is one-shot per connection: the first request
-/// that isn't an upgrade removes it for good. Browsers never notice, because a
-/// WebSocket gets its own socket — so this stayed invisible until an
-/// orchestrator drove the daemon with a pooled HTTP client. Node's `fetch` and
-/// `WebSocket` share one connection pool, so `GET /ws` lands on a warm
-/// connection with no upgrader left and falls through to the API handler as a
-/// 404: every session after the first fails to open.
+/// NIO's upgrade handler is one-shot per connection, and browsers never notice
+/// because a WebSocket gets its own socket. A pooled HTTP client does: `GET
+/// /ws` lands on a warm connection with no upgrader left and 404s.
 ///
-/// These drive raw bytes through the real server pipeline, because the bug was
-/// in pipeline composition and nothing above that layer can see it.
+/// These drive raw bytes through the real pipeline, since the bug was in
+/// pipeline composition and nothing above that layer can see it.
 final class UpgradeOnReusedConnectionTests: XCTestCase {
-    /// A upgrader that performs the handshake but installs nothing, so these
-    /// exercise the pipeline mechanics without spawning a shell.
+    /// Performs the handshake but installs nothing, so these test the pipeline
+    /// without spawning a shell.
     private func makeUpgrader() -> NIOWebSocketServerUpgrader {
         NIOWebSocketServerUpgrader(
             shouldUpgrade: { channel, _ in
@@ -75,17 +71,10 @@ final class UpgradeOnReusedConnectionTests: XCTestCase {
         return response
     }
 
-    /// The priming request, whose only job is to consume the connection's
-    /// one-shot upgrader. Two constraints pick the route:
-    ///
-    /// It must keep the connection alive — the error paths answer
-    /// `Connection: close`, and a closed connection cannot demonstrate
-    /// anything about reuse. And it must answer on the calling thread:
-    /// `/api/health` and the other registry routes complete their promise
-    /// from a Swift-concurrency thread via `completeWithTask`, which is
-    /// correct against a real event loop but trips `EmbeddedEventLoop`'s
-    /// thread-affinity check. `/api/lan` is computed locally and answers
-    /// inline, so it satisfies both.
+    /// Consumes the connection's one-shot upgrader. The route has to keep the
+    /// connection alive (error paths answer `Connection: close`) and answer on
+    /// the calling thread — the registry routes complete from a concurrency
+    /// thread, which `EmbeddedEventLoop` rejects. `/api/lan` does both.
     private let plainRequest = """
         GET /api/lan HTTP/1.1\r
         Host: 127.0.0.1\r
@@ -126,8 +115,7 @@ final class UpgradeOnReusedConnectionTests: XCTestCase {
         )
     }
 
-    /// Several API calls before the upgrade — the orchestrator shape, where a
-    /// node polls commands and reads output before opening the next session.
+    /// Several API calls first — the orchestrator shape.
     func testUpgradeSucceedsAfterSeveralAPIRequests() throws {
         let channel = try makeChannel(wireUpgraderIntoAPIHandler: true)
         defer { _ = try? channel.finish() }
@@ -138,17 +126,15 @@ final class UpgradeOnReusedConnectionTests: XCTestCase {
         XCTAssertTrue(try exchange(channel, upgradeRequest).contains("101 Switching Protocols"))
     }
 
-    /// The unchanged path: an upgrade as the connection's first request never
-    /// touches the reinstall logic.
+    /// The unchanged path: a first-request upgrade never touches the reinstall.
     func testUpgradeAsFirstRequestStillWorks() throws {
         let channel = try makeChannel(wireUpgraderIntoAPIHandler: true)
         defer { _ = try? channel.finish() }
         XCTAssertTrue(try exchange(channel, upgradeRequest).contains("101 Switching Protocols"))
     }
 
-    /// Pins the cause. Without the upgrader wired into the API handler — the
-    /// state this code was in — the second request 404s. If this ever starts
-    /// passing, NIO changed and the reinstall may be redundant.
+    /// Pins the cause: without the reinstall, the second request 404s. If this
+    /// starts failing, NIO changed and the reinstall may be redundant.
     func testWithoutReinstallTheSecondUpgrade404s() throws {
         let channel = try makeChannel(wireUpgraderIntoAPIHandler: false)
         defer { _ = try? channel.finish() }

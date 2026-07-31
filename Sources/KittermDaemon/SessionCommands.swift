@@ -40,12 +40,9 @@ public enum SessionCommands {
     /// frame-granular count — a one-line `echo` pairs as precisely as a build
     /// log does.
     ///
-    /// `firstIndex` is the number the oldest still-retained command carries,
-    /// which the caller takes from `SessionMarkStore.firstRetainedIndex`.
-    /// Numbering has to survive the mark window sliding: a caller waits on an
-    /// index it computed earlier, and `outputUrl` embeds one in a link it may
-    /// follow later. Renumbering from 1 would quietly point those at different
-    /// commands.
+    /// `firstIndex` (from `SessionMarkStore.firstRetainedIndex`) is the number
+    /// the oldest retained command carries, so numbering survives the window
+    /// sliding instead of re-pointing a caller's saved index.
     public static func pair(
         from marks: [SessionMark],
         firstIndex: Int = 1
@@ -79,19 +76,11 @@ public enum SessionCommands {
         for mark in marks {
             switch mark.kind {
             case .preExec:
-                // Two starts with no end between them have two very different
-                // causes, and they need opposite handling.
-                //
-                // If both name a command and the names differ, they really are
-                // two commands and the first never reported an end: close it as
-                // running rather than lose it.
-                //
-                // If they agree — or one is silent — it is one command
-                // announced twice, which happens whenever a shell carries two
-                // integrations (its own plus kitterm's snippet). Collapsing
-                // those matters because a phantom command is permanently
-                // "running": anything waiting on that index would wait forever,
-                // and an index nothing can close is worse than no index.
+                // Two starts with no end between them: different names mean two
+                // real commands, so close the first as running. Matching (or
+                // absent) names mean one command announced twice by a shell
+                // carrying two integrations — collapse it, because a phantom
+                // command stays "running" forever and nothing can close it.
                 if let previous = pending,
                    let existing = previous.command,
                    let incoming = mark.command,
@@ -99,18 +88,16 @@ public enum SessionCommands {
                     flushRunning()
                     pending = (mark.offset, mark.command, mark.at)
                 } else if let previous = pending {
-                    // Same command, seen again: take the later start (the
-                    // output we will actually see begins there) and keep
-                    // whichever announcement carried the text.
+                    // Same command: take the later start, where the output we
+                    // see actually begins, and keep whichever carried the text.
                     pending = (mark.offset, previous.command ?? mark.command, mark.at)
                 } else {
                     pending = (mark.offset, mark.command, mark.at)
                 }
             case .commandEnd:
                 guard let start = pending else {
-                    // The window slid between this command's start and its end.
-                    // The command still happened and still owns its number, so
-                    // spend it rather than let every later command shift down.
+                    // Start aged out but the end survived: the command still
+                    // owns its number, so spend it rather than shift the rest.
                     _ = take()
                     break
                 }

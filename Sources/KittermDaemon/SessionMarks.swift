@@ -31,19 +31,10 @@ public struct SessionMark: Sendable {
 /// under its `stateLock`; not internally synchronized.
 struct SessionMarkStore {
     private(set) var marks: [SessionMark] = []
-    /// How many commands have aged out of the window entirely.
-    ///
-    /// Command numbers have to stay put for the lifetime of a session: a caller
-    /// counts the commands, writes input, and waits on the index it computed,
-    /// and `outputUrl` embeds that index in a link it may follow much later. If
-    /// numbering restarted at 1 every time the window slid, an index would
-    /// silently come to mean a different command — the wait would return
-    /// another command's exit code rather than an error. So the store counts
-    /// what it drops, and `SessionCommands.pair` numbers from there.
-    ///
-    /// Counted by `commandEnd`, because that is the mark a finished command
-    /// consumes exactly once. Starts are not usable for this: a shell carrying
-    /// two integrations emits two of them per command.
+    /// Commands that have aged out, so numbering can continue past them
+    /// instead of restarting at 1 and re-pointing a caller's saved index.
+    /// Counted by `commandEnd`: a finished command consumes exactly one, while
+    /// a shell with two integrations emits two starts.
     private(set) var droppedCommands = 0
     private let cap: Int
 

@@ -248,11 +248,10 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
                 session.attachRecorder(recorder)
             }
             let registry = self.registry
-            let setup = session.makeReader(group: eventLoopGroup, eventLoop: context.eventLoop).flatMap { () -> EventLoopFuture<UUID?> in
+            let reader = session.makeReader(group: eventLoopGroup, eventLoop: context.eventLoop)
+            let setup = reader.flatMap { () -> EventLoopFuture<UUID?> in
                 let idPromise = context.eventLoop.makePromise(of: UUID?.self)
-                idPromise.completeWithTask {
-                    await registry.register(session)
-                }
+                idPromise.completeWithTask { await registry.register(session) }
                 return idPromise.futureResult
             }
             setup.whenFailure { [weak self, weak context] error in

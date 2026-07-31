@@ -5,15 +5,13 @@ import XCTest
 
 @testable import KittermDaemon
 
-/// `--retain-logs` end to end: output that has scrolled out of the in-memory
-/// ring must still be readable through the session.
+/// `--retain-logs` end to end: output that scrolled out of the ring must still
+/// be readable through the session.
 ///
-/// `SessionLogStoreTests` pins the store's own offset arithmetic in isolation.
-/// What is not covered there is the join — `PtySession.outputRange` deciding
-/// the ring has lost a range and translating the request onto a file that does
-/// not begin at stream offset zero. That seam is where a wrong assumption
-/// returns plausible-looking wrong bytes rather than an error, so it is worth
-/// paying 5 MiB of test traffic to exercise for real.
+/// `SessionLogStoreTests` covers the store's offset arithmetic alone. This
+/// covers the join — `PtySession.outputRange` noticing the ring lost a range
+/// and translating onto a file that starts mid-stream, where a wrong assumption
+/// returns wrong bytes rather than an error.
 final class RetainedOutputFallbackTests: XCTestCase {
     private var session: PtySession!
     private var directory: URL!
@@ -44,8 +42,7 @@ final class RetainedOutputFallbackTests: XCTestCase {
         session.handleRead(&buffer)
     }
 
-    /// Read through the asynchronous overload, which is the one that consults
-    /// the store.
+    /// The async overload is the one that consults the store.
     private func read(from: UInt64, to: UInt64) throws -> PtySession.OutputRange {
         var result: PtySession.OutputRange?
         let done = expectation(description: "range read")
@@ -58,8 +55,7 @@ final class RetainedOutputFallbackTests: XCTestCase {
     }
 
     func testOutputBelowTheRingIsServedFromDisk() throws {
-        // Attach the way the daemon does: the store's first byte is whatever
-        // arrives next, which is already partway into the stream.
+        // Attach as the daemon does: the first byte is already mid-stream.
         let sessionID = UUID()
         let directory = self.directory!
         session.attachLogStore { origin in
@@ -75,8 +71,7 @@ final class RetainedOutputFallbackTests: XCTestCase {
         let needle = "NEEDLE-IN-THE-HAYSTACK"
         feed(needle)
 
-        // Push the ring past the needle. The ring is 4 MiB and not injectable,
-        // so this has to be real volume.
+        // The ring is 4 MiB and not injectable, so this needs real volume.
         let filler = String(repeating: "x", count: 64 * 1024)
         for _ in 0..<80 { feed(filler) }
 
@@ -97,8 +92,7 @@ final class RetainedOutputFallbackTests: XCTestCase {
         XCTAssertFalse(range.pruned, "the file still has it, so it is not pruned")
     }
 
-    /// Without `--retain-logs` there is no store, and a lost range still
-    /// reports itself lost rather than inventing bytes.
+    /// With no store, a lost range reports itself lost rather than inventing.
     func testWithoutAStoreALostRangeStaysPruned() throws {
         let needleOffset = session.logHead
         feed("EARLY")

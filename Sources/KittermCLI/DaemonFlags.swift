@@ -36,10 +36,8 @@ struct DaemonFlags {
         )
     }
 
-    /// Reject a linger the daemon cannot honour, rather than passing it to
-    /// `Task.sleep` where a negative window means "drop the session at once"
-    /// and an enormous one means "never". A shell held open is a real process
-    /// on someone's machine, so the ceiling is stated, not implied.
+    /// Reject a linger the daemon cannot honour: `Task.sleep` reads a negative
+    /// window as "drop it now" and an enormous one as "never".
     func validatedSessionLinger() throws -> Int? {
         guard let sessionLinger else { return nil }
         guard sessionLinger >= 1, sessionLinger <= KittermConstants.maxSessionLingerSeconds else {
