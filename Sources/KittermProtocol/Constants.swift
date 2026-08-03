@@ -94,6 +94,15 @@ public enum KittermConstants: Sendable {
     /// already generous.
     public static let maxSessionLingerSeconds = 86_400
 
+    /// Largest file that can be dropped into a session. Sized for what a coding
+    /// agent is actually given as context — screenshots, logs, CSVs, a PDF —
+    /// not media. The body is buffered before it is written, so this is also
+    /// the memory one upload can cost.
+    public static let maxDropBytes: Int = 16 * 1024 * 1024
+    /// Files one session may hold, so a drop target cannot fill a disk.
+    public static let maxDropsPerSession: Int = 100
+    public static let maxDropNameLength: Int = 120
+
     public static let loopbackHosts: Set<String> = [
         "127.0.0.1",
         "localhost",

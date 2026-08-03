@@ -30,6 +30,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// upload can't grow this unbounded — the route then answers 413.
     private var pendingBody: [UInt8] = []
     private var bodyOverflow = false
+    /// How much body this request may carry. Input is a command line; a drop is
+    /// a file, so the cap is set per route once the head names one.
+    private var bodyLimit = KittermConstants.maxInputBytes
 
     init(
         registry: SessionRegistry,
@@ -93,6 +96,13 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         try? sync.addHandler(fresh, position: .before(self))
     }
 
+    /// `POST /api/sessions/<uuid>/files` — the one route whose body is a file.
+    private static func isDropUpload(_ head: HTTPRequestHead) -> Bool {
+        guard head.method == .POST else { return false }
+        let path = head.uri.split(separator: "?", maxSplits: 1).first.map(String.init) ?? head.uri
+        return path.hasPrefix("/api/sessions/") && path.hasSuffix("/files")
+    }
+
     /// Whether an auth cookie set on this request may carry `Secure`.
     ///
     /// True on the TLS listener. Also true when a trusted proxy reports it
@@ -119,9 +129,11 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             pendingHead = head
             pendingBody.removeAll(keepingCapacity: true)
             bodyOverflow = false
+            bodyLimit = Self.isDropUpload(head) ? KittermConstants.maxDropBytes
+                                               : KittermConstants.maxInputBytes
         case .body(let buffer):
             guard !bodyOverflow else { break }
-            if pendingBody.count + buffer.readableBytes > KittermConstants.maxInputBytes {
+            if pendingBody.count + buffer.readableBytes > bodyLimit {
                 bodyOverflow = true
                 pendingBody.removeAll(keepingCapacity: false)
                 break
@@ -269,6 +281,15 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             serveDelete(path: path, grade: grade, head: head, context: context)
         case (.POST, _) where path.hasPrefix("/api/sessions/") && path.hasSuffix("/input"):
             serveInput(
+                path: path,
+                body: body,
+                bodyOverflow: bodyOverflow,
+                grade: grade,
+                head: head,
+                context: context
+            )
+        case (.POST, _) where path.hasPrefix("/api/sessions/") && path.hasSuffix("/files"):
+            serveDrop(
                 path: path,
                 body: body,
                 bodyOverflow: bodyOverflow,
@@ -502,6 +523,102 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 context: context,
                 version: head.version,
                 keepAlive: head.isKeepAlive
+            )
+        }
+    }
+
+    /// `POST /api/sessions/<uuid>/files` — save a file dropped into the
+    /// session and answer with the path it landed at.
+    ///
+    /// A coding agent takes context as paths, so this is what turns "drag a
+    /// screenshot onto the pane" into something the agent can read. The name
+    /// comes from the `X-Kitterm-Filename` header rather than the URL, so it
+    /// never has to survive path parsing.
+    ///
+    /// Full grade only. Unlike the input route this needs no `--agent-control`:
+    /// that flag exists to stop a *program* driving your shell, and this is a
+    /// person dropping a file into their own browser — nearer to paste. The
+    /// bytes only ever land under kitterm's own drops directory, so it stays a
+    /// write into a known place rather than a way to write anywhere.
+    private func serveDrop(
+        path: String,
+        body: Data,
+        bodyOverflow: Bool,
+        grade: TokenGrade,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard !bodyOverflow else {
+            writeJSON(
+                status: .payloadTooLarge,
+                body: #"{"ok":false,"error":"file exceeds \#(KittermConstants.maxDropBytes) bytes"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let components = path.split(separator: "/")
+        // ["api", "sessions", "<uuid>", "files"]
+        guard components.count == 4, let id = UUID(uuidString: String(components[2])) else {
+            notFound(context: context, version: head.version)
+            return
+        }
+        guard !body.isEmpty else {
+            writeJSON(
+                status: .badRequest,
+                body: #"{"ok":false,"error":"empty file"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let rawName = head.headers["x-kitterm-filename"].first
+            .flatMap { $0.removingPercentEncoding } ?? "dropped-file"
+
+        let loop = context.eventLoop
+        let boundContext = NIOLoopBound(context, eventLoop: loop)
+        let promise = loop.makePromise(of: String?.self)
+        promise.completeWithTask {
+            guard await self.registry.session(id) != nil else { return nil }
+            // Writing bytes is blocking work, so it does not run on the loop.
+            return try? await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .utility).async {
+                    continuation.resume(
+                        with: Result { try SessionDrops.store(
+                            data: body, filename: rawName, sessionID: id
+                        ).path }
+                    )
+                }
+            }
+        }
+        promise.futureResult.whenComplete { result in
+            let context = boundContext.value
+            guard case .success(.some(let saved)) = result else {
+                self.writeJSON(
+                    status: .notFound,
+                    body: #"{"ok":false,"error":"no such session, or the file could not be saved"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+                return
+            }
+            let payload: [String: Any] = [
+                "ok": true,
+                "path": saved,
+                "name": (saved as NSString).lastPathComponent,
+                "bytes": body.count,
+            ]
+            let text = (try? JSONSerialization.data(withJSONObject: payload))
+                .flatMap { String(data: $0, encoding: .utf8) }
+                ?? #"{"ok":false,"error":"encoding failed"}"#
+            self.writeJSON(
+                status: .ok, body: text, context: context,
+                version: head.version, keepAlive: head.isKeepAlive
             )
         }
     }

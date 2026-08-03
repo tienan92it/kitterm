@@ -16,6 +16,7 @@ import {
   extractKeyboardModifiers,
 } from "./kitty";
 import type { FaviconState } from "./favicon";
+import { dragCarriesFiles, insertionText, uploadDroppedFiles } from "./file-drop";
 import { OutputFlowControl } from "./flow-control";
 import { resolveFontFamily } from "./fonts";
 import { matchPaneCommand, type PaneCommand } from "./pane-keys";
@@ -223,8 +224,72 @@ export class TerminalPane {
     this.wireInput();
     this.wireClipboard();
     this.wireTouch();
+    this.wireFileDrop(options.container);
     this.wireResize(options.container);
     this.setConnectionState("reconnecting");
+  }
+
+  /**
+   * Drag a file onto a pane and the path where it landed appears at the
+   * cursor, ready to hand to whatever is running — usually a coding agent,
+   * which takes context as paths. The same route serves a phone sharing a
+   * screenshot, so a photo taken there reaches the machine the agent is on.
+   *
+   * Inserted through `paste()` so bracketed paste applies, and never with a
+   * newline: dropping a file must not run anything.
+   */
+  private wireFileDrop(element: HTMLElement): void {
+    let depth = 0;
+    const clear = () => {
+      depth = 0;
+      element.classList.remove("is-drop-target");
+    };
+
+    element.addEventListener("dragenter", (event) => {
+      if (!dragCarriesFiles(event.dataTransfer)) return;
+      event.preventDefault();
+      depth += 1;
+      element.classList.add("is-drop-target");
+    });
+    element.addEventListener("dragover", (event) => {
+      if (!dragCarriesFiles(event.dataTransfer)) return;
+      // Without this the browser navigates to the file and the tab is gone.
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    });
+    element.addEventListener("dragleave", () => {
+      // Fires for children too, so only the outermost leave clears the hint.
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) element.classList.remove("is-drop-target");
+    });
+    element.addEventListener("drop", (event) => {
+      if (!dragCarriesFiles(event.dataTransfer)) return;
+      event.preventDefault();
+      clear();
+      const files = Array.from(event.dataTransfer?.files ?? []);
+      if (files.length > 0) void this.acceptDroppedFiles(files);
+    });
+  }
+
+  private async acceptDroppedFiles(files: readonly File[]): Promise<void> {
+    const sessionId = this.sessionIdValue;
+    if (!sessionId) {
+      this.host.paneFlash("This pane has no session yet");
+      return;
+    }
+    this.host.paneFlash(files.length === 1 ? `Adding ${files[0].name}…` : `Adding ${files.length} files…`);
+    const { uploaded, errors } = await uploadDroppedFiles(sessionId, files);
+    if (uploaded.length > 0) {
+      this.terminal.paste(insertionText(uploaded));
+      this.terminal.focus();
+    }
+    if (errors.length > 0) {
+      this.host.paneFlash(errors[0]);
+    } else if (uploaded.length > 0) {
+      this.host.paneFlash(
+        uploaded.length === 1 ? `Added ${uploaded[0].name}` : `Added ${uploaded.length} files`,
+      );
+    }
   }
 
   // MARK: Accessors used by the shell

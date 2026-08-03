@@ -37,6 +37,11 @@ public enum DaemonPaths: Sendable {
         stateDirectory.appendingPathComponent("recordings", isDirectory: true)
     }
 
+    /// Files dropped into a session from the browser, one directory each.
+    public static var dropsDirectory: URL {
+        stateDirectory.appendingPathComponent("drops", isDirectory: true)
+    }
+
     /// Timestamp of the previous session, for the `Last login:` banner.
     public static var lastLoginFile: URL {
         stateDirectory.appendingPathComponent("lastlogin")
