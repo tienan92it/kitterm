@@ -166,7 +166,10 @@ export class ExtraKeysBar {
       event.preventDefault();
       input.click();
     });
-    btn.append(input);
+    // Sibling, not child: a click dispatched on an input inside the button
+    // bubbles back to the button, whose handler dispatches it again — which
+    // freezes the tab.
+    this.element.append(input);
     return btn;
   }
 

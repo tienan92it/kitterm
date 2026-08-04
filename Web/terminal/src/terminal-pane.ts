@@ -240,21 +240,34 @@ export class TerminalPane {
    */
   private wireFileDrop(element: HTMLElement): void {
     let depth = 0;
+    // A drag that started in this terminal is xterm moving its own selection.
+    // Intercepting it would paste the selection back and interfere with how
+    // xterm tracks the gesture, so those are left entirely alone.
+    let internal = false;
     const clear = () => {
       depth = 0;
       element.classList.remove("is-drop-target");
     };
+    element.addEventListener("dragstart", () => {
+      internal = true;
+    });
+    element.addEventListener("dragend", () => {
+      internal = false;
+      clear();
+    });
 
     // Always prevent, never conditionally: the default action for a dropped
     // file is to navigate to it, which loses the tab. Browsers also withhold
     // the drag payload until the drop, so a handler that waits until it can
     // see files has already let the default through.
     element.addEventListener("dragenter", (event) => {
+      if (internal) return;
       event.preventDefault();
       depth += 1;
       if (dragMayCarryFiles(event.dataTransfer)) element.classList.add("is-drop-target");
     });
     element.addEventListener("dragover", (event) => {
+      if (internal) return;
       event.preventDefault();
       if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
     });
@@ -264,6 +277,10 @@ export class TerminalPane {
       if (depth === 0) element.classList.remove("is-drop-target");
     });
     element.addEventListener("drop", (event) => {
+      if (internal) {
+        internal = false;
+        return;
+      }
       event.preventDefault();
       clear();
       const payload = readDrop(event.dataTransfer);
