@@ -127,6 +127,7 @@ export class ExtraKeysBar {
   constructor(
     private readonly onKey: (spec: KeySpec) => void,
     layout: ExtraKey[][] = DEFAULT_LAYOUT,
+    private readonly onAttach?: (files: readonly File[]) => void,
   ) {
     this.element = document.createElement("div");
     this.element.className = "extra-keys";
@@ -137,8 +138,36 @@ export class ExtraKeysBar {
       const rowEl = document.createElement("div");
       rowEl.className = "extra-keys-row";
       for (const key of row) rowEl.append(this.button(key));
+      if (this.onAttach && row === layout[0]) rowEl.append(this.attachButton());
       this.element.append(rowEl);
     }
+  }
+
+  /** Opens the system picker — on a phone that is Photos, Files, or the
+   *  camera, which is how a screenshot reaches a session from a phone. */
+  private attachButton(): HTMLButtonElement {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.hidden = true;
+    input.addEventListener("change", () => {
+      const files = Array.from(input.files ?? []);
+      if (files.length > 0) this.onAttach?.(files);
+      // Cleared so picking the same file twice fires again.
+      input.value = "";
+    });
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "extra-key extra-key-attach";
+    btn.textContent = "＋";
+    btn.setAttribute("aria-label", "Attach a file");
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      input.click();
+    });
+    btn.append(input);
+    return btn;
   }
 
   private button(key: ExtraKey): HTMLButtonElement {

@@ -432,7 +432,11 @@ export class TerminalApp implements PaneHost {
    * lack Ctrl/Alt/Esc/arrows. Its keys go to the focused pane. */
   private mountExtraKeys(): void {
     if (!isTouchPrimary()) return;
-    const bar = new ExtraKeysBar((spec) => this.focusedPane?.sendExtraKey(spec));
+    const bar = new ExtraKeysBar(
+      (spec) => this.focusedPane?.sendExtraKey(spec),
+      undefined,
+      (files) => void this.focusedPane?.attachFiles(files),
+    );
     document.body.append(bar.element);
     document.body.classList.add("has-extra-keys");
     // Lift the row and terminal above the software keyboard.

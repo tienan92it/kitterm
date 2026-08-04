@@ -267,11 +267,14 @@ export class TerminalPane {
       event.preventDefault();
       clear();
       const files = Array.from(event.dataTransfer?.files ?? []);
-      if (files.length > 0) void this.acceptDroppedFiles(files);
+      if (files.length > 0) void this.attachFiles(files);
     });
   }
 
-  private async acceptDroppedFiles(files: readonly File[]): Promise<void> {
+  /// Take files into this pane, from a drag or from the picker a touch device
+  /// needs — phones have no drag and drop, and sharing a screenshot into a
+  /// session is the whole point of reaching it from one.
+  async attachFiles(files: readonly File[]): Promise<void> {
     const sessionId = this.sessionIdValue;
     if (!sessionId) {
       this.host.paneFlash("This pane has no session yet");
@@ -280,8 +283,10 @@ export class TerminalPane {
     this.host.paneFlash(files.length === 1 ? `Adding ${files[0].name}…` : `Adding ${files.length} files…`);
     const { uploaded, errors } = await uploadDroppedFiles(sessionId, files);
     if (uploaded.length > 0) {
-      this.terminal.paste(insertionText(uploaded));
+      // Focus first: a drop can land on an unfocused pane, and WebKit will not
+      // deliver the paste to a terminal that is not focused.
       this.terminal.focus();
+      this.terminal.paste(insertionText(uploaded));
     }
     if (errors.length > 0) {
       this.host.paneFlash(errors[0]);
