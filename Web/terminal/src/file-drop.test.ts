@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   MAX_FILES_PER_DROP,
-  dragCarriesFiles,
+  dragMayCarryFiles,
+  readDrop,
   insertionText,
   quoteForShell,
   uploadDroppedFile,
@@ -135,10 +136,40 @@ describe("uploadDroppedFiles", () => {
   });
 });
 
-describe("dragCarriesFiles", () => {
-  it("is true for a file drag and false for a text drag", () => {
-    expect(dragCarriesFiles({ types: ["Files"] } as unknown as DataTransfer)).toBe(true);
-    expect(dragCarriesFiles({ types: ["text/plain"] } as unknown as DataTransfer)).toBe(false);
-    expect(dragCarriesFiles(null)).toBe(false);
+describe("dragMayCarryFiles", () => {
+  it("is true for a file drag and false for a plain text drag", () => {
+    expect(dragMayCarryFiles({ types: ["Files"] } as unknown as DataTransfer)).toBe(true);
+    expect(dragMayCarryFiles({ types: ["text/plain"] } as unknown as DataTransfer)).toBe(false);
+  });
+
+  // Safari withholds the payload mid-drag. Treating "cannot tell" as "no files"
+  // is what let the browser navigate to the file and lose the tab.
+  it("assumes files when the browser is withholding the drag data", () => {
+    expect(dragMayCarryFiles({ types: [] } as unknown as DataTransfer)).toBe(true);
+    expect(dragMayCarryFiles(null)).toBe(true);
+  });
+});
+
+describe("readDrop", () => {
+  const file = { name: "new 9.txt", size: 1, arrayBuffer: async () => new ArrayBuffer(1) };
+
+  // The drop that started this: files present, types unhelpful.
+  it("finds files even when types said nothing", () => {
+    const payload = readDrop({ types: [], files: [file] } as unknown as DataTransfer);
+    expect(payload.kind).toBe("files");
+    if (payload.kind === "files") expect(payload.files[0].name).toBe("new 9.txt");
+  });
+
+  it("falls back to dragged text", () => {
+    const payload = readDrop({
+      types: ["text/plain"], files: [], getData: () => "some text",
+    } as unknown as DataTransfer);
+    expect(payload).toEqual({ kind: "text", text: "some text" });
+  });
+
+  it("reports nothing usable rather than throwing", () => {
+    expect(readDrop(null).kind).toBe("empty");
+    expect(readDrop({ types: [], files: [], getData: () => "" } as unknown as DataTransfer).kind)
+      .toBe("empty");
   });
 });

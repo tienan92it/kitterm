@@ -109,8 +109,31 @@ export async function uploadDroppedFiles(
   return { uploaded, errors };
 }
 
-/** Whether a drag is carrying files, as opposed to text from another element. */
-export function dragCarriesFiles(transfer: DataTransfer | null): boolean {
-  if (!transfer) return false;
-  return Array.from(transfer.types ?? []).includes("Files");
+/**
+ * Whether a drag looks like it carries files, for the hover hint only.
+ *
+ * Never gate `preventDefault` on this. Browsers restrict what can be read from
+ * a drag while it is in flight — Safari reports nothing useful until the drop —
+ * so a handler that only prevents the default when it can *see* files will let
+ * the browser navigate to the file instead, losing the tab. Prevent first,
+ * inspect afterwards.
+ */
+export function dragMayCarryFiles(transfer: DataTransfer | null): boolean {
+  if (!transfer) return true;
+  const types = Array.from(transfer.types ?? []);
+  // No types at all means the browser is withholding, not that there is nothing.
+  return types.length === 0 || types.includes("Files");
+}
+
+/** What a drop actually turned out to be, read once it is safe to look. */
+export type DroppedPayload =
+  | { kind: "files"; files: readonly DroppedFile[] }
+  | { kind: "text"; text: string }
+  | { kind: "empty" };
+
+export function readDrop(transfer: DataTransfer | null): DroppedPayload {
+  const files = Array.from(transfer?.files ?? []);
+  if (files.length > 0) return { kind: "files", files };
+  const text = transfer?.getData?.("text/plain") ?? "";
+  return text ? { kind: "text", text } : { kind: "empty" };
 }

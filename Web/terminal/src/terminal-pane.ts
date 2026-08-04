@@ -16,7 +16,7 @@ import {
   extractKeyboardModifiers,
 } from "./kitty";
 import type { FaviconState } from "./favicon";
-import { dragCarriesFiles, insertionText, uploadDroppedFiles } from "./file-drop";
+import { dragMayCarryFiles, insertionText, readDrop, uploadDroppedFiles } from "./file-drop";
 import { OutputFlowControl } from "./flow-control";
 import { resolveFontFamily } from "./fonts";
 import { matchPaneCommand, type PaneCommand } from "./pane-keys";
@@ -245,15 +245,16 @@ export class TerminalPane {
       element.classList.remove("is-drop-target");
     };
 
+    // Always prevent, never conditionally: the default action for a dropped
+    // file is to navigate to it, which loses the tab. Browsers also withhold
+    // the drag payload until the drop, so a handler that waits until it can
+    // see files has already let the default through.
     element.addEventListener("dragenter", (event) => {
-      if (!dragCarriesFiles(event.dataTransfer)) return;
       event.preventDefault();
       depth += 1;
-      element.classList.add("is-drop-target");
+      if (dragMayCarryFiles(event.dataTransfer)) element.classList.add("is-drop-target");
     });
     element.addEventListener("dragover", (event) => {
-      if (!dragCarriesFiles(event.dataTransfer)) return;
-      // Without this the browser navigates to the file and the tab is gone.
       event.preventDefault();
       if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
     });
@@ -263,11 +264,16 @@ export class TerminalPane {
       if (depth === 0) element.classList.remove("is-drop-target");
     });
     element.addEventListener("drop", (event) => {
-      if (!dragCarriesFiles(event.dataTransfer)) return;
       event.preventDefault();
       clear();
-      const files = Array.from(event.dataTransfer?.files ?? []);
-      if (files.length > 0) void this.attachFiles(files);
+      const payload = readDrop(event.dataTransfer);
+      if (payload.kind === "files") {
+        void this.attachFiles(payload.files as readonly File[]);
+      } else if (payload.kind === "text") {
+        // Text dragged in from elsewhere behaves like a paste.
+        this.terminal.focus();
+        this.terminal.paste(payload.text);
+      }
     });
   }
 
