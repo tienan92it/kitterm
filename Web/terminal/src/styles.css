@@ -330,15 +330,6 @@ body,
 /* The gutter is carved inside each pane so the rects tile exactly and need no
    gap arithmetic. The border is always present, so focus changes restyle
    without reflowing — and therefore without refitting the terminal. */
-/* A pane being dragged over. Outline only — the terminal underneath stays
-   readable, and nothing reflows, so no drop hint can disturb the grid. */
-.pane.is-drop-target,
-.pane-inner.is-drop-target,
-.xterm.is-drop-target {
-  outline: 2px dashed var(--ui-accent, currentColor);
-  outline-offset: -4px;
-}
-
 .pane-inner {
   position: absolute;
   inset: 0;
@@ -347,30 +338,12 @@ body,
   overflow: hidden;
 }
 
-.pane.is-split /* A pane being dragged over. Outline only — the terminal underneath stays
-   readable, and nothing reflows, so no drop hint can disturb the grid. */
-.pane.is-drop-target,
-.pane-inner.is-drop-target,
-.xterm.is-drop-target {
-  outline: 2px dashed var(--ui-accent, currentColor);
-  outline-offset: -4px;
-}
-
-.pane-inner {
+.pane.is-split .pane-inner {
   inset: 3px;
   border-color: var(--ui-border);
 }
 
-.pane.is-split.is-focused /* A pane being dragged over. Outline only — the terminal underneath stays
-   readable, and nothing reflows, so no drop hint can disturb the grid. */
-.pane.is-drop-target,
-.pane-inner.is-drop-target,
-.xterm.is-drop-target {
-  outline: 2px dashed var(--ui-accent, currentColor);
-  outline-offset: -4px;
-}
-
-.pane-inner {
+.pane.is-split.is-focused .pane-inner {
   border-color: var(--ui-accent);
 }
 
@@ -465,16 +438,7 @@ body.pane-dragging {
   cursor: inherit;
 }
 
-body.pane-dragging /* A pane being dragged over. Outline only — the terminal underneath stays
-   readable, and nothing reflows, so no drop hint can disturb the grid. */
-.pane.is-drop-target,
-.pane-inner.is-drop-target,
-.xterm.is-drop-target {
-  outline: 2px dashed var(--ui-accent, currentColor);
-  outline-offset: -4px;
-}
-
-.pane-inner {
+body.pane-dragging .pane-inner {
   pointer-events: none;
 }
 
@@ -663,4 +627,11 @@ body.has-extra-keys #status {
   background: var(--ui-accent);
   border-color: var(--ui-accent-hover);
   color: var(--ui-accent-on);
+}
+
+/* A pane being dragged over. Outline only, so the hint cannot reflow the grid
+   and force the terminal to refit. */
+.pane-inner.is-drop-target {
+  outline: 2px dashed var(--ui-accent, currentColor);
+  outline-offset: -4px;
 }
