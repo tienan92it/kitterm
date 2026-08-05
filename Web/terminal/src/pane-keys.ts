@@ -33,7 +33,21 @@ export type PaneCommand =
 export type ChordEvent = Pick<
   KeyboardEvent,
   "key" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey"
->;
+> & { code?: string };
+
+/**
+ * The letter a chord is about, independent of what Option did to it.
+ *
+ * Holding Option on macOS composes an alternate character, so ⌘⌥O arrives as
+ * "ø" and ⌘⌥T as "†". Matching `key` therefore misses every Option chord on a
+ * real keyboard. `code` describes the physical key and is unaffected; `key` is
+ * the fallback for events that carry no code.
+ */
+const chordLetter = (event: ChordEvent): string => {
+  const code = event.code;
+  if (code && code.length === 4 && code.startsWith("Key")) return code[3].toLowerCase();
+  return event.key.toLowerCase();
+};
 
 const ARROW_DIRECTIONS: Record<string, Direction> = {
   ArrowUp: "up",
@@ -60,11 +74,12 @@ export const matchPaneCommand = (event: ChordEvent, isMac: boolean): PaneCommand
     if (event.altKey && !event.shiftKey) {
       const dir = ARROW_DIRECTIONS[key];
       if (dir) return { type: "navigate", dir };
-      if (key === "w" || key === "W") return { type: "close" };
+      const letter = chordLetter(event);
+      if (letter === "w") return { type: "close" };
       // ⌘⌥T — ⌘T and ⌘⇧T are browser-reserved and not interceptable.
-      if (key === "t" || key === "T") return { type: "new-tab" };
+      if (letter === "t") return { type: "new-tab" };
       // ⌘⌥O — "open", for picking a file or folder to hand to what is running.
-      if (key === "o" || key === "O") return { type: "browse-files" };
+      if (letter === "o") return { type: "browse-files" };
     }
     return null;
   }
@@ -78,11 +93,11 @@ export const matchPaneCommand = (event: ChordEvent, isMac: boolean): PaneCommand
     const dir = ARROW_DIRECTIONS[key];
     if (dir) return { type: "navigate", dir };
   } else {
-    if (key === "W" || key === "w") return { type: "close" };
+    if (chordLetter(event) === "w") return { type: "close" };
     // Ctrl+Shift+Alt+T — Ctrl+Shift+T is reopen-closed-tab, reserved.
-    if (key === "T" || key === "t") return { type: "new-tab" };
+    if (chordLetter(event) === "t") return { type: "new-tab" };
     // Ctrl+Shift+Alt+O — "open", matching the mac chord.
-    if (key === "O" || key === "o") return { type: "browse-files" };
+    if (chordLetter(event) === "o") return { type: "browse-files" };
   }
   return null;
 };
