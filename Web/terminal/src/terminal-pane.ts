@@ -329,6 +329,7 @@ export class TerminalPane {
     this.clearReconnectTimer();
     this.takeControlBtn?.remove();
     this.takeControlBtn = null;
+    this.flowControl.dispose();
     if (this.fitHandle !== null) cancelAnimationFrame(this.fitHandle);
     this.resizeObserver?.disconnect();
     this.releaseWebgl();
