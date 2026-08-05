@@ -140,3 +140,21 @@ describe("keys the shell must keep", () => {
     ).toBeNull();
   });
 });
+
+describe("browse-files chord", () => {
+  it("is Cmd+Alt+O on mac and Ctrl+Shift+Alt+O elsewhere", () => {
+    expect(matchPaneCommand(
+      { key: "o", metaKey: true, altKey: true, ctrlKey: false, shiftKey: false }, true,
+    )).toEqual({ type: "browse-files" });
+    expect(matchPaneCommand(
+      { key: "O", metaKey: false, altKey: true, ctrlKey: true, shiftKey: true }, false,
+    )).toEqual({ type: "browse-files" });
+  });
+
+  // A bare "o" is a keystroke for the shell, not a chord.
+  it("does not fire without its modifiers", () => {
+    expect(matchPaneCommand(
+      { key: "o", metaKey: false, altKey: false, ctrlKey: false, shiftKey: false }, true,
+    )).toBeNull();
+  });
+});

@@ -297,6 +297,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 head: head,
                 context: context
             )
+        case (.GET, "/api/files"):
+            serveFileListing(grade: grade, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/"):
             writeJSON(
                 status: .notFound,
@@ -523,6 +525,78 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 context: context,
                 version: head.version,
                 keepAlive: head.isKeepAlive
+            )
+        }
+    }
+
+    /// `GET /api/files?path=<dir>&session=<uuid>` — list a directory so a
+    /// caller can pick a file or folder and insert its real path.
+    ///
+    /// Full grade only, which is the whole of the access story: anyone who can
+    /// reach this can already type `ls` into the session, and the daemon runs
+    /// as the user, so the OS decides what is readable. Watch-only callers
+    /// cannot type, so they must not be able to browse.
+    private func serveFileListing(
+        grade: TokenGrade,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let requested = DaemonServer.queryValue("path", fromRequestURI: head.uri)
+        let sessionID = DaemonServer.queryValue("session", fromRequestURI: head.uri)
+            .flatMap(UUID.init(uuidString:))
+        let showHidden = DaemonServer.queryValue("hidden", fromRequestURI: head.uri) == "1"
+
+        let loop = context.eventLoop
+        let boundContext = NIOLoopBound(context, eventLoop: loop)
+        let promise = loop.makePromise(of: FileBrowser.Listing?.self)
+        promise.completeWithTask {
+            // Relative paths resolve against the session's own directory, which
+            // is where a caller means when they say "src".
+            var cwd: String?
+            if let sessionID { cwd = await self.registry.session(sessionID)?.liveCwd }
+            let directory = FileBrowser.resolve(requested, base: cwd)
+            return try? await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    continuation.resume(
+                        with: Result { try FileBrowser.list(directory, includeHidden: showHidden) }
+                    )
+                }
+            }
+        }
+        promise.futureResult.whenComplete { result in
+            let context = boundContext.value
+            guard case .success(.some(let listing)) = result else {
+                self.writeJSON(
+                    status: .notFound,
+                    body: #"{"ok":false,"error":"cannot list that directory"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+                return
+            }
+            var payload: [String: Any] = [
+                "ok": true,
+                "path": listing.path,
+                "entries": listing.entries.map { entry -> [String: Any] in
+                    var item: [String: Any] = ["name": entry.name, "dir": entry.isDirectory]
+                    if let size = entry.size { item["size"] = size }
+                    return item
+                },
+            ]
+            if let parent = listing.parent { payload["parent"] = parent }
+            let text = (try? JSONSerialization.data(withJSONObject: payload))
+                .flatMap { String(data: $0, encoding: .utf8) }
+                ?? #"{"ok":false,"error":"encoding failed"}"#
+            self.writeJSON(
+                status: .ok, body: text, context: context,
+                version: head.version, keepAlive: head.isKeepAlive
             )
         }
     }

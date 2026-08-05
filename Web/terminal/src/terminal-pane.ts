@@ -16,7 +16,8 @@ import {
   extractKeyboardModifiers,
 } from "./kitty";
 import type { FaviconState } from "./favicon";
-import { dragMayCarryFiles, insertionText, readDrop, uploadDroppedFiles } from "./file-drop";
+import { dragMayCarryFiles, insertionText, quoteForShell, readDrop, uploadDroppedFiles } from "./file-drop";
+import { FilePicker } from "./file-picker";
 import { OutputFlowControl } from "./flow-control";
 import { resolveFontFamily } from "./fonts";
 import { matchPaneCommand, type PaneCommand } from "./pane-keys";
@@ -164,6 +165,7 @@ export class TerminalPane {
   private fitHandle: number | null = null;
 
   private readonly containerEl: HTMLElement;
+  private filePicker: FilePicker | null = null;
 
   constructor(options: TerminalPaneOptions) {
     this.id = options.id;
@@ -292,6 +294,24 @@ export class TerminalPane {
         this.terminal.paste(payload.text);
       }
     });
+  }
+
+  /// Browse the machine this session runs on and insert a real path. Unlike a
+  /// drop this copies nothing, so the agent reads and edits the actual file,
+  /// and a folder works as well as a file.
+  openFilePicker(): void {
+    if (!this.filePicker) {
+      this.filePicker = new FilePicker({
+        sessionId: () => this.sessionIdValue,
+        insert: (paths) => {
+          this.terminal.focus();
+          this.terminal.paste(paths.map(quoteForShell).join(" ") + " ");
+        },
+        flash: (message) => this.host.paneFlash(message),
+      });
+      this.containerEl.append(this.filePicker.element);
+    }
+    void this.filePicker.show(this.cwd);
   }
 
   /// Take files into this pane, from a drag or from the picker a touch device

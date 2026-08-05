@@ -128,6 +128,7 @@ export class ExtraKeysBar {
     private readonly onKey: (spec: KeySpec) => void,
     layout: ExtraKey[][] = DEFAULT_LAYOUT,
     private readonly onAttach?: (files: readonly File[]) => void,
+    private readonly onBrowse?: () => void,
   ) {
     this.element = document.createElement("div");
     this.element.className = "extra-keys";
@@ -138,9 +139,27 @@ export class ExtraKeysBar {
       const rowEl = document.createElement("div");
       rowEl.className = "extra-keys-row";
       for (const key of row) rowEl.append(this.button(key));
-      if (this.onAttach && row === layout[0]) rowEl.append(this.attachButton());
+      if (row === layout[0]) {
+        if (this.onBrowse) rowEl.append(this.browseButton());
+        if (this.onAttach) rowEl.append(this.attachButton());
+      }
       this.element.append(rowEl);
     }
+  }
+
+  /** Browse the machine the session runs on and insert a path — no copy, and
+   *  folders work too. */
+  private browseButton(): HTMLButtonElement {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "extra-key extra-key-browse";
+    btn.textContent = "⌸";
+    btn.setAttribute("aria-label", "Browse files on this machine");
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      this.onBrowse?.();
+    });
+    return btn;
   }
 
   /** Opens the system picker — on a phone that is Photos, Files, or the

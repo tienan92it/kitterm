@@ -635,3 +635,86 @@ body.has-extra-keys #status {
   outline: 2px dashed var(--ui-accent, currentColor);
   outline-offset: -4px;
 }
+
+/* The file picker: an overlay inside the pane, sized to be usable on a phone
+   without covering the whole screen on a desktop. */
+.file-picker {
+  position: absolute;
+  inset: 8px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  background: var(--ui-surface, #1e1e1e);
+  color: var(--ui-text, #ddd);
+  border: 1px solid var(--ui-border, #444);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 13px;
+}
+
+.file-picker-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--ui-border, #444);
+}
+
+.file-picker-path {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  opacity: 0.85;
+}
+
+.file-picker-action {
+  flex: none;
+  padding: 4px 10px;
+  min-height: 28px;
+  background: transparent;
+  color: inherit;
+  border: 1px solid var(--ui-border, #444);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.file-picker-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.file-picker-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 7px 10px;
+  min-height: 32px;
+  background: transparent;
+  color: inherit;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.file-picker-row:hover,
+.file-picker-row:focus-visible {
+  background: var(--ui-surface-hover, rgba(255, 255, 255, 0.08));
+}
+
+.file-picker-row.is-dir span:first-child {
+  font-weight: 600;
+}
+
+.file-picker-size,
+.file-picker-empty {
+  opacity: 0.6;
+}
+
+.file-picker-empty {
+  padding: 12px;
+}

@@ -26,7 +26,8 @@ export type PaneCommand =
   | { type: "split"; dir: SplitDir }
   | { type: "navigate"; dir: Direction }
   | { type: "close" }
-  | { type: "new-tab" };
+  | { type: "new-tab" }
+  | { type: "browse-files" };
 
 /** The subset of KeyboardEvent this module needs, so tests need no DOM. */
 export type ChordEvent = Pick<
@@ -62,6 +63,8 @@ export const matchPaneCommand = (event: ChordEvent, isMac: boolean): PaneCommand
       if (key === "w" || key === "W") return { type: "close" };
       // ⌘⌥T — ⌘T and ⌘⇧T are browser-reserved and not interceptable.
       if (key === "t" || key === "T") return { type: "new-tab" };
+      // ⌘⌥O — "open", for picking a file or folder to hand to what is running.
+      if (key === "o" || key === "O") return { type: "browse-files" };
     }
     return null;
   }
@@ -78,6 +81,8 @@ export const matchPaneCommand = (event: ChordEvent, isMac: boolean): PaneCommand
     if (key === "W" || key === "w") return { type: "close" };
     // Ctrl+Shift+Alt+T — Ctrl+Shift+T is reopen-closed-tab, reserved.
     if (key === "T" || key === "t") return { type: "new-tab" };
+    // Ctrl+Shift+Alt+O — "open", matching the mac chord.
+    if (key === "O" || key === "o") return { type: "browse-files" };
   }
   return null;
 };

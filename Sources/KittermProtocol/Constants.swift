@@ -102,6 +102,9 @@ public enum KittermConstants: Sendable {
     /// Files one session may hold, so a drop target cannot fill a disk.
     public static let maxDropsPerSession: Int = 100
     public static let maxDropNameLength: Int = 120
+    /// Entries returned for one directory. Node_modules should not be able to
+    /// turn a listing into a megabyte of JSON.
+    public static let maxDirectoryEntries: Int = 1000
 
     public static let loopbackHosts: Set<String> = [
         "127.0.0.1",
