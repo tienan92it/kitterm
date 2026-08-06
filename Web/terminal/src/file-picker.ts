@@ -94,7 +94,8 @@ export class FilePicker {
     const useFolder = document.createElement("button");
     useFolder.type = "button";
     useFolder.className = "file-picker-action";
-    useFolder.textContent = "Use this folder";
+    useFolder.title = "Insert this folder's path";
+    useFolder.textContent = "Use folder";
     useFolder.addEventListener("click", () => {
       if (this.current) this.choose(this.current.path);
     });
@@ -102,7 +103,9 @@ export class FilePicker {
     const close = document.createElement("button");
     close.type = "button";
     close.className = "file-picker-action";
-    close.textContent = "Close";
+    close.textContent = "✕";
+    close.title = "Close";
+    close.setAttribute("aria-label", "Close");
     close.addEventListener("click", () => this.hide());
     header.append(useFolder, close);
 

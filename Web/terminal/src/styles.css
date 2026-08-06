@@ -636,11 +636,16 @@ body.has-extra-keys #status {
   outline-offset: -4px;
 }
 
-/* The file picker: an overlay inside the pane, sized to be usable on a phone
-   without covering the whole screen on a desktop. */
+/* The file picker: a small panel in the corner, deliberately not a takeover —
+   the terminal stays readable behind it so you can see what you are picking
+   for. `[hidden]` needs restating because an author `display` wins over the
+   attribute, and without it the panel cannot be dismissed. */
 .file-picker {
   position: absolute;
-  inset: 8px;
+  left: 8px;
+  bottom: 8px;
+  width: min(380px, calc(100% - 16px));
+  max-height: min(320px, calc(100% - 16px));
   z-index: 6;
   display: flex;
   flex-direction: column;
@@ -648,51 +653,64 @@ body.has-extra-keys #status {
   color: var(--ui-text, #ddd);
   border: 1px solid var(--ui-border, #444);
   border-radius: 8px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 35%);
   overflow: hidden;
-  font-size: 13px;
+  font-size: 12px;
+}
+
+.file-picker[hidden] {
+  display: none;
 }
 
 .file-picker-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: 6px;
+  padding: 6px 8px;
   border-bottom: 1px solid var(--ui-border, #444);
 }
 
 .file-picker-path {
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   direction: rtl;
   text-align: left;
-  opacity: 0.85;
+  opacity: 0.8;
 }
 
 .file-picker-action {
   flex: none;
-  padding: 4px 10px;
-  min-height: 28px;
+  padding: 3px 8px;
+  min-height: 26px;
   background: transparent;
   color: inherit;
   border: 1px solid var(--ui-border, #444);
-  border-radius: 6px;
+  border-radius: 5px;
   cursor: pointer;
+  font: inherit;
+}
+
+.file-picker-action:hover {
+  background: var(--ui-surface-hover, rgb(255 255 255 / 8%));
 }
 
 .file-picker-list {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .file-picker-row {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
-  padding: 7px 10px;
-  min-height: 32px;
+  padding: 5px 8px;
+  min-height: 28px;
+  align-items: center;
   background: transparent;
   color: inherit;
   border: 0;
@@ -703,7 +721,13 @@ body.has-extra-keys #status {
 
 .file-picker-row:hover,
 .file-picker-row:focus-visible {
-  background: var(--ui-surface-hover, rgba(255, 255, 255, 0.08));
+  background: var(--ui-surface-hover, rgb(255 255 255 / 8%));
+}
+
+.file-picker-row span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .file-picker-row.is-dir span:first-child {
@@ -712,9 +736,10 @@ body.has-extra-keys #status {
 
 .file-picker-size,
 .file-picker-empty {
-  opacity: 0.6;
+  flex: none;
+  opacity: 0.55;
 }
 
 .file-picker-empty {
-  padding: 12px;
+  padding: 10px;
 }
