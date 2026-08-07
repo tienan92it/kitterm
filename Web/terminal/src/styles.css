@@ -607,6 +607,12 @@ body.has-extra-keys #status {
   gap: 4px;
 }
 .extra-key {
+  /* Centred explicitly rather than relying on a button's built-in centring:
+     the attach control is a label, which has none. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
   flex: 1 1 0;
   min-width: 0;
   height: 44px;
@@ -796,6 +802,25 @@ body.has-extra-keys #status {
 .file-picker-empty {
   padding: 10px;
   color: var(--ui-text-faint);
+}
+
+/* On a phone the panel must leave the terminal visible behind it and sit above
+   the key bar, so it is shorter and narrower — but the rows stay thumb-sized,
+   which is the opposite of shrinking everything uniformly. */
+@media (pointer: coarse), (max-width: 520px) {
+  .file-picker {
+    width: min(300px, calc(100% - 16px));
+    max-height: min(220px, 42vh);
+  }
+
+  .file-picker-row {
+    padding: 5px 8px;
+    min-height: 32px;
+  }
+
+  .file-picker-hint {
+    display: none;
+  }
 }
 
 /* The attach control is a label around a real file input: a phone will only

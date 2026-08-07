@@ -440,6 +440,7 @@ export class TerminalApp implements PaneHost {
       undefined,
       (files) => void this.focusedPane?.attachFiles(files),
       () => this.focusedPane?.toggleFilePicker(),
+      () => this.focusedPane?.focus(),
     );
     document.body.append(bar.element);
     document.body.classList.add("has-extra-keys");

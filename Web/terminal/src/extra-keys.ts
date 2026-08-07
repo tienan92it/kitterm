@@ -139,6 +139,7 @@ export class ExtraKeysBar {
     layout: ExtraKey[][] = DEFAULT_LAYOUT,
     private readonly onAttach?: (files: readonly File[]) => void,
     private readonly onBrowse?: () => void,
+    private readonly onDismissPicker?: () => void,
   ) {
     this.element = document.createElement("div");
     this.element.className = "extra-keys";
@@ -250,7 +251,13 @@ export class ExtraKeysBar {
       if (files.length > 0) this.onAttach?.(files);
       // Cleared so picking the same file twice fires again.
       input.value = "";
+      // Activating a label focuses its input, which is what drops the soft
+      // keyboard; the system picker takes the screen either way, so the repair
+      // is to hand focus back once it closes. Cancelling fires no event at all,
+      // so the same is done when the window comes back.
+      this.onDismissPicker?.();
     });
+    input.addEventListener("cancel", () => this.onDismissPicker?.());
     label.append(input);
     return label;
   }
