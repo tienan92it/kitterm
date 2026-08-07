@@ -665,6 +665,7 @@ body.has-extra-keys #status {
 }
 
 .file-picker-header {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -701,10 +702,46 @@ body.has-extra-keys #status {
   border-color: var(--ui-accent);
 }
 
+/* `min-height: 0` is what lets this actually shrink. A scrollable flex child
+   defaults to min-height:auto — it refuses to go below its content, so a tall
+   listing pushed the footer out through the panel's clipped edge instead of
+   scrolling. */
 .file-picker-list {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+.file-picker-search {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 7px;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.file-picker-input {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
+  background: transparent;
+  color: var(--ui-text);
+  border: 0;
+  outline: none;
+  font: 12px/1.4 var(--font-mono);
+}
+
+.file-picker-input::placeholder {
+  color: var(--ui-text-faint);
+}
+
+.file-picker-count {
+  flex: none;
+  color: var(--ui-text-faint);
+  font: 10px/1.3 var(--font-ui);
+  font-variant-numeric: tabular-nums;
 }
 
 .file-picker-row {
@@ -745,6 +782,7 @@ body.has-extra-keys #status {
 }
 
 .file-picker-hint {
+  flex: none;
   padding: 4px 8px;
   border-top: 1px solid var(--ui-border);
   background: var(--ui-bg-sunken);

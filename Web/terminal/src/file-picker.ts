@@ -64,6 +64,45 @@ export function describeSize(entry: FileEntry): string {
 }
 
 /**
+ * Rank a name against a query: an exact prefix beats a substring, which beats
+ * a scattered subsequence. Returns null when it does not match at all.
+ *
+ * Subsequence matching is what makes a long directory usable — "tspane" finds
+ * "terminal-pane.ts" without typing the whole thing.
+ */
+export function matchScore(name: string, query: string): number | null {
+  if (!query) return 0;
+  const haystack = name.toLowerCase();
+  const needle = query.toLowerCase();
+  if (haystack.startsWith(needle)) return 0;
+  if (haystack.includes(needle)) return 1;
+  let index = 0;
+  for (const character of needle) {
+    index = haystack.indexOf(character, index);
+    if (index === -1) return null;
+    index += 1;
+  }
+  return 2;
+}
+
+/** The rows a query leaves, best matches first, original order within a rank. */
+export function filterByQuery<T extends { label: string; isParent: boolean }>(
+  rows: readonly T[],
+  query: string,
+): T[] {
+  if (!query) return [...rows];
+  const scored: { row: T; score: number; order: number }[] = [];
+  rows.forEach((row, order) => {
+    // The parent link is navigation, not a result; a query is about names here.
+    if (row.isParent) return;
+    const score = matchScore(row.label, query);
+    if (score !== null) scored.push({ row, score, order });
+  });
+  scored.sort((a, b) => (a.score === b.score ? a.order - b.order : a.score - b.score));
+  return scored.map((entry) => entry.row);
+}
+
+/**
  * Keep a selection inside the list, stopping at the ends rather than wrapping —
  * holding an arrow key should come to rest, not cycle forever.
  */
@@ -120,6 +159,9 @@ export class FilePicker {
   private readonly pathLabel: HTMLElement;
   private current: Listing | null = null;
   private rows: Row[] = [];
+  private visible: Row[] = [];
+  private readonly search: HTMLInputElement;
+  private readonly count: HTMLElement;
   private selected = 0;
   private open = false;
   private readonly onOutsidePointer: (event: Event) => void;
@@ -145,14 +187,32 @@ export class FilePicker {
       if (this.current) this.choose(this.current.path);
     });
 
+    header.append(this.pathLabel, useFolder);
+
+    // A filter row, because a directory of three hundred files is not
+    // navigable with arrows alone. It holds focus, so typing filters
+    // immediately and the arrows still move the selection.
+    const searchRow = document.createElement("div");
+    searchRow.className = "file-picker-search";
+    this.search = document.createElement("input");
+    this.search.type = "text";
+    this.search.className = "file-picker-input";
+    this.search.placeholder = "Filter…";
+    this.search.setAttribute("aria-label", "Filter this folder");
+    this.search.autocomplete = "off";
+    this.search.spellcheck = false;
+    this.search.addEventListener("input", () => this.applyFilter());
+    this.count = document.createElement("span");
+    this.count.className = "file-picker-count";
+    searchRow.append(this.search, this.count);
+
     const hint = document.createElement("div");
     hint.className = "file-picker-hint";
     hint.textContent = "↑↓ move · → open · ← up · ⏎ insert · ⇧⏎ folder · esc";
-    header.append(this.pathLabel, useFolder);
 
     this.list = document.createElement("div");
     this.list.className = "file-picker-list";
-    this.element.append(header, this.list, hint);
+    this.element.append(header, searchRow, this.list, hint);
 
     this.element.addEventListener("keydown", (event) => this.onKeyDown(event));
     // Anything outside dismisses. Capture, so a click cannot be swallowed by
@@ -171,8 +231,9 @@ export class FilePicker {
     this.element.hidden = false;
     this.selected = 0;
     document.addEventListener("pointerdown", this.onOutsidePointer, true);
+    this.search.value = "";
     await this.navigate(startPath);
-    this.element.focus({ preventScroll: true });
+    this.search.focus({ preventScroll: true });
   }
 
   hide(): void {
@@ -199,12 +260,16 @@ export class FilePicker {
         this.select(this.selected - 1);
         break;
       case "ArrowRight": {
+        // Only when the caret is at the end, so the arrow can still move
+        // through what has been typed.
+        if (this.caretInsideQuery("right")) break;
         handled();
-        const row = this.rows[this.selected];
+        const row = this.visible[this.selected];
         if (row?.isDir) void this.navigate(row.path);
         break;
       }
       case "ArrowLeft":
+        if (this.caretInsideQuery("left")) break;
         handled();
         if (this.current?.parent) void this.navigate(this.current.parent);
         break;
@@ -216,7 +281,7 @@ export class FilePicker {
           if (this.current) this.choose(this.current.path);
           break;
         }
-        const row = this.rows[this.selected];
+        const row = this.visible[this.selected];
         if (!row) break;
         // Enter opens a folder, matching ArrowRight; the header button is how
         // you take the folder itself.
@@ -234,15 +299,27 @@ export class FilePicker {
         break;
       case "End":
         handled();
-        this.select(this.rows.length - 1);
+        this.select(this.visible.length - 1);
         break;
       default:
         break;
     }
   }
 
+  /** Whether an arrow should edit the query instead of navigating folders. */
+  private caretInsideQuery(direction: "left" | "right"): boolean {
+    if (this.search.value.length === 0) return false;
+    const caret = this.search.selectionStart ?? 0;
+    return direction === "left" ? caret > 0 : caret < this.search.value.length;
+  }
+
+  private applyFilter(): void {
+    this.visible = filterByQuery(this.rows, this.search.value.trim());
+    this.renderRows();
+  }
+
   private select(index: number): void {
-    this.selected = clampSelection(index, this.rows.length);
+    this.selected = clampSelection(index, this.visible.length);
     const children = this.list.children;
     for (let i = 0; i < children.length; i += 1) {
       children[i].classList.toggle("is-selected", i === this.selected);
@@ -253,6 +330,9 @@ export class FilePicker {
   private async navigate(path: string | null): Promise<void> {
     try {
       this.current = await fetchListing(path, this.host.sessionId());
+      // A new folder is a fresh question; carrying the old query over would
+      // silently hide most of what you just opened.
+      this.search.value = "";
       this.render();
       this.position();
     } catch (error) {
@@ -303,16 +383,26 @@ export class FilePicker {
       });
     }
 
+    this.applyFilter();
+  }
+
+  private renderRows(): void {
+    this.count.textContent = this.search.value.trim()
+      ? `${this.visible.length}/${this.rows.length}`
+      : `${this.rows.length}`;
+
     this.list.replaceChildren();
-    if (this.rows.length === 0) {
+    if (this.visible.length === 0) {
       const empty = document.createElement("div");
       empty.className = "file-picker-empty";
-      empty.textContent = "Nothing here";
+      empty.textContent = this.search.value.trim() ? "No match" : "Nothing here";
       this.list.append(empty);
       return;
     }
-    this.rows.forEach((row, index) => this.list.append(this.rowElement(row, index)));
+    this.visible.forEach((row, index) => this.list.append(this.rowElement(row, index)));
     this.select(0);
+    // A resized panel must not push its own footer out of view.
+    this.position();
   }
 
   private rowElement(row: Row, index: number): HTMLElement {
@@ -326,7 +416,12 @@ export class FilePicker {
     detail.className = "file-picker-size";
     detail.textContent = row.detail;
     element.append(label, detail);
-    element.addEventListener("mouseenter", () => this.select(index));
+    // `mousemove`, not `mouseenter`: re-rendering the list under a stationary
+    // pointer fires enter on whatever lands beneath it, which would drag the
+    // selection off the best match every time you typed a character.
+    element.addEventListener("mousemove", () => {
+      if (this.selected !== index) this.select(index);
+    });
     element.addEventListener("click", () => {
       if (row.isDir) void this.navigate(row.path);
       else this.choose(row.path);

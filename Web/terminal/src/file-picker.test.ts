@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { childPath, clampSelection, describeSize, fetchListing, placeAtCursor } from "./file-picker";
+import {
+  childPath,
+  clampSelection,
+  describeSize,
+  fetchListing,
+  filterByQuery,
+  matchScore,
+  placeAtCursor,
+} from "./file-picker";
 
 describe("childPath", () => {
   it("joins without doubling or dropping the separator", () => {
@@ -101,5 +109,55 @@ describe("placeAtCursor", () => {
   it("does not go off the left edge in a narrow pane", () => {
     const at = placeAtCursor({ left: 5, top: 40, lineHeight: 18 }, panel, { width: 200, height: 300 });
     expect(at.left).toBeGreaterThanOrEqual(8);
+  });
+});
+
+describe("matchScore", () => {
+  it("ranks prefix above substring above subsequence", () => {
+    expect(matchScore("terminal-pane.ts", "term")).toBe(0);
+    expect(matchScore("terminal-pane.ts", "pane")).toBe(1);
+    expect(matchScore("terminal-pane.ts", "tpane")).toBe(2);
+  });
+
+  it("rejects a name the query cannot be found in", () => {
+    expect(matchScore("readme.md", "xyz")).toBeNull();
+  });
+
+  it("ignores case and treats an empty query as a match", () => {
+    expect(matchScore("README.md", "readme")).toBe(0);
+    expect(matchScore("anything", "")).toBe(0);
+  });
+});
+
+describe("filterByQuery", () => {
+  const rows = [
+    { label: "..", isParent: true },
+    { label: "Sources", isParent: false },
+    { label: "terminal-pane.ts", isParent: false },
+    { label: "styles.css", isParent: false },
+  ];
+
+  it("returns everything, parent included, for an empty query", () => {
+    expect(filterByQuery(rows, "")).toHaveLength(4);
+  });
+
+  // The parent link is navigation, not a search result.
+  it("drops the parent link once a query is typed", () => {
+    expect(filterByQuery(rows, "s").some((r) => r.isParent)).toBe(false);
+  });
+
+  it("orders better matches first", () => {
+    // "s" prefixes Sources and styles.css; terminal-pane.ts only subsequences.
+    const labels = filterByQuery(rows, "s").map((r) => r.label);
+    expect(labels[0]).toBe("Sources");
+    expect(labels).toContain("styles.css");
+  });
+
+  it("finds a scattered subsequence", () => {
+    expect(filterByQuery(rows, "tpane").map((r) => r.label)).toEqual(["terminal-pane.ts"]);
+  });
+
+  it("returns nothing when nothing matches", () => {
+    expect(filterByQuery(rows, "zzzz")).toEqual([]);
   });
 });
