@@ -301,7 +301,7 @@ export class TerminalPane {
   /// Browse the machine this session runs on and insert a real path. Unlike a
   /// drop this copies nothing, so the agent reads and edits the actual file,
   /// and a folder works as well as a file.
-  openFilePicker(): void {
+  toggleFilePicker(): void {
     if (!this.filePicker) {
       this.filePicker = new FilePicker({
         sessionId: () => this.sessionIdValue,
@@ -314,6 +314,12 @@ export class TerminalPane {
         restoreFocus: () => this.terminal.focus(),
       });
       this.containerEl.append(this.filePicker.element);
+    }
+    // A second tap on the same control puts it away — on a phone the button
+    // is the only way back, and reopening what is already open reads as broken.
+    if (this.filePicker.isOpen) {
+      this.filePicker.hide();
+      return;
     }
     void this.filePicker.show(this.cwd);
   }

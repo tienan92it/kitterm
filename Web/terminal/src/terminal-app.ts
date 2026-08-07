@@ -350,7 +350,7 @@ export class TerminalApp implements PaneHost {
         break;
       }
       case "browse-files":
-        pane.openFilePicker();
+        pane.toggleFilePicker();
         break;
       case "new-tab": {
         // Synchronous with the keydown gesture — any await/rAF here and the
@@ -439,7 +439,7 @@ export class TerminalApp implements PaneHost {
       (spec) => this.focusedPane?.sendExtraKey(spec),
       undefined,
       (files) => void this.focusedPane?.attachFiles(files),
-      () => this.focusedPane?.openFilePicker(),
+      () => this.focusedPane?.toggleFilePicker(),
     );
     document.body.append(bar.element);
     document.body.classList.add("has-extra-keys");

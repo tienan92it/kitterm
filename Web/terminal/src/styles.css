@@ -797,3 +797,14 @@ body.has-extra-keys #status {
   padding: 10px;
   color: var(--ui-text-faint);
 }
+
+/* The attach control is a label around a real file input: a phone will only
+   open its picker for a native activation, not a scripted click. The input has
+   to stay in the layout (not `display: none`) for the label to reach it. */
+.extra-key-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}

@@ -151,7 +151,7 @@ export class ExtraKeysBar {
       for (const key of row) rowEl.append(this.button(key));
       if (row === layout[0]) {
         if (this.onBrowse) rowEl.append(this.browseButton());
-        if (this.onAttach) rowEl.append(this.attachButton());
+        if (this.onAttach) rowEl.append(this.attachControl());
       }
       this.element.append(rowEl);
     }
@@ -159,43 +159,6 @@ export class ExtraKeysBar {
 
   /** Browse the machine the session runs on and insert a path — no copy, and
    *  folders work too. */
-  private browseButton(): HTMLButtonElement {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "extra-key extra-key-browse";
-    btn.textContent = "⌸";
-    btn.setAttribute("aria-label", "Browse files on this machine");
-    this.wireTap(btn, () => this.onBrowse?.());
-    return btn;
-  }
-
-  /** Opens the system picker — on a phone that is Photos, Files, or the
-   *  camera, which is how a screenshot reaches a session from a phone. */
-  private attachButton(): HTMLButtonElement {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.multiple = true;
-    input.hidden = true;
-    input.addEventListener("change", () => {
-      const files = Array.from(input.files ?? []);
-      if (files.length > 0) this.onAttach?.(files);
-      // Cleared so picking the same file twice fires again.
-      input.value = "";
-    });
-
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "extra-key extra-key-attach";
-    btn.textContent = "＋";
-    btn.setAttribute("aria-label", "Attach a file");
-    this.wireTap(btn, () => input.click());
-    // Sibling, not child: a click dispatched on an input inside the button
-    // bubbles back to the button, whose handler dispatches it again — which
-    // freezes the tab.
-    this.element.append(input);
-    return btn;
-  }
-
   /**
    * Wire a bar button so it behaves like the others: it never takes focus (the
    * terminal's textarea must keep it or the soft keyboard dismisses), it acts
@@ -249,6 +212,47 @@ export class ExtraKeysBar {
       if (performance.now() - lastTouchAt < 700) return;
       act();
     });
+  }
+
+  private browseButton(): HTMLButtonElement {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "extra-key extra-key-browse";
+    btn.textContent = "⌸";
+    btn.setAttribute("aria-label", "Browse files on this machine");
+    this.wireTap(btn, () => this.onBrowse?.());
+    return btn;
+  }
+
+  /**
+   * Attaching is a `<label>` wrapping the file input, with no JavaScript in the
+   * path at all.
+   *
+   * A button that calls `input.click()` does not work on a phone: the tap
+   * handler has to `preventDefault` to keep the terminal focused, and that
+   * spends the user gesture, after which the system refuses to open a file
+   * picker. A label activates its input natively, so the gesture is never
+   * intermediated — and there is no click of ours to recurse through.
+   */
+  private attachControl(): HTMLElement {
+    const label = document.createElement("label");
+    label.className = "extra-key extra-key-attach";
+    label.title = "Attach a file";
+    label.setAttribute("aria-label", "Attach a file");
+    label.append(document.createTextNode("＋"));
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.className = "extra-key-file-input";
+    input.addEventListener("change", () => {
+      const files = Array.from(input.files ?? []);
+      if (files.length > 0) this.onAttach?.(files);
+      // Cleared so picking the same file twice fires again.
+      input.value = "";
+    });
+    label.append(input);
+    return label;
   }
 
   private button(key: ExtraKey): HTMLButtonElement {
