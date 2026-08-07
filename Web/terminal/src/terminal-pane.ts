@@ -308,10 +308,37 @@ export class TerminalPane {
           this.terminal.paste(paths.map(quoteForShell).join(" ") + " ");
         },
         flash: (message) => this.host.paneFlash(message),
+        cursorAnchor: () => this.cursorAnchor(),
+        restoreFocus: () => this.terminal.focus(),
       });
       this.containerEl.append(this.filePicker.element);
     }
     void this.filePicker.show(this.cwd);
+  }
+
+  /// Where the terminal cursor is, in pane coordinates, so the picker can open
+  /// where you are typing. Cell size is derived from the screen element rather
+  /// than xterm internals, which are private and have moved between versions.
+  private cursorAnchor(): { left: number; top: number; lineHeight: number } {
+    const screen = this.containerEl.querySelector(".xterm-screen") as HTMLElement | null;
+    const width = screen?.clientWidth ?? this.containerEl.clientWidth;
+    const height = screen?.clientHeight ?? this.containerEl.clientHeight;
+    const cellWidth = width / Math.max(1, this.terminal.cols);
+    const lineHeight = height / Math.max(1, this.terminal.rows);
+    const buffer = this.terminal.buffer.active;
+    let offsetLeft = 0;
+    let offsetTop = 0;
+    if (screen) {
+      const screenBox = screen.getBoundingClientRect();
+      const paneBox = this.containerEl.getBoundingClientRect();
+      offsetLeft = screenBox.left - paneBox.left;
+      offsetTop = screenBox.top - paneBox.top;
+    }
+    return {
+      left: offsetLeft + buffer.cursorX * cellWidth,
+      top: offsetTop + (buffer.cursorY + 1) * lineHeight,
+      lineHeight,
+    };
   }
 
   /// Take files into this pane, from a drag or from the picker a touch device

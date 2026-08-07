@@ -636,38 +636,41 @@ body.has-extra-keys #status {
   outline-offset: -4px;
 }
 
-/* The file picker: a small panel in the corner, deliberately not a takeover —
-   the terminal stays readable behind it so you can see what you are picking
-   for. `[hidden]` needs restating because an author `display` wins over the
-   attribute, and without it the panel cannot be dismissed. */
+/* The file picker. Opens at the cursor, so it is positioned from JS; it takes
+   its surface, text and font from the same tokens as the rest of the chrome,
+   and paths use the terminal's own font so they read as terminal material. */
 .file-picker {
   position: absolute;
-  left: 8px;
-  bottom: 8px;
-  width: min(380px, calc(100% - 16px));
-  max-height: min(320px, calc(100% - 16px));
   z-index: 6;
   display: flex;
   flex-direction: column;
-  background: var(--ui-surface, #1e1e1e);
-  color: var(--ui-text, #ddd);
-  border: 1px solid var(--ui-border, #444);
-  border-radius: 8px;
-  box-shadow: 0 6px 24px rgb(0 0 0 / 35%);
+  width: min(360px, calc(100% - 16px));
+  max-height: min(280px, calc(100% - 16px));
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-1);
+  box-shadow: var(--ui-lift);
   overflow: hidden;
-  font-size: 12px;
+  font: 12px/1.4 var(--font-ui);
 }
 
 .file-picker[hidden] {
   display: none;
 }
 
+.file-picker:focus {
+  outline: none;
+  border-color: var(--ui-accent);
+}
+
 .file-picker-header {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--ui-border, #444);
+  padding: 5px 7px;
+  background: var(--ui-bg-sunken);
+  border-bottom: 1px solid var(--ui-border);
 }
 
 .file-picker-path {
@@ -678,23 +681,24 @@ body.has-extra-keys #status {
   white-space: nowrap;
   direction: rtl;
   text-align: left;
-  opacity: 0.8;
+  color: var(--ui-text-muted);
+  font: 11px/1.3 var(--font-mono);
 }
 
-.file-picker-action {
+.file-picker-use {
   flex: none;
-  padding: 3px 8px;
-  min-height: 26px;
+  padding: 2px 7px;
   background: transparent;
-  color: inherit;
-  border: 1px solid var(--ui-border, #444);
-  border-radius: 5px;
+  color: var(--ui-text);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-1);
   cursor: pointer;
-  font: inherit;
+  font: 11px/1.3 var(--font-ui);
 }
 
-.file-picker-action:hover {
-  background: var(--ui-surface-hover, rgb(255 255 255 / 8%));
+.file-picker-use:hover {
+  background: var(--ui-hover);
+  border-color: var(--ui-accent);
 }
 
 .file-picker-list {
@@ -706,40 +710,52 @@ body.has-extra-keys #status {
 .file-picker-row {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 5px 8px;
-  min-height: 28px;
-  align-items: center;
+  padding: 3px 8px;
   background: transparent;
-  color: inherit;
+  color: var(--ui-text);
   border: 0;
   text-align: left;
   cursor: pointer;
-  font: inherit;
+  font: 12px/1.6 var(--font-mono);
 }
 
-.file-picker-row:hover,
-.file-picker-row:focus-visible {
-  background: var(--ui-surface-hover, rgb(255 255 255 / 8%));
+/* One highlight for both keyboard and pointer: hovering moves the selection,
+   so there is never a second, competing "current" row. */
+.file-picker-row.is-selected {
+  background: var(--ui-accent-soft);
 }
 
-.file-picker-row span:first-child {
+.file-picker-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.file-picker-row.is-dir span:first-child {
-  font-weight: 600;
+.file-picker-row.is-dir .file-picker-name {
+  color: var(--ui-accent);
 }
 
-.file-picker-size,
-.file-picker-empty {
+.file-picker-size {
   flex: none;
-  opacity: 0.55;
+  color: var(--ui-text-faint);
+  font-size: 11px;
+}
+
+.file-picker-hint {
+  padding: 4px 8px;
+  border-top: 1px solid var(--ui-border);
+  background: var(--ui-bg-sunken);
+  color: var(--ui-text-faint);
+  font: 10px/1.3 var(--font-ui);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .file-picker-empty {
   padding: 10px;
+  color: var(--ui-text-faint);
 }

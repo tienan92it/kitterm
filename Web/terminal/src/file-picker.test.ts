@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { childPath, describeSize, fetchListing } from "./file-picker";
+import { childPath, clampSelection, describeSize, fetchListing, placeAtCursor } from "./file-picker";
 
 describe("childPath", () => {
   it("joins without doubling or dropping the separator", () => {
@@ -52,5 +52,54 @@ describe("fetchListing", () => {
   it("reports an unlistable folder rather than returning junk", async () => {
     const fetchImpl = vi.fn(async () => ({ ok: false, status: 404 }) as Response);
     await expect(fetchListing("/nope", null, fetchImpl as never)).rejects.toThrow(/could not be listed/);
+  });
+});
+
+describe("clampSelection", () => {
+  // Holding an arrow key should come to rest at the end, not cycle.
+  it("stops at both ends rather than wrapping", () => {
+    expect(clampSelection(-1, 5)).toBe(0);
+    expect(clampSelection(9, 5)).toBe(4);
+    expect(clampSelection(2, 5)).toBe(2);
+  });
+
+  it("survives an empty list", () => {
+    expect(clampSelection(3, 0)).toBe(0);
+  });
+});
+
+describe("placeAtCursor", () => {
+  const panel = { width: 360, height: 280 };
+  const pane = { width: 1000, height: 800 };
+
+  it("opens just below the cursor", () => {
+    const at = placeAtCursor({ left: 120, top: 200, lineHeight: 18 }, panel, pane);
+    expect(at.left).toBe(120);
+    expect(at.top).toBe(208);
+  });
+
+  // Near the bottom it flips above, so the panel never covers the line you
+  // are typing on — which is the line you are picking a file for.
+  it("flips above the cursor when there is no room below", () => {
+    const at = placeAtCursor({ left: 100, top: 780, lineHeight: 18 }, panel, pane);
+    expect(at.top).toBeLessThan(780);
+    expect(at.top).toBeGreaterThanOrEqual(8);
+  });
+
+  it("stays inside the pane on the right edge", () => {
+    const at = placeAtCursor({ left: 980, top: 100, lineHeight: 18 }, panel, pane);
+    expect(at.left + panel.width).toBeLessThanOrEqual(pane.width);
+  });
+
+  // The flip-above branch can compute a negative top near the top of the
+  // pane, which put the panel partly off the edge.
+  it("never places the panel above the pane's top edge", () => {
+    const at = placeAtCursor({ left: 100, top: 30, lineHeight: 18 }, panel, { width: 900, height: 300 });
+    expect(at.top).toBeGreaterThanOrEqual(8);
+  });
+
+  it("does not go off the left edge in a narrow pane", () => {
+    const at = placeAtCursor({ left: 5, top: 40, lineHeight: 18 }, panel, { width: 200, height: 300 });
+    expect(at.left).toBeGreaterThanOrEqual(8);
   });
 });
