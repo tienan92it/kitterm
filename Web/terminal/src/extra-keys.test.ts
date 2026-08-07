@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { StickyModifiers, type KeySpec, keyBytes } from "./extra-keys";
+import { StickyModifiers, type KeySpec, keyBytes , repeatsOnHold } from "./extra-keys";
 
 const spec = (over: Partial<KeySpec> = {}): KeySpec => ({
   key: "a",
@@ -78,3 +78,17 @@ describe("StickyModifiers", () => {
 // The ExtraKeysBar DOM (rendering, focus discipline, tap wiring) is covered by
 // the Playwright mobile e2e; vitest runs without a DOM, matching the codebase's
 // pure-test convention.
+
+describe("repeatsOnHold", () => {
+  // Holding these obviously means "keep going"; holding Esc or Ctrl does not.
+  it("covers backspace and the arrows only", () => {
+    expect(repeatsOnHold({ kind: "key", label: "⌫", key: "Backspace" })).toBe(true);
+    expect(repeatsOnHold({ kind: "key", label: "←", key: "ArrowLeft" })).toBe(true);
+    expect(repeatsOnHold({ kind: "key", label: "Esc", key: "Escape" })).toBe(false);
+    expect(repeatsOnHold({ kind: "key", label: "Tab", key: "Tab" })).toBe(false);
+  });
+
+  it("never repeats a sticky modifier", () => {
+    expect(repeatsOnHold({ kind: "mod", label: "Ctrl", mod: "ctrl" })).toBe(false);
+  });
+});

@@ -20,6 +20,16 @@ export type ExtraKey = ActionKey | ModifierKey;
  * and tab, sticky Ctrl for the long tail (Ctrl-D/Z/A/E…), a one-tap Ctrl-C
  * because it is by far the most common, and the four arrows. Deliberately
  * short — extra clutter is why the first version felt complicated. */
+/** Held keys repeat like a hardware keyboard: a pause, then steady. */
+export const KEY_REPEAT_DELAY_MS = 400;
+export const KEY_REPEAT_INTERVAL_MS = 55;
+
+/** Which keys mean "keep going" when held. */
+export function repeatsOnHold(key: ExtraKey): boolean {
+  if (key.kind !== "key") return false;
+  return ["Backspace", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(key.key);
+}
+
 export const DEFAULT_LAYOUT: ExtraKey[][] = [
   [
     { kind: "key", label: "Esc", key: "Escape" },
@@ -155,10 +165,7 @@ export class ExtraKeysBar {
     btn.className = "extra-key extra-key-browse";
     btn.textContent = "⌸";
     btn.setAttribute("aria-label", "Browse files on this machine");
-    btn.addEventListener("click", (event) => {
-      event.preventDefault();
-      this.onBrowse?.();
-    });
+    this.wireTap(btn, () => this.onBrowse?.());
     return btn;
   }
 
@@ -181,10 +188,7 @@ export class ExtraKeysBar {
     btn.className = "extra-key extra-key-attach";
     btn.textContent = "＋";
     btn.setAttribute("aria-label", "Attach a file");
-    btn.addEventListener("click", (event) => {
-      event.preventDefault();
-      input.click();
-    });
+    this.wireTap(btn, () => input.click());
     // Sibling, not child: a click dispatched on an input inside the button
     // bubbles back to the button, whose handler dispatches it again — which
     // freezes the tab.
@@ -192,14 +196,66 @@ export class ExtraKeysBar {
     return btn;
   }
 
+  /**
+   * Wire a bar button so it behaves like the others: it never takes focus (the
+   * terminal's textarea must keep it or the soft keyboard dismisses), it acts
+   * on touchstart, and it ignores the ghost click a browser fires afterwards.
+   *
+   * `repeat` gives press-and-hold, for keys where holding obviously means "keep
+   * going" — backspace and the arrows.
+   */
+  private wireTap(btn: HTMLButtonElement, act: () => void, repeat = false): void {
+    btn.tabIndex = -1;
+    let lastTouchAt = -Infinity;
+    let holdTimer: ReturnType<typeof setTimeout> | null = null;
+    let repeatTimer: ReturnType<typeof setInterval> | null = null;
+
+    const stopHold = () => {
+      if (holdTimer !== null) clearTimeout(holdTimer);
+      if (repeatTimer !== null) clearInterval(repeatTimer);
+      holdTimer = null;
+      repeatTimer = null;
+    };
+    const startHold = () => {
+      if (!repeat) return;
+      stopHold();
+      // Same shape as a hardware key: a pause before it takes, then steady.
+      holdTimer = setTimeout(() => {
+        repeatTimer = setInterval(act, KEY_REPEAT_INTERVAL_MS);
+      }, KEY_REPEAT_DELAY_MS);
+    };
+
+    btn.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      startHold();
+    });
+    btn.addEventListener(
+      "touchstart",
+      (event) => {
+        event.preventDefault();
+        lastTouchAt = performance.now();
+        act();
+        startHold();
+      },
+      { passive: false },
+    );
+    for (const end of ["touchend", "touchcancel", "mouseup", "mouseleave"]) {
+      btn.addEventListener(end, stopHold);
+    }
+    btn.addEventListener("click", () => {
+      stopHold();
+      // Ghost clicks arrive well under this after the touch; a deliberate
+      // mouse click after a tap on a hybrid device arrives much later.
+      if (performance.now() - lastTouchAt < 700) return;
+      act();
+    });
+  }
+
   private button(key: ExtraKey): HTMLButtonElement {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "extra-key";
     btn.textContent = key.label;
-    // Never take focus: the terminal's textarea must stay focused so the soft
-    // keyboard does not dismiss when a key is tapped.
-    btn.tabIndex = -1;
 
     const act = key.kind === "mod" ? () => this.tapModifier(key.mod) : () => this.tapKey(key);
     if (key.kind === "mod") {
@@ -207,30 +263,7 @@ export class ExtraKeysBar {
       this.modButtons.set(key.mod, btn);
     }
 
-    // Touch and mouse deliver the tap differently, and preventDefault on
-    // touchstart (needed to keep the terminal focused) also cancels the
-    // synthesized click on spec-compliant browsers — so the touch path acts on
-    // touchstart, the mouse path on click. A ghost click a browser fires anyway
-    // is ignored by time window, not a sticky flag: a flag left armed (when the
-    // click never comes) would swallow the next real mouse click on a hybrid
-    // touchscreen/mouse device.
-    let lastTouchAt = -Infinity;
-    btn.addEventListener("mousedown", (e) => e.preventDefault());
-    btn.addEventListener(
-      "touchstart",
-      (e) => {
-        e.preventDefault();
-        lastTouchAt = performance.now();
-        act();
-      },
-      { passive: false },
-    );
-    btn.addEventListener("click", () => {
-      // Ghost clicks arrive well under this after the touch; a deliberate
-      // mouse click after a tap on a hybrid device arrives much later.
-      if (performance.now() - lastTouchAt < 700) return;
-      act();
-    });
+    this.wireTap(btn, act, repeatsOnHold(key));
     return btn;
   }
 

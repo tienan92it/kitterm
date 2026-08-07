@@ -232,8 +232,11 @@ export class FilePicker {
     this.selected = 0;
     document.addEventListener("pointerdown", this.onOutsidePointer, true);
     this.search.value = "";
-    await this.navigate(startPath);
+    // Focus now, inside the tap that opened this: a phone only raises its
+    // keyboard for a focus that happens during a user gesture, and awaiting
+    // the listing first would spend it.
     this.search.focus({ preventScroll: true });
+    await this.navigate(startPath);
   }
 
   hide(): void {

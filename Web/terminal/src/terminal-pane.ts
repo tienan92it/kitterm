@@ -16,6 +16,7 @@ import {
   extractKeyboardModifiers,
 } from "./kitty";
 import type { FaviconState } from "./favicon";
+import { KEY_REPEAT_DELAY_MS, KEY_REPEAT_INTERVAL_MS } from "./extra-keys";
 import { dragMayCarryFiles, insertionText, quoteForShell, readDrop, uploadDroppedFiles } from "./file-drop";
 import { FilePicker } from "./file-picker";
 import { OutputFlowControl } from "./flow-control";
@@ -224,6 +225,7 @@ export class TerminalPane {
     this.registerMarkHandlers();
     this.registerNotifyHandlers();
     this.wireInput();
+    this.wireSoftKeyRepeat();
     this.wireClipboard();
     this.wireTouch();
     this.wireFileDrop(options.container);
@@ -984,6 +986,49 @@ export class TerminalPane {
     });
   }
 
+  /**
+   * Hold-to-repeat for the soft keyboard's delete key.
+   *
+   * A hardware keyboard repeats by itself and the OS reports it with
+   * `event.repeat`. A phone keyboard deleting into xterm's helper textarea has
+   * nothing to delete — the textarea is always empty — so it sends one
+   * keydown and stops, and holding delete removes a single character.
+   *
+   * We generate the repeat ourselves, and stand down the moment the platform
+   * shows it is doing it: the first `repeat` event cancels our timer, so a
+   * hardware keyboard never gets two sources.
+   */
+  private wireSoftKeyRepeat(): void {
+    const textarea = this.terminal.textarea;
+    if (!textarea) return;
+    let holdTimer: ReturnType<typeof setTimeout> | null = null;
+    let repeatTimer: ReturnType<typeof setInterval> | null = null;
+
+    const stop = () => {
+      if (holdTimer !== null) clearTimeout(holdTimer);
+      if (repeatTimer !== null) clearInterval(repeatTimer);
+      holdTimer = null;
+      repeatTimer = null;
+    };
+
+    textarea.addEventListener("keydown", (event) => {
+      if (event.key !== "Backspace") return;
+      if (event.repeat) {
+        // The platform is repeating; ours would double it.
+        stop();
+        return;
+      }
+      stop();
+      holdTimer = setTimeout(() => {
+        repeatTimer = setInterval(() => {
+          if (this.exitedValue || this.readOnlyValue) return stop();
+          this.session.sendInput("\u{7f}");
+        }, KEY_REPEAT_INTERVAL_MS);
+      }, KEY_REPEAT_DELAY_MS);
+    });
+    for (const end of ["keyup", "blur"]) textarea.addEventListener(end, stop);
+  }
+
   private wireInput(): void {
     this.terminal.onData((data) => {
       if (this.replayGuard.shouldDrop(data)) return;
@@ -1105,7 +1150,12 @@ export class TerminalPane {
     element.addEventListener(
       "touchstart",
       (event) => {
-        this.host.paneFocusRequested(this);
+        // Only when this pane is not already focused. Asking again re-runs the
+        // renderer handover and re-focuses the textarea, and a soft keyboard
+        // answers that churn by flickering shut and open on every tap.
+        if (document.activeElement !== this.terminal.textarea) {
+          this.host.paneFocusRequested(this);
+        }
         if (event.touches.length !== 1) {
           lastY = null;
           return;
