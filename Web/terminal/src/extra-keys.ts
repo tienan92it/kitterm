@@ -36,6 +36,11 @@ export const DEFAULT_LAYOUT: ExtraKey[][] = [
     { kind: "key", label: "Tab", key: "Tab" },
     { kind: "mod", label: "Ctrl", mod: "ctrl" },
     { kind: "key", label: "⌃C", key: "c", ctrl: true },
+    // The system keyboard's delete cannot repeat here: a virtual key reports
+    // keydown and keyup together on tap, so a hold is not observable from the
+    // web layer at all. This one is, because touchstart and touchend bracket
+    // the press — so holding it is how you delete a run of characters.
+    { kind: "key", label: "⌫", key: "Backspace" },
     { kind: "key", label: "←", key: "ArrowLeft" },
     { kind: "key", label: "↑", key: "ArrowUp" },
     { kind: "key", label: "↓", key: "ArrowDown" },
@@ -59,6 +64,10 @@ function baseSequence(key: string, appCursorKeys: boolean): string {
       return "\x1b";
     case "Tab":
       return "\x09";
+    case "Backspace":
+      // DEL, which is what a terminal expects from the delete key — without
+      // this the default branch would send the literal word "Backspace".
+      return "\x7f";
     case "ArrowUp":
     case "ArrowDown":
     case "ArrowLeft":

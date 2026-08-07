@@ -16,7 +16,6 @@ import {
   extractKeyboardModifiers,
 } from "./kitty";
 import type { FaviconState } from "./favicon";
-import { KEY_REPEAT_DELAY_MS, KEY_REPEAT_INTERVAL_MS } from "./extra-keys";
 import { dragMayCarryFiles, insertionText, quoteForShell, readDrop, uploadDroppedFiles } from "./file-drop";
 import { FilePicker } from "./file-picker";
 import { OutputFlowControl } from "./flow-control";
@@ -225,7 +224,6 @@ export class TerminalPane {
     this.registerMarkHandlers();
     this.registerNotifyHandlers();
     this.wireInput();
-    this.wireSoftKeyRepeat();
     this.wireClipboard();
     this.wireTouch();
     this.wireFileDrop(options.container);
@@ -990,49 +988,6 @@ export class TerminalPane {
       }
       return true;
     });
-  }
-
-  /**
-   * Hold-to-repeat for the soft keyboard's delete key.
-   *
-   * A hardware keyboard repeats by itself and the OS reports it with
-   * `event.repeat`. A phone keyboard deleting into xterm's helper textarea has
-   * nothing to delete — the textarea is always empty — so it sends one
-   * keydown and stops, and holding delete removes a single character.
-   *
-   * We generate the repeat ourselves, and stand down the moment the platform
-   * shows it is doing it: the first `repeat` event cancels our timer, so a
-   * hardware keyboard never gets two sources.
-   */
-  private wireSoftKeyRepeat(): void {
-    const textarea = this.terminal.textarea;
-    if (!textarea) return;
-    let holdTimer: ReturnType<typeof setTimeout> | null = null;
-    let repeatTimer: ReturnType<typeof setInterval> | null = null;
-
-    const stop = () => {
-      if (holdTimer !== null) clearTimeout(holdTimer);
-      if (repeatTimer !== null) clearInterval(repeatTimer);
-      holdTimer = null;
-      repeatTimer = null;
-    };
-
-    textarea.addEventListener("keydown", (event) => {
-      if (event.key !== "Backspace") return;
-      if (event.repeat) {
-        // The platform is repeating; ours would double it.
-        stop();
-        return;
-      }
-      stop();
-      holdTimer = setTimeout(() => {
-        repeatTimer = setInterval(() => {
-          if (this.exitedValue || this.readOnlyValue) return stop();
-          this.session.sendInput("\u{7f}");
-        }, KEY_REPEAT_INTERVAL_MS);
-      }, KEY_REPEAT_DELAY_MS);
-    });
-    for (const end of ["keyup", "blur"]) textarea.addEventListener(end, stop);
   }
 
   private wireInput(): void {

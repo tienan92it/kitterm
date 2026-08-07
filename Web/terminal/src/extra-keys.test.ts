@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { StickyModifiers, type KeySpec, keyBytes , repeatsOnHold } from "./extra-keys";
+import { StickyModifiers, type KeySpec, keyBytes , repeatsOnHold, DEFAULT_LAYOUT } from "./extra-keys";
 
 const spec = (over: Partial<KeySpec> = {}): KeySpec => ({
   key: "a",
@@ -90,5 +90,18 @@ describe("repeatsOnHold", () => {
 
   it("never repeats a sticky modifier", () => {
     expect(repeatsOnHold({ kind: "mod", label: "Ctrl", mod: "ctrl" })).toBe(false);
+  });
+});
+
+describe("backspace", () => {
+  // The default branch returns the key name verbatim, so a missing case types
+  // the word "Backspace" into the shell.
+  it("sends DEL, not its own name", () => {
+    expect(keyBytes(spec({ key: "Backspace" }))).toBe("\u007f");
+  });
+
+  it("is in the bar, since a system keyboard's delete cannot repeat on hold", () => {
+    const keys = DEFAULT_LAYOUT.flat().filter((k) => k.kind === "key");
+    expect(keys.some((k) => k.kind === "key" && k.key === "Backspace")).toBe(true);
   });
 });
