@@ -140,3 +140,44 @@ describe("keys the shell must keep", () => {
     ).toBeNull();
   });
 });
+
+describe("browse-files chord", () => {
+  it("is Cmd+Alt+O on mac and Ctrl+Shift+Alt+O elsewhere", () => {
+    expect(matchPaneCommand(
+      { key: "o", metaKey: true, altKey: true, ctrlKey: false, shiftKey: false }, true,
+    )).toEqual({ type: "browse-files" });
+    expect(matchPaneCommand(
+      { key: "O", metaKey: false, altKey: true, ctrlKey: true, shiftKey: true }, false,
+    )).toEqual({ type: "browse-files" });
+  });
+
+  // A bare "o" is a keystroke for the shell, not a chord.
+  it("does not fire without its modifiers", () => {
+    expect(matchPaneCommand(
+      { key: "o", metaKey: false, altKey: false, ctrlKey: false, shiftKey: false }, true,
+    )).toBeNull();
+  });
+});
+
+describe("Option-composed keys on macOS", () => {
+  // Holding Option composes an alternate character, so ⌘⌥O arrives as "ø" and
+  // ⌘⌥T as "†". Matching on the character misses every Option chord on a real
+  // keyboard, which is why the physical key code is what counts.
+  it("matches by physical key when Option has changed the character", () => {
+    expect(matchPaneCommand(
+      { key: "ø", code: "KeyO", metaKey: true, altKey: true, ctrlKey: false, shiftKey: false }, true,
+    )).toEqual({ type: "browse-files" });
+    expect(matchPaneCommand(
+      { key: "†", code: "KeyT", metaKey: true, altKey: true, ctrlKey: false, shiftKey: false }, true,
+    )).toEqual({ type: "new-tab" });
+    expect(matchPaneCommand(
+      { key: "∑", code: "KeyW", metaKey: true, altKey: true, ctrlKey: false, shiftKey: false }, true,
+    )).toEqual({ type: "close" });
+  });
+
+  it("still works for events that carry no code", () => {
+    expect(matchPaneCommand(
+      { key: "o", metaKey: true, altKey: true, ctrlKey: false, shiftKey: false }, true,
+    )).toEqual({ type: "browse-files" });
+  });
+});

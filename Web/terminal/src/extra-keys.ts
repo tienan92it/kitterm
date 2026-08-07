@@ -20,6 +20,16 @@ export type ExtraKey = ActionKey | ModifierKey;
  * and tab, sticky Ctrl for the long tail (Ctrl-D/Z/A/E…), a one-tap Ctrl-C
  * because it is by far the most common, and the four arrows. Deliberately
  * short — extra clutter is why the first version felt complicated. */
+/** Held keys repeat like a hardware keyboard: a pause, then steady. */
+export const KEY_REPEAT_DELAY_MS = 400;
+export const KEY_REPEAT_INTERVAL_MS = 55;
+
+/** Which keys mean "keep going" when held. */
+export function repeatsOnHold(key: ExtraKey): boolean {
+  if (key.kind !== "key") return false;
+  return ["Backspace", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(key.key);
+}
+
 export const DEFAULT_LAYOUT: ExtraKey[][] = [
   [
     { kind: "key", label: "Esc", key: "Escape" },
@@ -49,6 +59,10 @@ function baseSequence(key: string, appCursorKeys: boolean): string {
       return "\x1b";
     case "Tab":
       return "\x09";
+    case "Backspace":
+      // DEL, which is what a terminal expects from the delete key — without
+      // this the default branch would send the literal word "Backspace".
+      return "\x7f";
     case "ArrowUp":
     case "ArrowDown":
     case "ArrowLeft":
@@ -127,6 +141,9 @@ export class ExtraKeysBar {
   constructor(
     private readonly onKey: (spec: KeySpec) => void,
     layout: ExtraKey[][] = DEFAULT_LAYOUT,
+    private readonly onAttach?: (files: readonly File[]) => void,
+    private readonly onBrowse?: () => void,
+    private readonly onDismissPicker?: () => void,
   ) {
     this.element = document.createElement("div");
     this.element.className = "extra-keys";
@@ -137,8 +154,116 @@ export class ExtraKeysBar {
       const rowEl = document.createElement("div");
       rowEl.className = "extra-keys-row";
       for (const key of row) rowEl.append(this.button(key));
+      if (row === layout[0]) {
+        if (this.onBrowse) rowEl.append(this.browseButton());
+        if (this.onAttach) rowEl.append(this.attachControl());
+      }
       this.element.append(rowEl);
     }
+  }
+
+  /** Browse the machine the session runs on and insert a path — no copy, and
+   *  folders work too. */
+  /**
+   * Wire a bar button so it behaves like the others: it never takes focus (the
+   * terminal's textarea must keep it or the soft keyboard dismisses), it acts
+   * on touchstart, and it ignores the ghost click a browser fires afterwards.
+   *
+   * `repeat` gives press-and-hold, for keys where holding obviously means "keep
+   * going" — backspace and the arrows.
+   */
+  private wireTap(btn: HTMLButtonElement, act: () => void, repeat = false): void {
+    btn.tabIndex = -1;
+    let lastTouchAt = -Infinity;
+    let holdTimer: ReturnType<typeof setTimeout> | null = null;
+    let repeatTimer: ReturnType<typeof setInterval> | null = null;
+
+    const stopHold = () => {
+      if (holdTimer !== null) clearTimeout(holdTimer);
+      if (repeatTimer !== null) clearInterval(repeatTimer);
+      holdTimer = null;
+      repeatTimer = null;
+    };
+    const startHold = () => {
+      if (!repeat) return;
+      stopHold();
+      // Same shape as a hardware key: a pause before it takes, then steady.
+      holdTimer = setTimeout(() => {
+        repeatTimer = setInterval(act, KEY_REPEAT_INTERVAL_MS);
+      }, KEY_REPEAT_DELAY_MS);
+    };
+
+    btn.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      startHold();
+    });
+    btn.addEventListener(
+      "touchstart",
+      (event) => {
+        event.preventDefault();
+        lastTouchAt = performance.now();
+        act();
+        startHold();
+      },
+      { passive: false },
+    );
+    for (const end of ["touchend", "touchcancel", "mouseup", "mouseleave"]) {
+      btn.addEventListener(end, stopHold);
+    }
+    btn.addEventListener("click", () => {
+      stopHold();
+      // Ghost clicks arrive well under this after the touch; a deliberate
+      // mouse click after a tap on a hybrid device arrives much later.
+      if (performance.now() - lastTouchAt < 700) return;
+      act();
+    });
+  }
+
+  private browseButton(): HTMLButtonElement {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "extra-key extra-key-browse";
+    btn.textContent = "⌸";
+    btn.setAttribute("aria-label", "Browse files on this machine");
+    this.wireTap(btn, () => this.onBrowse?.());
+    return btn;
+  }
+
+  /**
+   * Attaching is a `<label>` wrapping the file input, with no JavaScript in the
+   * path at all.
+   *
+   * A button that calls `input.click()` does not work on a phone: the tap
+   * handler has to `preventDefault` to keep the terminal focused, and that
+   * spends the user gesture, after which the system refuses to open a file
+   * picker. A label activates its input natively, so the gesture is never
+   * intermediated — and there is no click of ours to recurse through.
+   */
+  private attachControl(): HTMLElement {
+    const label = document.createElement("label");
+    label.className = "extra-key extra-key-attach";
+    label.title = "Attach a file";
+    label.setAttribute("aria-label", "Attach a file");
+    label.append(document.createTextNode("＋"));
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.className = "extra-key-file-input";
+    input.addEventListener("change", () => {
+      const files = Array.from(input.files ?? []);
+      if (files.length > 0) this.onAttach?.(files);
+      // Cleared so picking the same file twice fires again.
+      input.value = "";
+      // Activating a label focuses its input, which is what drops the soft
+      // keyboard; the system picker takes the screen either way, so the repair
+      // is to hand focus back once it closes. Cancelling fires no event at all,
+      // so the same is done when the window comes back.
+      this.onDismissPicker?.();
+    });
+    input.addEventListener("cancel", () => this.onDismissPicker?.());
+    label.append(input);
+    return label;
   }
 
   private button(key: ExtraKey): HTMLButtonElement {
@@ -146,9 +271,6 @@ export class ExtraKeysBar {
     btn.type = "button";
     btn.className = "extra-key";
     btn.textContent = key.label;
-    // Never take focus: the terminal's textarea must stay focused so the soft
-    // keyboard does not dismiss when a key is tapped.
-    btn.tabIndex = -1;
 
     const act = key.kind === "mod" ? () => this.tapModifier(key.mod) : () => this.tapKey(key);
     if (key.kind === "mod") {
@@ -156,30 +278,7 @@ export class ExtraKeysBar {
       this.modButtons.set(key.mod, btn);
     }
 
-    // Touch and mouse deliver the tap differently, and preventDefault on
-    // touchstart (needed to keep the terminal focused) also cancels the
-    // synthesized click on spec-compliant browsers — so the touch path acts on
-    // touchstart, the mouse path on click. A ghost click a browser fires anyway
-    // is ignored by time window, not a sticky flag: a flag left armed (when the
-    // click never comes) would swallow the next real mouse click on a hybrid
-    // touchscreen/mouse device.
-    let lastTouchAt = -Infinity;
-    btn.addEventListener("mousedown", (e) => e.preventDefault());
-    btn.addEventListener(
-      "touchstart",
-      (e) => {
-        e.preventDefault();
-        lastTouchAt = performance.now();
-        act();
-      },
-      { passive: false },
-    );
-    btn.addEventListener("click", () => {
-      // Ghost clicks arrive well under this after the touch; a deliberate
-      // mouse click after a tap on a hybrid device arrives much later.
-      if (performance.now() - lastTouchAt < 700) return;
-      act();
-    });
+    this.wireTap(btn, act, repeatsOnHold(key));
     return btn;
   }
 

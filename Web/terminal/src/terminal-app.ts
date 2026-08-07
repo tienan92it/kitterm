@@ -349,6 +349,9 @@ export class TerminalApp implements PaneHost {
         if (target) this.setFocus(target);
         break;
       }
+      case "browse-files":
+        pane.toggleFilePicker();
+        break;
       case "new-tab": {
         // Synchronous with the keydown gesture — any await/rAF here and the
         // popup blocker kills the tab. Full path, not the folder basename.
@@ -432,7 +435,13 @@ export class TerminalApp implements PaneHost {
    * lack Ctrl/Alt/Esc/arrows. Its keys go to the focused pane. */
   private mountExtraKeys(): void {
     if (!isTouchPrimary()) return;
-    const bar = new ExtraKeysBar((spec) => this.focusedPane?.sendExtraKey(spec));
+    const bar = new ExtraKeysBar(
+      (spec) => this.focusedPane?.sendExtraKey(spec),
+      undefined,
+      (files) => void this.focusedPane?.attachFiles(files),
+      () => this.focusedPane?.toggleFilePicker(),
+      () => this.focusedPane?.focus(),
+    );
     document.body.append(bar.element);
     document.body.classList.add("has-extra-keys");
     // Lift the row and terminal above the software keyboard.

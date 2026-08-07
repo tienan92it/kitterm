@@ -210,6 +210,7 @@ public actor SessionRegistry {
         if let session = sessions.removeValue(forKey: id) {
             session.terminate()
             session.discardRetainedOutput()
+            SessionDrops.discard(sessionID: id)
         }
     }
 }

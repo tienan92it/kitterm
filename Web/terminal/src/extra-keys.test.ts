@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { StickyModifiers, type KeySpec, keyBytes } from "./extra-keys";
+import { StickyModifiers, type KeySpec, keyBytes , repeatsOnHold, DEFAULT_LAYOUT } from "./extra-keys";
 
 const spec = (over: Partial<KeySpec> = {}): KeySpec => ({
   key: "a",
@@ -78,3 +78,32 @@ describe("StickyModifiers", () => {
 // The ExtraKeysBar DOM (rendering, focus discipline, tap wiring) is covered by
 // the Playwright mobile e2e; vitest runs without a DOM, matching the codebase's
 // pure-test convention.
+
+describe("repeatsOnHold", () => {
+  // Holding these obviously means "keep going"; holding Esc or Ctrl does not.
+  it("covers backspace and the arrows only", () => {
+    expect(repeatsOnHold({ kind: "key", label: "⌫", key: "Backspace" })).toBe(true);
+    expect(repeatsOnHold({ kind: "key", label: "←", key: "ArrowLeft" })).toBe(true);
+    expect(repeatsOnHold({ kind: "key", label: "Esc", key: "Escape" })).toBe(false);
+    expect(repeatsOnHold({ kind: "key", label: "Tab", key: "Tab" })).toBe(false);
+  });
+
+  it("never repeats a sticky modifier", () => {
+    expect(repeatsOnHold({ kind: "mod", label: "Ctrl", mod: "ctrl" })).toBe(false);
+  });
+});
+
+describe("backspace", () => {
+  // The default branch returns the key name verbatim, so a missing case types
+  // the word "Backspace" into the shell.
+  it("sends DEL, not its own name", () => {
+    expect(keyBytes(spec({ key: "Backspace" }))).toBe("\u007f");
+  });
+
+  // Not in the default bar — the system keyboard's delete is the one people
+  // reach for — but a custom layout may carry it, and it must send DEL.
+  it("is not in the default bar", () => {
+    const keys = DEFAULT_LAYOUT.flat();
+    expect(keys.some((k) => k.kind === "key" && k.key === "Backspace")).toBe(false);
+  });
+});

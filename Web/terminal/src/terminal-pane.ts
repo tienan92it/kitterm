@@ -16,6 +16,8 @@ import {
   extractKeyboardModifiers,
 } from "./kitty";
 import type { FaviconState } from "./favicon";
+import { dragMayCarryFiles, insertionText, quoteForShell, readDrop, uploadDroppedFiles } from "./file-drop";
+import { FilePicker } from "./file-picker";
 import { OutputFlowControl } from "./flow-control";
 import { resolveFontFamily } from "./fonts";
 import { matchPaneCommand, type PaneCommand } from "./pane-keys";
@@ -163,6 +165,7 @@ export class TerminalPane {
   private fitHandle: number | null = null;
 
   private readonly containerEl: HTMLElement;
+  private filePicker: FilePicker | null = null;
 
   constructor(options: TerminalPaneOptions) {
     this.id = options.id;
@@ -223,8 +226,151 @@ export class TerminalPane {
     this.wireInput();
     this.wireClipboard();
     this.wireTouch();
+    this.wireFileDrop(options.container);
     this.wireResize(options.container);
     this.setConnectionState("reconnecting");
+  }
+
+  /**
+   * Drag a file onto a pane and the path where it landed appears at the
+   * cursor, ready to hand to whatever is running — usually a coding agent,
+   * which takes context as paths. The same route serves a phone sharing a
+   * screenshot, so a photo taken there reaches the machine the agent is on.
+   *
+   * Inserted through `paste()` so bracketed paste applies, and never with a
+   * newline: dropping a file must not run anything.
+   */
+  private wireFileDrop(element: HTMLElement): void {
+    let depth = 0;
+    // A drag that started in this terminal is xterm moving its own selection.
+    // Intercepting it would paste the selection back and interfere with how
+    // xterm tracks the gesture, so those are left entirely alone.
+    let internal = false;
+    const clear = () => {
+      depth = 0;
+      element.classList.remove("is-drop-target");
+    };
+    element.addEventListener("dragstart", () => {
+      internal = true;
+    });
+    element.addEventListener("dragend", () => {
+      internal = false;
+      clear();
+    });
+
+    // Always prevent, never conditionally: the default action for a dropped
+    // file is to navigate to it, which loses the tab. Browsers also withhold
+    // the drag payload until the drop, so a handler that waits until it can
+    // see files has already let the default through.
+    element.addEventListener("dragenter", (event) => {
+      if (internal) return;
+      event.preventDefault();
+      depth += 1;
+      if (dragMayCarryFiles(event.dataTransfer)) element.classList.add("is-drop-target");
+    });
+    element.addEventListener("dragover", (event) => {
+      if (internal) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    });
+    element.addEventListener("dragleave", () => {
+      // Fires for children too, so only the outermost leave clears the hint.
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) element.classList.remove("is-drop-target");
+    });
+    element.addEventListener("drop", (event) => {
+      if (internal) {
+        internal = false;
+        return;
+      }
+      event.preventDefault();
+      clear();
+      const payload = readDrop(event.dataTransfer);
+      if (payload.kind === "files") {
+        void this.attachFiles(payload.files as readonly File[]);
+      } else if (payload.kind === "text") {
+        // Text dragged in from elsewhere behaves like a paste.
+        this.terminal.focus();
+        this.terminal.paste(payload.text);
+      }
+    });
+  }
+
+  /// Browse the machine this session runs on and insert a real path. Unlike a
+  /// drop this copies nothing, so the agent reads and edits the actual file,
+  /// and a folder works as well as a file.
+  toggleFilePicker(): void {
+    if (!this.filePicker) {
+      this.filePicker = new FilePicker({
+        sessionId: () => this.sessionIdValue,
+        insert: (paths) => {
+          this.terminal.focus();
+          this.terminal.paste(paths.map(quoteForShell).join(" ") + " ");
+        },
+        flash: (message) => this.host.paneFlash(message),
+        cursorAnchor: () => this.cursorAnchor(),
+        restoreFocus: () => this.terminal.focus(),
+      });
+      this.containerEl.append(this.filePicker.element);
+    }
+    // A second tap on the same control puts it away — on a phone the button
+    // is the only way back, and reopening what is already open reads as broken.
+    if (this.filePicker.isOpen) {
+      this.filePicker.hide();
+      return;
+    }
+    void this.filePicker.show(this.cwd);
+  }
+
+  /// Where the terminal cursor is, in pane coordinates, so the picker can open
+  /// where you are typing. Cell size is derived from the screen element rather
+  /// than xterm internals, which are private and have moved between versions.
+  private cursorAnchor(): { left: number; top: number; lineHeight: number } {
+    const screen = this.containerEl.querySelector(".xterm-screen") as HTMLElement | null;
+    const width = screen?.clientWidth ?? this.containerEl.clientWidth;
+    const height = screen?.clientHeight ?? this.containerEl.clientHeight;
+    const cellWidth = width / Math.max(1, this.terminal.cols);
+    const lineHeight = height / Math.max(1, this.terminal.rows);
+    const buffer = this.terminal.buffer.active;
+    let offsetLeft = 0;
+    let offsetTop = 0;
+    if (screen) {
+      const screenBox = screen.getBoundingClientRect();
+      const paneBox = this.containerEl.getBoundingClientRect();
+      offsetLeft = screenBox.left - paneBox.left;
+      offsetTop = screenBox.top - paneBox.top;
+    }
+    return {
+      left: offsetLeft + buffer.cursorX * cellWidth,
+      top: offsetTop + (buffer.cursorY + 1) * lineHeight,
+      lineHeight,
+    };
+  }
+
+  /// Take files into this pane, from a drag or from the picker a touch device
+  /// needs — phones have no drag and drop, and sharing a screenshot into a
+  /// session is the whole point of reaching it from one.
+  async attachFiles(files: readonly File[]): Promise<void> {
+    const sessionId = this.sessionIdValue;
+    if (!sessionId) {
+      this.host.paneFlash("This pane has no session yet");
+      return;
+    }
+    this.host.paneFlash(files.length === 1 ? `Adding ${files[0].name}…` : `Adding ${files.length} files…`);
+    const { uploaded, errors } = await uploadDroppedFiles(sessionId, files);
+    if (uploaded.length > 0) {
+      // Focus first: a drop can land on an unfocused pane, and WebKit will not
+      // deliver the paste to a terminal that is not focused.
+      this.terminal.focus();
+      this.terminal.paste(insertionText(uploaded));
+    }
+    if (errors.length > 0) {
+      this.host.paneFlash(errors[0]);
+    } else if (uploaded.length > 0) {
+      this.host.paneFlash(
+        uploaded.length === 1 ? `Added ${uploaded[0].name}` : `Added ${uploaded.length} files`,
+      );
+    }
   }
 
   // MARK: Accessors used by the shell
@@ -965,7 +1111,12 @@ export class TerminalPane {
     element.addEventListener(
       "touchstart",
       (event) => {
-        this.host.paneFocusRequested(this);
+        // Only when this pane is not already focused. Asking again re-runs the
+        // renderer handover and re-focuses the textarea, and a soft keyboard
+        // answers that churn by flickering shut and open on every tap.
+        if (document.activeElement !== this.terminal.textarea) {
+          this.host.paneFocusRequested(this);
+        }
         if (event.touches.length !== 1) {
           lastY = null;
           return;
