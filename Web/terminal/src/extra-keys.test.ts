@@ -100,8 +100,10 @@ describe("backspace", () => {
     expect(keyBytes(spec({ key: "Backspace" }))).toBe("\u007f");
   });
 
-  it("is in the bar, since a system keyboard's delete cannot repeat on hold", () => {
-    const keys = DEFAULT_LAYOUT.flat().filter((k) => k.kind === "key");
-    expect(keys.some((k) => k.kind === "key" && k.key === "Backspace")).toBe(true);
+  // Not in the default bar — the system keyboard's delete is the one people
+  // reach for — but a custom layout may carry it, and it must send DEL.
+  it("is not in the default bar", () => {
+    const keys = DEFAULT_LAYOUT.flat();
+    expect(keys.some((k) => k.kind === "key" && k.key === "Backspace")).toBe(false);
   });
 });
