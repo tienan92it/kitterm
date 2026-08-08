@@ -35,6 +35,7 @@ kitterm start
 
 ```sh
 kitterm start [--port PORT] [--lan] [--record] [--agent-control] [--retain-logs]
+              [--rotate-token]
               [--trusted-host NAME] [--tls-cert FILE --tls-key FILE [--tls-port PORT]]
 kitterm stop | status | restart
 kitterm open [PATH]

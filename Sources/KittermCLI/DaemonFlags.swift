@@ -12,6 +12,9 @@ struct DaemonFlags {
     var record = false
     var agentControl = false
     var retainLogs = false
+    /// Replace the stored tokens rather than reusing them, revoking any link
+    /// already handed out.
+    var rotateTokens = false
     /// Public names the daemon answers to behind a proxy / overlay network.
     var trustedHosts: Set<String> = []
     var tlsCert: String?
@@ -28,6 +31,7 @@ struct DaemonFlags {
             record: array.contains("--record"),
             agentControl: array.contains("--agent-control"),
             retainLogs: array.contains("--retain-logs"),
+            rotateTokens: array.contains("--rotate-token"),
             trustedHosts: KittermMain.parseTrustedHosts(array),
             tlsCert: KittermMain.parseOption("--tls-cert", array),
             tlsKey: KittermMain.parseOption("--tls-key", array),
@@ -78,6 +82,7 @@ struct DaemonFlags {
         if record { args.append("--record") }
         if agentControl { args.append("--agent-control") }
         if retainLogs { args.append("--retain-logs") }
+        if rotateTokens { args.append("--rotate-token") }
         for host in trustedHosts.sorted() {
             args.append(contentsOf: ["--trusted-host", host])
         }
@@ -99,7 +104,8 @@ struct DaemonFlags {
             trustedHosts: trustedHosts,
             tls: try tlsConfig(port: port),
             orchestratedLingerSeconds: try validatedSessionLinger()
-                ?? KittermConstants.orchestratedSessionLingerSeconds
+                ?? KittermConstants.orchestratedSessionLingerSeconds,
+            rotateTokens: rotateTokens
         )
     }
 }

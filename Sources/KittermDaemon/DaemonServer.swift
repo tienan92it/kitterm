@@ -30,6 +30,9 @@ public struct DaemonConfig: Sendable {
     /// the in-memory ring stay readable. Off by default: this is shell output
     /// on disk, the same reason `--record` is opt-in.
     public var retainLogs: Bool
+    /// Mint fresh tokens instead of reusing the stored ones. Tokens persist so
+    /// a share link survives a restart; this is how you revoke one.
+    public var rotateTokens: Bool
 
     public init(
         host: String = KittermConstants.defaultHost,
@@ -40,7 +43,8 @@ public struct DaemonConfig: Sendable {
         agentControl: Bool = false,
         trustedHosts: Set<String> = [],
         tls: TLSConfig? = nil,
-        orchestratedLingerSeconds: Int = KittermConstants.orchestratedSessionLingerSeconds
+        orchestratedLingerSeconds: Int = KittermConstants.orchestratedSessionLingerSeconds,
+        rotateTokens: Bool = false
     ) {
         self.host = host
         self.port = port
@@ -51,7 +55,7 @@ public struct DaemonConfig: Sendable {
         self.trustedHosts = trustedHosts
         self.tls = tls
         self.orchestratedLingerSeconds = orchestratedLingerSeconds
-        self.retainLogs = retainLogs
+        self.rotateTokens = rotateTokens
     }
 }
 
@@ -83,16 +87,19 @@ public final class DaemonServer: @unchecked Sendable {
         // presenting a public name — needs the token pair.
         let policy: AccessPolicy
         if config.allowLAN || !config.trustedHosts.isEmpty {
-            let token = AccessPolicy.generateToken()
-            let watchToken = TokenStore.generate(grade: .watch)
             try DaemonPaths.ensureStateDirectory()
-            for (value, file) in [(token, DaemonPaths.tokenFile), (watchToken, DaemonPaths.watchTokenFile)] {
-                try value.write(to: file, atomically: true, encoding: .utf8)
-                try FileManager.default.setAttributes(
-                    [.posixPermissions: 0o600],
-                    ofItemAtPath: file.path
-                )
-            }
+            // Kept across restarts, so a link already on a phone survives one.
+            // `--rotate-token` is how you revoke.
+            let token = try PersistedToken.loadOrCreate(
+                at: DaemonPaths.tokenFile,
+                rotate: config.rotateTokens,
+                generate: AccessPolicy.generateToken
+            )
+            let watchToken = try PersistedToken.loadOrCreate(
+                at: DaemonPaths.watchTokenFile,
+                rotate: config.rotateTokens,
+                generate: { TokenStore.generate(grade: .watch) }
+            )
             let named = CachedTokenStore()
             policy = config.allowLAN
                 ? .lan(
