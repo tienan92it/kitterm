@@ -18,6 +18,9 @@ let package = Package(
         // TLS for the optional external listener only; the loopback listener
         // never sees this handler.
         .package(url: "https://github.com/apple/swift-nio-ssl.git", from: "2.27.0"),
+        // Token hashing where CryptoKit does not exist. Linked on Linux only,
+        // so macOS keeps using the system framework and gains no binary.
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
     ],
     targets: [
         .target(
@@ -36,6 +39,11 @@ let package = Package(
                 .product(name: "NIOHTTP1", package: "swift-nio"),
                 .product(name: "NIOWebSocket", package: "swift-nio"),
                 .product(name: "NIOSSL", package: "swift-nio-ssl"),
+                .product(
+                    name: "Crypto",
+                    package: "swift-crypto",
+                    condition: .when(platforms: [.linux])
+                ),
             ]
         ),
         .executableTarget(

@@ -1,4 +1,8 @@
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
 import Foundation
 import KittermProtocol
 import NIOConcurrencyHelpers
@@ -179,20 +183,20 @@ public final class PtySession: @unchecked Sendable {
         var attrs: posix_spawnattr_t?
         var actions: posix_spawn_file_actions_t?
         guard posix_spawnattr_init(&attrs) == 0 else {
-            _ = Darwin.close(master)
-            _ = Darwin.close(slave)
+            _ = close(master)
+            _ = close(slave)
             throw PtyError.forkFailed(errno: errno)
         }
         guard posix_spawn_file_actions_init(&actions) == 0 else {
             posix_spawnattr_destroy(&attrs)
-            _ = Darwin.close(master)
-            _ = Darwin.close(slave)
+            _ = close(master)
+            _ = close(slave)
             throw PtyError.forkFailed(errno: errno)
         }
         defer {
             posix_spawnattr_destroy(&attrs)
             posix_spawn_file_actions_destroy(&actions)
-            _ = Darwin.close(slave)
+            _ = close(slave)
         }
 
         posix_spawnattr_setflags(
@@ -216,7 +220,7 @@ public final class PtySession: @unchecked Sendable {
         // recording, the replay tail, and observers all pick it up unchanged.
         if let banner = LastLogin.banner(forSlave: slave) {
             _ = banner.withCString { ptr in
-                Darwin.write(slave, ptr, strlen(ptr))
+                systemWrite(slave, ptr, strlen(ptr))
             }
         }
 
@@ -255,7 +259,7 @@ public final class PtySession: @unchecked Sendable {
             posix_spawn(&childPid, path, &actions, &attrs, &argv, &envPointers)
         }
         guard spawnRC == 0, childPid > 0 else {
-            _ = Darwin.close(master)
+            _ = close(master)
             throw PtyError.forkFailed(errno: spawnRC == 0 ? errno : spawnRC)
         }
 
@@ -297,7 +301,7 @@ public final class PtySession: @unchecked Sendable {
             return eventLoop.makeSucceededFuture(())
         }
 
-        let readFD = Darwin.dup(masterFD)
+        let readFD = dup(masterFD)
         guard readFD >= 0 else {
             return eventLoop.makeFailedFuture(PtyError.forkFailed(errno: errno))
         }
@@ -855,7 +859,7 @@ public final class PtySession: @unchecked Sendable {
             self.recorder = nil
             // The shell is going away; undelivered input has nowhere to go.
             pendingInput = Data()
-            _ = Darwin.close(masterFD)
+            _ = close(masterFD)
             return (channel, recorder, nil)
         }
         guard let shutdown else { return }
