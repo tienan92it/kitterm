@@ -20,10 +20,17 @@ int main(int argc, char **argv) {
   }
 
   /* Attach controlling TTY: session has no ctty yet (SETSID); opening the slave
-   * without O_NOCTTY makes it the controlling terminal. */
+   * without O_NOCTTY makes it the controlling terminal.
+   *
+   * O_NONBLOCK because this open blocks forever if the master has already been
+   * closed — which happens whenever a session is torn down in the moment
+   * between spawning us and our reaching this line. We would then sleep here
+   * for good, be reparented to init when the daemon exits, and leak a process
+   * per occurrence. The flag only governs this open; the ioctl below is what
+   * actually acquires the terminal, and the descriptor is closed immediately. */
   char *slave_path = ttyname(STDIN_FILENO);
   if (slave_path != NULL) {
-    int fd = open(slave_path, O_RDWR);
+    int fd = open(slave_path, O_RDWR | O_NONBLOCK);
     if (fd >= 0) {
       close(fd);
     }
