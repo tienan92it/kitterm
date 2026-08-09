@@ -107,6 +107,24 @@ final class HTTPRoutesIntegrationTests: XCTestCase {
         )
     }
 
+    // MARK: - version
+
+    /// The settings footer needs the build that is *answering*, not the one on
+    /// disk — a deferred upgrade leaves those different on purpose so live panes
+    /// survive. Under the test bundle there is no install prefix, so both fall
+    /// back to the same value and nothing is pending.
+    func testVersionRouteReportsRunningAndInstalled() async throws {
+        let response = try await get("/api/version")
+        XCTAssertEqual(response.status, 200)
+        let body = try json(response.body)
+        XCTAssertEqual(body["ok"] as? Bool, true)
+        let running = try XCTUnwrap(body["running"] as? String)
+        let installed = try XCTUnwrap(body["installed"] as? String)
+        XCTAssertFalse(running.isEmpty)
+        XCTAssertEqual(running, installed)
+        XCTAssertEqual(body["updatePending"] as? Bool, false)
+    }
+
     // MARK: - wait
 
     /// A command that never ends comes back still running, not failed — a slow

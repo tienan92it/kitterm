@@ -207,6 +207,32 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                     keepAlive: head.isKeepAlive
                 )
             }
+        case (.GET, "/api/version"):
+            // `running` is this process; `installed` is what a restart would
+            // pick up. They differ after `kitterm upgrade`, which stages a new
+            // build without stopping the daemon so live panes survive.
+            let running = BuildVersion.running
+            let installed = BuildVersion.onDisk()
+            let payload: [String: Any] = [
+                "ok": true,
+                "running": running,
+                "installed": installed,
+                "updatePending": installed != running,
+            ]
+            let body: String
+            if let data = try? JSONSerialization.data(withJSONObject: payload),
+               let text = String(data: data, encoding: .utf8) {
+                body = text
+            } else {
+                body = #"{"ok":false,"error":"encoding failed"}"#
+            }
+            writeJSON(
+                status: .ok,
+                body: body,
+                context: context,
+                version: head.version,
+                keepAlive: head.isKeepAlive
+            )
         case (.GET, "/api/lan"):
             // Share-link support: the LAN base URL, plus the token — but only
             // for loopback callers (the machine's own user).

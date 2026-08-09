@@ -602,30 +602,48 @@ enum KittermMain {
     /// The install prefix this binary lives under, or nil for a dev/unknown
     /// layout. Installed layout is always `<prefix>/lib/kitterm/kitterm`.
     private static func installedPrefix() -> URL? {
-        let url = URL(fileURLWithPath: ResolveExecutable.path()).standardizedFileURL
-        guard
-            url.deletingLastPathComponent().lastPathComponent == "kitterm",
-            url.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent == "lib"
-        else {
-            return nil
-        }
-        return url
-            .deletingLastPathComponent()  // lib/kitterm
-            .deletingLastPathComponent()  // lib
-            .deletingLastPathComponent()  // prefix
+        InstallLayout.prefix(forExecutable: ResolveExecutable.path())
     }
 
     /// Version string packaged at `<prefix>/share/kitterm/VERSION`, or nil.
+    /// This is what is *on disk* — after a deferred upgrade a running daemon is
+    /// still serving the previous one, which `daemonVersion(port:)` reports.
     private static func installedVersion() -> String? {
-        guard let prefix = installedPrefix() else { return nil }
-        let file = prefix.appendingPathComponent("share/kitterm/VERSION")
-        return (try? String(contentsOf: file, encoding: .utf8))?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        InstallLayout.versionOnDisk(executablePath: ResolveExecutable.path())
+    }
+
+    /// The version of the daemon currently answering on `port`, or nil if none
+    /// is. Asked over loopback rather than inferred, because the whole point of
+    /// a deferred upgrade is that the files on disk no longer describe it.
+    private static func daemonVersion(port: Int) -> String? {
+        guard let url = URL(string: "http://127.0.0.1:\(port)/api/version") else {
+            return nil
+        }
+        var request = URLRequest(url: url, timeoutInterval: 0.5)
+        request.setValue("127.0.0.1:\(port)", forHTTPHeaderField: "Host")
+        let sem = DispatchSemaphore(value: 0)
+        var version: String?
+        let task = URLSession.shared.dataTask(with: request) { data, response, _ in
+            defer { sem.signal() }
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  let data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { return }
+            version = json["running"] as? String
+        }
+        task.resume()
+        _ = sem.wait(timeout: .now() + 0.7)
+        return version
     }
 
     /// Reinstall the latest release into this binary's own prefix by running the
-    /// official installer, which handles checksum, quarantine, and the
-    /// stop→swap→restart of a service-managed daemon.
+    /// official installer, which handles checksum and quarantine.
+    ///
+    /// The installer is told **not** to restart the daemon. Stopping it closes
+    /// every PTY master fd and so kills every live pane, which is why upgrading
+    /// used to be something you could only do from outside kitterm. The new
+    /// build is staged on disk and takes over at the next daemon start —
+    /// automatic at the next login when the service is installed.
     private static func upgrade() throws {
         guard let prefix = installedPrefix() else {
             throw CLIError.upgradeUnavailable(
@@ -634,27 +652,74 @@ enum KittermMain {
             )
         }
 
-        print("current version: \(installedVersion() ?? "unknown")")
-        print("installing the latest release into \(prefix.path) …")
+        // Ask the daemon before the files change: afterwards, what is on disk no
+        // longer describes what is running.
+        let port = readPort() ?? KittermConstants.defaultPort
+        let runningBefore = daemonVersion(port: port)
+        print("upgrading kitterm in \(prefix.path) …")
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
         process.arguments = ["-c", "curl -fsSL https://kitterm.dev/install.sh | sh"]
         var environment = ProcessInfo.processInfo.environment
         environment["KITTERM_PREFIX"] = prefix.path
+        environment["KITTERM_DEFER_RESTART"] = "1"
         process.environment = environment
-        // Inherit stdio so the installer's progress streams straight through.
+        // Quiet by default — this has to be runnable from a pane without taking
+        // over the screen. Captured rather than discarded: a failure prints all
+        // of it, so nothing is swallowed.
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
 
         do {
             try process.run()
         } catch {
             throw CLIError.upgradeFailed(detail: error.localizedDescription)
         }
+        // Read before waiting: a full pipe buffer would deadlock the child.
+        let output = String(
+            data: pipe.fileHandleForReading.readDataToEndOfFile(),
+            encoding: .utf8
+        ) ?? ""
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {
+            FileHandle.standardError.write(Data(output.utf8))
             throw CLIError.upgradeFailed(
                 detail: "installer exited with status \(process.terminationStatus)"
             )
+        }
+
+        let staged = installedVersion() ?? "unknown"
+        guard let runningBefore else {
+            print("kitterm \(staged) installed; no daemon was running, so the next start uses it")
+            return
+        }
+        if runningBefore == staged {
+            print("kitterm \(staged) is already the newest release — nothing changed")
+            return
+        }
+
+        // The installer restarts the daemon on the one upgrade that migrates to
+        // the versioned web layout. Its output is captured, so that would
+        // otherwise take the panes away with no explanation on screen.
+        let runningAfter = daemonVersion(port: port)
+        guard let runningAfter else {
+            print("kitterm \(staged) installed, but the daemon is not answering on port \(port).")
+            print("check `kitterm status`; ~/.kitterm/server.log has the detail")
+            return
+        }
+        if runningAfter != runningBefore {
+            print("kitterm \(staged) installed. Completing it needed a daemon restart, so live")
+            print("panes were dropped — that happens once, on the move to the new layout.")
+            return
+        }
+
+        print("kitterm \(staged) staged. The daemon is still \(runningBefore) and your panes are untouched.")
+        if loginAgentInstalled() {
+            print("it takes over at your next login, or now with `kitterm restart` (drops live panes)")
+        } else {
+            print("it takes over on the next `kitterm restart` (drops live panes)")
         }
     }
 

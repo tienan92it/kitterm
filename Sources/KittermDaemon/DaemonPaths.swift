@@ -62,6 +62,13 @@ public enum DaemonPaths: Sendable {
         stateDirectory.appendingPathComponent("history", isDirectory: true)
     }
 
+    /// The web bundle the running daemon pinned at start-up. Written for the
+    /// installer, which stages each release's bundle in its own directory and
+    /// must not delete the one a live daemon is still serving.
+    public static var webRootFile: URL {
+        stateDirectory.appendingPathComponent("web-root")
+    }
+
     public static func ensureStateDirectory() throws {
         try FileManager.default.createDirectory(
             at: stateDirectory,

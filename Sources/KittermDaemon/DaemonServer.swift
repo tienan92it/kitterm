@@ -332,6 +332,24 @@ public func runDaemon(config: DaemonConfig) throws {
     signal(SIGPIPE, SIG_IGN)
     signal(SIGHUP, SIG_IGN)
 
+    // Freeze the running version and the web root now, while the files this
+    // build shipped with are still the ones on disk. `kitterm upgrade` swaps
+    // them under a live daemon on purpose, and both of these would otherwise
+    // read as the *new* build while old code is still serving.
+    _ = BuildVersion.running
+    _ = StaticFileServer.cachedRoot
+    // Tell the installer which bundle this daemon pinned, so a deferred upgrade
+    // can prune old ones without pulling this daemon's UI out from under it.
+    // Best-effort: a daemon that cannot write this still serves fine, the
+    // installer just keeps one more directory than it needs to.
+    if let root = StaticFileServer.cachedRoot {
+        try? FileManager.default.createDirectory(
+            at: DaemonPaths.stateDirectory,
+            withIntermediateDirectories: true
+        )
+        try? root.path.write(to: DaemonPaths.webRootFile, atomically: true, encoding: .utf8)
+    }
+
     let server = DaemonServer(config: config)
     try server.start()
 

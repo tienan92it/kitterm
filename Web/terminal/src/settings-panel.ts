@@ -130,6 +130,10 @@ export class SettingsPanel {
         <button type="button" id="settings-share-watch" title="Recipients can watch this session but never type or take control">👁 Copy watch-only link</button>
         <p class="settings-note">Opens the focused pane read-only for whoever you send it to.</p>
       </div>
+      <div class="settings-about" id="settings-about" hidden>
+        <span id="settings-version"></span>
+        <span id="settings-version-update" class="settings-about-update" hidden></span>
+      </div>
     `;
 
     this.root.append(gear, this.backdrop, this.dialog);
@@ -145,6 +149,8 @@ export class SettingsPanel {
     this.tabTitleInput = this.dialog.querySelector("#settings-tab-title");
     this.tabTitleFolder = this.dialog.querySelector("#settings-tab-title-folder");
     this.tabTitleNote = this.dialog.querySelector("#settings-tab-title-note");
+
+    void this.loadVersion();
 
     this.dialog
       .querySelector("#settings-share")
@@ -252,6 +258,36 @@ export class SettingsPanel {
     this.showLocalSection(initial.fontId === LOCAL_FONT_ID);
 
     document.addEventListener("keydown", this.onDocumentKeydown);
+  }
+
+  // The daemon reports the build that is actually answering, which after a
+  // deferred `kitterm upgrade` is not the one on disk — the upgrade stages a new
+  // build without stopping the daemon so live panes survive. That is why the
+  // footer can say a restart is what applies it.
+  private async loadVersion(): Promise<void> {
+    const about = this.dialog.querySelector<HTMLElement>("#settings-about");
+    const label = this.dialog.querySelector<HTMLElement>("#settings-version");
+    const update = this.dialog.querySelector<HTMLElement>("#settings-version-update");
+    if (!about || !label) return;
+    try {
+      const res = await fetch("/api/version", { headers: { accept: "application/json" } });
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        running?: string;
+        installed?: string;
+        updatePending?: boolean;
+      };
+      if (!data.running) return;
+      label.textContent = `kitterm ${data.running}`;
+      if (update && data.updatePending === true && data.installed) {
+        update.textContent = `${data.installed} is installed — restart kitterm to apply`;
+        update.hidden = false;
+      }
+      about.hidden = false;
+    } catch {
+      // Decoration, not a setting: a failed probe leaves the footer out
+      // entirely rather than putting an error in the settings dialog.
+    }
   }
 
   dispose(): void {
