@@ -19,6 +19,16 @@ int main(int argc, char **argv) {
     return 127;
   }
 
+  /* Become a session leader before claiming a terminal. macOS asks posix_spawn
+   * for this with POSIX_SPAWN_SETSID, but glibc keeps that flag behind
+   * __USE_GNU and Swift cannot see it, so doing it here works the same on both
+   * and leaves one code path instead of two. EPERM only means we already are
+   * one — which is the macOS case — and is not a failure.
+   *
+   * setsid, then open the slave, then TIOCSCTTY is what glibc's own login_tty
+   * does, and what tmux and node-pty do. */
+  (void)setsid();
+
   /* Attach controlling TTY: session has no ctty yet (SETSID); opening the slave
    * without O_NOCTTY makes it the controlling terminal.
    *

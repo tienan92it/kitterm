@@ -179,9 +179,20 @@ public final class PtySession: @unchecked Sendable {
         guard openpty(&master, &slave, nil, nil, &win) == 0, master >= 0, slave >= 0 else {
             throw PtyError.forkFailed(errno: errno)
         }
+        // openpty leaves the master inheritable. Darwin's spawn closes
+        // everything undeclared, but Linux has no such flag — so without this
+        // every later session would inherit the masters of the ones before it,
+        // and could read their output.
+        _ = fcntl(master, F_SETFD, FD_CLOEXEC)
 
+        // Darwin hands these back as pointers, glibc as structs.
+        #if canImport(Darwin)
         var attrs: posix_spawnattr_t?
         var actions: posix_spawn_file_actions_t?
+        #else
+        var attrs = posix_spawnattr_t()
+        var actions = posix_spawn_file_actions_t()
+        #endif
         guard posix_spawnattr_init(&attrs) == 0 else {
             _ = close(master)
             _ = close(slave)
@@ -199,10 +210,16 @@ public final class PtySession: @unchecked Sendable {
             _ = close(slave)
         }
 
+        #if canImport(Darwin)
         posix_spawnattr_setflags(
             &attrs,
             Int16(POSIX_SPAWN_SETSID | POSIX_SPAWN_CLOEXEC_DEFAULT)
         )
+        #else
+        // Neither flag exists here: the helper calls setsid() itself, and
+        // there is no close-everything-by-default, which is why the master is
+        // marked close-on-exec at creation instead.
+        #endif
 
         posix_spawn_file_actions_adddup2(&actions, slave, STDIN_FILENO)
         posix_spawn_file_actions_adddup2(&actions, slave, STDOUT_FILENO)
