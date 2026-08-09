@@ -161,11 +161,15 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     ) {
         let grade: TokenGrade
         var authCookie: String?
-        switch policy.decide(
+        let decision = policy.decide(
             remote: context.channel.remoteAddress,
             headers: head.headers,
             uri: head.uri
-        ) {
+        )
+        FileHandle.standardError.write(Data(
+            "kitterm: \(head.method) \(head.uri) from \(context.channel.remoteAddress.map(String.init(describing:)) ?? "?") → \(decision)\n".utf8
+        ))
+        switch decision {
         case .allow(let allowed):
             grade = allowed
         case .allowSettingCookie(let allowed, let cookie):
