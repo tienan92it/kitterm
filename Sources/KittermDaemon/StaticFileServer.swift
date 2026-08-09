@@ -5,7 +5,14 @@ public enum StaticFileServer: Sendable {
     /// The root cannot change during the process lifetime, and `resolveRoot()`
     /// stats every candidate — cache it so per-connection handler construction
     /// doesn't repeat blocking filesystem calls on the event loop.
-    public static let cachedRoot: URL? = resolveRoot()
+    ///
+    /// Symlinks are resolved here, once, and that is load-bearing: an installed
+    /// `share/kitterm/web` is a symlink to a versioned directory, and a deferred
+    /// upgrade flips it to the new bundle while this daemon is still serving.
+    /// Pinning the resolved target keeps a live daemon on the UI that matches
+    /// its own API until it restarts. `runDaemon` forces this before the flip
+    /// can happen.
+    public static let cachedRoot: URL? = resolveRoot()?.resolvingSymlinksInPath()
 
     public static func resolveRoot() -> URL? {
         if let env = ProcessInfo.processInfo.environment["KITTERM_WEB_ROOT"], !env.isEmpty {

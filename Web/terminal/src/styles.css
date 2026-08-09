@@ -521,6 +521,22 @@ body.pane-dragging .pane-inner {
   border-color: var(--ui-accent);
 }
 
+/* Footer: what you are running, and whether a staged upgrade is waiting for a
+   restart. Quiet by default — it is a fact about the build, not a setting. */
+.settings-about {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--ui-surface-2);
+  font: 11px/1.5 var(--font-ui);
+  color: var(--ui-text-faint);
+}
+
+.settings-about-update {
+  display: block;
+  margin-top: 3px;
+  color: var(--ui-accent);
+}
+
 .settings-check input[type="checkbox"]:disabled,
 .settings-field input[type="text"]:disabled {
   opacity: 0.5;
