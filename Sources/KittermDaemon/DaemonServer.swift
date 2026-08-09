@@ -118,7 +118,9 @@ public final class DaemonServer: @unchecked Sendable {
         self.registry = SessionRegistry(
             orchestratedLingerSeconds: config.orchestratedLingerSeconds
         )
-        self.group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        let threads = ProcessInfo.processInfo.environment["KITTERM_LOOP_THREADS"]
+            .flatMap(Int.init) ?? 1
+        self.group = MultiThreadedEventLoopGroup(numberOfThreads: threads)
     }
 
     public var boundPort: Int? {
