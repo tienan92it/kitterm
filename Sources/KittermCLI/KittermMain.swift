@@ -145,7 +145,11 @@ enum KittermMain {
               kitterm token create <name> [--watch] | list | revoke <name>
               kitterm version
 
-            service install starts kitterm on login via a LaunchAgent.
+            start runs the daemon under launchd for this login session, so panes
+            are attributed to kitterm rather than to whichever terminal launched
+            it — that attribution decides which app macOS names in file-access
+            prompts, and which app the resulting grant belongs to.
+            service install makes the same job persist across logins.
 
             --lan binds all interfaces; non-loopback clients need a token:
             the ephemeral one printed at start (~/.kitterm/token), the
@@ -271,7 +275,10 @@ enum KittermMain {
     /// `kitterm restart` — restarts whichever mechanism owns the daemon.
     private static func restart<S: Sequence>(_ args: S) throws where S.Element == String {
         let array = Array(args)
-        if serviceLoaded() {
+        // Only the login agent's plist is configuration of record. A session job
+        // from `kitterm start` is not — restarting it with new flags just
+        // rewrites it, which is what it did before launchd owned the daemon.
+        if loginAgentInstalled(), serviceLoaded() {
             // The service's plist is the configuration of record; restarting
             // with different flags must go through `service install`.
             guard array.isEmpty else {
@@ -326,9 +333,9 @@ enum KittermMain {
             print("kitterm already running (pid \(existing), port \(readPort() ?? port))")
             return
         }
-        if serviceLoaded() {
-            // The agent owns the daemon (it may be mid-respawn right now);
-            // a detached competitor would just fight it for the port.
+        if loginAgentInstalled(), serviceLoaded() {
+            // The login agent owns the daemon (it may be mid-respawn right now);
+            // a competitor would just fight it for the port.
             throw CLIError.serviceFailed(
                 action: "start",
                 detail: "the kitterm service manages the daemon; use `kitterm restart`, `kitterm service install` to reconfigure, or `kitterm service uninstall` to remove it"
@@ -339,18 +346,22 @@ enum KittermMain {
             throw CLIError.portInUse(port: port, occupant: occupant)
         }
 
-        let executable = ResolveExecutable.path()
-        // Prefer posix_spawn-style detach: serve redirects its own logs.
-        // Avoid wiring parent FileHandles into the child — that has broken
-        // forkpty in practice on macOS when stdio is inherited from Process.
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = ["serve", "--port", "\(port)"] + flags.serveArguments
-        process.standardInput = FileHandle.nullDevice
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-
-        try process.run()
+        let executable = try serviceExecutablePath(action: "start")
+        // launchd, not this shell — see bootstrapSessionJob for why the parent
+        // decides what every pane's file-access prompts are attributed to.
+        var detached: Process?
+        do {
+            try bootstrapSessionJob(executable: executable, port: port, flags: flags)
+        } catch {
+            // No gui domain to bootstrap into (a plain ssh login). Starting
+            // anyway beats refusing, but this is exactly the case that leaks the
+            // caller's identity into every pane, so it must not pass silently.
+            fputs("warning: could not start under launchd: \(error.localizedDescription)\n", stderr)
+            fputs("         falling back to a daemon detached from this shell. It keeps this\n", stderr)
+            fputs("         session's file-access identity, so macOS prompts for panes will\n", stderr)
+            fputs("         name the launching app rather than kitterm.\n", stderr)
+            detached = try spawnDetached(executable: executable, port: port, flags: flags)
+        }
 
         // Wait briefly for health.
         let deadline = Date().addingTimeInterval(3)
@@ -363,19 +374,17 @@ enum KittermMain {
             Thread.sleep(forTimeInterval: 0.05)
         }
 
-        if !healthy, !process.isRunning {
+        if !healthy {
             if let occupant = portListenerDescription(port: port) {
                 throw CLIError.portInUse(port: port, occupant: occupant)
             }
             throw CLIError.daemonExited
         }
-        if !healthy {
-            throw CLIError.daemonExited
-        }
 
-        // Prefer pid file written by serve; fall back to process pid.
-        if livePid() == nil {
-            try "\(process.processIdentifier)".write(
+        // `serve` writes the pid file itself; the launchd job has no other pid to
+        // fall back on, so only the detached path fills a gap here.
+        if livePid() == nil, let detached {
+            try "\(detached.processIdentifier)".write(
                 to: DaemonPaths.pidFile,
                 atomically: true,
                 encoding: .utf8
@@ -383,9 +392,9 @@ enum KittermMain {
             try "\(port)".write(to: DaemonPaths.portFile, atomically: true, encoding: .utf8)
         }
 
-        let pid = livePid() ?? process.processIdentifier
+        let pidNote = (livePid() ?? detached?.processIdentifier).map { " (pid \($0))" } ?? ""
         let plainlyExternal = flags.lan && flags.tlsCert == nil
-        print("kitterm started on \(plainlyExternal ? "0.0.0.0" : KittermConstants.defaultHost):\(port) (pid \(pid))")
+        print("kitterm started on \(plainlyExternal ? "0.0.0.0" : KittermConstants.defaultHost):\(port)\(pidNote)")
         if flags.tlsCert != nil {
             printListeners(port: port, flags: flags)
             if flags.lan {
@@ -524,6 +533,20 @@ enum KittermMain {
             .appendingPathComponent("Library/LaunchAgents/\(serviceLabel).plist")
     }
 
+    /// The plist `kitterm start` loads. Deliberately outside
+    /// ~/Library/LaunchAgents so launchd never picks it up at login — it shares
+    /// the label with the login agent, which keeps the two mutually exclusive.
+    private static var sessionPlist: URL {
+        DaemonPaths.stateDirectory.appendingPathComponent("\(serviceLabel).plist")
+    }
+
+    /// True when `kitterm service install` has written the login agent. The
+    /// session job started by `kitterm start` shares the label but not the file,
+    /// so this is what distinguishes "starts on login" from "started this time".
+    private static func loginAgentInstalled() -> Bool {
+        FileManager.default.fileExists(atPath: launchAgentPlist.path)
+    }
+
     private static func service<S: Sequence>(_ args: S) throws where S.Element == String {
         let array = Array(args)
         switch array.first ?? "status" {
@@ -544,14 +567,14 @@ enum KittermMain {
         launchctl(["print", "gui/\(getuid())/\(serviceLabel)"]).status == 0
     }
 
-    /// The executable path a login agent can outlive: absolute, existing, and
+    /// The executable path a launchd job can outlive: absolute, existing, and
     /// preferring the stable `<prefix>/bin/kitterm` wrapper over the internal
     /// `<prefix>/lib/kitterm/kitterm` it execs (both resolve helper + web root).
-    private static func serviceExecutablePath() throws -> String {
+    private static func serviceExecutablePath(action: String) throws -> String {
         let raw = ResolveExecutable.path()
         guard raw.hasPrefix("/"), FileManager.default.isExecutableFile(atPath: raw) else {
             throw CLIError.serviceFailed(
-                action: "service install",
+                action: action,
                 detail: "cannot resolve an absolute path to the kitterm binary (got \"\(raw)\"); run kitterm via its installed path"
             )
         }
@@ -568,8 +591,8 @@ enum KittermMain {
             }
         }
         if url.pathComponents.contains(".build") {
-            print("warning: installing service with a build-tree binary (\(url.path));")
-            print("         the agent breaks if the build directory is cleaned or moved")
+            print("warning: launchd job points at a build-tree binary (\(url.path));")
+            print("         it breaks if the build directory is cleaned or moved")
         }
         return url.path
     }
@@ -635,25 +658,21 @@ enum KittermMain {
         }
     }
 
-    private static func installService(
+    /// Shared plist body for both launchd jobs. RunAtLoad is always true — it is
+    /// what makes `launchctl bootstrap` actually start the daemon. Whether the
+    /// job restarts itself is KeepAlive; whether it returns at login is decided
+    /// by where the plist lives, not by anything in here.
+    private static func launchdPlistBody(
+        executable: String,
         port: Int,
-        flags: DaemonFlags
-    ) throws {
-        let executable = try serviceExecutablePath()
-        let plist = launchAgentPlist
-        try FileManager.default.createDirectory(
-            at: plist.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-
-        // A foreground `serve` under launchd — KeepAlive restarts it on crash.
+        flags: DaemonFlags,
+        keepAlive: Bool
+    ) -> String {
         let programArgs = [executable, "serve", "--port", "\(port)"] + flags.serveArguments
-
         let entries = programArgs
             .map { "\t\t<string>\(xmlEscaped($0))</string>" }
             .joined(separator: "\n")
-
-        try """
+        return """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
         <plist version="1.0">
@@ -667,17 +686,100 @@ enum KittermMain {
         \t<key>RunAtLoad</key>
         \t<true/>
         \t<key>KeepAlive</key>
-        \t<true/>
+        \t\(keepAlive ? "<true/>" : "<false/>")
         \t<key>ProcessType</key>
         \t<string>Background</string>
         </dict>
         </plist>
 
-        """.write(to: plist, atomically: true, encoding: .utf8)
+        """
+    }
+
+    /// Start the daemon as a launchd job scoped to this login session.
+    ///
+    /// The reason is TCC attribution, not tidiness. A daemon spawned straight
+    /// from this shell keeps the file-access identity of whichever terminal app
+    /// ran `kitterm start` — for the daemon's whole multi-day lifetime — and
+    /// every pane and coding agent under it inherits that identity. Prompts and
+    /// grants then land on iTerm, Terminal, or whatever else happened to launch
+    /// it, and change meaning the next time you start from somewhere else.
+    /// Under launchd the daemon is responsible for itself, so panes attribute
+    /// to kitterm and nothing leaks in from the launching terminal.
+    ///
+    /// No KeepAlive: `kitterm start` has never resurrected a daemon that exited,
+    /// and `kitterm service install` remains how you ask for that.
+    private static func bootstrapSessionJob(
+        executable: String,
+        port: Int,
+        flags: DaemonFlags
+    ) throws {
+        try DaemonPaths.ensureStateDirectory()
+        let plist = sessionPlist
+        try launchdPlistBody(
+            executable: executable,
+            port: port,
+            flags: flags,
+            keepAlive: false
+        ).write(to: plist, atomically: true, encoding: .utf8)
+
+        // A job already loaded under this label would fail bootstrap with EEXIST.
+        _ = launchctl(["bootout", "gui/\(getuid())/\(serviceLabel)"])
+        // Clear persisted disabled state (System Settings toggle, or a past
+        // `launchctl disable`) — otherwise bootstrap fails with error 119.
+        _ = launchctl(["enable", "gui/\(getuid())/\(serviceLabel)"])
+
+        let result = launchctl(["bootstrap", "gui/\(getuid())", plist.path])
+        guard result.status == 0 else {
+            throw CLIError.serviceFailed(
+                action: "launchctl bootstrap",
+                detail: result.output.isEmpty ? "launchctl exited \(result.status)" : result.output
+            )
+        }
+    }
+
+    /// Fallback for sessions with no gui domain to bootstrap into — a plain ssh
+    /// login being the ordinary case. Callers must say what this costs.
+    private static func spawnDetached(
+        executable: String,
+        port: Int,
+        flags: DaemonFlags
+    ) throws -> Process {
+        // Avoid wiring parent FileHandles into the child — that has broken
+        // forkpty in practice on macOS when stdio is inherited from Process.
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = ["serve", "--port", "\(port)"] + flags.serveArguments
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        return process
+    }
+
+    private static func installService(
+        port: Int,
+        flags: DaemonFlags
+    ) throws {
+        let executable = try serviceExecutablePath(action: "service install")
+        let plist = launchAgentPlist
+        try FileManager.default.createDirectory(
+            at: plist.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+
+        // A foreground `serve` under launchd — KeepAlive restarts it on crash.
+        try launchdPlistBody(
+            executable: executable,
+            port: port,
+            flags: flags,
+            keepAlive: true
+        ).write(to: plist, atomically: true, encoding: .utf8)
 
         // Replacing an existing agent requires unloading it first; do it before
         // the pid-file stop so KeepAlive can't respawn what we just stopped.
         _ = launchctl(["bootout", "gui/\(getuid())/\(serviceLabel)"])
+        // The login agent supersedes any session job left by `kitterm start`.
+        try? FileManager.default.removeItem(at: sessionPlist)
         // A manually started daemon would hold the port against the agent.
         try? stop(ignoreMissing: true, quiet: true)
 
@@ -737,16 +839,37 @@ enum KittermMain {
         }
     }
 
+    /// Which plist launchd currently has loaded under our label, if any. The
+    /// session job from `kitterm start` shares the label, so "the label is
+    /// loaded" is not the same question as "the login agent is loaded".
+    private static func loadedJobPlistPath() -> String? {
+        let result = launchctl(["print", "gui/\(getuid())/\(serviceLabel)"])
+        guard result.status == 0 else { return nil }
+        for line in result.output.split(separator: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("path = ") {
+                return String(trimmed.dropFirst("path = ".count))
+            }
+        }
+        return nil
+    }
+
     private static func serviceStatus() {
+        let loaded = loadedJobPlistPath()
         guard FileManager.default.fileExists(atPath: launchAgentPlist.path) else {
             print("kitterm service not installed")
+            if loaded != nil {
+                print("(a session daemon from `kitterm start` is running; it ends at logout)")
+            }
             return
         }
-        let result = launchctl(["print", "gui/\(getuid())/\(serviceLabel)"])
-        if result.status == 0 {
+        if loaded == launchAgentPlist.path {
             print("kitterm service installed and loaded (\(launchAgentPlist.path))")
         } else {
             print("kitterm service installed but not loaded (\(launchAgentPlist.path))")
+            if loaded != nil {
+                print("(a session daemon from `kitterm start` holds the label instead)")
+            }
         }
     }
 
@@ -783,9 +906,12 @@ enum KittermMain {
         // KeepAlive would respawn it within seconds of a plain SIGTERM.
         var wasService = false
         if serviceLoaded() {
-            wasService = true
+            // Only the login agent comes back by itself; a session job is gone
+            // for good once booted out, so the messages below differ.
+            wasService = loginAgentInstalled()
             _ = launchctl(["bootout", "gui/\(getuid())/\(serviceLabel)"])
         }
+        try? FileManager.default.removeItem(at: sessionPlist)
 
         guard let pid = livePid() else {
             if wasService, !quiet {
