@@ -59,6 +59,40 @@ public struct DaemonConfig: Sendable {
     }
 }
 
+/// Reports raw socket activity, ahead of every decoder. Splits "no bytes ever
+/// arrive" from "bytes arrive and something downstream drops them" — which
+/// have nothing in common as causes, and every probe short of this one sits on
+/// the far side of that fork.
+private final class SocketTraceLogger: ChannelInboundHandler {
+    typealias InboundIn = ByteBuffer
+    typealias InboundOut = ByteBuffer
+
+    private func note(_ message: String) {
+        FileHandle.standardError.write(Data("kitterm: socket: \(message)\n".utf8))
+    }
+
+    func channelActive(context: ChannelHandlerContext) {
+        note("active \(context.channel.remoteAddress.map(String.init(describing:)) ?? "?")")
+        context.fireChannelActive()
+    }
+
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        let buffer = unwrapInboundIn(data)
+        note("read \(buffer.readableBytes) bytes: \(String(buffer: buffer).prefix(40).debugDescription)")
+        context.fireChannelRead(data)
+    }
+
+    func channelInactive(context: ChannelHandlerContext) {
+        note("inactive")
+        context.fireChannelInactive()
+    }
+
+    func errorCaught(context: ChannelHandlerContext, error: Error) {
+        note("error \(error)")
+        context.fireErrorCaught(error)
+    }
+}
+
 /// Reports what a connection died of. Without it a handler error is a silent
 /// close, indistinguishable at the client from the daemon refusing to talk.
 private final class ChannelErrorLogger: ChannelInboundHandler {
@@ -226,7 +260,9 @@ public final class DaemonServer: @unchecked Sendable {
                     } else {
                         tlsFirst = channel.eventLoop.makeSucceededVoidFuture()
                     }
-                    let ready = tlsFirst.flatMap {
+                    // First in the pipeline: everything else is downstream.
+                    let traced = channel.pipeline.addHandler(SocketTraceLogger())
+                    let ready = traced.flatMap { tlsFirst }.flatMap {
                         channel.pipeline.configureHTTPServerPipeline(withServerUpgrade: upgradeConfig)
                     }.flatMap {
                         channel.pipeline.addHandler(httpHandler)
