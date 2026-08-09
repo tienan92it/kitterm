@@ -166,9 +166,6 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             headers: head.headers,
             uri: head.uri
         )
-        FileHandle.standardError.write(Data(
-            "kitterm: \(head.method) \(head.uri) from \(context.channel.remoteAddress.map(String.init(describing:)) ?? "?") → \(decision)\n".utf8
-        ))
         switch decision {
         case .allow(let allowed):
             grade = allowed

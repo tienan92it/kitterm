@@ -59,53 +59,6 @@ public struct DaemonConfig: Sendable {
     }
 }
 
-/// Reports raw socket activity, ahead of every decoder. Splits "no bytes ever
-/// arrive" from "bytes arrive and something downstream drops them" — which
-/// have nothing in common as causes, and every probe short of this one sits on
-/// the far side of that fork.
-private final class SocketTraceLogger: ChannelInboundHandler {
-    typealias InboundIn = ByteBuffer
-    typealias InboundOut = ByteBuffer
-
-    private func note(_ message: String) {
-        FileHandle.standardError.write(Data("kitterm: socket: \(message)\n".utf8))
-    }
-
-    func channelActive(context: ChannelHandlerContext) {
-        note("active \(context.channel.remoteAddress.map(String.init(describing:)) ?? "?")")
-        context.fireChannelActive()
-    }
-
-    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        let buffer = unwrapInboundIn(data)
-        note("read \(buffer.readableBytes) bytes: \(String(buffer: buffer).prefix(40).debugDescription)")
-        context.fireChannelRead(data)
-    }
-
-    func channelInactive(context: ChannelHandlerContext) {
-        note("inactive")
-        context.fireChannelInactive()
-    }
-
-    func errorCaught(context: ChannelHandlerContext, error: Error) {
-        note("error \(error)")
-        context.fireErrorCaught(error)
-    }
-}
-
-/// Reports what a connection died of. Without it a handler error is a silent
-/// close, indistinguishable at the client from the daemon refusing to talk.
-private final class ChannelErrorLogger: ChannelInboundHandler {
-    typealias InboundIn = NIOAny
-
-    func errorCaught(context: ChannelHandlerContext, error: Error) {
-        FileHandle.standardError.write(
-            Data("kitterm: connection error: \(error)\n".utf8)
-        )
-        context.fireErrorCaught(error)
-    }
-}
-
 public final class DaemonServer: @unchecked Sendable {
     private let config: DaemonConfig
     private let group: MultiThreadedEventLoopGroup
@@ -118,9 +71,7 @@ public final class DaemonServer: @unchecked Sendable {
         self.registry = SessionRegistry(
             orchestratedLingerSeconds: config.orchestratedLingerSeconds
         )
-        let threads = ProcessInfo.processInfo.environment["KITTERM_LOOP_THREADS"]
-            .flatMap(Int.init) ?? 1
-        self.group = MultiThreadedEventLoopGroup(numberOfThreads: threads)
+        self.group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
     }
 
     public var boundPort: Int? {
@@ -237,21 +188,14 @@ public final class DaemonServer: @unchecked Sendable {
             ServerBootstrap(group: group)
                 .serverChannelOption(ChannelOptions.backlog, value: 256)
                 .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
-                .childChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
-                // Interactive echo is many tiny writes — never let Nagle delay them.
-                .childChannelOption(ChannelOptions.socketOption(.tcp_nodelay), value: 1)
+                // Interactive echo is many tiny writes — never let Nagle delay
+                // them. This has to be a TCP-level option: `socketOption` sends
+                // it to SOL_SOCKET, where the same number means SO_DEBUG, so
+                // Nagle stayed on and Linux refused the privileged option and
+                // closed the connection before its pipeline was ever built.
+                .childChannelOption(ChannelOptions.tcpOption(.tcp_nodelay), value: 1)
                 .childChannelInitializer { [config] channel in
-                    func step(_ name: String) {
-                        // Straight to a file: bypasses every question about
-                        // where the daemon's stdio has been redirected to.
-                        let line = "init: \(name)\n"
-                        if let handle = FileHandle(forWritingAtPath: "/tmp/kitterm-probe.log") {
-                            handle.seekToEndOfFile()
-                            handle.write(Data(line.utf8))
-                            try? handle.close()
-                        }
-                    }
-                    step("entered")
+
                     let httpHandler = HTTPAPIHandler(
                         registry: registry,
                         policy: policy,
@@ -273,27 +217,14 @@ public final class DaemonServer: @unchecked Sendable {
                     } else {
                         tlsFirst = channel.eventLoop.makeSucceededVoidFuture()
                     }
-                    step("handlers built")
-                    // First in the pipeline: everything else is downstream.
-                    let traced = channel.pipeline.addHandler(SocketTraceLogger())
-                    let ready = traced.flatMap { () -> EventLoopFuture<Void> in
-                        step("tracer added")
-                        return tlsFirst
-                    }.flatMap { () -> EventLoopFuture<Void> in
-                        step("tls done")
-                        return channel.pipeline.configureHTTPServerPipeline(withServerUpgrade: upgradeConfig)
-                    }.flatMap { () -> EventLoopFuture<Void> in
-                        step("http pipeline configured")
-                        return channel.pipeline.addHandler(httpHandler)
+                    let ready = tlsFirst.flatMap {
+                        channel.pipeline.configureHTTPServerPipeline(withServerUpgrade: upgradeConfig)
                     }.flatMap {
-                        // Last, not first: errorCaught travels toward the tail,
-                        // so a logger ahead of the handlers never sees theirs.
-                        channel.pipeline.addHandler(ChannelErrorLogger())
+                        channel.pipeline.addHandler(httpHandler)
                     }
                     // A connection whose pipeline never assembles is closed by
                     // NIO with no response and nothing written anywhere, so it
                     // reaches the client as a bare reset. Say why.
-                    ready.whenSuccess { step("READY") }
                     ready.whenFailure { error in
                         FileHandle.standardError.write(
                             Data("kitterm: connection setup failed: \(error)\n".utf8)

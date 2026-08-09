@@ -84,6 +84,11 @@ public enum ShellIntegration {
     # VS Code's integration do). preexec fires from a DEBUG trap; BASH_COMMAND is
     # the first simple command of the line, so a pipeline's 633;E reports its
     # first stage — close enough for the fleet view, exact exits regardless.
+    #
+    # Bash does not inherit a DEBUG trap into a subshell unless `set -T`, so a
+    # line that is only a subshell — `(cd x && make)` — runs and prints normally
+    # but is not indexed as a command. Forcing `set -T` on someone's shell to
+    # close that gap costs more than the gap does.
 
     [[ $- == *i* ]] || return 0
     [[ -n $KITTERM_SHELL_INTEGRATION ]] && return 0
@@ -105,6 +110,11 @@ public enum ShellIntegration {
     __kitterm_preexec() {
       [[ -n $COMP_LINE ]] && return
       [[ -z $__kitterm_at_prompt ]] && return
+      # A subshell — `(exit 42)`, `(cd x && make)` — runs the DEBUG trap in the
+      # child, so it clears its own copy of the gate and the parent's stays set.
+      # The next DEBUG in the parent is PROMPT_COMMAND calling precmd, which
+      # would then be reported as the command the user ran.
+      [[ $BASH_COMMAND == __kitterm_precmd* ]] && return
       __kitterm_at_prompt=
       printf '\e]633;E;%s\a' "$(__kitterm_escape_cmd "$BASH_COMMAND")"
       printf '\e]133;C\a'
