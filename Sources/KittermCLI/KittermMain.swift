@@ -4,8 +4,19 @@ import Darwin
 import Glibc
 #endif
 import Foundation
+#if canImport(FoundationNetworking)
+// URLSession and friends are a separate module outside Apple's platforms.
+import FoundationNetworking
+#endif
 import KittermDaemon
 import KittermProtocol
+
+/// Diagnostics to stderr without touching the `stderr` global, which glibc
+/// exposes as a mutable var that Swift 6 refuses to share across concurrency
+/// domains. The handle carries no such baggage and behaves the same.
+func writeError(_ message: String) {
+    FileHandle.standardError.write(Data(message.utf8))
+}
 
 @main
 enum KittermMain {
@@ -54,12 +65,12 @@ enum KittermMain {
             case "help", "-h", "--help":
                 printUsage()
             default:
-                fputs("Unknown command: \(command)\n", stderr)
+                writeError("Unknown command: \(command)\n")
                 printUsage()
                 exit(2)
             }
         } catch {
-            fputs("error: \(error.localizedDescription)\n", stderr)
+            writeError("error: \(error.localizedDescription)\n")
             exit(1)
         }
     }
@@ -561,7 +572,7 @@ enum KittermMain {
         case "status":
             serviceStatus()
         default:
-            fputs("usage: kitterm service install|uninstall|status\n", stderr)
+            writeError("usage: kitterm service install|uninstall|status\n")
             exit(2)
         }
     }
@@ -1046,7 +1057,8 @@ enum KittermMain {
         var request = URLRequest(url: url, timeoutInterval: 0.3)
         request.setValue("127.0.0.1:\(port)", forHTTPHeaderField: "Host")
         let sem = DispatchSemaphore(value: 0)
-        var ok = false
+        // The semaphore below is the happens-before; the compiler cannot see it.
+        nonisolated(unsafe) var ok = false
         let task = URLSession.shared.dataTask(with: request) { data, response, _ in
             defer { sem.signal() }
             guard let http = response as? HTTPURLResponse, http.statusCode == 200,

@@ -29,7 +29,8 @@ final class SessionLogStoreTests: XCTestCase {
 
     /// Drain the store's queue, which is where every read and write lands.
     private func read(_ store: SessionLogStore, from: UInt64, to: UInt64) -> (Data, UInt64) {
-        var result = (Data(), UInt64(0))
+        // `wait(for:)` below is the happens-before the compiler cannot see.
+        nonisolated(unsafe) var result = (Data(), UInt64(0))
         let done = expectation(description: "read")
         store.read(from: from, to: to) { data, start in
             result = (data, start)

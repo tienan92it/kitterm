@@ -476,7 +476,13 @@ public final class PtySession: @unchecked Sendable {
             try stateLock.withLock {
                 guard !terminated else { throw PtyError.closed }
                 var win = winsize(ws_row: r, ws_col: c, ws_xpixel: 0, ws_ypixel: 0)
-                guard ioctl(masterFD, TIOCSWINSZ, &win) == 0 else {
+                // The request argument is UInt on Linux and Int32 on Darwin.
+                #if canImport(Darwin)
+                let request = TIOCSWINSZ
+                #else
+                let request = UInt(TIOCSWINSZ)
+                #endif
+                guard ioctl(masterFD, request, &win) == 0 else {
                     throw PtyError.ioctlFailed
                 }
                 self.cols = c
@@ -622,7 +628,7 @@ public final class PtySession: @unchecked Sendable {
         from: UInt64,
         to: UInt64,
         maxBytes: Int,
-        completion: @escaping (OutputRange) -> Void
+        completion: @escaping @Sendable (OutputRange) -> Void
     ) {
         let ring = outputRange(from: from, to: to, maxBytes: maxBytes)
         let store = stateLock.withLock { logStore }
@@ -770,10 +776,14 @@ public final class PtySession: @unchecked Sendable {
     /// while keeping the syscall rate negligible on the shared event loop.
     private static let cwdPollInterval = TimeAmount.seconds(2)
 
-    /// Read the shell process's own working directory. `proc_pidinfo` is a fast
-    /// kernel-state read (microseconds), not blocking I/O; returns nil for a
-    /// reaped pid or any failure so the caller never throws.
+    /// Read the shell process's own working directory.
+    ///
+    /// Both forms are a kernel-state read rather than blocking I/O — a
+    /// `proc_pidinfo` call on Darwin, a `readlink` of a procfs symlink on
+    /// Linux — and both return nil for a reaped pid or any failure, so the
+    /// caller never throws and the poll simply keeps its last answer.
     static func currentDirectory(ofPID pid: pid_t) -> String? {
+        #if canImport(Darwin)
         var info = proc_vnodepathinfo()
         let size = Int32(MemoryLayout<proc_vnodepathinfo>.size)
         let rc = proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &info, size)
@@ -783,6 +793,17 @@ public final class PtySession: @unchecked Sendable {
             let path = String(cString: cString)
             return path.isEmpty ? nil : path
         }
+        #else
+        // `readlink`, not `realpath`: the target may have been deleted or be
+        // unreachable, and we want whatever the kernel says the cwd is rather
+        // than a resolution that can fail or block on a dead mount.
+        var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+        let count = readlink("/proc/\(pid)/cwd", &buffer, buffer.count - 1)
+        guard count > 0 else { return nil }
+        buffer[count] = 0
+        let path = String(cString: buffer)
+        return path.isEmpty ? nil : path
+        #endif
     }
 
     /// The shell's working directory as last observed by the poll, for readers

@@ -79,7 +79,11 @@ final class SessionLogStore: @unchecked Sendable {
 
     /// Read `[from, to)` from disk, off the event loop. `completion` runs on the
     /// store's queue; the caller hops back to its own loop.
-    func read(from: UInt64, to: UInt64, completion: @escaping (Data, UInt64) -> Void) {
+    func read(
+        from: UInt64,
+        to: UInt64,
+        completion: @escaping @Sendable (Data, UInt64) -> Void
+    ) {
         queue.async { [self] in
             guard !closed, to > from else { return completion(Data(), from) }
             let start = max(from, fileBase)
