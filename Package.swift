@@ -11,7 +11,6 @@ let package = Package(
         .library(name: "KittermDaemon", targets: ["KittermDaemon"]),
         .executable(name: "kitterm", targets: ["KittermCLI"]),
         .executable(name: "kitterm-spawn-helper", targets: ["KittermSpawnHelper"]),
-        .executable(name: "KittermBench", targets: ["KittermBench"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.76.0"),
@@ -53,12 +52,6 @@ let package = Package(
                 "KittermProtocol",
             ]
         ),
-        .executableTarget(
-            name: "KittermBench",
-            dependencies: [
-                "KittermProtocol",
-            ]
-        ),
         .testTarget(
             name: "KittermProtocolTests",
             dependencies: ["KittermProtocol"]
@@ -75,3 +68,17 @@ let package = Package(
         ),
     ]
 )
+
+// The benchmark drives the daemon over a WebSocket with URLSessionWebSocketTask,
+// which swift-corelibs-foundation does not implement — so on Linux it is left
+// out rather than breaking `swift build` for the daemon it is meant to measure.
+// Benchmarking still happens on macOS, against a Linux daemon if you point it
+// at one with `--port`.
+#if !os(Linux)
+package.products.append(
+    .executable(name: "KittermBench", targets: ["KittermBench"])
+)
+package.targets.append(
+    .executableTarget(name: "KittermBench", dependencies: ["KittermProtocol"])
+)
+#endif
