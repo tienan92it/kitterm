@@ -59,6 +59,19 @@ public struct DaemonConfig: Sendable {
     }
 }
 
+/// Reports what a connection died of. Without it a handler error is a silent
+/// close, indistinguishable at the client from the daemon refusing to talk.
+private final class ChannelErrorLogger: ChannelInboundHandler {
+    typealias InboundIn = NIOAny
+
+    func errorCaught(context: ChannelHandlerContext, error: Error) {
+        FileHandle.standardError.write(
+            Data("kitterm: connection error: \(error)\n".utf8)
+        )
+        context.fireErrorCaught(error)
+    }
+}
+
 public final class DaemonServer: @unchecked Sendable {
     private let config: DaemonConfig
     private let group: MultiThreadedEventLoopGroup
@@ -213,11 +226,24 @@ public final class DaemonServer: @unchecked Sendable {
                     } else {
                         tlsFirst = channel.eventLoop.makeSucceededVoidFuture()
                     }
-                    return tlsFirst.flatMap {
+                    let ready = tlsFirst.flatMap {
                         channel.pipeline.configureHTTPServerPipeline(withServerUpgrade: upgradeConfig)
                     }.flatMap {
                         channel.pipeline.addHandler(httpHandler)
+                    }.flatMap {
+                        // Last, not first: errorCaught travels toward the tail,
+                        // so a logger ahead of the handlers never sees theirs.
+                        channel.pipeline.addHandler(ChannelErrorLogger())
                     }
+                    // A connection whose pipeline never assembles is closed by
+                    // NIO with no response and nothing written anywhere, so it
+                    // reaches the client as a bare reset. Say why.
+                    ready.whenFailure { error in
+                        FileHandle.standardError.write(
+                            Data("kitterm: connection setup failed: \(error)\n".utf8)
+                        )
+                    }
+                    return ready
                 }
         }
 
