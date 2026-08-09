@@ -371,10 +371,10 @@ enum KittermMain {
             // No gui domain to bootstrap into (a plain ssh login). Starting
             // anyway beats refusing, but this is exactly the case that leaks the
             // caller's identity into every pane, so it must not pass silently.
-            fputs("warning: could not start under launchd: \(error.localizedDescription)\n", stderr)
-            fputs("         falling back to a daemon detached from this shell. It keeps this\n", stderr)
-            fputs("         session's file-access identity, so macOS prompts for panes will\n", stderr)
-            fputs("         name the launching app rather than kitterm.\n", stderr)
+            writeError("warning: could not start under launchd: \(error.localizedDescription)\n")
+            writeError("         falling back to a daemon detached from this shell. It keeps this\n")
+            writeError("         session's file-access identity, so macOS prompts for panes will\n")
+            writeError("         name the launching app rather than kitterm.\n")
             detached = try spawnDetached(executable: executable, port: port, flags: flags)
         }
 
@@ -637,7 +637,8 @@ enum KittermMain {
         var request = URLRequest(url: url, timeoutInterval: 0.5)
         request.setValue("127.0.0.1:\(port)", forHTTPHeaderField: "Host")
         let sem = DispatchSemaphore(value: 0)
-        var version: String?
+        // The semaphore below is the happens-before; the compiler cannot see it.
+        nonisolated(unsafe) var version: String?
         let task = URLSession.shared.dataTask(with: request) { data, response, _ in
             defer { sem.signal() }
             guard let http = response as? HTTPURLResponse, http.statusCode == 200,

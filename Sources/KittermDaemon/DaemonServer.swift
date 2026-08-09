@@ -241,6 +241,17 @@ public final class DaemonServer: @unchecked Sendable {
                 // Interactive echo is many tiny writes — never let Nagle delay them.
                 .childChannelOption(ChannelOptions.socketOption(.tcp_nodelay), value: 1)
                 .childChannelInitializer { [config] channel in
+                    func step(_ name: String) {
+                        // Straight to a file: bypasses every question about
+                        // where the daemon's stdio has been redirected to.
+                        let line = "init: \(name)\n"
+                        if let handle = FileHandle(forWritingAtPath: "/tmp/kitterm-probe.log") {
+                            handle.seekToEndOfFile()
+                            handle.write(Data(line.utf8))
+                            try? handle.close()
+                        }
+                    }
+                    step("entered")
                     let httpHandler = HTTPAPIHandler(
                         registry: registry,
                         policy: policy,
@@ -262,12 +273,18 @@ public final class DaemonServer: @unchecked Sendable {
                     } else {
                         tlsFirst = channel.eventLoop.makeSucceededVoidFuture()
                     }
+                    step("handlers built")
                     // First in the pipeline: everything else is downstream.
                     let traced = channel.pipeline.addHandler(SocketTraceLogger())
-                    let ready = traced.flatMap { tlsFirst }.flatMap {
-                        channel.pipeline.configureHTTPServerPipeline(withServerUpgrade: upgradeConfig)
-                    }.flatMap {
-                        channel.pipeline.addHandler(httpHandler)
+                    let ready = traced.flatMap { () -> EventLoopFuture<Void> in
+                        step("tracer added")
+                        return tlsFirst
+                    }.flatMap { () -> EventLoopFuture<Void> in
+                        step("tls done")
+                        return channel.pipeline.configureHTTPServerPipeline(withServerUpgrade: upgradeConfig)
+                    }.flatMap { () -> EventLoopFuture<Void> in
+                        step("http pipeline configured")
+                        return channel.pipeline.addHandler(httpHandler)
                     }.flatMap {
                         // Last, not first: errorCaught travels toward the tail,
                         // so a logger ahead of the handlers never sees theirs.
@@ -276,6 +293,7 @@ public final class DaemonServer: @unchecked Sendable {
                     // A connection whose pipeline never assembles is closed by
                     // NIO with no response and nothing written anywhere, so it
                     // reaches the client as a bare reset. Say why.
+                    ready.whenSuccess { step("READY") }
                     ready.whenFailure { error in
                         FileHandle.standardError.write(
                             Data("kitterm: connection setup failed: \(error)\n".utf8)
