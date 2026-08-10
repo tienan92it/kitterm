@@ -45,12 +45,24 @@ $(tail -20 /var/log/tailscaled.log 2>/dev/null)"
   # 100.100.100.100, which nothing in the box can reach under userspace
   # networking. Every lookup then times out — including the agent's calls to
   # api.anthropic.com. Serve still works; only DNS resolution is declined.
-  tailscale --socket="$SOCK" up \
+  # Bounded: `tailscale up` has no timeout of its own and blocks indefinitely
+  # when the tailnet requires an admin to approve new machines. Waiting forever
+  # with no output is the one failure that looks like a hung container.
+  if ! timeout 90 tailscale --socket="$SOCK" up \
             --authkey="$TS_AUTHKEY" \
             --hostname="$TS_HOSTNAME" \
-            --accept-dns=false \
-    || die "tailscale up failed — check the key has not expired or been used:
-       https://login.tailscale.com/admin/settings/keys"
+            --accept-dns=false; then
+    say "--- tailscale status ---"
+    tailscale --socket="$SOCK" status 2>&1 | head -10 || true
+    say "--- tailscaled log ---"
+    tail -15 /var/log/tailscaled.log 2>/dev/null || true
+    die "could not join the tailnet.
+       If it stalled here, this machine is probably waiting for approval:
+         https://login.tailscale.com/admin/machines
+       Approve '$TS_HOSTNAME' there, or disable device approval, then rerun.
+       Otherwise check the key is unused and unexpired:
+         https://login.tailscale.com/admin/settings/keys"
+  fi
 
   # The name kitterm will be reached under. Parse it properly: every peer
   # carries a DNSName too, so grepping the first match can return somebody
