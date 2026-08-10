@@ -366,6 +366,7 @@ enum KittermMain {
         // launchd, not this shell — see bootstrapSessionJob for why the parent
         // decides what every pane's file-access prompts are attributed to.
         var detached: Process?
+        #if canImport(Darwin)
         do {
             try bootstrapSessionJob(executable: executable, port: port, flags: flags)
         } catch {
@@ -378,6 +379,12 @@ enum KittermMain {
             writeError("         name the launching app rather than kitterm.\n")
             detached = try spawnDetached(executable: executable, port: port, flags: flags)
         }
+        #else
+        // There is no launchd to bootstrap into, so detached is not a fallback
+        // here — it is the only mode, and the identity caveat above is a macOS
+        // concern. Warning about it would be noise on every container start.
+        detached = try spawnDetached(executable: executable, port: port, flags: flags)
+        #endif
 
         // Wait briefly for health.
         let deadline = Date().addingTimeInterval(3)

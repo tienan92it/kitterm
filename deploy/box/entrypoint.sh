@@ -8,6 +8,10 @@
 #                      Reach it at http://localhost:<published>/
 set -euo pipefail
 
+# `docker run kitterm-box <cmd>` runs that command instead of starting the box,
+# so the image can be inspected without a daemon holding the terminal open.
+if [ "$#" -gt 0 ]; then exec "$@"; fi
+
 TS_HOSTNAME="${TS_HOSTNAME:-kitterm-box}"
 PORT="${KITTERM_PORT:-3418}"
 SOCK=/run/tailscale/tailscaled.sock
