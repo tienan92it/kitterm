@@ -77,10 +77,24 @@ $(tail -20 /var/log/tailscaled.log 2>/dev/null)"
        Then check: tailscale --socket=$SOCK status"
   say "this box is $FQDN"
 
-  say "putting tailscale serve in front of port $PORT"
-  tailscale --socket="$SOCK" serve --bg "$PORT" \
-    || die "tailscale serve failed. HTTPS certificates must be enabled:
+  # HTTPS needs a certificate, which the tailnet only issues when HTTPS
+  # Certificates is enabled in the admin console. Without it the TLS handshake
+  # fails and — worse — each attempt burns a Let's Encrypt authorization, five
+  # of which rate-limit the name for an hour. TS_SERVE_HTTP=1 skips certificates
+  # entirely: the tailnet is WireGuard-encrypted either way, but a plain-HTTP
+  # origin is not a secure context, so the phone cannot install it as an app.
+  if [ -n "${TS_SERVE_HTTP:-}" ]; then
+    say "serving plain HTTP over the tailnet (TS_SERVE_HTTP set, no certificate)"
+    SCHEME=http
+    tailscale --socket="$SOCK" serve --bg --http=80 "$PORT" \
+      || die "tailscale serve failed"
+  else
+    say "putting tailscale serve in front of port $PORT"
+    SCHEME=https
+    tailscale --socket="$SOCK" serve --bg "$PORT" \
+      || die "tailscale serve failed. HTTPS certificates must be enabled:
        https://login.tailscale.com/admin/dns"
+  fi
 
   # Requests arriving under the tailnet name are treated as remote even though
   # tailscale connects over loopback, so they must present a token — the proxy
@@ -94,7 +108,7 @@ $(tail -20 /var/log/tailscaled.log 2>/dev/null)"
   echo
   echo "================================================================"
   echo "  Open this on your phone and your Mac:"
-  echo "    https://$FQDN/?token=$TOKEN"
+  echo "    $SCHEME://$FQDN/?token=$TOKEN"
   echo "  Revoke it later with: kitterm token revoke phone"
   echo "================================================================"
   echo
