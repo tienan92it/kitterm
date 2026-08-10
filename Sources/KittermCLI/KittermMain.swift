@@ -298,6 +298,7 @@ enum KittermMain {
                 print("the service is loaded as \(stale) but its plist now says \(plistProcessType);")
                 print("reloading the job so the file takes effect")
                 _ = launchctl(["bootout", "gui/\(getuid())/\(serviceLabel)"])
+                waitForServiceUnloaded()
                 // Clear persisted disabled state, or bootstrap fails with 119.
                 _ = launchctl(["enable", "gui/\(getuid())/\(serviceLabel)"])
                 let reload = launchctl(["bootstrap", "gui/\(getuid())", launchAgentPlist.path])
@@ -728,6 +729,27 @@ enum KittermMain {
     /// True when the LaunchAgent is bootstrapped into the user's gui session.
     private static func serviceLoaded() -> Bool {
         launchctl(["print", "gui/\(getuid())/\(serviceLabel)"]).status == 0
+    }
+
+    /// Block until launchd has finished dropping the job, or three seconds pass.
+    ///
+    /// `bootout` is asynchronous: it returns once the job is marked for removal,
+    /// while the daemon it owns can still be alive and holding the port.
+    /// Bootstrapping into that window loads a job whose first act is a failed
+    /// bind, which KeepAlive then turns into a crash loop. `service install`
+    /// never noticed because the work it does between the two — stopping any
+    /// manual daemon, then probing the port for a foreign listener — covers the
+    /// same gap by accident.
+    ///
+    /// Returning on timeout rather than throwing is deliberate: bootstrap
+    /// reports a genuine failure far better than a guess about why the job is
+    /// still listed.
+    private static func waitForServiceUnloaded() {
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline {
+            if !serviceLoaded() { return }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
     }
 
     /// The executable path a launchd job can outlive: absolute, existing, and
