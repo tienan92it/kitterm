@@ -156,6 +156,20 @@ for extra in README.md LICENSE; do
     fi
 done
 
+# The plist template ships inside the binary, so a release that changes it (a
+# new key, a different ProcessType) never reaches an already-installed service
+# on its own: this script replaces binaries, then re-bootstraps whatever file
+# was already on disk. Regenerate it from the build we just installed, before
+# that re-bootstrap. The binary preserves the ProgramArguments already in the
+# file, so the port and flags chosen at install time survive.
+#
+# Runs in the deferred case too — it only rewrites the file, never restarts the
+# daemon, so live panes are safe and the change lands at the next start.
+if [ "$SERVICE_INSTALLED" = 1 ]; then
+    "$PREFIX/bin/kitterm" service sync \
+        || echo "warning: could not refresh $SERVICE_PLIST; run: kitterm service install"
+fi
+
 # Re-load the login agent we booted out, now pointing at the new build.
 if [ "$DEFER" != 1 ] && [ "$SERVICE_INSTALLED" = 1 ]; then
     echo "==> restarting kitterm service"
