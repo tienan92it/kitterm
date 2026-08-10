@@ -140,6 +140,7 @@ enum KittermMain {
               kitterm open [PATH]     # browser shell in PATH (default: cwd)
               kitterm service install [same flags as start]
               kitterm service uninstall | status
+              kitterm service sync    # rewrite the plist from this build, no restart
               kitterm upgrade         # install the latest release
               kitterm integrate [zsh|bash]  # print the OSC 133/633 snippet
               kitterm token create <name> [--watch] | list | revoke <name>
@@ -556,10 +557,90 @@ enum KittermMain {
             try uninstallService()
         case "status":
             serviceStatus()
+        case "sync":
+            try syncService()
         default:
-            fputs("usage: kitterm service install|uninstall|status\n", stderr)
+            fputs("usage: kitterm service install|uninstall|status|sync\n", stderr)
             exit(2)
         }
+    }
+
+    /// Rewrite the installed LaunchAgent from this build's template.
+    ///
+    /// The template lives in the binary, so a release that changes it reaches
+    /// an existing service only if something regenerates the file — the
+    /// installer replaces binaries but has always re-bootstrapped whatever
+    /// plist was already on disk. That is how a daemon kept running at the old
+    /// QoS after the build that fixed it was installed.
+    ///
+    /// Deliberately does not stop, bootout, or bootstrap anything: `upgrade`
+    /// stages a build without dropping live panes, and a sync that restarted
+    /// the daemon would take the panes with it. The new file applies at the
+    /// next daemon start, which is the same contract as a deferred upgrade.
+    private static func syncService() throws {
+        guard loginAgentInstalled() else {
+            throw CLIError.serviceFailed(
+                action: "service sync",
+                detail: "no login agent installed — run `kitterm service install`"
+            )
+        }
+        if try syncServicePlist(at: launchAgentPlist) {
+            print("service plist updated; it applies at the next daemon start")
+        } else {
+            print("service plist already matches this build")
+        }
+    }
+
+    /// Returns true when the file changed. Split out so it can be tested
+    /// against a temporary plist rather than the real LaunchAgent.
+    static func syncServicePlist(at plist: URL) throws -> Bool {
+        let data: Data
+        do {
+            data = try Data(contentsOf: plist)
+        } catch {
+            throw CLIError.serviceFailed(
+                action: "service sync",
+                detail: "cannot read \(plist.path): \(error.localizedDescription)"
+            )
+        }
+        let parsed = try? PropertyListSerialization.propertyList(
+            from: data,
+            options: [],
+            format: nil
+        )
+        // The arguments are carried over rather than regenerated: the port and
+        // flags in there were chosen at install time and are recorded nowhere
+        // else, so rebuilding them from defaults would quietly drop --lan, a
+        // TLS pair, or a non-default port.
+        guard
+            let dictionary = parsed as? [String: Any],
+            let programArguments = dictionary["ProgramArguments"] as? [String],
+            !programArguments.isEmpty
+        else {
+            throw CLIError.serviceFailed(
+                action: "service sync",
+                detail: "\(plist.path) has no usable ProgramArguments; "
+                    + "run `kitterm service install` to rewrite it"
+            )
+        }
+
+        // KeepAlive tells the two jobs apart, and a login agent that lost it
+        // would stop coming back after a crash. Absent means the login agent's
+        // own default rather than the session job's.
+        let keepAlive = dictionary["KeepAlive"] as? Bool ?? true
+        let body = launchdPlistBody(programArguments: programArguments, keepAlive: keepAlive)
+        if let existing = try? String(contentsOf: plist, encoding: .utf8), existing == body {
+            return false
+        }
+        do {
+            try body.write(to: plist, atomically: true, encoding: .utf8)
+        } catch {
+            throw CLIError.serviceFailed(
+                action: "service sync",
+                detail: "cannot write \(plist.path): \(error.localizedDescription)"
+            )
+        }
+        return true
     }
 
     /// True when the LaunchAgent is bootstrapped into the user's gui session.
@@ -743,8 +824,21 @@ enum KittermMain {
         flags: DaemonFlags,
         keepAlive: Bool
     ) -> String {
-        let programArgs = [executable, "serve", "--port", "\(port)"] + flags.serveArguments
-        let entries = programArgs
+        launchdPlistBody(
+            programArguments: [executable, "serve", "--port", "\(port)"] + flags.serveArguments,
+            keepAlive: keepAlive
+        )
+    }
+
+    /// The same body from an argument vector taken as-is. `service sync` needs
+    /// this: it refreshes the template around the arguments an existing job was
+    /// installed with, which is the only way to change the plist without
+    /// guessing at a port and flags the user chose once and never restated.
+    static func launchdPlistBody(
+        programArguments: [String],
+        keepAlive: Bool
+    ) -> String {
+        let entries = programArguments
             .map { "\t\t<string>\(xmlEscaped($0))</string>" }
             .joined(separator: "\n")
         return """
