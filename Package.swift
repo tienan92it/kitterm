@@ -65,5 +65,9 @@ let package = Package(
                 .product(name: "NIOEmbedded", package: "swift-nio"),
             ]
         ),
+        .testTarget(
+            name: "KittermCLITests",
+            dependencies: ["KittermCLI"]
+        ),
     ]
 )

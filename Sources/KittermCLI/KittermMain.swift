@@ -727,7 +727,17 @@ enum KittermMain {
     /// what makes `launchctl bootstrap` actually start the daemon. Whether the
     /// job restarts itself is KeepAlive; whether it returns at login is decided
     /// by where the plist lives, not by anything in here.
-    private static func launchdPlistBody(
+    ///
+    /// ProcessType is Interactive, not Background. launchd applies the job's
+    /// process type as a QoS clamp, and every pane, shell, and coding agent the
+    /// daemon forks inherits it for that process's whole life. Under Background
+    /// the clamp confines the whole tree to the efficiency cores: on an M4 Pro a
+    /// fixed CPU benchmark takes ~1.9s under Background against ~0.39s under
+    /// Interactive, and the Background numbers also scatter (1.5-2.3s) where the
+    /// Interactive ones do not — felt as slow tab creation, keystroke lag, and
+    /// commands that run long. The daemon is on the interactive path, so it is
+    /// not a background job however little of its own CPU it burns.
+    static func launchdPlistBody(
         executable: String,
         port: Int,
         flags: DaemonFlags,
@@ -753,7 +763,7 @@ enum KittermMain {
         \t<key>KeepAlive</key>
         \t\(keepAlive ? "<true/>" : "<false/>")
         \t<key>ProcessType</key>
-        \t<string>Background</string>
+        \t<string>Interactive</string>
         </dict>
         </plist>
 
