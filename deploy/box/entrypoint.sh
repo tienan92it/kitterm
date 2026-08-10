@@ -30,7 +30,12 @@ if [ -n "${TS_AUTHKEY:-}" ]; then
              --state=/var/lib/tailscale/tailscaled.state \
              --socket="$SOCK" >/var/log/tailscaled.log 2>&1 &
   for _ in $(seq 1 30); do [ -S "$SOCK" ] && break; sleep 1; done
-  tailscale --socket="$SOCK" up --authkey="$TS_AUTHKEY" --hostname="$TS_HOSTNAME"
+  # --accept-dns=false is load-bearing: MagicDNS would rewrite resolv.conf to
+  # 100.100.100.100, which nothing in the box can reach under userspace
+  # networking. Every lookup then times out — including the agent's calls to
+  # api.anthropic.com. Serve still works; only DNS resolution is declined.
+  tailscale --socket="$SOCK" up --authkey="$TS_AUTHKEY" --hostname="$TS_HOSTNAME" \
+            --accept-dns=false
 
   # The name kitterm will be reached under. Requests arriving under it are
   # treated as remote even though tailscale connects over loopback, so they
