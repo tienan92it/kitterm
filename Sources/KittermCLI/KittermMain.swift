@@ -288,12 +288,34 @@ enum KittermMain {
                     detail: "the kitterm service manages the daemon; to change flags run: kitterm service install \(array.joined(separator: " "))"
                 )
             }
-            let result = launchctl(["kickstart", "-k", "gui/\(getuid())/\(serviceLabel)"])
-            guard result.status == 0 else {
-                throw CLIError.serviceFailed(
-                    action: "launchctl kickstart",
-                    detail: result.output.isEmpty ? "launchctl exited \(result.status)" : result.output
-                )
+            // kickstart restarts the process against the definition launchd is
+            // already holding, so a plist the installer rewrote since bootstrap
+            // would survive a restart untouched — which is exactly how a daemon
+            // kept coming back at background QoS after the fix was installed.
+            // Reload the job outright when the two disagree. Restart drops
+            // panes either way, so this costs nothing extra beyond a bootout.
+            if let stale = staleLoadedSpawnType() {
+                print("the service is loaded as \(stale) but its plist now says \(plistProcessType);")
+                print("reloading the job so the file takes effect")
+                _ = launchctl(["bootout", "gui/\(getuid())/\(serviceLabel)"])
+                waitForServiceUnloaded()
+                // Clear persisted disabled state, or bootstrap fails with 119.
+                _ = launchctl(["enable", "gui/\(getuid())/\(serviceLabel)"])
+                let reload = launchctl(["bootstrap", "gui/\(getuid())", launchAgentPlist.path])
+                guard reload.status == 0 else {
+                    throw CLIError.serviceFailed(
+                        action: "launchctl bootstrap",
+                        detail: reload.output.isEmpty ? "launchctl exited \(reload.status)" : reload.output
+                    )
+                }
+            } else {
+                let result = launchctl(["kickstart", "-k", "gui/\(getuid())/\(serviceLabel)"])
+                guard result.status == 0 else {
+                    throw CLIError.serviceFailed(
+                        action: "launchctl kickstart",
+                        detail: result.output.isEmpty ? "launchctl exited \(result.status)" : result.output
+                    )
+                }
             }
             let port = readPort() ?? KittermConstants.defaultPort
             let deadline = Date().addingTimeInterval(3)
@@ -575,8 +597,14 @@ enum KittermMain {
     ///
     /// Deliberately does not stop, bootout, or bootstrap anything: `upgrade`
     /// stages a build without dropping live panes, and a sync that restarted
-    /// the daemon would take the panes with it. The new file applies at the
-    /// next daemon start, which is the same contract as a deferred upgrade.
+    /// the daemon would take the panes with it.
+    ///
+    /// What it must not do is claim more than it did. A written file is not a
+    /// loaded job — launchd holds the definition it read at bootstrap, so the
+    /// new plist does *not* apply at the next daemon start, only at the next
+    /// bootout/bootstrap (a login, or `kitterm restart`). Saying otherwise is
+    /// how a QoS fix shipped, installed, and stayed inert with nothing on
+    /// screen to suggest it had. See `loadedSpawnType(from:)`.
     private static func syncService() throws {
         guard loginAgentInstalled() else {
             throw CLIError.serviceFailed(
@@ -584,10 +612,17 @@ enum KittermMain {
                 detail: "no login agent installed — run `kitterm service install`"
             )
         }
-        if try syncServicePlist(at: launchAgentPlist) {
-            print("service plist updated; it applies at the next daemon start")
-        } else {
-            print("service plist already matches this build")
+        let changed = try syncServicePlist(at: launchAgentPlist)
+        print(changed ? "service plist updated" : "service plist already matches this build")
+
+        // Report against the job launchd actually holds, not against what we
+        // just wrote. A sync that changed nothing can still sit in front of a
+        // stale loaded job, and a sync that changed the file is already applied
+        // if the service was never bootstrapped.
+        if let stale = staleLoadedSpawnType() {
+            print("the running service is still \(stale); launchd loaded that definition at bootstrap")
+            print("and a daemon restart reuses it. it applies at your next login, or now with")
+            print("`kitterm restart` (drops live panes)")
         }
     }
 
@@ -643,9 +678,78 @@ enum KittermMain {
         return true
     }
 
+    /// The ProcessType launchd is actually running the loaded job under, which
+    /// is not necessarily the one in the file on disk.
+    ///
+    /// launchd reads a job's plist exactly once, at bootstrap, and keeps that
+    /// definition in memory for as long as the job stays loaded. Rewriting the
+    /// file changes nothing that is running, and — the part that cost a release
+    /// — nothing that is *restarting* either: a KeepAlive respawn, `launchctl
+    /// kickstart -k`, and therefore `kitterm restart` all reuse the cached
+    /// definition. Only bootout followed by bootstrap re-reads the file, which
+    /// is also what a logout and the next login do.
+    ///
+    /// That is why `service sync` alone could not deliver the QoS fix: it wrote
+    /// Interactive into the file, the daemon restarted under the Background
+    /// definition launchd still held, and everything looked applied.
+    ///
+    /// Parsed from `launchctl print`, which reports the loaded value as
+    /// `spawn type = interactive (4)`.
+    static func loadedSpawnType(from output: String) -> String? {
+        for line in output.split(separator: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("spawn type = ") else { continue }
+            let value = trimmed.dropFirst("spawn type = ".count)
+            // "interactive (4)" — the numeric code is launchd's, not ours.
+            let name = value.split(separator: "(").first?
+                .trimmingCharacters(in: .whitespaces) ?? ""
+            return name.isEmpty ? nil : name
+        }
+        return nil
+    }
+
+    /// True when `loaded` describes a job launchd would run differently from the
+    /// plist this build writes. Absent means launchd did not report one, which
+    /// is not evidence of a mismatch — say nothing rather than cry wolf.
+    static func spawnTypeIsStale(loaded: String?) -> Bool {
+        guard let loaded else { return false }
+        return loaded.caseInsensitiveCompare(plistProcessType) != .orderedSame
+    }
+
+    /// The loaded job's ProcessType when it disagrees with the file, else nil.
+    private static func staleLoadedSpawnType() -> String? {
+        let result = launchctl(["print", "gui/\(getuid())/\(serviceLabel)"])
+        // Not loaded at all: the next bootstrap reads the file, so nothing is
+        // stale and there is nothing to warn about.
+        guard result.status == 0 else { return nil }
+        let loaded = loadedSpawnType(from: result.output)
+        return spawnTypeIsStale(loaded: loaded) ? loaded : nil
+    }
+
     /// True when the LaunchAgent is bootstrapped into the user's gui session.
     private static func serviceLoaded() -> Bool {
         launchctl(["print", "gui/\(getuid())/\(serviceLabel)"]).status == 0
+    }
+
+    /// Block until launchd has finished dropping the job, or three seconds pass.
+    ///
+    /// `bootout` is asynchronous: it returns once the job is marked for removal,
+    /// while the daemon it owns can still be alive and holding the port.
+    /// Bootstrapping into that window loads a job whose first act is a failed
+    /// bind, which KeepAlive then turns into a crash loop. `service install`
+    /// never noticed because the work it does between the two — stopping any
+    /// manual daemon, then probing the port for a foreign listener — covers the
+    /// same gap by accident.
+    ///
+    /// Returning on timeout rather than throwing is deliberate: bootstrap
+    /// reports a genuine failure far better than a guess about why the job is
+    /// still listed.
+    private static func waitForServiceUnloaded() {
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline {
+            if !serviceLoaded() { return }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
     }
 
     /// The executable path a launchd job can outlive: absolute, existing, and
@@ -830,6 +934,11 @@ enum KittermMain {
         )
     }
 
+    /// The ProcessType every plist this build writes carries. Named once so the
+    /// staleness check compares against the same value the template emits
+    /// rather than a second copy of the string that can drift from it.
+    static let plistProcessType = "Interactive"
+
     /// The same body from an argument vector taken as-is. `service sync` needs
     /// this: it refreshes the template around the arguments an existing job was
     /// installed with, which is the only way to change the plist without
@@ -857,7 +966,7 @@ enum KittermMain {
         \t<key>KeepAlive</key>
         \t\(keepAlive ? "<true/>" : "<false/>")
         \t<key>ProcessType</key>
-        \t<string>Interactive</string>
+        \t<string>\(plistProcessType)</string>
         </dict>
         </plist>
 

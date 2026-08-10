@@ -164,7 +164,10 @@ done
 # file, so the port and flags chosen at install time survive.
 #
 # Runs in the deferred case too — it only rewrites the file, never restarts the
-# daemon, so live panes are safe and the change lands at the next start.
+# daemon, so live panes are safe. It does not land at the next daemon start:
+# launchd keeps the definition it read at bootstrap, and a KeepAlive respawn
+# reuses it. `service sync` says so on screen when the loaded job disagrees, and
+# names the two ways to reload it (next login, or `kitterm restart`).
 if [ "$SERVICE_INSTALLED" = 1 ]; then
     "$PREFIX/bin/kitterm" service sync \
         || echo "warning: could not refresh $SERVICE_PLIST; run: kitterm service install"
