@@ -40,7 +40,7 @@ For containers and cloud boxes. The tarball is statically linked, so the host ne
 Swift toolchain, and it carries its own web bundle — extracting it is the whole install:
 
 ```sh
-V=v0.14.0; ARCH=amd64        # or arm64
+V=v0.15.0; ARCH=amd64        # or arm64
 curl -fsSL -o kitterm.tar.gz \
   https://github.com/tienan92it/kitterm/releases/download/$V/kitterm-$V-linux-$ARCH.tar.gz
 sudo tar -xzf kitterm.tar.gz -C /usr/local
