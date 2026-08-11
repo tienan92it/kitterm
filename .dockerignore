@@ -1,0 +1,4 @@
+.build
+Web/terminal/node_modules
+Web/terminal/dist
+.git

@@ -1,4 +1,9 @@
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+// swift-crypto: same API, same SHA256 type, where the framework is absent.
+import Crypto
+#endif
 import Foundation
 
 /// What a presented token is allowed to do.

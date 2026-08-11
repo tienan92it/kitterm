@@ -13,22 +13,59 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    # arm64 runner with Xcode 16 (Swift 6); the SDK is universal so both slices build.
-    runs-on: macos-15
+  # Resolve once and share: a workflow_dispatch for v0.1.0 must build the
+  # v0.1.0 source on every job, not whatever HEAD happens to be.
+  # env (not inline ${{ }} in run:) keeps the input out of shell parsing.
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
     steps:
-      # Resolve first so checkout can pin to the tag: a workflow_dispatch for
-      # v0.1.0 must build the v0.1.0 source, not whatever HEAD happens to be.
-      # env (not inline ${{ }} in run:) keeps the input out of shell parsing.
-      - name: Resolve version
-        id: v
+      - id: v
         env:
           VERSION: ${{ github.event.inputs.version || github.ref_name }}
         run: echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+  # Built once and handed to both Linux architectures, so they ship byte-identical
+  # assets. macOS builds its own inside build-release.sh.
+  web:
+    needs: version
+    runs-on: ubuntu-24.04
+    steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ steps.v.outputs.version }}
+          ref: ${{ needs.version.outputs.version }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # --ignore-scripts: pnpm 10 blocks esbuild's postinstall and fails the
+      # install outright. Vite resolves the binary from the platform package,
+      # so the build itself is unaffected.
+      - name: Build web bundle
+        working-directory: Web/terminal
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: Web/terminal/dist
+
+  macos:
+    needs: version
+    # arm64 runner with Xcode 16 (Swift 6); the SDK is universal so both slices build.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.version }}
 
       - uses: actions/setup-node@v4
         with:
@@ -43,18 +80,74 @@ jobs:
 
       - name: Build release tarball
         env:
-          VERSION: ${{ steps.v.outputs.version }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: ./scripts/build-release.sh "$VERSION"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-macos
+          path: |
+            dist/kitterm-${{ needs.version.outputs.version }}-macos-universal.tar.gz
+            dist/kitterm-${{ needs.version.outputs.version }}-macos-universal.tar.gz.sha256
+
+  linux:
+    needs: [version, web]
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    container: swift:6.1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.version }}
+
+      # The container runs as root while the checkout is owned by the runner
+      # user; without this git refuses to read the repository.
+      - name: Trust the workspace
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web-dist
+
+      - name: Build release tarball
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          WEB_DIST: web-dist
+        run: ./scripts/build-release-linux.sh "$VERSION"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-linux-${{ matrix.arch }}
+          path: |
+            dist/kitterm-${{ needs.version.outputs.version }}-linux-${{ matrix.arch }}.tar.gz
+            dist/kitterm-${{ needs.version.outputs.version }}-linux-${{ matrix.arch }}.tar.gz.sha256
+
+  publish:
+    needs: [version, macos, linux]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
 
       - name: Publish
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.v.outputs.version }}
-          files: |
-            dist/kitterm-${{ steps.v.outputs.version }}-macos-universal.tar.gz
-            dist/kitterm-${{ steps.v.outputs.version }}-macos-universal.tar.gz.sha256
+          tag_name: ${{ needs.version.outputs.version }}
+          files: dist/*
           body: |
             ## Install
+
+            macOS:
 
             ```sh
             curl -fsSL https://kitterm.dev/install.sh | sh
@@ -65,3 +158,19 @@ jobs:
             Builds are unsigned: the installer clears the quarantine attribute
             for you. If you extract the tarball by hand instead, run
             `xattr -dr com.apple.quarantine <prefix>` before first launch.
+
+            ## Linux
+
+            For containers and cloud boxes — statically linked, so no Swift
+            runtime is needed on the host:
+
+            ```sh
+            curl -fsSL -o kitterm.tar.gz \
+              https://github.com/tienan92it/kitterm/releases/download/${{ needs.version.outputs.version }}/kitterm-${{ needs.version.outputs.version }}-linux-amd64.tar.gz
+            sudo tar -xzf kitterm.tar.gz -C /usr/local
+            kitterm integrate bash >> ~/.bashrc
+            kitterm start --agent-control
+            ```
+
+            Replace `amd64` with `arm64` as appropriate. The tarball carries its
+            own web bundle, so no extra configuration is required.

@@ -188,9 +188,12 @@ public final class DaemonServer: @unchecked Sendable {
             ServerBootstrap(group: group)
                 .serverChannelOption(ChannelOptions.backlog, value: 256)
                 .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
-                .childChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
-                // Interactive echo is many tiny writes — never let Nagle delay them.
-                .childChannelOption(ChannelOptions.socketOption(.tcp_nodelay), value: 1)
+                // Interactive echo is many tiny writes — never let Nagle delay
+                // them. This has to be a TCP-level option: `socketOption` sends
+                // it to SOL_SOCKET, where the same number means SO_DEBUG, so
+                // Nagle stayed on and Linux refused the privileged option and
+                // closed the connection before its pipeline was ever built.
+                .childChannelOption(ChannelOptions.tcpOption(.tcp_nodelay), value: 1)
                 .childChannelInitializer { [config] channel in
                     let httpHandler = HTTPAPIHandler(
                         registry: registry,
@@ -213,11 +216,20 @@ public final class DaemonServer: @unchecked Sendable {
                     } else {
                         tlsFirst = channel.eventLoop.makeSucceededVoidFuture()
                     }
-                    return tlsFirst.flatMap {
+                    let ready = tlsFirst.flatMap {
                         channel.pipeline.configureHTTPServerPipeline(withServerUpgrade: upgradeConfig)
                     }.flatMap {
                         channel.pipeline.addHandler(httpHandler)
                     }
+                    // A connection whose pipeline never assembles is closed by
+                    // NIO with no response and nothing written anywhere, so it
+                    // reaches the client as a bare reset. Say why.
+                    ready.whenFailure { error in
+                        FileHandle.standardError.write(
+                            Data("kitterm: connection setup failed: \(error)\n".utf8)
+                        )
+                    }
+                    return ready
                 }
         }
 

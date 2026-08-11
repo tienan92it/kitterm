@@ -1,4 +1,8 @@
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
 import Foundation
 import KittermProtocol
 import NIOConcurrencyHelpers
@@ -175,30 +179,47 @@ public final class PtySession: @unchecked Sendable {
         guard openpty(&master, &slave, nil, nil, &win) == 0, master >= 0, slave >= 0 else {
             throw PtyError.forkFailed(errno: errno)
         }
+        // openpty leaves the master inheritable. Darwin's spawn closes
+        // everything undeclared, but Linux has no such flag — so without this
+        // every later session would inherit the masters of the ones before it,
+        // and could read their output.
+        _ = fcntl(master, F_SETFD, FD_CLOEXEC)
 
+        // Darwin hands these back as pointers, glibc as structs.
+        #if canImport(Darwin)
         var attrs: posix_spawnattr_t?
         var actions: posix_spawn_file_actions_t?
+        #else
+        var attrs = posix_spawnattr_t()
+        var actions = posix_spawn_file_actions_t()
+        #endif
         guard posix_spawnattr_init(&attrs) == 0 else {
-            _ = Darwin.close(master)
-            _ = Darwin.close(slave)
+            _ = close(master)
+            _ = close(slave)
             throw PtyError.forkFailed(errno: errno)
         }
         guard posix_spawn_file_actions_init(&actions) == 0 else {
             posix_spawnattr_destroy(&attrs)
-            _ = Darwin.close(master)
-            _ = Darwin.close(slave)
+            _ = close(master)
+            _ = close(slave)
             throw PtyError.forkFailed(errno: errno)
         }
         defer {
             posix_spawnattr_destroy(&attrs)
             posix_spawn_file_actions_destroy(&actions)
-            _ = Darwin.close(slave)
+            _ = close(slave)
         }
 
+        #if canImport(Darwin)
         posix_spawnattr_setflags(
             &attrs,
             Int16(POSIX_SPAWN_SETSID | POSIX_SPAWN_CLOEXEC_DEFAULT)
         )
+        #else
+        // Neither flag exists here: the helper calls setsid() itself, and
+        // there is no close-everything-by-default, which is why the master is
+        // marked close-on-exec at creation instead.
+        #endif
 
         posix_spawn_file_actions_adddup2(&actions, slave, STDIN_FILENO)
         posix_spawn_file_actions_adddup2(&actions, slave, STDOUT_FILENO)
@@ -216,7 +237,7 @@ public final class PtySession: @unchecked Sendable {
         // recording, the replay tail, and observers all pick it up unchanged.
         if let banner = LastLogin.banner(forSlave: slave) {
             _ = banner.withCString { ptr in
-                Darwin.write(slave, ptr, strlen(ptr))
+                systemWrite(slave, ptr, strlen(ptr))
             }
         }
 
@@ -255,7 +276,7 @@ public final class PtySession: @unchecked Sendable {
             posix_spawn(&childPid, path, &actions, &attrs, &argv, &envPointers)
         }
         guard spawnRC == 0, childPid > 0 else {
-            _ = Darwin.close(master)
+            _ = close(master)
             throw PtyError.forkFailed(errno: spawnRC == 0 ? errno : spawnRC)
         }
 
@@ -297,7 +318,7 @@ public final class PtySession: @unchecked Sendable {
             return eventLoop.makeSucceededFuture(())
         }
 
-        let readFD = Darwin.dup(masterFD)
+        let readFD = dup(masterFD)
         guard readFD >= 0 else {
             return eventLoop.makeFailedFuture(PtyError.forkFailed(errno: errno))
         }
@@ -455,7 +476,13 @@ public final class PtySession: @unchecked Sendable {
             try stateLock.withLock {
                 guard !terminated else { throw PtyError.closed }
                 var win = winsize(ws_row: r, ws_col: c, ws_xpixel: 0, ws_ypixel: 0)
-                guard ioctl(masterFD, TIOCSWINSZ, &win) == 0 else {
+                // The request argument is UInt on Linux and Int32 on Darwin.
+                #if canImport(Darwin)
+                let request = TIOCSWINSZ
+                #else
+                let request = UInt(TIOCSWINSZ)
+                #endif
+                guard ioctl(masterFD, request, &win) == 0 else {
                     throw PtyError.ioctlFailed
                 }
                 self.cols = c
@@ -601,7 +628,7 @@ public final class PtySession: @unchecked Sendable {
         from: UInt64,
         to: UInt64,
         maxBytes: Int,
-        completion: @escaping (OutputRange) -> Void
+        completion: @escaping @Sendable (OutputRange) -> Void
     ) {
         let ring = outputRange(from: from, to: to, maxBytes: maxBytes)
         let store = stateLock.withLock { logStore }
@@ -749,10 +776,14 @@ public final class PtySession: @unchecked Sendable {
     /// while keeping the syscall rate negligible on the shared event loop.
     private static let cwdPollInterval = TimeAmount.seconds(2)
 
-    /// Read the shell process's own working directory. `proc_pidinfo` is a fast
-    /// kernel-state read (microseconds), not blocking I/O; returns nil for a
-    /// reaped pid or any failure so the caller never throws.
+    /// Read the shell process's own working directory.
+    ///
+    /// Both forms are a kernel-state read rather than blocking I/O — a
+    /// `proc_pidinfo` call on Darwin, a `readlink` of a procfs symlink on
+    /// Linux — and both return nil for a reaped pid or any failure, so the
+    /// caller never throws and the poll simply keeps its last answer.
     static func currentDirectory(ofPID pid: pid_t) -> String? {
+        #if canImport(Darwin)
         var info = proc_vnodepathinfo()
         let size = Int32(MemoryLayout<proc_vnodepathinfo>.size)
         let rc = proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &info, size)
@@ -762,6 +793,17 @@ public final class PtySession: @unchecked Sendable {
             let path = String(cString: cString)
             return path.isEmpty ? nil : path
         }
+        #else
+        // `readlink`, not `realpath`: the target may have been deleted or be
+        // unreachable, and we want whatever the kernel says the cwd is rather
+        // than a resolution that can fail or block on a dead mount.
+        var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+        let count = readlink("/proc/\(pid)/cwd", &buffer, buffer.count - 1)
+        guard count > 0 else { return nil }
+        buffer[count] = 0
+        let path = String(cString: buffer)
+        return path.isEmpty ? nil : path
+        #endif
     }
 
     /// The shell's working directory as last observed by the poll, for readers
@@ -855,7 +897,7 @@ public final class PtySession: @unchecked Sendable {
             self.recorder = nil
             // The shell is going away; undelivered input has nowhere to go.
             pendingInput = Data()
-            _ = Darwin.close(masterFD)
+            _ = close(masterFD)
             return (channel, recorder, nil)
         }
         guard let shutdown else { return }

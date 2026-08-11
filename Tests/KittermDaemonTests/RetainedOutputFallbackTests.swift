@@ -44,7 +44,8 @@ final class RetainedOutputFallbackTests: XCTestCase {
 
     /// The async overload is the one that consults the store.
     private func read(from: UInt64, to: UInt64) throws -> PtySession.OutputRange {
-        var result: PtySession.OutputRange?
+        // `wait(for:)` below is the happens-before the compiler cannot see.
+        nonisolated(unsafe) var result: PtySession.OutputRange?
         let done = expectation(description: "range read")
         session.outputRange(from: from, to: to, maxBytes: 1024) { range in
             result = range

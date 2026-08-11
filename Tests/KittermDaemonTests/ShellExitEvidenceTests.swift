@@ -131,7 +131,8 @@ final class ShellExitEvidenceTests: XCTestCase {
 
         session.terminate()
 
-        var result: PtySession.OutputRange?
+        // `wait(for:)` below is the happens-before the compiler cannot see.
+        nonisolated(unsafe) var result: PtySession.OutputRange?
         let done = expectation(description: "read after exit")
         session.outputRange(from: offset, to: offset + 10, maxBytes: 1024) { range in
             result = range

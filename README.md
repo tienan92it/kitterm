@@ -7,17 +7,20 @@
 Each tab is a shell — lightweight, AI-agent friendly, watchable from any device.
 
 [![Release](https://img.shields.io/github/v/release/tienan92it/kitterm?color=3fb950)](https://github.com/tienan92it/kitterm/releases/latest)
-[![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey)](https://github.com/tienan92it/kitterm)
+[![Platform](https://img.shields.io/badge/platform-macOS%2013%2B%20%7C%20Linux-lightgrey)](https://github.com/tienan92it/kitterm)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 </div>
 
 ---
 
-A loopback terminal daemon for macOS. It serves [xterm.js](https://xtermjs.org) over a
+A loopback terminal daemon. It serves [xterm.js](https://xtermjs.org) over a
 local HTTP/WebSocket server, so a browser tab becomes a real shell with a controlling
 TTY — job control, `Ctrl+C`, TUIs and all. The daemon is Swift + [SwiftNIO](https://github.com/apple/swift-nio),
 with no Node on the hot path.
+
+macOS is the primary target. It also runs on Linux, which is how you put an agent in a
+container that outlives your laptop — see [Linux](#linux) below.
 
 ## Install
 
@@ -30,6 +33,38 @@ kitterm start
 > [!NOTE]
 > Releases are unsigned. The installer clears the quarantine attribute for you; if you
 > extract the tarball by hand, run `xattr -dr com.apple.quarantine <prefix>` first.
+
+### Linux
+
+For containers and cloud boxes. The tarball is statically linked, so the host needs no
+Swift toolchain, and it carries its own web bundle — extracting it is the whole install:
+
+```sh
+V=v0.15.0; ARCH=amd64        # or arm64
+curl -fsSL -o kitterm.tar.gz \
+  https://github.com/tienan92it/kitterm/releases/download/$V/kitterm-$V-linux-$ARCH.tar.gz
+sudo tar -xzf kitterm.tar.gz -C /usr/local
+
+kitterm integrate bash >> ~/.bashrc   # see below — do not skip this
+kitterm start --agent-control
+```
+
+Three differences worth knowing:
+
+- **Shell integration is not optional here.** A bare container emits no OSC 133 marks, so
+  without the snippet `⌘↑`/`⌘↓` do nothing and `/api/sessions/<id>/commands` stays empty —
+  the evidence layer an orchestrator reads is simply dark.
+- **There is no launchd**, so `kitterm start` detaches the daemon from your shell rather
+  than rooting it in a login session. `kitterm service` still answers, but it manages a
+  launchd job, so there is nothing for it to install here — use your init system, or
+  `restart: unless-stopped` if this is a container.
+- **Reaching it from outside** wants a token and a name it trusts. Behind `tailscale serve`
+  or any reverse proxy, keep the daemon on loopback and pass
+  `--trusted-host <name>`; those requests are then treated as remote and must present a
+  token, so the proxy cannot become an unauthenticated way in.
+
+For a container with this already wired up — plus coding agents, Tailscale and git — see
+[agentbox](https://github.com/tienan92it/agentbox).
 
 ## Usage
 
@@ -168,7 +203,14 @@ swift run kitterm start
 
 `swift test` runs the suite; `pnpm dev` serves the UI with hot reload against a running
 daemon. `./scripts/build-release.sh v0.1.0` produces a release tarball — pushing a `v*`
-tag does the same in CI.
+tag does the same in CI, for macOS and both Linux architectures.
+
+On Linux, `swift build` works but `swift test` does not: several test files use
+`Bundle(for:)`, which corelibs-XCTest has no equivalent for. `KittermBench` is macOS-only
+for the same class of reason — it drives the daemon with `URLSessionWebSocketTask`, which
+corelibs-foundation does not implement — but it can measure a Linux daemon remotely with
+`--port`. Linux tarballs come from `./scripts/build-release-linux.sh`, which links both
+binaries statically and refuses to package one that still needs the Swift runtime.
 
 ## License
 

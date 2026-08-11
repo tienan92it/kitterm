@@ -66,10 +66,12 @@ final class SessionRecorder: @unchecked Sendable {
     }
 
     private func writeLine(json: Any) {
+        // Serialised here rather than on the queue: `Any` cannot cross into a
+        // sendable closure, and doing the encoding at the call site keeps the
+        // queue block carrying nothing but bytes.
+        guard let data = try? JSONSerialization.data(withJSONObject: json) else { return }
         queue.async { [self] in
-            guard !closed,
-                  let data = try? JSONSerialization.data(withJSONObject: json)
-            else { return }
+            guard !closed else { return }
             handle.write(data)
             handle.write(Data([0x0a]))
         }

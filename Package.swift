@@ -11,13 +11,15 @@ let package = Package(
         .library(name: "KittermDaemon", targets: ["KittermDaemon"]),
         .executable(name: "kitterm", targets: ["KittermCLI"]),
         .executable(name: "kitterm-spawn-helper", targets: ["KittermSpawnHelper"]),
-        .executable(name: "KittermBench", targets: ["KittermBench"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.76.0"),
         // TLS for the optional external listener only; the loopback listener
         // never sees this handler.
         .package(url: "https://github.com/apple/swift-nio-ssl.git", from: "2.27.0"),
+        // Token hashing where CryptoKit does not exist. Linked on Linux only,
+        // so macOS keeps using the system framework and gains no binary.
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
     ],
     targets: [
         .target(
@@ -36,18 +38,17 @@ let package = Package(
                 .product(name: "NIOHTTP1", package: "swift-nio"),
                 .product(name: "NIOWebSocket", package: "swift-nio"),
                 .product(name: "NIOSSL", package: "swift-nio-ssl"),
+                .product(
+                    name: "Crypto",
+                    package: "swift-crypto",
+                    condition: .when(platforms: [.linux])
+                ),
             ]
         ),
         .executableTarget(
             name: "KittermCLI",
             dependencies: [
                 "KittermDaemon",
-                "KittermProtocol",
-            ]
-        ),
-        .executableTarget(
-            name: "KittermBench",
-            dependencies: [
                 "KittermProtocol",
             ]
         ),
@@ -71,3 +72,17 @@ let package = Package(
         ),
     ]
 )
+
+// The benchmark drives the daemon over a WebSocket with URLSessionWebSocketTask,
+// which swift-corelibs-foundation does not implement — so on Linux it is left
+// out rather than breaking `swift build` for the daemon it is meant to measure.
+// Benchmarking still happens on macOS, against a Linux daemon if you point it
+// at one with `--port`.
+#if !os(Linux)
+package.products.append(
+    .executable(name: "KittermBench", targets: ["KittermBench"])
+)
+package.targets.append(
+    .executableTarget(name: "KittermBench", dependencies: ["KittermProtocol"])
+)
+#endif

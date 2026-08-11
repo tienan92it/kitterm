@@ -78,8 +78,10 @@ default port **3418**.
 
 ## Distribution
 
-Releases ship a universal tarball; `scripts/install.sh` unpacks it into a prefix
-(default `~/.local`):
+Releases ship a universal macOS tarball and statically linked Linux tarballs
+(`amd64`, `arm64`); `scripts/install.sh` unpacks the macOS one into a prefix
+(default `~/.local`). The Linux ones use the same layout and are meant to be
+extracted straight into `/usr/local`:
 
 ```
 <prefix>/bin/kitterm              # sh wrapper, execs the real binary
@@ -89,9 +91,15 @@ Releases ship a universal tarball; `scripts/install.sh` unpacks it into a prefix
 ```
 
 The wrapper exists so `SpawnHelperPath.resolve()` finds the helper beside argv[0].
-**This layout is encoded in four places** — `scripts/build-release.sh`,
-`scripts/install.sh`, `StaticFileServer.candidateRoots()`, and `SpawnHelperPath` —
-so changing it means changing all four, and nothing fails at build time if you don't.
+**This layout is encoded in five places** — `scripts/build-release.sh`,
+`scripts/build-release-linux.sh`, `scripts/install.sh`,
+`StaticFileServer.candidateRoots()`, and `SpawnHelperPath` — so changing it means
+changing all five, and nothing fails at build time if you don't.
+
+Linux binaries must be linked with `--static-swift-stdlib`, **including the C spawn
+helper**: SwiftPM links it against `libswiftCore` regardless, and a helper that needs
+the Swift runtime execs fine and then kills every session on a host without a
+toolchain. `build-release-linux.sh` refuses to package a build that still links it.
 
 ## Service
 
@@ -123,7 +131,19 @@ swift test
 cd Web/terminal && pnpm install && pnpm build
 swift run kitterm start|stop|status|restart
 swift run KittermBench                     # against a running daemon
-./scripts/build-release.sh v0.1.0          # universal tarball → dist/
+./scripts/build-release.sh v0.1.0          # universal macOS tarball → dist/
+./scripts/build-release-linux.sh v0.1.0    # static Linux tarball → dist/ (run on Linux)
+```
+
+On Linux only `swift build` works. `swift test` does not: several test files use
+`Bundle(for:)`, which corelibs-XCTest lacks. `KittermBench` is excluded from Linux
+builds entirely — it needs `URLSessionWebSocketTask`, absent from
+corelibs-foundation — but it can measure a Linux daemon remotely with `--port`.
+Check Linux with:
+
+```bash
+docker run --rm -v "$PWD":/src -w /src swift:6.1 \
+  bash -c 'git config --global --add safe.directory "*"; swift build'
 ```
 
 `KittermBench`'s `TUI-redraw` scenario is flaky — it intermittently reads ~193 B

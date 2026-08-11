@@ -19,6 +19,16 @@ int main(int argc, char **argv) {
     return 127;
   }
 
+  /* Become a session leader before claiming a terminal. macOS asks posix_spawn
+   * for this with POSIX_SPAWN_SETSID, but glibc keeps that flag behind
+   * __USE_GNU and Swift cannot see it, so doing it here works the same on both
+   * and leaves one code path instead of two. EPERM only means we already are
+   * one — which is the macOS case — and is not a failure.
+   *
+   * setsid, then open the slave, then TIOCSCTTY is what glibc's own login_tty
+   * does, and what tmux and node-pty do. */
+  (void)setsid();
+
   /* Attach controlling TTY: session has no ctty yet (SETSID); opening the slave
    * without O_NOCTTY makes it the controlling terminal.
    *
@@ -40,6 +50,23 @@ int main(int argc, char **argv) {
   /* Explicit acquire — matches login_tty / node-pty behavior on Darwin. */
   (void)ioctl(STDIN_FILENO, TIOCSCTTY, 0);
 #endif
+
+  /* Close everything above stderr before handing the process to a shell.
+   *
+   * macOS asks posix_spawn for this with POSIX_SPAWN_CLOEXEC_DEFAULT, which
+   * Linux has no equivalent for — and without it a shell inherits whatever the
+   * daemon had open, which is its listening socket and other sessions' pipes.
+   * Doing it here covers both platforms and does not depend on every
+   * descriptor in the daemon having been opened with CLOEXEC.
+   *
+   * This is what login(1) and su(1) do for the same reason. */
+  long max_fd = sysconf(_SC_OPEN_MAX);
+  if (max_fd < 0 || max_fd > 4096) {
+    max_fd = 4096; /* sysconf can report RLIM_INFINITY; closing forever is worse */
+  }
+  for (int fd = STDERR_FILENO + 1; fd < (int)max_fd; fd++) {
+    (void)close(fd);
+  }
 
   char *cwd = argv[1];
   char *shell_path = argv[2];
