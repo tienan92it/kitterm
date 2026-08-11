@@ -195,7 +195,6 @@ public final class DaemonServer: @unchecked Sendable {
                 // closed the connection before its pipeline was ever built.
                 .childChannelOption(ChannelOptions.tcpOption(.tcp_nodelay), value: 1)
                 .childChannelInitializer { [config] channel in
-
                     let httpHandler = HTTPAPIHandler(
                         registry: registry,
                         policy: policy,
