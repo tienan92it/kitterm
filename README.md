@@ -64,7 +64,7 @@ Three differences worth knowing:
   token, so the proxy cannot become an unauthenticated way in.
 
 For a container with this already wired up — plus coding agents, Tailscale and git — see
-[agentbox](https://github.com/tienan92it/agentbox).
+[kitbox](https://github.com/tienan92it/kitbox).
 
 ## Usage
 
