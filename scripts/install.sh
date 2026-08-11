@@ -117,8 +117,7 @@ cp "$TMP/bin/kitterm" "$PREFIX/bin/kitterm.new"
 chmod 755 "$PREFIX/bin/kitterm.new"
 mv -f "$PREFIX/bin/kitterm.new" "$PREFIX/bin/kitterm"
 
-# Web bundle into its own versioned directory, then flip the symlink by rename
-# so no request can observe a half-written root.
+# Web bundle into its own versioned directory, then repoint the symlink.
 WEB_DIR="web-$VERSION"
 rm -rf "$PREFIX/share/kitterm/$WEB_DIR"
 cp -R "$TMP/share/kitterm/web" "$PREFIX/share/kitterm/$WEB_DIR" \
@@ -128,8 +127,18 @@ cp -R "$TMP/share/kitterm/web" "$PREFIX/share/kitterm/$WEB_DIR" \
 if [ -e "$PREFIX/share/kitterm/web" ] && [ ! -L "$PREFIX/share/kitterm/web" ]; then
     rm -rf "$PREFIX/share/kitterm/web"
 fi
-ln -sfn "$WEB_DIR" "$PREFIX/share/kitterm/web.new"
-mv -f "$PREFIX/share/kitterm/web.new" "$PREFIX/share/kitterm/web"
+# `ln -sfn` onto the final path, not a staged rename. `mv -f new web` follows
+# `web` while it still points at the previous bundle, so the new symlink lands
+# *inside* that directory and `web` keeps pointing at a bundle the prune below
+# is about to delete — leaving a dangling symlink and a daemon that reports
+# "web client not built". Nothing observes the gap: the daemon resolves this
+# path once at start-up (StaticFileServer.cachedRoot), not per request.
+ln -sfn "$WEB_DIR" "$PREFIX/share/kitterm/web"
+
+# Prove it before anything is deleted. A silent failure here is invisible until
+# the next daemon start, by which point the bundle it was serving is gone.
+[ -f "$PREFIX/share/kitterm/web/index.html" ] \
+    || die "web bundle did not install: $PREFIX/share/kitterm/web does not resolve"
 
 # Drop superseded bundles, except the one a live daemon pinned at start-up and
 # recorded for us. Without that marker, keep everything rather than risk
