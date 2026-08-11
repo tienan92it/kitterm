@@ -2,8 +2,22 @@ import Foundation
 import KittermProtocol
 
 public enum DaemonPaths: Sendable {
+    /// Where the pid, port, token and web-root markers live.
+    ///
+    /// `KITTERM_STATE_DIR` moves the whole set. Without it there is no way to
+    /// run a second daemon without stepping on the first: the home directory
+    /// comes from the passwd entry, so overriding `HOME` does not redirect it,
+    /// and a throwaway daemon silently rewrites the pid and port of the one you
+    /// are working in — after which `kitterm stop` targets the wrong process.
+    ///
+    /// A relative path resolves against the current directory, which is what a
+    /// test harness usually wants.
     public static var stateDirectory: URL {
-        FileManager.default.homeDirectoryForCurrentUser
+        if let override = ProcessInfo.processInfo.environment["KITTERM_STATE_DIR"],
+           !override.isEmpty {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(KittermConstants.stateDirectoryName, isDirectory: true)
     }
 

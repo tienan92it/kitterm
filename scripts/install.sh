@@ -144,7 +144,10 @@ ln -sfn "$WEB_DIR" "$PREFIX/share/kitterm/web"
 # recorded for us. Without that marker, keep everything rather than risk
 # deleting the bundle something is still serving.
 PINNED=""
-[ -f "$HOME/.kitterm/web-root" ] && PINNED="$(basename "$(cat "$HOME/.kitterm/web-root")")"
+# Same override the daemon honours, so a test harness pointing elsewhere is
+# read consistently by both halves.
+STATE_DIR="${KITTERM_STATE_DIR:-$HOME/.kitterm}"
+[ -f "$STATE_DIR/web-root" ] && PINNED="$(basename "$(cat "$STATE_DIR/web-root")")"
 for dir in "$PREFIX/share/kitterm"/web-*; do
     [ -d "$dir" ] || continue
     name="$(basename "$dir")"
