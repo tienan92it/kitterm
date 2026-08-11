@@ -126,6 +126,65 @@ final class ServiceSyncTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: missing.path))
     }
 
+    /// What sync writes and what the staleness check compares against have to
+    /// be the same value, or the check quietly stops firing.
+    func testTheTemplateCarriesTheProcessTypeTheStalenessCheckExpects() throws {
+        let plist = try write(legacyPlist)
+        _ = try KittermMain.syncServicePlist(at: plist)
+        XCTAssertEqual(try parse(plist)["ProcessType"] as? String, KittermMain.plistProcessType)
+    }
+
+    /// `launchctl print` for a job bootstrapped before the QoS fix, trimmed to
+    /// the shape the parser has to cope with: tab-indented, the value followed
+    /// by launchd's numeric code.
+    private var loadedBackgroundJob: String {
+        """
+        gui/501/com.kitterm.daemon = {
+        \tactive count = 1
+        \tstate = running
+        \tpid = 7515
+        \truns = 2
+
+        \tspawn type = background (5)
+        \tjetsam priority = 40
+        \tproperties = keepalive | runatload | inferred program
+        }
+        """
+    }
+
+    func testLoadedSpawnTypeIsReadFromLaunchctlPrint() throws {
+        XCTAssertEqual(KittermMain.loadedSpawnType(from: loadedBackgroundJob), "background")
+        XCTAssertEqual(
+            KittermMain.loadedSpawnType(from: loadedBackgroundJob.replacingOccurrences(
+                of: "background (5)", with: "interactive (4)"
+            )),
+            "interactive"
+        )
+    }
+
+    /// The regression this whole path exists for. `service sync` wrote
+    /// Interactive into the file, the daemon restarted, and launchd brought it
+    /// back under the Background definition it had loaded at bootstrap — with
+    /// the CLI reporting success. A loaded Background job has to read as stale.
+    func testAJobLoadedAsBackgroundIsStaleAgainstThisBuildsPlist() throws {
+        let loaded = KittermMain.loadedSpawnType(from: loadedBackgroundJob)
+        XCTAssertTrue(KittermMain.spawnTypeIsStale(loaded: loaded))
+    }
+
+    /// Matching is case-insensitive: launchd prints `interactive`, the plist
+    /// says `Interactive`, and a job that already agrees must stay quiet.
+    func testAJobLoadedAsInteractiveIsNotStale() throws {
+        XCTAssertFalse(KittermMain.spawnTypeIsStale(loaded: "interactive"))
+        XCTAssertFalse(KittermMain.spawnTypeIsStale(loaded: KittermMain.plistProcessType))
+    }
+
+    /// No reported spawn type is not evidence of a mismatch — warning there
+    /// would fire on every sync and train itself out.
+    func testAnAbsentSpawnTypeIsNotReportedAsStale() throws {
+        XCTAssertNil(KittermMain.loadedSpawnType(from: "gui/501/com.kitterm.daemon = {\n}"))
+        XCTAssertFalse(KittermMain.spawnTypeIsStale(loaded: nil))
+    }
+
     /// Paths and flags reach the plist as XML text, so an argument containing a
     /// markup character must not be able to break the document.
     func testArgumentsWithMarkupCharactersStayParseable() throws {
