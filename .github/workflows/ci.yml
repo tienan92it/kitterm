@@ -31,3 +31,21 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
           pnpm test
+
+  # The daemon ships to Linux containers, so a Darwin-only import or an
+  # unavailable Foundation type has to fail here rather than in someone's box.
+  # Build only: seven test files use Bundle(for:), which corelibs-XCTest does
+  # not have, so `swift test` cannot run on Linux.
+  linux-build:
+    runs-on: ubuntu-24.04
+    container: swift:6.1
+    steps:
+      - uses: actions/checkout@v4
+
+      # The container runs as root while the checkout is owned by the runner
+      # user; without this git refuses to read the repository.
+      - name: Trust the workspace
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Swift build
+        run: swift build
