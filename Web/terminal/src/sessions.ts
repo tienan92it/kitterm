@@ -1,6 +1,7 @@
 import "./tokens.css";
 import "./sessions.css";
 import { resolveFontFamily } from "./fonts";
+import { summarize, waitedLabel } from "./approval-format";
 import { loadSettings } from "./settings-store";
 import { applyThemeTokens } from "./theme-tokens";
 import { findThemeById } from "./themes";
@@ -32,6 +33,15 @@ type SessionRow = {
 
 type Profile = { name: string; command: string; cwd?: string };
 
+/** A tool call an agent is blocked on, waiting for a human to decide. */
+type Approval = {
+  id: string;
+  tool: string;
+  input: string;
+  session?: string;
+  waitingMs: number;
+};
+
 const POLL_MS = 2000;
 
 const settings = loadSettings();
@@ -46,6 +56,7 @@ applyThemeTokens(activeTheme.colors, {
 const root = document.getElementById("sessions");
 
 let lastSignature = "";
+let lastSessions: SessionRow[] = [];
 /** One request at a time: a response slower than the poll interval must not
  * overlap the next tick, or an older snapshot could repaint over a newer one. */
 let inFlight = false;
@@ -56,6 +67,9 @@ let profiles: Profile[] = [];
  * it). Watch clients cannot start shells at all, so the launcher is hidden
  * rather than shown with buttons that would be refused. */
 let watchOnly = false;
+let approvals: Approval[] = [];
+/** Ids being answered right now, so a second tap cannot double-post. */
+const answering = new Set<string>();
 
 async function fetchProfiles(): Promise<void> {
   try {
@@ -79,9 +93,19 @@ async function poll(): Promise<void> {
   if (inFlight || document.hidden) return;
   inFlight = true;
   try {
-    const res = await fetch("/api/sessions", { headers: { accept: "application/json" } });
-    if (!res.ok) throw new Error(String(res.status));
-    const data = (await res.json()) as { ok: boolean; sessions: SessionRow[] };
+    const [sessionsRes, approvalsRes] = await Promise.all([
+      fetch("/api/sessions", { headers: { accept: "application/json" } }),
+      fetch("/api/approvals", { headers: { accept: "application/json" } }),
+    ]);
+    if (!sessionsRes.ok) throw new Error(String(sessionsRes.status));
+    const data = (await sessionsRes.json()) as { ok: boolean; sessions: SessionRow[] };
+    // A daemon too old to know about approvals is not an error; it just has
+    // none. Watch clients *can* read this — seeing what an agent is about to do
+    // is observation, like the rest of the read API — they simply get no
+    // buttons, because deciding is full grade.
+    approvals = approvalsRes.ok
+      ? (((await approvalsRes.json()) as { approvals?: Approval[] }).approvals ?? [])
+      : [];
     render(data.sessions ?? []);
   } catch {
     renderError();
@@ -93,12 +117,16 @@ async function poll(): Promise<void> {
 function render(sessions: SessionRow[]): void {
   if (!root) return;
   // Skip DOM churn when nothing changed — this repaints every 2s.
-  const signature = JSON.stringify(sessions);
+  // Approvals are part of the signature: a new one must repaint immediately.
+  const signature = JSON.stringify([sessions, approvals.map((a) => a.id)]);
   if (signature === lastSignature) return;
   lastSignature = signature;
+  lastSessions = sessions;
 
   root.replaceChildren();
   root.append(header(sessions.length));
+  // Above everything: an agent is stopped until this is answered.
+  if (approvals.length > 0) root.append(approvalPanel());
   if (!watchOnly) root.append(launcher());
 
   if (sessions.length === 0) {
@@ -203,6 +231,113 @@ function row(s: SessionRow): HTMLElement {
   link.append(dot, main);
   li.append(link);
   return li;
+}
+
+/**
+ * Tool calls waiting on a human.
+ *
+ * These sit above the session list because an agent is *stopped* until one is
+ * answered — and because the whole point is answering from a phone, where
+ * whatever is at the top of the page is what gets read.
+ */
+function approvalPanel(): HTMLElement {
+  const section = document.createElement("section");
+  section.className = "approvals";
+
+  const heading = document.createElement("h2");
+  heading.textContent =
+    approvals.length === 1 ? "1 agent is waiting" : `${approvals.length} agents are waiting`;
+  section.append(heading);
+
+  const list = document.createElement("ul");
+  list.className = "approval-list";
+  for (const approval of approvals) list.append(approvalRow(approval));
+  section.append(list);
+  return section;
+}
+
+function approvalRow(approval: Approval): HTMLElement {
+  const li = document.createElement("li");
+  li.className = "approval";
+
+  const top = document.createElement("div");
+  top.className = "approval-top";
+  const tool = document.createElement("span");
+  tool.className = "approval-tool";
+  tool.textContent = approval.tool;
+  const waited = document.createElement("span");
+  waited.className = "approval-waited";
+  waited.textContent = waitedLabel(approval.waitingMs);
+  top.append(tool, waited);
+
+  // The arguments are what you are actually approving, so they are the body of
+  // the row rather than a tooltip.
+  const detail = document.createElement("pre");
+  detail.className = "approval-input";
+  detail.textContent = summarize(approval.input);
+
+  li.append(top, detail);
+
+  if (approval.session) {
+    const open = document.createElement("a");
+    open.className = "approval-open";
+    open.href = `/?session=${encodeURIComponent(approval.session)}`;
+    open.textContent = "Open the pane";
+    li.append(open);
+  }
+
+  // A watch token cannot decide, and the daemon would refuse it anyway —
+  // showing buttons that always fail would be a lie.
+  if (!watchOnly) li.append(approvalActions(approval));
+  return li;
+}
+
+function approvalActions(approval: Approval): HTMLElement {
+  const actions = document.createElement("div");
+  actions.className = "approval-actions";
+
+  const deny = document.createElement("button");
+  deny.type = "button";
+  deny.className = "approval-deny";
+  deny.textContent = "Deny";
+  deny.addEventListener("click", () => void decide(approval.id, "deny"));
+
+  const allow = document.createElement("button");
+  allow.type = "button";
+  allow.className = "approval-allow";
+  allow.textContent = "Allow";
+  allow.addEventListener("click", () => void decide(approval.id, "allow"));
+
+  actions.append(deny, allow);
+  return actions;
+}
+
+/** Post one decision. The agent is unblocked by the daemon's response to its
+ *  own held request, so there is nothing to do here but report failure. */
+async function decide(id: string, decision: "allow" | "deny"): Promise<void> {
+  if (answering.has(id)) return;
+  answering.add(id);
+  // Drop it locally at once: the poll is 2s away and a button that stays live
+  // after a tap invites a second one.
+  approvals = approvals.filter((a) => a.id !== id);
+  render(lastSessions);
+  try {
+    const res = await fetch(`/api/approvals/${encodeURIComponent(id)}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ decision }),
+    });
+    // 404 means it expired or someone else answered — not worth alarming over.
+    if (!res.ok && res.status !== 404) throw new Error(String(res.status));
+  } catch {
+    // Let the next poll reconcile rather than silently losing it.
+    void poll();
+  } finally {
+    // Only guards the in-flight window: once the row is gone there is no
+    // button to tap twice, and holding the id forever would leak on a page
+    // that stays open for days.
+    answering.delete(id);
+  }
 }
 
 function stateClass(s: SessionRow): string {

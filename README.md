@@ -97,6 +97,7 @@ State lives in `~/.kitterm/`; the default port is `3418`.
 | **Browse for context** | ⌘⌥O opens a small browser at your cursor, on the machine the session runs on. Type to filter, arrows move, → opens a folder, ← goes up, ⏎ inserts the real path — no copy, so an agent edits the actual file. ⇧⏎ takes the folder itself |
 | **Drop files in for context** | Drag a screenshot, log, CSV or PDF onto a pane — or share one from your phone — and the path where it landed appears at your cursor, ready to hand to a coding agent. Nothing runs until you press Enter |
 | **Drive it from a program** | Tag a session (`/ws?label=run:1,node:build`), then `POST /api/sessions/<id>/input` to run a command, `GET …/commands/<n>/wait` to block for its exit code, and `GET …/commands/<n>/output` for the bytes. Labelled sessions outlive the program that made them, so a crashed orchestrator finds its work still running. Command numbers stay put for the life of a session, so an index you saved still means the command you meant. `--retain-logs` keeps output past the 4 MiB in-memory window |
+| **Answer an agent from your phone** | `kitterm hooks` prints a Claude Code hook config. With it installed, a tool call that needs permission waits in `/sessions` — showing the command it wants to run — until you tap Allow or Deny, from any device with a full-grade link. Nothing answers for you: if nobody does, the hold expires and the agent asks in its own pane as usual |
 | **Record sessions** | `kitterm start --record` → asciinema casts in `~/.kitterm/recordings/` |
 | **Start on login** | `kitterm service install` |
 | **Self-update** | `kitterm upgrade` installs the latest release |
@@ -113,6 +114,13 @@ serves shells as the user running it, and anyone who can reach it has one.
 create <name> [--watch]` makes durable ones — stored as SHA-256 hashes, shown once,
 revocable while the daemon runs. A **watch** token is enforced daemon-side: it can
 observe sessions and read the API, but can never type, take control, or open a shell.
+
+**Approving on an agent's behalf is a full-grade action.** If you install the hook
+config from `kitterm hooks`, anyone holding a full token can allow a tool call your
+agent is about to run — on your machine, as you. That is the same authority a full
+token already carries (it can type into any shell), but it is worth naming, because
+approving looks smaller than typing and is not. Watch tokens are refused, and
+`kitterm token revoke <name>` takes a link back without a restart.
 
 **Reaching kitterm from another device**, best first:
 

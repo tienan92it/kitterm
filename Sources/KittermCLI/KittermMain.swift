@@ -55,6 +55,11 @@ enum KittermMain {
                 case let shell:
                     throw CLIError.usage("kitterm integrate [zsh|bash] — no snippet for \(shell)")
                 }
+            case "hooks":
+                // Config only, nothing else on stdout — made for piping, the
+                // same way `integrate` is:
+                //   kitterm hooks >> ~/.claude/settings.json   (merge by hand)
+                print(AgentHooks.settingsJSON(port: readPort() ?? KittermConstants.defaultPort))
             case "token":
                 try tokenCommand(args.dropFirst())
             case "version", "--version", "-v":
@@ -157,7 +162,8 @@ enum KittermMain {
               kitterm service uninstall | status
               kitterm service sync    # rewrite the plist from this build, no restart
               kitterm upgrade         # install the latest release
-              kitterm integrate [zsh|bash]  # print the OSC 133/633 snippet
+              kitterm integrate [zsh|bash]
+              kitterm hooks           # Claude Code hook config for approvals  # print the OSC 133/633 snippet
               kitterm token create <name> [--watch] | list | revoke <name>
               kitterm version
 
@@ -188,6 +194,13 @@ enum KittermMain {
             integrate prints shell integration for shells without native
             OSC 133 marks. Local: kitterm integrate >> ~/.zshrc
             Remote VM/container: kitterm integrate bash | ssh vm 'cat >> ~/.bashrc'
+
+            hooks prints the Claude Code hook config that lets you answer an
+            agent's permission prompts from anywhere — the tool call waits in
+            /sessions until you allow or deny it, on a phone or a laptop.
+            Merge it into ~/.claude/settings.json (or .claude/settings.json in
+            a project). Nothing answers for you: if no one does, the hold
+            expires and the agent asks in its own pane as usual.
 
             Session profiles (~/.kitterm/profiles.json) name connect commands
             run at session start — open /?profile=<name> or use /sessions:

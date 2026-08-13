@@ -87,6 +87,20 @@ public enum KittermConstants: Sendable {
     public static let commandWaitDefaultSeconds = 30
     public static let commandWaitMaxSeconds = 300
 
+    /// How long a `PreToolUse` hook is held open waiting for a human, and the
+    /// ceiling it may ask for. Long enough to reach a phone, short enough that
+    /// an agent nobody is watching gives up and asks in its own pane instead of
+    /// stalling. The hook's own `timeout` in settings.json must exceed this,
+    /// or Claude gives up first and the hold achieves nothing.
+    public static let approvalHoldDefaultSeconds = 300
+    public static let approvalHoldMaxSeconds = 1800
+
+    /// Ceiling on tool calls waiting on a human at once, and on how much of a
+    /// tool's arguments are kept for the approval screen — a Write's contents
+    /// run to megabytes and nobody approves from a wall of text.
+    public static let approvalCap = 64
+    public static let approvalInputChars = 4096
+
     /// Detach window for sessions a program created (they carry labels). An
     /// orchestrator restart must not cost you your in-flight nodes.
     public static let orchestratedSessionLingerSeconds = 3600
