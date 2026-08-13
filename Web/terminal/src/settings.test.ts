@@ -80,12 +80,12 @@ describe("loadSettings", () => {
   });
 });
 
-describe("tab title, keyed by session", () => {
+describe("tab title, keyed by session and by pane", () => {
   it("defaults to no custom title with the folder shown", () => {
     stubLocalStorage();
     expect(loadSettings().tabTitle).toBe("");
     expect(loadSettings().tabTitleShowFolder).toBe(true);
-    expect(loadTabTitle("session-a")).toEqual({
+    expect(loadTabTitle("session-a", "hist-a")).toEqual({
       tabTitle: "",
       tabTitleShowFolder: true,
     });
@@ -93,17 +93,17 @@ describe("tab title, keyed by session", () => {
 
   it("round-trips a session's title", () => {
     stubLocalStorage();
-    saveTabTitle("session-a", { tabTitle: "My App", tabTitleShowFolder: false });
-    expect(loadTabTitle("session-a")).toEqual({
+    saveTabTitle("session-a", "hist-a", { tabTitle: "My App", tabTitleShowFolder: false });
+    expect(loadTabTitle("session-a", "hist-a")).toEqual({
       tabTitle: "My App",
       tabTitleShowFolder: false,
     });
   });
 
-  it("keeps sessions independent, so a new tab starts clean", () => {
+  it("keeps panes independent, so a new tab starts clean", () => {
     stubLocalStorage();
-    saveTabTitle("session-a", { tabTitle: "My App", tabTitleShowFolder: true });
-    expect(loadTabTitle("session-b")).toEqual({
+    saveTabTitle("session-a", "hist-a", { tabTitle: "My App", tabTitleShowFolder: true });
+    expect(loadTabTitle("session-b", "hist-b")).toEqual({
       tabTitle: "",
       tabTitleShowFolder: true,
     });
@@ -111,35 +111,72 @@ describe("tab title, keyed by session", () => {
 
   it("lets an observer read the controller's title for the same session", () => {
     stubLocalStorage();
-    saveTabTitle("shared", { tabTitle: "Deploy", tabTitleShowFolder: true });
-    // Same key, as an observer tab of that session would read it.
-    expect(loadTabTitle("shared").tabTitle).toBe("Deploy");
+    saveTabTitle("shared", "hist-controller", {
+      tabTitle: "Deploy",
+      tabTitleShowFolder: true,
+    });
+    // A share-link pane has no hist key of its own; the session entry is what
+    // it reads, and it must be the controller's name.
+    expect(loadTabTitle("shared", null).tabTitle).toBe("Deploy");
+  });
+
+  // The regression: a daemon restart or a dead shell mints a new session id for
+  // every pane. Keyed only by session, the name vanished and the tab reverted
+  // to the folder.
+  it("keeps the name when the pane's session id changes", () => {
+    stubLocalStorage();
+    saveTabTitle("session-old", "hist-a", { tabTitle: "Deploy", tabTitleShowFolder: false });
+    expect(loadTabTitle("session-new", "hist-a")).toEqual({
+      tabTitle: "Deploy",
+      tabTitleShowFolder: false,
+    });
+  });
+
+  it("prefers the session's own title over the pane's, so observers mirror", () => {
+    stubLocalStorage();
+    saveTabTitle(null, "hist-a", { tabTitle: "Mine", tabTitleShowFolder: true });
+    saveTabTitle("shared", null, { tabTitle: "Theirs", tabTitleShowFolder: true });
+    expect(loadTabTitle("shared", "hist-a").tabTitle).toBe("Theirs");
   });
 
   it("trims the custom title and treats blank as unset", () => {
     stubLocalStorage();
-    saveTabTitle("session-a", { tabTitle: "  My App  ", tabTitleShowFolder: true });
-    expect(loadTabTitle("session-a").tabTitle).toBe("My App");
-    saveTabTitle("session-a", { tabTitle: "   ", tabTitleShowFolder: true });
-    expect(loadTabTitle("session-a").tabTitle).toBe("");
+    saveTabTitle("session-a", "hist-a", { tabTitle: "  My App  ", tabTitleShowFolder: true });
+    expect(loadTabTitle("session-a", "hist-a").tabTitle).toBe("My App");
+    saveTabTitle("session-a", "hist-a", { tabTitle: "   ", tabTitleShowFolder: true });
+    expect(loadTabTitle("session-a", "hist-a").tabTitle).toBe("");
   });
 
   it("prunes old sessions so storage cannot grow without bound", () => {
     stubLocalStorage();
-    for (let i = 0; i < 60; i += 1) {
-      saveTabTitle(`session-${i}`, {
+    for (let i = 0; i < 120; i += 1) {
+      saveTabTitle(`session-${i}`, null, {
         tabTitle: `T${i}`,
         tabTitleShowFolder: true,
       });
     }
     // Oldest evicted, newest kept.
-    expect(loadTabTitle("session-0").tabTitle).toBe("");
-    expect(loadTabTitle("session-59").tabTitle).toBe("T59");
+    expect(loadTabTitle("session-0", null).tabTitle).toBe("");
+    expect(loadTabTitle("session-119", null).tabTitle).toBe("T119");
+  });
+
+  // A pane's own entry is rewritten every time its session id churns, so it
+  // never ages out ahead of the dead ids that pushed the map over the cap.
+  it("does not evict a live pane's name as its session ids churn", () => {
+    stubLocalStorage();
+    saveTabTitle("session-0", "hist-live", { tabTitle: "Deploy", tabTitleShowFolder: true });
+    for (let i = 1; i < 120; i += 1) {
+      saveTabTitle(`session-${i}`, "hist-live", {
+        tabTitle: "Deploy",
+        tabTitleShowFolder: true,
+      });
+    }
+    expect(loadTabTitle("session-fresh", "hist-live").tabTitle).toBe("Deploy");
   });
 
   it("falls back to defaults on corrupt storage", () => {
     stubLocalStorage({ "kitterm:tab-titles": "{not json" });
-    expect(loadTabTitle("session-a")).toEqual({
+    expect(loadTabTitle("session-a", "hist-a")).toEqual({
       tabTitle: "",
       tabTitleShowFolder: true,
     });
@@ -156,12 +193,20 @@ describe("tab title, keyed by session", () => {
       removeItem: () => undefined,
     });
     expect(() =>
-      saveTabTitle("session-a", { tabTitle: "My App", tabTitleShowFolder: true }),
+      saveTabTitle("session-a", "hist-a", { tabTitle: "My App", tabTitleShowFolder: true }),
     ).not.toThrow();
-    expect(loadTabTitle("session-a")).toEqual({
+    expect(loadTabTitle("session-a", "hist-a")).toEqual({
       tabTitle: "",
       tabTitleShowFolder: true,
     });
+  });
+
+  it("ignores a write with no key to store it under", () => {
+    stubLocalStorage();
+    expect(() =>
+      saveTabTitle(null, null, { tabTitle: "Nowhere", tabTitleShowFolder: true }),
+    ).not.toThrow();
+    expect(loadTabTitle(null, null).tabTitle).toBe("");
   });
 
   it("keeps the shared defaults immutable", () => {

@@ -311,8 +311,9 @@ export class TerminalApp implements PaneHost {
     if (replaced) {
       // The shell died and a new one took its place. The pane is still the
       // user's "Deploy" pane, so carry the name across rather than silently
-      // reverting to the folder.
-      this.persistTabTitle();
+      // reverting to the folder — for *this* pane, which need not be the
+      // focused one.
+      this.republishTabTitle(pane);
     } else if (pane.id === this.focusedId) {
       this.loadTabTitleForFocused();
     }
@@ -720,18 +721,29 @@ export class TerminalApp implements PaneHost {
       this.tabTitlePersistTimer = null;
     }
     const pane = this.focusedPane;
-    if (!pane || pane.readOnly || !pane.sessionId) return;
-    saveTabTitle(pane.sessionId, {
+    if (!pane || pane.readOnly) return;
+    saveTabTitle(pane.sessionId, pane.histKey, {
       tabTitle: this.settingsValue.tabTitle,
       tabTitleShowFolder: this.settingsValue.tabTitleShowFolder,
     });
   }
 
-  /** Adopt the focused session's stored title — for an observer this is the
-   * title its controller set. */
+  /** A replaced shell means a new session id, which nothing has stored a title
+   * under yet. Republish the pane's own name so an observer of the new session
+   * still mirrors it — read from storage, not from `settingsValue`, because the
+   * replaced pane may not be the focused one whose title that holds. */
+  private republishTabTitle(pane: TerminalPane): void {
+    if (pane.readOnly || !pane.sessionId || !pane.histKey) return;
+    saveTabTitle(pane.sessionId, pane.histKey, loadTabTitle(null, pane.histKey));
+  }
+
+  /** Adopt the focused pane's stored title — for an observer this is the title
+   * its controller set. */
   private loadTabTitleForFocused(): void {
-    const sessionId = this.focusedPane?.sessionId ?? null;
-    const prefs = sessionId ? loadTabTitle(sessionId) : { ...DEFAULT_TAB_TITLE };
+    const pane = this.focusedPane;
+    const prefs = pane
+      ? loadTabTitle(pane.sessionId, pane.histKey)
+      : { ...DEFAULT_TAB_TITLE };
     if (
       prefs.tabTitle === this.settingsValue.tabTitle &&
       prefs.tabTitleShowFolder === this.settingsValue.tabTitleShowFolder
