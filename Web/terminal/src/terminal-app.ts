@@ -1,6 +1,7 @@
 import { writeClipboard } from "./clipboard";
 import { ExtraKeysBar, isTouchPrimary } from "./extra-keys";
 import { setFavicon, type FaviconState } from "./favicon";
+import { shouldShowIntro, showIntro, type IntroCard } from "./intro";
 import { LOCAL_FONT_ID, resolveFontFamily, type TerminalFontId } from "./fonts";
 import { trackKeyboardInsets } from "./keyboard-insets";
 import {
@@ -79,6 +80,7 @@ export class TerminalApp implements PaneHost {
   private focusedId: PaneId;
   private settingsValue: KittermSettings;
   private settingsPanel: SettingsPanel | null = null;
+  private introCard: IntroCard | null = null;
   private searchInput: HTMLInputElement | null = null;
   private unreadOutput = false;
   private readonly notifications = new NotificationCenter({
@@ -142,6 +144,10 @@ export class TerminalApp implements PaneHost {
     this.setFocus(this.focusedId, { persist: false });
     this.refreshTitle();
     this.updateFavicon();
+
+    // Last, so the card lands over a terminal that already exists rather than
+    // an empty page — and only on a browser that has never dismissed it.
+    if (shouldShowIntro()) this.showIntroCard();
   }
 
   // MARK: Boot
@@ -353,6 +359,9 @@ export class TerminalApp implements PaneHost {
       }
       case "browse-files":
         pane.toggleFilePicker();
+        break;
+      case "show-help":
+        this.showIntroCard();
         break;
       case "new-tab": {
         // Synchronous with the keydown gesture — any await/rAF here and the
@@ -621,6 +630,17 @@ export class TerminalApp implements PaneHost {
         this.applyTabTitleShowFolder(showFolder),
       onCopySessionLink: () => this.copySessionLink(),
       onCopyWatchLink: () => this.copyWatchLink(),
+      onShowHelp: () => this.showIntroCard(),
+    });
+  }
+
+  /** The getting-started card, unprompted on a browser's first visit and on
+   * demand after that. */
+  private showIntroCard(): void {
+    this.introCard?.close();
+    this.introCard = showIntro(document.body, {
+      isMac: this.isMac,
+      touch: isTouchPrimary(),
     });
   }
 

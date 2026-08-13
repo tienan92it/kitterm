@@ -24,6 +24,8 @@ export type SettingsPanelCallbacks = {
   /** Copy a link to the focused pane's session, for observing elsewhere. */
   onCopySessionLink: () => void;
   onCopyWatchLink: () => void;
+  /** Reopen the getting-started card. */
+  onShowHelp: () => void;
 };
 
 export class SettingsPanel {
@@ -130,6 +132,9 @@ export class SettingsPanel {
         <button type="button" id="settings-share-watch" title="Recipients can watch this session but never type or take control">👁 Copy watch-only link</button>
         <p class="settings-note">Opens the focused pane read-only for whoever you send it to.</p>
       </div>
+      <div class="settings-share">
+        <button type="button" id="settings-help">? Shortcuts &amp; gestures</button>
+      </div>
       <div class="settings-about" id="settings-about" hidden>
         <span id="settings-version"></span>
         <span id="settings-version-update" class="settings-about-update" hidden></span>
@@ -158,6 +163,12 @@ export class SettingsPanel {
     this.root
       .querySelector("#settings-share-watch")
       ?.addEventListener("click", () => this.callbacks.onCopyWatchLink());
+    this.dialog.querySelector("#settings-help")?.addEventListener("click", () => {
+      // Close first: the card is modal and would otherwise open behind the
+      // panel that asked for it.
+      this.close();
+      this.callbacks.onShowHelp();
+    });
 
     if (this.tabTitleInput) {
       this.tabTitleInput.value = initial.tabTitle;

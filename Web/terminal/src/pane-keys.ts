@@ -27,7 +27,8 @@ export type PaneCommand =
   | { type: "navigate"; dir: Direction }
   | { type: "close" }
   | { type: "new-tab" }
-  | { type: "browse-files" };
+  | { type: "browse-files" }
+  | { type: "show-help" };
 
 /** The subset of KeyboardEvent this module needs, so tests need no DOM. */
 export type ChordEvent = Pick<
@@ -71,6 +72,9 @@ export const matchPaneCommand = (event: ChordEvent, isMac: boolean): PaneCommand
       // ⌘D splits side by side; ⌘⇧D stacks.
       return { type: "split", dir: event.shiftKey ? "column" : "row" };
     }
+    // ⌘/ — the shortcut list. Bare `?` would be the obvious key and is what
+    // every other app uses, but here it is a character the shell must receive.
+    if (!event.altKey && key === "/") return { type: "show-help" };
     if (event.altKey && !event.shiftKey) {
       const dir = ARROW_DIRECTIONS[key];
       if (dir) return { type: "navigate", dir };
@@ -90,6 +94,9 @@ export const matchPaneCommand = (event: ChordEvent, isMac: boolean): PaneCommand
   if (!event.altKey) {
     if (key === "D" || key === "d") return { type: "split", dir: "row" };
     if (key === "E" || key === "e") return { type: "split", dir: "column" };
+    // Ctrl+Shift+/ — with Shift held this arrives as "?" on most layouts and
+    // "/" on some, so accept both rather than depend on the keycap.
+    if (key === "/" || key === "?") return { type: "show-help" };
     const dir = ARROW_DIRECTIONS[key];
     if (dir) return { type: "navigate", dir };
   } else {
