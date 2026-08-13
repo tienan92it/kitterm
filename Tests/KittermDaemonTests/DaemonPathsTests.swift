@@ -52,6 +52,23 @@ final class DaemonPathsTests: XCTestCase {
         }
     }
 
+    /// The override is also what tells the CLI this is not the installed
+    /// daemon, so it must not boot out the shared launchd label. Getting this
+    /// predicate wrong once cost a live session's worth of shells.
+    func testOverrideIsReportedAsSuch() {
+        unsetenv("KITTERM_STATE_DIR")
+        XCTAssertFalse(DaemonPaths.isStateDirectoryOverridden)
+
+        setenv("KITTERM_STATE_DIR", "/tmp/kitterm-elsewhere", 1)
+        XCTAssertTrue(DaemonPaths.isStateDirectoryOverridden)
+
+        setenv("KITTERM_STATE_DIR", "", 1)
+        XCTAssertFalse(
+            DaemonPaths.isStateDirectoryOverridden,
+            "an empty value is an unset one, not a nameless override"
+        )
+    }
+
     /// An empty value is a caller who meant to unset it, not a request to write
     /// state into the current directory.
     func testEmptyOverrideIsIgnored() {
