@@ -14,6 +14,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// Whether the write route (`POST /api/sessions/<id>/input`) is enabled.
     /// Off unless the daemon was started with `--agent-control`.
     private let agentControl: Bool
+    /// Tool calls waiting on a human. Shared across connections — the hook that
+    /// registers one and the phone that answers it are different requests.
+    private let approvals: ApprovalStore
     /// This connection arrived on the TLS listener, so auth cookies may carry
     /// `Secure`.
     private let connectionIsTLS: Bool
@@ -39,6 +42,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         policy: AccessPolicy = .loopbackOnly,
         port: Int = KittermConstants.defaultPort,
         agentControl: Bool = false,
+        approvals: ApprovalStore = ApprovalStore(),
         connectionIsTLS: Bool = false,
         tlsPort: Int? = nil,
         staticRoot: URL? = StaticFileServer.cachedRoot,
@@ -48,6 +52,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.policy = policy
         self.port = port
         self.agentControl = agentControl
+        self.approvals = approvals
         self.connectionIsTLS = connectionIsTLS
         self.tlsPort = tlsPort
         self.staticRoot = staticRoot
@@ -319,6 +324,23 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 path: path,
                 body: body,
                 bodyOverflow: bodyOverflow,
+                grade: grade,
+                head: head,
+                context: context
+            )
+        case (.POST, "/api/hooks"):
+            serveHook(
+                body: body,
+                bodyOverflow: bodyOverflow,
+                head: head,
+                context: context
+            )
+        case (.GET, "/api/approvals"):
+            serveApprovals(head: head, context: context)
+        case (.POST, _) where path.hasPrefix("/api/approvals/"):
+            serveApprovalDecision(
+                path: path,
+                body: body,
                 grade: grade,
                 head: head,
                 context: context
@@ -1012,6 +1034,184 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// as every other route — a caller the policy admits can drive any shell as
     /// the invoking user. Input interleaves with whatever a human controller is
     /// typing; there is no separate role.
+    // MARK: - Agent hooks and approvals
+
+    /// Receive a Claude Code hook event.
+    ///
+    /// Configured as `"type": "http"` in settings.json, so the agent POSTs the
+    /// event here and reads its verdict from *this response body* — status
+    /// codes cannot block a tool call, only the JSON can. Schema per the hooks
+    /// reference as of 2026-08 (`PreToolUse` blocks; `Notification` is
+    /// informational and its output is discarded).
+    ///
+    /// Anything unrecognised answers 200 with an empty object, so an
+    /// over-broad hook config costs nothing and a schema change degrades to
+    /// "no opinion" rather than to a wedged agent.
+    private func serveHook(
+        body: Data,
+        bodyOverflow: Bool,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        guard !bodyOverflow else {
+            writeJSON(
+                status: .payloadTooLarge,
+                body: #"{"ok":false,"error":"hook payload too large"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let event = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+        let name = event?["hook_event_name"] as? String
+
+        // Which pane asked. The daemon exports KITTERM_SESSION_ID into every
+        // shell it spawns; the hook config carries it back in this header.
+        let sessionID = head.headers.first(name: "x-kitterm-session")
+            .flatMap(UUID.init(uuidString:))
+
+        guard name == "PreToolUse" else {
+            // Informational events still deserve to surface, but nothing waits
+            // on them, so answer immediately.
+            writeJSON(
+                status: .ok, body: "{}",
+                context: context, version: head.version, keepAlive: head.isKeepAlive
+            )
+            return
+        }
+
+        let toolName = event?["tool_name"] as? String ?? "unknown"
+        let toolInput = (event?["tool_input"] as? [String: Any])
+            .flatMap { try? JSONSerialization.data(withJSONObject: $0) }
+            .map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+
+        let requested = DaemonServer.queryValue("timeout", fromRequestURI: head.uri)
+            .flatMap(Int.init) ?? KittermConstants.approvalHoldDefaultSeconds
+        let hold = max(1, min(requested, KittermConstants.approvalHoldMaxSeconds))
+
+        let loop = context.eventLoop
+        let boundContext = NIOLoopBound(context, eventLoop: loop)
+        let (id, decision) = approvals.register(
+            sessionID: sessionID,
+            toolName: toolName,
+            toolInput: toolInput,
+            on: loop
+        )
+        // The store is the mutual exclusion: resolve and expire both remove the
+        // entry first, so exactly one of them completes the promise.
+        let timeoutTask = loop.scheduleTask(in: .seconds(Int64(hold))) {
+            self.approvals.expire(id: id)
+        }
+        decision.whenComplete { result in
+            timeoutTask.cancel()
+            let context = boundContext.value
+            let verdict = (try? result.get()) ?? nil
+            self.writeJSON(
+                status: .ok,
+                body: Self.hookResponse(for: verdict),
+                context: context, version: head.version, keepAlive: head.isKeepAlive
+            )
+        }
+    }
+
+    /// The verdict in the shape Claude Code reads. No decision is an empty
+    /// object on purpose: the agent then runs its normal permission flow and
+    /// asks in its own pane, which is what should happen when nobody answered.
+    static func hookResponse(for decision: ApprovalStore.Decision?) -> String {
+        guard let decision else { return "{}" }
+        let permission: String
+        let reason: String?
+        switch decision {
+        case .allow(let why): permission = "allow"; reason = why
+        case .deny(let why): permission = "deny"; reason = why
+        }
+        var specific: [String: Any] = [
+            "hookEventName": "PreToolUse",
+            "permissionDecision": permission,
+        ]
+        if let reason, !reason.isEmpty {
+            specific["permissionDecisionReason"] = reason
+        }
+        let payload: [String: Any] = ["hookSpecificOutput": specific]
+        return (try? JSONSerialization.data(withJSONObject: payload))
+            .map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+    }
+
+    /// Everything waiting on a human, for the fleet view.
+    private func serveApprovals(head: HTTPRequestHead, context: ChannelHandlerContext) {
+        let items: [[String: Any]] = approvals.snapshot().map { pending in
+            var item: [String: Any] = [
+                "id": pending.id,
+                "tool": pending.toolName,
+                "input": pending.toolInput,
+                "waitingMs": Int(Date().timeIntervalSince(pending.createdAt) * 1000),
+            ]
+            if let sessionID = pending.sessionID {
+                item["session"] = sessionID.uuidString
+            }
+            return item
+        }
+        let text = (try? JSONSerialization.data(withJSONObject: ["ok": true, "approvals": items]))
+            .map { String(decoding: $0, as: UTF8.self) } ?? #"{"ok":true,"approvals":[]}"#
+        writeJSON(
+            status: .ok, body: text,
+            context: context, version: head.version, keepAlive: head.isKeepAlive
+        )
+    }
+
+    /// Answer one. Full grade only — deciding for an agent is a human
+    /// privilege, and a watch token exists precisely to withhold it.
+    private func serveApprovalDecision(
+        path: String,
+        body: Data,
+        grade: TokenGrade,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let components = path.split(separator: "/")
+        // ["api", "approvals", "<id>"]
+        guard components.count == 3 else {
+            notFound(context: context, version: head.version)
+            return
+        }
+        let id = String(components[2])
+        let payload = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+        let reason = payload?["reason"] as? String
+        let decision: ApprovalStore.Decision
+        switch payload?["decision"] as? String {
+        case "allow": decision = .allow(reason: reason)
+        case "deny": decision = .deny(reason: reason)
+        default:
+            writeJSON(
+                status: .badRequest,
+                body: #"{"ok":false,"error":"decision must be \"allow\" or \"deny\""}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard approvals.resolve(id: id, decision: decision) else {
+            // Unknown, already answered, or expired — indistinguishable from
+            // out here, and all of them mean "too late".
+            writeJSON(
+                status: .notFound,
+                body: #"{"ok":false,"error":"no such pending approval"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        writeJSON(
+            status: .ok, body: #"{"ok":true}"#,
+            context: context, version: head.version, keepAlive: head.isKeepAlive
+        )
+    }
+
     private func serveInput(
         path: String,
         body: Data,

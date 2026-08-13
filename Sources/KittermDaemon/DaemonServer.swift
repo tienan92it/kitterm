@@ -83,6 +83,10 @@ public final class DaemonServer: @unchecked Sendable {
         // One coordinator for all connections; only ever touched on the
         // single event-loop thread.
         let handoff = ControlHandoff()
+        // One store for the whole daemon: the hook that registers a pending
+        // decision and the phone that answers it arrive on different
+        // connections, so a per-connection store would never match them up.
+        let approvals = ApprovalStore()
         // Anything reachable from off-machine — an external bind, or a proxy
         // presenting a public name — needs the token pair.
         let policy: AccessPolicy
@@ -200,6 +204,7 @@ public final class DaemonServer: @unchecked Sendable {
                         policy: policy,
                         port: config.port,
                         agentControl: config.agentControl,
+                        approvals: approvals,
                         connectionIsTLS: sslContext != nil,
                         tlsPort: config.tls?.port,
                         webSocketUpgrader: upgrader

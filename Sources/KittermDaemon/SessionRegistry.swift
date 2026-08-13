@@ -29,7 +29,10 @@ public actor SessionRegistry {
     /// inserting as separate awaits lets concurrent opens slip past the cap.
     public func register(_ session: PtySession) -> UUID? {
         guard sessions.count < KittermConstants.maxConcurrentSessions else { return nil }
-        let id = UUID()
+        // The session minted this before spawning, so its shell already carries
+        // it in KITTERM_SESSION_ID. Minting another here would give the same
+        // session two identities, and an agent's hook would name neither.
+        let id = session.sessionID
         sessions[id] = session
         attachedIDs.insert(id)
         return id
