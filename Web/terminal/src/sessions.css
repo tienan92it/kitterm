@@ -50,3 +50,44 @@ h1 { font-size: 20px; margin: 0; font-weight: 600; }
   text-overflow: ellipsis;
 }
 .meta { color: var(--ui-text-faint); font-size: 11.5px; margin-top: 4px; }
+
+/* Waiting approvals. Deliberately the loudest thing on the page: an agent is
+   stopped until one is answered, and on a phone only the top of the page gets
+   read. Colours still come from the token layer, so it follows the theme. */
+.approvals {
+  border: 1px solid var(--ui-accent); border-radius: 10px;
+  background: var(--ui-accent-soft); padding: 12px 14px; margin: 0 0 16px;
+}
+.approvals h2 { font-size: 14px; margin: 0 0 10px; font-weight: 600; }
+.approval-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.approval {
+  background: var(--ui-surface); border: 1px solid var(--ui-border);
+  border-radius: 8px; padding: 10px 12px;
+}
+.approval-top { display: flex; align-items: baseline; gap: 10px; }
+.approval-tool { font-weight: 600; font-size: 13.5px; }
+.approval-waited { color: var(--ui-text-faint); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.approval-input {
+  font-family: var(--font-mono); font-size: 12.5px; color: var(--ui-text);
+  margin: 6px 0 0; white-space: pre-wrap; word-break: break-word;
+  /* A Write's arguments are long even after the daemon's cap; keep the row
+     scannable and let the pane show the rest. */
+  max-height: 7.5em; overflow: auto;
+}
+.approval-open {
+  display: inline-block; margin-top: 8px; font-size: 12px;
+  color: var(--ui-text-muted); text-decoration: none; border-bottom: 1px solid var(--ui-border);
+}
+.approval-open:hover { color: var(--ui-text); border-bottom-color: var(--ui-accent); }
+.approval-actions { display: flex; gap: 8px; margin-top: 10px; }
+.approval-actions button {
+  flex: 1; font: inherit; font-size: 13px; font-weight: 600;
+  border-radius: 8px; padding: 9px 12px; cursor: pointer;
+  /* WCAG 2.2 SC 2.5.8 floor, and these are tapped on a phone in a hurry. */
+  min-height: var(--tap-min, 44px);
+  border: 1px solid var(--ui-border); background: var(--ui-surface-2); color: var(--ui-text);
+  transition: border-color .12s, background .12s;
+}
+.approval-deny:hover { border-color: var(--ui-danger); color: var(--ui-danger); }
+.approval-allow { border-color: var(--ui-accent); }
+.approval-allow:hover { background: var(--ui-accent); color: var(--ui-bg); }
