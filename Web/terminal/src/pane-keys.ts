@@ -50,6 +50,22 @@ const chordLetter = (event: ChordEvent): string => {
   return event.key.toLowerCase();
 };
 
+/**
+ * True for the keydown of a modifier pressed on its own.
+ *
+ * A chord reaches the page as two keydowns — ⌘ then C — and the first one
+ * carries `key: "Meta"`, not the letter. Anything deciding "the user has
+ * started typing" has to ignore these, or it acts halfway through a chord and
+ * the second half arrives to a changed world.
+ */
+export const isModifierKey = (event: { key: string }): boolean =>
+  event.key === "Control" ||
+  event.key === "Shift" ||
+  event.key === "Meta" ||
+  event.key === "Alt" ||
+  event.key === "AltGraph" ||
+  event.key === "CapsLock";
+
 const ARROW_DIRECTIONS: Record<string, Direction> = {
   ArrowUp: "up",
   ArrowDown: "down",

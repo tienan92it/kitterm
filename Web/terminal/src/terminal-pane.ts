@@ -22,7 +22,7 @@ import { dragMayCarryFiles, insertionText, quoteForShell, readDrop, uploadDroppe
 import { FilePicker } from "./file-picker";
 import { OutputFlowControl } from "./flow-control";
 import { resolveFontFamily } from "./fonts";
-import { matchPaneCommand, type PaneCommand } from "./pane-keys";
+import { isModifierKey, matchPaneCommand, type PaneCommand } from "./pane-keys";
 import {
   MarkKind,
   parseOsc133,
@@ -164,6 +164,14 @@ export class TerminalPane {
   private selectionBar: HTMLElement | null = null;
   private longPressTimer: number | null = null;
   private edgeScrollTimer: number | null = null;
+  /** Live drag state for the edge scroll, rewritten on every touchmove so the
+   * repeating tick never acts on a stale direction or finger position. */
+  private edgeScroll: {
+    direction: number;
+    clientX: number;
+    clientY: number;
+    rect: DOMRect;
+  } | null = null;
   private pastePrompt: PastePromptHandle | null = null;
   private readonly watchHint: boolean;
   private folderValue: string | null = null;
@@ -1034,8 +1042,10 @@ export class TerminalPane {
       // Typing means the user is done choosing text. Escape only dismisses;
       // anything else dismisses and still reaches the shell, so a keyboard
       // never has to fight the bar. Copy is exempt — it is the whole point of
-      // having made a selection.
-      if (this.selectAnchor && !this.isCopyChord(event)) {
+      // having made a selection — and so is a bare modifier, because a chord
+      // arrives as two keydowns and the ⌘ of ⌘C would otherwise clear the
+      // selection before its `c` ever got here.
+      if (this.selectAnchor && !isModifierKey(event) && !this.isCopyChord(event)) {
         this.endSelection();
         if (event.key === "Escape") {
           event.preventDefault();
@@ -1274,6 +1284,7 @@ export class TerminalPane {
   }
 
   private stopEdgeScroll(): void {
+    this.edgeScroll = null;
     if (this.edgeScrollTimer === null) return;
     window.clearInterval(this.edgeScrollTimer);
     this.edgeScrollTimer = null;
@@ -1312,21 +1323,28 @@ export class TerminalPane {
     if (span.length > 0) this.terminal.select(span.column, span.row, span.length);
 
     // Dragging into the edge keeps scrolling, so a selection can run past one
-    // screen. The interval re-reads the anchor each tick, so releasing the
-    // finger (which clears it) stops the scroll on its own.
+    // screen.
     const direction = edgeScrollDirection(clientY - rect.top, rect.height);
     if (direction === 0) {
       this.stopEdgeScroll();
       return;
     }
+    // The tick reads this, never its own captured copy. Capturing would strand
+    // the scroll on the direction and the finger position it started with: a
+    // pane shorter than two edge zones never reports 0 between them, so a drag
+    // across the middle flips direction with no stop in between and would keep
+    // scrolling the old way — and even without a flip, the selection would
+    // extend from where the finger *was* when the scroll began.
+    this.edgeScroll = { direction, clientX, clientY, rect };
     if (this.edgeScrollTimer !== null) return;
     this.edgeScrollTimer = window.setInterval(() => {
-      if (!this.selectAnchor) {
+      const live = this.edgeScroll;
+      if (!this.selectAnchor || !live) {
         this.stopEdgeScroll();
         return;
       }
-      this.terminal.scrollLines(direction);
-      const moved = this.bufferCellAt(clientX, clientY, rect);
+      this.terminal.scrollLines(live.direction);
+      const moved = this.bufferCellAt(live.clientX, live.clientY, live.rect);
       const next = selectionSpan(this.selectAnchor, moved, this.terminal.cols);
       if (next.length > 0) this.terminal.select(next.column, next.row, next.length);
     }, EDGE_AUTOSCROLL_MS);
@@ -1372,7 +1390,7 @@ export class TerminalPane {
 
     bar.append(
       button("Copy", () => this.copySelection()),
-      button("Select all", () => this.selectVisible()),
+      button("Select screen", () => this.selectVisible()),
     );
     // Nothing to paste into a pane that cannot take input.
     if (!this.readOnlyValue && !this.exitedValue) {
@@ -1396,6 +1414,11 @@ export class TerminalPane {
     this.endSelection();
   }
 
+  /** Everything on screen — deliberately not `selectAll()`, which would take
+   * the whole 10k-line scrollback. On a phone that is almost never what the
+   * tap meant, and there is no practical way to review it before copying. The
+   * anchor moves to the top of the view so a following drag still extends from
+   * somewhere the user can see. */
   private selectVisible(): void {
     const buffer = this.terminal.buffer.active;
     const top = buffer.viewportY;
