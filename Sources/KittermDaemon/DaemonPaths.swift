@@ -2,6 +2,19 @@ import Foundation
 import KittermProtocol
 
 public enum DaemonPaths: Sendable {
+    /// Whether the state directory has been moved.
+    ///
+    /// Also the signal that the daemon being managed is *not* the installed
+    /// one, which matters beyond where files land: the launchd job has a fixed
+    /// label, so booting it out from a scratch daemon's `stop` would kill
+    /// whatever the user was actually working in.
+    public static var isStateDirectoryOverridden: Bool {
+        guard let override = ProcessInfo.processInfo.environment["KITTERM_STATE_DIR"] else {
+            return false
+        }
+        return !override.isEmpty
+    }
+
     /// Where the pid, port, token and web-root markers live.
     ///
     /// `KITTERM_STATE_DIR` moves the whole set. Without it there is no way to
@@ -13,8 +26,8 @@ public enum DaemonPaths: Sendable {
     /// A relative path resolves against the current directory, which is what a
     /// test harness usually wants.
     public static var stateDirectory: URL {
-        if let override = ProcessInfo.processInfo.environment["KITTERM_STATE_DIR"],
-           !override.isEmpty {
+        if isStateDirectoryOverridden,
+           let override = ProcessInfo.processInfo.environment["KITTERM_STATE_DIR"] {
             return URL(fileURLWithPath: override, isDirectory: true)
         }
         return FileManager.default.homeDirectoryForCurrentUser
