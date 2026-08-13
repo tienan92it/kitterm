@@ -15,7 +15,8 @@ import {
   buildKittyKeySequence,
   extractKeyboardModifiers,
 } from "./kitty";
-import { readClipboard, writeClipboard } from "./clipboard";
+import { canReadClipboard, readClipboard, writeClipboard } from "./clipboard";
+import { promptForPaste, type PastePromptHandle } from "./paste-prompt";
 import type { FaviconState } from "./favicon";
 import { dragMayCarryFiles, insertionText, quoteForShell, readDrop, uploadDroppedFiles } from "./file-drop";
 import { FilePicker } from "./file-picker";
@@ -42,6 +43,16 @@ import {
   swipeTarget,
   swipeToInput,
 } from "./touch-scroll";
+import {
+  EDGE_AUTOSCROLL_MS,
+  LONG_PRESS_MOVE_TOLERANCE_PX,
+  LONG_PRESS_MS,
+  edgeScrollDirection,
+  selectionSpan,
+  spanForWord,
+  wordRangeAt,
+  type BufferCell,
+} from "./touch-select";
 import { KittermSession, defaultWsUrl } from "./session";
 import type { KittermSettings } from "./settings-store";
 import { findThemeById } from "./themes";
@@ -146,6 +157,14 @@ export class TerminalPane {
   private roleKnown = false;
   /** Overlay shown on read-only panes; clicking it requests control. */
   private takeControlBtn: HTMLButtonElement | null = null;
+  /** Touch selection: the cell the long press landed on, which the drag
+   * extends from. Non-null exactly while select mode is active. */
+  private selectAnchor: BufferCell | null = null;
+  /** Copy / Paste / Cancel bar, shown for the duration of select mode. */
+  private selectionBar: HTMLElement | null = null;
+  private longPressTimer: number | null = null;
+  private edgeScrollTimer: number | null = null;
+  private pastePrompt: PastePromptHandle | null = null;
   private readonly watchHint: boolean;
   private folderValue: string | null = null;
   private reconnectTimer: number | null = null;
@@ -474,6 +493,12 @@ export class TerminalPane {
     if (this.disposed) return;
     this.disposed = true;
     this.clearReconnectTimer();
+    this.cancelLongPress();
+    this.stopEdgeScroll();
+    this.selectionBar?.remove();
+    this.selectionBar = null;
+    this.pastePrompt?.close();
+    this.pastePrompt = null;
     this.takeControlBtn?.remove();
     this.takeControlBtn = null;
     if (this.fitHandle !== null) cancelAnimationFrame(this.fitHandle);
@@ -1006,6 +1031,18 @@ export class TerminalPane {
         return true;
       }
 
+      // Typing means the user is done choosing text. Escape only dismisses;
+      // anything else dismisses and still reaches the shell, so a keyboard
+      // never has to fight the bar. Copy is exempt — it is the whole point of
+      // having made a selection.
+      if (this.selectAnchor && !this.isCopyChord(event)) {
+        this.endSelection();
+        if (event.key === "Escape") {
+          event.preventDefault();
+          return false;
+        }
+      }
+
       // Pane chords first — matchPaneCommand only matches combinations no
       // terminal application can receive, so this cannot swallow a shell key.
       const command = matchPaneCommand(event, this.isMac);
@@ -1062,11 +1099,7 @@ export class TerminalPane {
         return false;
       }
 
-      // Copy selection: ⌘C, or Ctrl+Shift+C — never bare Ctrl+C.
-      const isCopy =
-        (event.metaKey && !event.ctrlKey && key === "c") ||
-        (event.ctrlKey && event.shiftKey && !event.metaKey && key === "c");
-      if (isCopy) {
+      if (this.isCopyChord(event)) {
         const selection = this.terminal.getSelection();
         if (selection) {
           event.preventDefault();
@@ -1112,6 +1145,9 @@ export class TerminalPane {
     let lastY: number | null = null;
     let accumulator: SwipeAccumulator | null = null;
     let rect: DOMRect | null = null;
+    // Where the finger went down, so a long press can tell "held still" from
+    // "started scrolling".
+    let pressOrigin: { x: number; y: number } | null = null;
 
     element.addEventListener(
       "touchstart",
@@ -1122,8 +1158,10 @@ export class TerminalPane {
         if (document.activeElement !== this.terminal.textarea) {
           this.host.paneFocusRequested(this);
         }
+        this.cancelLongPress();
         if (event.touches.length !== 1) {
           lastY = null;
+          pressOrigin = null;
           return;
         }
         lastY = event.touches[0].clientY;
@@ -1133,6 +1171,18 @@ export class TerminalPane {
         const rowHeight =
           rect.height > 0 && this.terminal.rows > 0 ? rect.height / this.terminal.rows : 18;
         accumulator = new SwipeAccumulator(rowHeight);
+
+        const touch = event.touches[0];
+        pressOrigin = { x: touch.clientX, y: touch.clientY };
+        // Already selecting: this touch adjusts the selection rather than
+        // starting a new one, so no timer — the drag takes effect at once.
+        if (this.selectAnchor) return;
+        const { clientX, clientY } = touch;
+        const geometry = rect;
+        this.longPressTimer = window.setTimeout(() => {
+          this.longPressTimer = null;
+          this.beginSelection(clientX, clientY, geometry);
+        }, LONG_PRESS_MS);
       },
       { passive: true },
     );
@@ -1144,6 +1194,24 @@ export class TerminalPane {
           return;
         }
         const touch = event.touches[0];
+
+        // A press that travels was a scroll all along.
+        if (this.longPressTimer !== null && pressOrigin) {
+          const travelled = Math.hypot(
+            touch.clientX - pressOrigin.x,
+            touch.clientY - pressOrigin.y,
+          );
+          if (travelled > LONG_PRESS_MOVE_TOLERANCE_PX) this.cancelLongPress();
+        }
+
+        // Select mode owns the gesture outright: no scrolling, no input, and
+        // no swipe translation until the user is done choosing text.
+        if (this.selectAnchor) {
+          event.preventDefault();
+          this.extendSelection(touch.clientX, touch.clientY, rect);
+          return;
+        }
+
         // Track continuously — feed() is down-positive: moving the finger down
         // increases clientY. Kept fresh even on the scrollback path, so a
         // mid-gesture switch to the alt screen doesn't jump from a stale delta.
@@ -1178,9 +1246,192 @@ export class TerminalPane {
       lastY = null;
       accumulator = null;
       rect = null;
+      pressOrigin = null;
+      this.cancelLongPress();
+      // The selection outlives the finger — the action bar is the next step.
+      this.stopEdgeScroll();
     };
     element.addEventListener("touchend", end, { passive: true });
     element.addEventListener("touchcancel", end, { passive: true });
+  }
+
+  /** Copy selection: ⌘C, or Ctrl+Shift+C — never bare Ctrl+C, which is an
+   * interrupt the shell must keep receiving. */
+  private isCopyChord(event: KeyboardEvent): boolean {
+    const key = event.key.toLowerCase();
+    return (
+      (event.metaKey && !event.ctrlKey && key === "c") ||
+      (event.ctrlKey && event.shiftKey && !event.metaKey && key === "c")
+    );
+  }
+
+  // MARK: Touch selection
+
+  private cancelLongPress(): void {
+    if (this.longPressTimer === null) return;
+    window.clearTimeout(this.longPressTimer);
+    this.longPressTimer = null;
+  }
+
+  private stopEdgeScroll(): void {
+    if (this.edgeScrollTimer === null) return;
+    window.clearInterval(this.edgeScrollTimer);
+    this.edgeScrollTimer = null;
+  }
+
+  /** The buffer cell under a viewport point: 0-based column and an absolute
+   * row, which is the coordinate space `Terminal.select` speaks. `cellAt`
+   * answers in 1-based viewport coordinates, so both axes shift. */
+  private bufferCellAt(clientX: number, clientY: number, rect: DOMRect): BufferCell {
+    const viewport = this.cellAt(clientX, clientY, rect);
+    return {
+      col: viewport.col - 1,
+      row: this.terminal.buffer.active.viewportY + viewport.row - 1,
+    };
+  }
+
+  /** Long press: take the run of text under the finger and show the bar.
+   * Padding to the full width (no right-trim) means a press past the end of a
+   * line lands on whitespace and takes a single cell, rather than jumping
+   * backwards to the last word. */
+  private beginSelection(clientX: number, clientY: number, rect: DOMRect): void {
+    if (this.disposed) return;
+    const cell = this.bufferCellAt(clientX, clientY, rect);
+    const line = this.terminal.buffer.active.getLine(cell.row)?.translateToString(false) ?? "";
+    const span = spanForWord(cell.row, wordRangeAt(line, cell.col));
+    this.selectAnchor = cell;
+    this.terminal.select(span.column, span.row, span.length);
+    this.showSelectionBar();
+  }
+
+  private extendSelection(clientX: number, clientY: number, rect: DOMRect): void {
+    const anchor = this.selectAnchor;
+    if (!anchor) return;
+    const focus = this.bufferCellAt(clientX, clientY, rect);
+    const span = selectionSpan(anchor, focus, this.terminal.cols);
+    if (span.length > 0) this.terminal.select(span.column, span.row, span.length);
+
+    // Dragging into the edge keeps scrolling, so a selection can run past one
+    // screen. The interval re-reads the anchor each tick, so releasing the
+    // finger (which clears it) stops the scroll on its own.
+    const direction = edgeScrollDirection(clientY - rect.top, rect.height);
+    if (direction === 0) {
+      this.stopEdgeScroll();
+      return;
+    }
+    if (this.edgeScrollTimer !== null) return;
+    this.edgeScrollTimer = window.setInterval(() => {
+      if (!this.selectAnchor) {
+        this.stopEdgeScroll();
+        return;
+      }
+      this.terminal.scrollLines(direction);
+      const moved = this.bufferCellAt(clientX, clientY, rect);
+      const next = selectionSpan(this.selectAnchor, moved, this.terminal.cols);
+      if (next.length > 0) this.terminal.select(next.column, next.row, next.length);
+    }, EDGE_AUTOSCROLL_MS);
+  }
+
+  /** Leave select mode. The selection goes with it: a stale highlight with no
+   * way to act on it is worse than none. */
+  private endSelection(): void {
+    this.cancelLongPress();
+    this.stopEdgeScroll();
+    this.selectAnchor = null;
+    this.selectionBar?.remove();
+    this.selectionBar = null;
+    this.terminal.clearSelection();
+  }
+
+  private showSelectionBar(): void {
+    if (this.selectionBar) return;
+    const bar = document.createElement("div");
+    bar.className = "selection-bar";
+    bar.setAttribute("role", "toolbar");
+    bar.setAttribute("aria-label", "Selection actions");
+
+    const button = (label: string, onTap: () => void): HTMLButtonElement => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "selection-action";
+      btn.textContent = label;
+      // Touch, not click: a click here would first blur the terminal and, on
+      // iOS, arrive after the keyboard animation has moved the button.
+      btn.addEventListener("touchstart", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onTap();
+      });
+      btn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onTap();
+      });
+      return btn;
+    };
+
+    bar.append(
+      button("Copy", () => this.copySelection()),
+      button("Select all", () => this.selectVisible()),
+    );
+    // Nothing to paste into a pane that cannot take input.
+    if (!this.readOnlyValue && !this.exitedValue) {
+      bar.append(button("Paste", () => this.pasteFromClipboard()));
+    }
+    bar.append(button("Cancel", () => this.endSelection()));
+
+    this.containerEl.append(bar);
+    this.selectionBar = bar;
+  }
+
+  private copySelection(): void {
+    const selection = this.terminal.getSelection();
+    if (!selection) {
+      this.endSelection();
+      return;
+    }
+    void writeClipboard(selection).then((copied) => {
+      this.host.paneFlash(copied ? "Copied" : "Copy failed — clipboard unavailable");
+    });
+    this.endSelection();
+  }
+
+  private selectVisible(): void {
+    const buffer = this.terminal.buffer.active;
+    const top = buffer.viewportY;
+    this.selectAnchor = { col: 0, row: top };
+    this.terminal.select(0, top, this.terminal.rows * this.terminal.cols);
+  }
+
+  /** Paste through xterm so bracketed paste (mode 2004) and newline
+   * normalisation apply — sending the bytes ourselves would make a multi-line
+   * paste execute line by line. */
+  private pasteFromClipboard(): void {
+    this.endSelection();
+    if (this.readOnlyValue || this.exitedValue) return;
+    if (!canReadClipboard()) {
+      this.promptThenPaste();
+      return;
+    }
+    void readClipboard().then((text) => {
+      if (text) this.terminal.paste(text);
+      // A permitted read can still come back empty because the user declined
+      // the prompt; the field is the way through that is never denied.
+      else this.promptThenPaste();
+    });
+  }
+
+  private promptThenPaste(): void {
+    this.pastePrompt?.close();
+    const prompt = promptForPaste(this.containerEl);
+    this.pastePrompt = prompt;
+    void prompt.result.then((text) => {
+      if (this.pastePrompt === prompt) this.pastePrompt = null;
+      if (text && !this.disposed && !this.readOnlyValue && !this.exitedValue) {
+        this.terminal.paste(text);
+        this.focus();
+      }
+    });
   }
 
   /** The 1-based terminal cell under a viewport point, for mouse-wheel
