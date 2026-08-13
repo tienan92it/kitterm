@@ -1,3 +1,4 @@
+import { writeClipboard } from "./clipboard";
 import { ExtraKeysBar, isTouchPrimary } from "./extra-keys";
 import { setFavicon, type FaviconState } from "./favicon";
 import { LOCAL_FONT_ID, resolveFontFamily, type TerminalFontId } from "./fonts";
@@ -796,10 +797,10 @@ export class TerminalApp implements PaneHost {
       return;
     }
     void this.buildShareLink(sessionId).then(({ url, lan }) => {
-      void navigator.clipboard.writeText(url).then(
-        () => this.paneFlash(lan ? "LAN session link copied" : "Session link copied"),
-        () => this.paneFlash(url, 8000),
-      );
+      void writeClipboard(url).then((copied) => {
+        if (copied) this.paneFlash(lan ? "LAN session link copied" : "Session link copied");
+        else this.paneFlash(url, 8000);
+      });
     });
   }
 
@@ -812,10 +813,10 @@ export class TerminalApp implements PaneHost {
       return;
     }
     void this.buildShareLink(sessionId, { watch: true }).then(({ url, lan }) => {
-      void navigator.clipboard.writeText(url).then(
-        () => this.paneFlash(lan ? "Watch-only LAN link copied" : "Watch-only link copied"),
-        () => this.paneFlash(url, 8000),
-      );
+      void writeClipboard(url).then((copied) => {
+        if (copied) this.paneFlash(lan ? "Watch-only LAN link copied" : "Watch-only link copied");
+        else this.paneFlash(url, 8000);
+      });
     });
   }
 

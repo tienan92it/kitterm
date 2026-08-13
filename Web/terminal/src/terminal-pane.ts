@@ -15,6 +15,7 @@ import {
   buildKittyKeySequence,
   extractKeyboardModifiers,
 } from "./kitty";
+import { readClipboard, writeClipboard } from "./clipboard";
 import type { FaviconState } from "./favicon";
 import { dragMayCarryFiles, insertionText, quoteForShell, readDrop, uploadDroppedFiles } from "./file-drop";
 import { FilePicker } from "./file-picker";
@@ -946,10 +947,12 @@ export class TerminalPane {
     const link = this.commandLink(index);
     if (!link) return;
     // Synchronous in the click handler so Safari's user-activation check holds.
-    void navigator.clipboard.writeText(link).then(
-      () => this.host.paneFlash("Command link copied"),
-      () => this.host.paneFlash("Copy failed"),
-    );
+    void writeClipboard(link).then((copied) => {
+      // Show the link on failure rather than claiming success: it is short
+      // enough to read, and a silent no-op is what this used to do.
+      if (copied) this.host.paneFlash("Command link copied");
+      else this.host.paneFlash(link, 8000);
+    });
   }
 
   private setFolderFromCwd(cwd: string): void {
@@ -1067,7 +1070,9 @@ export class TerminalPane {
         const selection = this.terminal.getSelection();
         if (selection) {
           event.preventDefault();
-          void navigator.clipboard.writeText(selection).catch(() => {});
+          void writeClipboard(selection).then((copied) => {
+            if (!copied) this.host.paneFlash("Copy failed — clipboard unavailable");
+          });
           return false;
         }
       }
@@ -1208,12 +1213,9 @@ export class TerminalPane {
     element.addEventListener("mousedown", (event) => {
       if (event.button !== 1 || this.exitedValue || this.readOnlyValue) return;
       event.preventDefault();
-      void navigator.clipboard
-        .readText()
-        .then((text) => {
-          if (text) this.terminal.paste(text);
-        })
-        .catch(() => {});
+      void readClipboard().then((text) => {
+        if (text) this.terminal.paste(text);
+      });
     });
   }
 }
