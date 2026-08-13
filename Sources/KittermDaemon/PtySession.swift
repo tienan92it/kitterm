@@ -34,6 +34,11 @@ public enum PtyError: Error, LocalizedError {
 /// in both directions — NIO retries partial writes that the non-blocking master
 /// fd cannot take at once. The master fd itself is kept for `ioctl` and close.
 public final class PtySession: @unchecked Sendable {
+    /// This session's identity, minted before the shell is spawned so the child
+    /// can be told what it is (`KITTERM_SESSION_ID`). `SessionRegistry` keys on
+    /// this rather than minting its own, so a session has exactly one id and an
+    /// agent's hook can name the pane it is running in.
+    public let sessionID: UUID
     public let pid: pid_t
     public let shellPath: String
     public let initialCwd: String
@@ -128,6 +133,7 @@ public final class PtySession: @unchecked Sendable {
     private var logStore: SessionLogStore?
 
     private init(
+        sessionID: UUID,
         pid: pid_t,
         masterFD: Int32,
         shellPath: String,
@@ -137,6 +143,7 @@ public final class PtySession: @unchecked Sendable {
         cols: UInt16,
         rows: UInt16
     ) {
+        self.sessionID = sessionID
         self.pid = pid
         self.masterFD = masterFD
         self.shellPath = shellPath
@@ -159,6 +166,9 @@ public final class PtySession: @unchecked Sendable {
         profileName: String? = nil,
         labels: SessionLabels = SessionLabels()
     ) throws -> PtySession {
+        // Before the environment is built: the child is told this, which is how
+        // an agent's hook running inside the pane can name the pane.
+        let sessionID = UUID()
         let shell = resolvedShell()
         let startCwd = cwd ?? FileManager.default.homeDirectoryForCurrentUser.path
         // A per-pane HISTFILE lets up-arrow survive a restart with this pane's
@@ -262,7 +272,7 @@ public final class PtySession: @unchecked Sendable {
         var argv: [UnsafeMutablePointer<CChar>?] = helperPtrs
         argv.append(nil)
 
-        let envPairs = buildChildEnvironment(histFile: histFile)
+        let envPairs = buildChildEnvironment(sessionID: sessionID, histFile: histFile)
         var envPointers: [UnsafeMutablePointer<CChar>?] = envPairs.map { strdup($0) }
         envPointers.append(nil)
         defer {
@@ -284,6 +294,7 @@ public final class PtySession: @unchecked Sendable {
         _ = fcntl(master, F_SETFL, flags | O_NONBLOCK)
 
         let session = PtySession(
+            sessionID: sessionID,
             pid: childPid,
             masterFD: master,
             shellPath: shell,
@@ -1032,7 +1043,10 @@ public final class PtySession: @unchecked Sendable {
         return KittermConstants.defaultShellFallback
     }
 
-    private static func buildChildEnvironment(histFile: String? = nil) -> [String] {
+    private static func buildChildEnvironment(
+        sessionID: UUID,
+        histFile: String? = nil
+    ) -> [String] {
         var env = ProcessInfo.processInfo.environment
         for key in KittermConstants.ptyEnvDenylist {
             env.removeValue(forKey: key)
@@ -1040,6 +1054,10 @@ public final class PtySession: @unchecked Sendable {
         env["TERM"] = KittermConstants.termType
         env["COLORTERM"] = KittermConstants.colortermValue
         env["KITTERM_DAEMON_CHILD"] = "1"
+        // What a Claude Code hook puts in a header so the daemon knows which
+        // pane asked. Exported rather than discovered, because a hook config is
+        // static and cannot look this up.
+        env["KITTERM_SESSION_ID"] = sessionID.uuidString
         if env["CLICOLOR"] == nil {
             env["CLICOLOR"] = KittermConstants.clicolorDefault
         }

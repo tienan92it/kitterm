@@ -38,3 +38,7 @@ dist/
 # Local Claude Code settings
 .claude/settings.local.json*
 core
+
+# Playwright MCP scratch output.
+.playwright-mcp/
+*-fleet-view.png
