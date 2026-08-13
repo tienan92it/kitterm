@@ -371,7 +371,10 @@ enum KittermMain {
             print("kitterm already running (pid \(existing), port \(readPort() ?? port))")
             return
         }
-        if loginAgentInstalled(), serviceLoaded() {
+        // The override means a deliberately separate daemon, which is not a
+        // competitor for the service's port and must not be refused on its
+        // behalf.
+        if !DaemonPaths.isStateDirectoryOverridden, loginAgentInstalled(), serviceLoaded() {
             // The login agent owns the daemon (it may be mid-respawn right now);
             // a competitor would just fight it for the port.
             throw CLIError.serviceFailed(
@@ -389,17 +392,25 @@ enum KittermMain {
         // decides what every pane's file-access prompts are attributed to.
         var detached: Process?
         #if canImport(Darwin)
-        do {
-            try bootstrapSessionJob(executable: executable, port: port, flags: flags)
-        } catch {
-            // No gui domain to bootstrap into (a plain ssh login). Starting
-            // anyway beats refusing, but this is exactly the case that leaks the
-            // caller's identity into every pane, so it must not pass silently.
-            writeError("warning: could not start under launchd: \(error.localizedDescription)\n")
-            writeError("         falling back to a daemon detached from this shell. It keeps this\n")
-            writeError("         session's file-access identity, so macOS prompts for panes will\n")
-            writeError("         name the launching app rather than kitterm.\n")
+        // Rooting a scratch daemon at the shared launchd label would boot out
+        // the installed one first. A moved state directory says this is not
+        // that daemon, so it runs detached instead — no warning, because here
+        // detached is the intended mode rather than a fallback.
+        if DaemonPaths.isStateDirectoryOverridden {
             detached = try spawnDetached(executable: executable, port: port, flags: flags)
+        } else {
+            do {
+                try bootstrapSessionJob(executable: executable, port: port, flags: flags)
+            } catch {
+                // No gui domain to bootstrap into (a plain ssh login). Starting
+                // anyway beats refusing, but this is exactly the case that leaks the
+                // caller's identity into every pane, so it must not pass silently.
+                writeError("warning: could not start under launchd: \(error.localizedDescription)\n")
+                writeError("         falling back to a daemon detached from this shell. It keeps this\n")
+                writeError("         session's file-access identity, so macOS prompts for panes will\n")
+                writeError("         name the launching app rather than kitterm.\n")
+                detached = try spawnDetached(executable: executable, port: port, flags: flags)
+            }
         }
         #else
         // There is no launchd to bootstrap into, so detached is not a fallback
@@ -1206,7 +1217,10 @@ enum KittermMain {
         // A launchd-managed daemon must be booted out, not signalled —
         // KeepAlive would respawn it within seconds of a plain SIGTERM.
         var wasService = false
-        if serviceLoaded() {
+        // A moved state directory means this is not the installed daemon, and
+        // the launchd label is fixed — booting it out here would kill whatever
+        // the user is actually working in. Signal our own pid and nothing else.
+        if !DaemonPaths.isStateDirectoryOverridden, serviceLoaded() {
             // Only the login agent comes back by itself; a session job is gone
             // for good once booted out, so the messages below differ.
             wasService = loginAgentInstalled()
