@@ -561,16 +561,30 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         }
     }
 
+    /// The working directory a client is told about when it adopts a session.
+    ///
+    /// `liveCwd`, never `initialCwd`: `sendMeta` runs on every adopt, reattach
+    /// included, so the spawn directory would overwrite a reloading client's
+    /// live folder. Nothing corrects it afterwards — the cwd poll only emits on
+    /// a *change*, and its last-seen value already matches the shell, so the
+    /// stale folder stands until the next `cd`. The client then persists that
+    /// wrong path and respawns into it. Split out so a test can pin the choice
+    /// without standing up a WebSocket.
+    static func metaCwd(for session: PtySession) -> String {
+        session.liveCwd
+    }
+
     private func sendMeta(context: ChannelHandlerContext, session: PtySession) {
+        let cwd = Self.metaCwd(for: session)
         let meta = SessionMeta(
             shell: session.shellPath,
             pid: session.pid,
-            cwd: session.initialCwd
+            cwd: cwd
         )
         if let encoded = try? ServerFrame.sessionMeta(meta).encode() {
             writeBinary(encoded, context: context)
         }
-        if let encoded = try? ServerFrame.cwd(session.initialCwd).encode() {
+        if let encoded = try? ServerFrame.cwd(cwd).encode() {
             writeBinary(encoded, context: context)
         }
         // No `title` frame: the shell name is already in `sessionMeta`, and the
