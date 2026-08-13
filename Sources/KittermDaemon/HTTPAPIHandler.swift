@@ -1024,16 +1024,6 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         }
     }
 
-    /// `POST /api/sessions/<uuid>/input` — write the request body verbatim to
-    /// the shell's input, as if typed. The body is raw bytes: include your own
-    /// newline to submit a command, send `\x03` for Ctrl-C, etc. Capped at
-    /// `maxInputBytes`.
-    ///
-    /// This is the one write route. It is off unless the daemon was started
-    /// with `--agent-control`, and even then sits behind the same access policy
-    /// as every other route — a caller the policy admits can drive any shell as
-    /// the invoking user. Input interleaves with whatever a human controller is
-    /// typing; there is no separate role.
     // MARK: - Agent hooks and approvals
 
     /// Receive a Claude Code hook event.
@@ -1047,6 +1037,13 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// Anything unrecognised answers 200 with an empty object, so an
     /// over-broad hook config costs nothing and a schema change degrades to
     /// "no opinion" rather than to a wedged agent.
+    ///
+    /// An agent killed mid-prompt leaves its question listed until the hold
+    /// expires: NIO keeps the channel open while a response is outstanding, so
+    /// neither `channelInactive` nor `closeFuture` fires (measured, not
+    /// assumed). Deciding a dead one is harmless — it answers 404, which the
+    /// fleet view treats as "too late" — so the hold's own deadline is left to
+    /// clean it up rather than adding a handler ahead of the HTTP pipeline.
     private func serveHook(
         body: Data,
         bodyOverflow: Bool,
@@ -1070,8 +1067,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             .flatMap(UUID.init(uuidString:))
 
         guard name == "PreToolUse" else {
-            // Informational events still deserve to surface, but nothing waits
-            // on them, so answer immediately.
+            // Accepted so one hook config can cover both events, and answered
+            // at once because nothing waits on these. `Notification` is not
+            // rendered anywhere yet — that is the next piece, not a promise
+            // this route already keeps.
             writeJSON(
                 status: .ok, body: "{}",
                 context: context, version: head.version, keepAlive: head.isKeepAlive
@@ -1212,6 +1211,16 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         )
     }
 
+    /// `POST /api/sessions/<uuid>/input` — write the request body verbatim to
+    /// the shell's input, as if typed. The body is raw bytes: include your own
+    /// newline to submit a command, send `\x03` for Ctrl-C, etc. Capped at
+    /// `maxInputBytes`.
+    ///
+    /// This is the one write route. It is off unless the daemon was started
+    /// with `--agent-control`, and even then sits behind the same access policy
+    /// as every other route — a caller the policy admits can drive any shell as
+    /// the invoking user. Input interleaves with whatever a human controller is
+    /// typing; there is no separate role.
     private func serveInput(
         path: String,
         body: Data,

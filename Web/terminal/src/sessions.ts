@@ -100,7 +100,9 @@ async function poll(): Promise<void> {
     if (!sessionsRes.ok) throw new Error(String(sessionsRes.status));
     const data = (await sessionsRes.json()) as { ok: boolean; sessions: SessionRow[] };
     // A daemon too old to know about approvals is not an error; it just has
-    // none. Same for a watch client, which is refused the listing.
+    // none. Watch clients *can* read this — seeing what an agent is about to do
+    // is observation, like the rest of the read API — they simply get no
+    // buttons, because deciding is full grade.
     approvals = approvalsRes.ok
       ? (((await approvalsRes.json()) as { approvals?: Approval[] }).approvals ?? [])
       : [];
@@ -328,9 +330,13 @@ async function decide(id: string, decision: "allow" | "deny"): Promise<void> {
     // 404 means it expired or someone else answered — not worth alarming over.
     if (!res.ok && res.status !== 404) throw new Error(String(res.status));
   } catch {
-    // Put it back so the next poll can reconcile rather than silently losing it.
-    answering.delete(id);
+    // Let the next poll reconcile rather than silently losing it.
     void poll();
+  } finally {
+    // Only guards the in-flight window: once the row is gone there is no
+    // button to tap twice, and holding the id forever would leak on a page
+    // that stays open for days.
+    answering.delete(id);
   }
 }
 
