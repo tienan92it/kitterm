@@ -832,6 +832,14 @@ body.pane-dragging .pane-inner {
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
+  /* The bottom inset a bar sits on, trimmed.
+     iOS reports 34px at the bottom, but the home indicator inside that band is
+     a pill roughly 5px tall sitting about 8px off the screen edge. Honouring
+     all 34 leaves a wide empty strip under the key row and costs the terminal
+     two rows. 16px clears the pill and reads as a margin rather than a gap.
+     Raise the 18px to give the indicator more room; lower it to reclaim more
+     of the screen. Floors at 0, so a device with no inset is unaffected. */
+  --safe-bottom-compact: max(0px, calc(var(--safe-bottom) - 18px));
 }
 /* How much of the bottom edge the touch chrome owns: the key row, the safe
    area it pads itself with, and the software keyboard when it is open.
@@ -839,7 +847,7 @@ body.pane-dragging .pane-inner {
    or it ends up underneath a bar that is `position: fixed` above it. */
 body.has-extra-keys {
   --bottom-chrome: calc(
-    var(--extra-keys-height) + var(--safe-bottom) + var(--keyboard-height)
+    var(--extra-keys-height) + var(--safe-bottom-compact) + var(--keyboard-height)
   );
 }
 /* Terminal sits above the extra-keys row and the software keyboard. */
@@ -867,7 +875,7 @@ body.has-extra-keys #status {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 4px calc(4px + var(--safe-right)) calc(4px + var(--safe-bottom))
+  padding: 4px calc(4px + var(--safe-right)) calc(4px + var(--safe-bottom-compact))
     calc(4px + var(--safe-left));
   background: var(--ui-bg-sunken);
   border-top: 1px solid var(--ui-border);
