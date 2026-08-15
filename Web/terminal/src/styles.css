@@ -19,8 +19,8 @@ body,
    where the per-pane close button lives. */
 .settings-host {
   position: absolute;
-  bottom: 12px;
-  right: 12px;
+  bottom: calc(12px + var(--safe-bottom));
+  right: calc(12px + var(--safe-right));
   z-index: 4;
   display: flex;
   gap: 8px;
@@ -317,9 +317,18 @@ body,
 
 /* Layout container: panes are positioned absolutely from the layout tree, so
    splitting never re-parents a live xterm node. */
+/* Insets, not padding. Every pane is absolutely positioned as a percentage of
+   this element, and an absolute child resolves against the padding box — so
+   padding here would leave the panes exactly where they were. Moving the edges
+   is what actually clears the status bar and the camera housing when the page
+   owns the whole screen. `bottom` is overridden below on touch devices, where
+   the key row already accounts for the same inset. */
 #terminal {
   position: absolute;
-  inset: 0;
+  top: var(--safe-top);
+  right: var(--safe-right);
+  bottom: var(--safe-bottom);
+  left: var(--safe-left);
   padding: 4px;
 }
 
@@ -691,8 +700,8 @@ body.pane-dragging .pane-inner {
      that an enforced boundary rather than a hope. */
   contain: layout style paint;
   position: absolute;
-  left: 12px;
-  bottom: 12px;
+  left: calc(12px + var(--safe-left));
+  bottom: calc(12px + var(--safe-bottom));
   z-index: 2;
   padding: 6px 10px;
   font: 12px/1.4 var(--font-mono);
@@ -810,6 +819,19 @@ body.pane-dragging .pane-inner {
 :root {
   --extra-keys-height: 52px;
   --keyboard-height: 0px;
+  /* The display cut-outs the page must keep clear: the status bar and camera
+     housing, and the home indicator. Named rather than used inline so every
+     edge reads the same value, and so a test can override them — `env()` comes
+     from the user agent and cannot be simulated otherwise.
+
+     Every one of these is 0 in a normal browser tab in portrait, because the
+     browser's own chrome already covers the unsafe edges. They only take a
+     value where the page owns the whole screen: an installed app, or a tab in
+     landscape on a device with a notch. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 }
 /* How much of the bottom edge the touch chrome owns: the key row, the safe
    area it pads itself with, and the software keyboard when it is open.
@@ -817,7 +839,7 @@ body.pane-dragging .pane-inner {
    or it ends up underneath a bar that is `position: fixed` above it. */
 body.has-extra-keys {
   --bottom-chrome: calc(
-    var(--extra-keys-height) + env(safe-area-inset-bottom) + var(--keyboard-height)
+    var(--extra-keys-height) + var(--safe-bottom) + var(--keyboard-height)
   );
 }
 /* Terminal sits above the extra-keys row and the software keyboard. */
@@ -845,8 +867,8 @@ body.has-extra-keys #status {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 4px calc(4px + env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom))
-    calc(4px + env(safe-area-inset-left));
+  padding: 4px calc(4px + var(--safe-right)) calc(4px + var(--safe-bottom))
+    calc(4px + var(--safe-left));
   background: var(--ui-bg-sunken);
   border-top: 1px solid var(--ui-border);
   touch-action: manipulation;
