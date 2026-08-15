@@ -85,6 +85,9 @@ export class SettingsPanel {
     this.dialog.hidden = true;
     this.dialog.setAttribute("role", "dialog");
     this.dialog.setAttribute("aria-label", "Terminal settings");
+    // Focusable so `show()` can move focus into the dialog without landing on a
+    // control. Not reachable by Tab: -1 keeps it out of the tab order.
+    this.dialog.setAttribute("tabindex", "-1");
     this.dialog.innerHTML = `
       <div class="settings-header">
         <h2>Settings</h2>
@@ -318,7 +321,11 @@ export class SettingsPanel {
     this.gear?.setAttribute("aria-expanded", "true");
     this.backdrop.hidden = false;
     this.dialog.hidden = false;
-    this.themeSelect?.focus();
+    // The dialog itself, never the theme `select`. A phone opens a select's
+    // native picker the moment it takes focus, so opening settings threw the
+    // theme wheel over the panel every time. Focus still enters the dialog, so
+    // Tab reaches the controls and a screen reader announces the surface.
+    this.dialog.focus({ preventScroll: true });
     if (this.fontSelect?.value === LOCAL_FONT_ID) {
       void this.ensureLocalFontsLoaded();
     }

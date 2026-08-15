@@ -82,6 +82,13 @@ body,
   display: none !important;
 }
 
+/* The dialog takes focus when it opens so the keyboard has somewhere to start.
+   It is a container, not a control, and its border already marks the boundary,
+   so it draws no ring. Every control inside keeps its own focus style. */
+.settings-dialog:focus {
+  outline: none;
+}
+
 /* Opens upward from the gear, which sits in the bottom-right corner. */
 .settings-dialog {
   /* Chrome floats over the terminal. Containment keeps a restyle or reflow
