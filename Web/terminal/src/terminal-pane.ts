@@ -247,6 +247,7 @@ export class TerminalPane {
     });
 
     this.terminal.open(options.container);
+    this.suppressAutofill();
     this.registerKittyHandlers();
     this.registerCwdHandlers();
     this.registerMarkHandlers();
@@ -1263,6 +1264,27 @@ export class TerminalPane {
     };
     element.addEventListener("touchend", end, { passive: true });
     element.addEventListener("touchcancel", end, { passive: true });
+  }
+
+  /**
+   * Tell the browser this field wants no help.
+   *
+   * iOS puts an accessory bar above the keyboard for any focused text field.
+   * In Safari it carries AutoFill entries — password, payment card, contact —
+   * which a shell can never want, and which Safari offers because xterm's input
+   * is an ordinary `textarea` and nothing says otherwise. `autocomplete="off"`
+   * is the signal that removes them.
+   *
+   * xterm already sets `autocorrect`, `autocapitalize` and `spellcheck`, but
+   * not this one, and it owns the element, so we add it after `open()`.
+   *
+   * The bar itself and its dismiss button are not ours to remove: iOS builds
+   * that view for web content and exposes no way to refuse it.
+   */
+  private suppressAutofill(): void {
+    const input = this.terminal.textarea;
+    if (!input) return;
+    input.setAttribute("autocomplete", "off");
   }
 
   /** Copy selection: ⌘C, or Ctrl+Shift+C — never bare Ctrl+C, which is an
