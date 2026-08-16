@@ -1117,6 +1117,12 @@ export class TerminalPane {
           void writeClipboard(selection).then((copied) => {
             if (!copied) this.host.paneFlash("Copy failed — clipboard unavailable");
           });
+          // A touch selection is finished by copying it, the same as tapping
+          // Copy on the bar. Leaving select mode on would strand the bar over
+          // an iPad's screen and keep swallowing touchmove, so the pane could
+          // not be scrolled. A mouse selection has no anchor and is left alone:
+          // a desktop terminal keeps its highlight after a copy.
+          if (this.selectAnchor) this.endSelection();
           return false;
         }
       }

@@ -98,6 +98,12 @@ export const writeClipboard = async (text: string): Promise<boolean> => {
     } catch {
       // Permission denied or a transient failure — try the old route before
       // giving up, since it asks the document rather than the permission model.
+      //
+      // On Safari this second attempt is close to hopeless: the `await` above
+      // has already consumed the transient user activation `execCommand`
+      // needs. It costs nothing and helps on other engines. The path that
+      // matters — a plain-HTTP origin — never reaches here, because
+      // `asyncClipboard()` returns null and the fallback runs synchronously.
     }
   }
   return copyViaExecCommand(text);

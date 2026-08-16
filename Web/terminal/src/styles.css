@@ -556,6 +556,8 @@ body,
   left: 50%;
   transform: translateX(-50%);
   z-index: 6;
+  /* See the read-only rule below: on an observer pane this shares the slot
+     with the "Take control" button, and wins on z-index. */
   display: flex;
   gap: 2px;
   max-width: calc(100% - 16px);
@@ -585,6 +587,13 @@ body,
 
 .selection-action:active {
   background: var(--ui-active);
+}
+
+/* An observer pane already owns that slot with its "Take control" button, and
+   copying from a shared session on a phone is exactly when both want it. Drop
+   below the button rather than cover it. */
+.pane-inner:has(.take-control) .selection-bar {
+  top: 44px;
 }
 
 /* The paste route where the clipboard cannot be read: the user's own paste

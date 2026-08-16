@@ -513,6 +513,14 @@ export class TerminalApp implements PaneHost {
   private setFocus(id: PaneId, options: { persist?: boolean } = {}): void {
     const pane = this.panes.get(id);
     if (!pane) return;
+    // A debounced title write belongs to the pane the user typed it into.
+    // `persistTabTitle` resolves the pane when it fires, so leaving it pending
+    // across a focus change writes it to the new pane — and by then
+    // `loadTabTitleForFocused` has replaced the text with that pane's own, so
+    // the typed name is lost outright. Flush while the old pane is still
+    // focused. Only when something is actually pending: an unconditional write
+    // here would churn storage on every focus change.
+    if (this.tabTitlePersistTimer !== null) this.persistTabTitle();
     this.focusedId = id;
     this.view.setFocused(id);
     this.webgl.acquire(id, pane);
@@ -641,6 +649,9 @@ export class TerminalApp implements PaneHost {
     this.introCard = showIntro(document.body, {
       isMac: this.isMac,
       touch: isTouchPrimary(),
+      // The card held focus; hand it back to the shell, or the keyboard goes
+      // nowhere until the user thinks to tap a pane.
+      onClose: () => this.focusedPane?.focus(),
     });
   }
 
@@ -755,7 +766,15 @@ export class TerminalApp implements PaneHost {
    * replaced pane may not be the focused one whose title that holds. */
   private republishTabTitle(pane: TerminalPane): void {
     if (pane.readOnly || !pane.sessionId || !pane.histKey) return;
-    saveTabTitle(pane.sessionId, pane.histKey, loadTabTitle(null, pane.histKey));
+    const stored = loadTabTitle(null, pane.histKey);
+    // Nothing to republish for a pane the user never named or configured.
+    // Writing anyway would mint two placeholder entries per respawn and, since
+    // the map prunes by recency, eventually evict a *named* pane sitting idle
+    // in another tab — the exact loss the hist key was added to prevent.
+    if (!stored.tabTitle && stored.tabTitleShowFolder === DEFAULT_TAB_TITLE.tabTitleShowFolder) {
+      return;
+    }
+    saveTabTitle(pane.sessionId, pane.histKey, stored);
   }
 
   /** Adopt the focused pane's stored title — for an observer this is the title

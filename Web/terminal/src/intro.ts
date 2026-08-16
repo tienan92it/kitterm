@@ -156,10 +156,20 @@ export interface IntroCard {
 /**
  * Mount the card in `host`. Dismissing it records that, so the first visit is
  * the only unprompted one however it was opened.
+ *
+ * `onClose` must put focus back where the user expects it. The card takes focus
+ * when it opens, and removing an element that holds focus drops it to `body` —
+ * where the terminal receives nothing. Without this the first thing a new
+ * visitor does, dismissing the card, leaves them with a shell that ignores the
+ * keyboard until they click a pane.
  */
 export const showIntro = (
   host: HTMLElement,
-  { isMac, touch }: { isMac: boolean; touch: boolean },
+  {
+    isMac,
+    touch,
+    onClose,
+  }: { isMac: boolean; touch: boolean; onClose?: () => void },
 ): IntroCard => {
   const scrim = document.createElement("div");
   scrim.className = "intro-scrim";
@@ -228,6 +238,10 @@ export const showIntro = (
     markIntroSeen();
     document.removeEventListener("keydown", onKeydown, true);
     scrim.remove();
+    // After the remove, so focus lands on a live element rather than one about
+    // to leave the document. Covers all three ways out: the button, Escape,
+    // and a tap outside the card.
+    onClose?.();
   };
 
   // Capture phase: xterm's own key handling sits below, and Escape here must
