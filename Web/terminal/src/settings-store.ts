@@ -9,13 +9,22 @@ const KEY_THEME = "kitterm:theme-id";
 const KEY_FONT = "kitterm:font-id";
 const KEY_FONT_SIZE = "kitterm:font-size";
 const KEY_LOCAL_FONT = "kitterm:local-font-family";
-// Tab title is keyed by session id, not stored globally: a new tab gets a new
-// session and so its own title, while an observer tab joining an existing
-// session reads the controller's title. Kept in localStorage (not
-// sessionStorage) so it is visible across tabs of the same browser.
+// Tab titles are keyed twice, not stored globally, and kept in localStorage
+// (not sessionStorage) so they are visible across tabs of the same browser.
+//
+// By **session id**, so an observer tab joining a session reads the title its
+// controller set. Session ids are ephemeral: a daemon restart or a dead shell
+// mints a new one for every pane, and each new id takes a slot, so a title
+// reached only this way is eventually pruned out from under a long-lived pane.
+//
+// By **hist key**, the pane's own durable id — the same one that keeps its
+// shell history across a respawn. This is what makes a name stick to the pane
+// the user gave it to rather than to whichever shell happened to be running.
+// Panes booted from a share link have none; they are observers and read the
+// session entry, which is the point.
 const KEY_TAB_TITLES = "kitterm:tab-titles";
-/** Sessions are ephemeral; keep only the most recent entries. */
-const MAX_TAB_TITLE_ENTRIES = 50;
+/** Two entries per named pane, and session ids churn; leave room for both. */
+const MAX_TAB_TITLE_ENTRIES = 100;
 
 export interface TabTitleSettings {
   /** Fixed tab name; empty means "not set". */
@@ -138,9 +147,20 @@ export const saveLocalFontFamily = (family: string | null): void => {
   else removeRaw(KEY_LOCAL_FONT);
 };
 
-/** Tab title for `sessionId`, or the defaults when it has none stored. */
-export const loadTabTitle = (sessionId: string): TabTitleSettings => {
-  const entry = readTabTitleMap()[sessionId];
+/**
+ * The title for a pane, or the defaults when it has none stored.
+ *
+ * Session id first, so an observer shows what its controller set. The hist key
+ * is the fallback that survives a respawn: after a daemon restart the pane's
+ * session id is new and has no entry, but its hist key is the one it booted
+ * with.
+ */
+export const loadTabTitle = (
+  sessionId: string | null,
+  histKey?: string | null,
+): TabTitleSettings => {
+  const map = readTabTitleMap();
+  const entry = (sessionId ? map[sessionId] : undefined) ?? (histKey ? map[histKey] : undefined);
   if (!entry) return { ...DEFAULT_TAB_TITLE };
   return {
     tabTitle: typeof entry.t === "string" ? entry.t : "",
@@ -150,16 +170,22 @@ export const loadTabTitle = (sessionId: string): TabTitleSettings => {
 
 /** Controller-only: observers must never write a session's title. */
 export const saveTabTitle = (
-  sessionId: string,
+  sessionId: string | null,
+  histKey: string | null,
   { tabTitle, tabTitleShowFolder }: TabTitleSettings,
 ): void => {
+  const keys = [sessionId, histKey].filter((key): key is string => !!key);
+  if (keys.length === 0) return;
   const map = readTabTitleMap();
   const trimmed = tabTitle.trim();
   // Strictly increasing, so pruning orders by true recency even when several
   // writes land in the same millisecond.
   const newest = Object.values(map).reduce((max, e) => Math.max(max, e?.at ?? 0), 0);
-  map[sessionId] = { at: Math.max(Date.now(), newest + 1), f: tabTitleShowFolder };
-  if (trimmed) map[sessionId].t = trimmed;
+  const at = Math.max(Date.now(), newest + 1);
+  for (const key of keys) {
+    map[key] = { at, f: tabTitleShowFolder };
+    if (trimmed) map[key].t = trimmed;
+  }
   // `writeRaw` already absorbs quota / private-mode failures.
   writeRaw(KEY_TAB_TITLES, JSON.stringify(pruneTabTitles(map)));
 };

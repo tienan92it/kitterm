@@ -1,5 +1,7 @@
+import { writeClipboard } from "./clipboard";
 import { ExtraKeysBar, isTouchPrimary } from "./extra-keys";
 import { setFavicon, type FaviconState } from "./favicon";
+import { shouldShowIntro, showIntro, type IntroCard } from "./intro";
 import { LOCAL_FONT_ID, resolveFontFamily, type TerminalFontId } from "./fonts";
 import { trackKeyboardInsets } from "./keyboard-insets";
 import {
@@ -78,6 +80,7 @@ export class TerminalApp implements PaneHost {
   private focusedId: PaneId;
   private settingsValue: KittermSettings;
   private settingsPanel: SettingsPanel | null = null;
+  private introCard: IntroCard | null = null;
   private searchInput: HTMLInputElement | null = null;
   private unreadOutput = false;
   private readonly notifications = new NotificationCenter({
@@ -141,6 +144,10 @@ export class TerminalApp implements PaneHost {
     this.setFocus(this.focusedId, { persist: false });
     this.refreshTitle();
     this.updateFavicon();
+
+    // Last, so the card lands over a terminal that already exists rather than
+    // an empty page — and only on a browser that has never dismissed it.
+    if (shouldShowIntro()) this.showIntroCard();
   }
 
   // MARK: Boot
@@ -311,8 +318,9 @@ export class TerminalApp implements PaneHost {
     if (replaced) {
       // The shell died and a new one took its place. The pane is still the
       // user's "Deploy" pane, so carry the name across rather than silently
-      // reverting to the folder.
-      this.persistTabTitle();
+      // reverting to the folder — for *this* pane, which need not be the
+      // focused one.
+      this.republishTabTitle(pane);
     } else if (pane.id === this.focusedId) {
       this.loadTabTitleForFocused();
     }
@@ -351,6 +359,9 @@ export class TerminalApp implements PaneHost {
       }
       case "browse-files":
         pane.toggleFilePicker();
+        break;
+      case "show-help":
+        this.showIntroCard();
         break;
       case "new-tab": {
         // Synchronous with the keydown gesture — any await/rAF here and the
@@ -502,6 +513,14 @@ export class TerminalApp implements PaneHost {
   private setFocus(id: PaneId, options: { persist?: boolean } = {}): void {
     const pane = this.panes.get(id);
     if (!pane) return;
+    // A debounced title write belongs to the pane the user typed it into.
+    // `persistTabTitle` resolves the pane when it fires, so leaving it pending
+    // across a focus change writes it to the new pane — and by then
+    // `loadTabTitleForFocused` has replaced the text with that pane's own, so
+    // the typed name is lost outright. Flush while the old pane is still
+    // focused. Only when something is actually pending: an unconditional write
+    // here would churn storage on every focus change.
+    if (this.tabTitlePersistTimer !== null) this.persistTabTitle();
     this.focusedId = id;
     this.view.setFocused(id);
     this.webgl.acquire(id, pane);
@@ -619,6 +638,20 @@ export class TerminalApp implements PaneHost {
         this.applyTabTitleShowFolder(showFolder),
       onCopySessionLink: () => this.copySessionLink(),
       onCopyWatchLink: () => this.copyWatchLink(),
+      onShowHelp: () => this.showIntroCard(),
+    });
+  }
+
+  /** The getting-started card, unprompted on a browser's first visit and on
+   * demand after that. */
+  private showIntroCard(): void {
+    this.introCard?.close();
+    this.introCard = showIntro(document.body, {
+      isMac: this.isMac,
+      touch: isTouchPrimary(),
+      // The card held focus; hand it back to the shell, or the keyboard goes
+      // nowhere until the user thinks to tap a pane.
+      onClose: () => this.focusedPane?.focus(),
     });
   }
 
@@ -720,18 +753,37 @@ export class TerminalApp implements PaneHost {
       this.tabTitlePersistTimer = null;
     }
     const pane = this.focusedPane;
-    if (!pane || pane.readOnly || !pane.sessionId) return;
-    saveTabTitle(pane.sessionId, {
+    if (!pane || pane.readOnly) return;
+    saveTabTitle(pane.sessionId, pane.histKey, {
       tabTitle: this.settingsValue.tabTitle,
       tabTitleShowFolder: this.settingsValue.tabTitleShowFolder,
     });
   }
 
-  /** Adopt the focused session's stored title — for an observer this is the
-   * title its controller set. */
+  /** A replaced shell means a new session id, which nothing has stored a title
+   * under yet. Republish the pane's own name so an observer of the new session
+   * still mirrors it — read from storage, not from `settingsValue`, because the
+   * replaced pane may not be the focused one whose title that holds. */
+  private republishTabTitle(pane: TerminalPane): void {
+    if (pane.readOnly || !pane.sessionId || !pane.histKey) return;
+    const stored = loadTabTitle(null, pane.histKey);
+    // Nothing to republish for a pane the user never named or configured.
+    // Writing anyway would mint two placeholder entries per respawn and, since
+    // the map prunes by recency, eventually evict a *named* pane sitting idle
+    // in another tab — the exact loss the hist key was added to prevent.
+    if (!stored.tabTitle && stored.tabTitleShowFolder === DEFAULT_TAB_TITLE.tabTitleShowFolder) {
+      return;
+    }
+    saveTabTitle(pane.sessionId, pane.histKey, stored);
+  }
+
+  /** Adopt the focused pane's stored title — for an observer this is the title
+   * its controller set. */
   private loadTabTitleForFocused(): void {
-    const sessionId = this.focusedPane?.sessionId ?? null;
-    const prefs = sessionId ? loadTabTitle(sessionId) : { ...DEFAULT_TAB_TITLE };
+    const pane = this.focusedPane;
+    const prefs = pane
+      ? loadTabTitle(pane.sessionId, pane.histKey)
+      : { ...DEFAULT_TAB_TITLE };
     if (
       prefs.tabTitle === this.settingsValue.tabTitle &&
       prefs.tabTitleShowFolder === this.settingsValue.tabTitleShowFolder
@@ -784,10 +836,10 @@ export class TerminalApp implements PaneHost {
       return;
     }
     void this.buildShareLink(sessionId).then(({ url, lan }) => {
-      void navigator.clipboard.writeText(url).then(
-        () => this.paneFlash(lan ? "LAN session link copied" : "Session link copied"),
-        () => this.paneFlash(url, 8000),
-      );
+      void writeClipboard(url).then((copied) => {
+        if (copied) this.paneFlash(lan ? "LAN session link copied" : "Session link copied");
+        else this.paneFlash(url, 8000);
+      });
     });
   }
 
@@ -800,10 +852,10 @@ export class TerminalApp implements PaneHost {
       return;
     }
     void this.buildShareLink(sessionId, { watch: true }).then(({ url, lan }) => {
-      void navigator.clipboard.writeText(url).then(
-        () => this.paneFlash(lan ? "Watch-only LAN link copied" : "Watch-only link copied"),
-        () => this.paneFlash(url, 8000),
-      );
+      void writeClipboard(url).then((copied) => {
+        if (copied) this.paneFlash(lan ? "Watch-only LAN link copied" : "Watch-only link copied");
+        else this.paneFlash(url, 8000);
+      });
     });
   }
 

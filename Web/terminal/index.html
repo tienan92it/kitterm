@@ -11,7 +11,12 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="kitterm" />
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- `crossorigin="use-credentials"`: a manifest is fetched with credentials
+         mode "omit" by default, so the browser sends no `kitterm_token` cookie
+         and a token-gated daemon answers 403. Add to Home Screen then fails on
+         every LAN, Tailscale and proxied origin. Scripts and styles are exempt
+         because they already send the cookie. -->
+    <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>kitterm</title>
   </head>

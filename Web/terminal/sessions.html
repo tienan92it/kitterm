@@ -8,7 +8,12 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="kitterm" />
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- Credentials mode, for the reason given in index.html. -->
+    <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
+    <!-- A page with no icon link makes the browser ask for /favicon.ico, which
+         the daemon does not serve. The terminal page needs no such tag because
+         `favicon.ts` inserts one at runtime; this page draws no favicon. -->
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>kitterm — sessions</title>
   </head>

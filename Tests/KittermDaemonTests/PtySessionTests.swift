@@ -613,6 +613,54 @@ final class PtySessionTests: XCTestCase {
 
         wait(for: [seen], timeout: 30)
     }
+
+    // MARK: - The cwd a reattaching client is told about
+
+    /// A reload re-runs `sendMeta` against a session that has been `cd`-ing for
+    /// hours. Announcing `initialCwd` there sent the client back to the spawn
+    /// directory, and nothing corrected it: the cwd poll only fires on a
+    /// *change*, and it had already seen the shell's real directory. The tab
+    /// title reverted to the spawn folder and the client persisted that path,
+    /// so the next respawn or split started in the wrong place.
+    ///
+    /// The marker is split and `&&`-guarded for two reasons the same as
+    /// `testRealPtyRoundTrip`: the PTY echoes the typed command, so a whole
+    /// marker would match before the shell ran anything — and it would match
+    /// before the spawn helper had even `chdir`+`exec`ed, when the child still
+    /// carries the *test runner's* directory. Only real execution of a
+    /// successful `cd` concatenates the halves.
+    func testAdoptAnnouncesTheLiveCwdNotTheSpawnCwd() throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        defer { try? group.syncShutdownGracefully() }
+
+        let target = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("kitterm-cwd-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: target) }
+
+        let head = "KITTERM_CD"
+        let tail = "_DONE"
+        let moved = expectation(description: "shell changed directory")
+        let sink = MarkerSink(marker: head + tail) { moved.fulfill() }
+
+        session.attach(onOutput: sink.append, onExit: { _ in })
+        try session.makeReader(group: group, eventLoop: group.next()).wait()
+        try session.write(
+            Data("cd '\(target.path)' && printf '%s%s\\n' \(head) \(tail)\n".utf8)
+        )
+        wait(for: [moved], timeout: 30)
+
+        // `proc_pidinfo` resolves symlinks; NSTemporaryDirectory does not.
+        let expected = target.resolvingSymlinksInPath().path
+        let announced = URL(fileURLWithPath: WebSocketSessionHandler.metaCwd(for: session))
+            .resolvingSymlinksInPath().path
+        XCTAssertEqual(announced, expected)
+        XCTAssertNotEqual(
+            URL(fileURLWithPath: session.initialCwd).resolvingSymlinksInPath().path,
+            expected,
+            "the spawn cwd must still differ, or this test proves nothing"
+        )
+    }
 }
 
 /// Free function, not a method: the deadlock tests feed the session from a

@@ -24,6 +24,8 @@ export type SettingsPanelCallbacks = {
   /** Copy a link to the focused pane's session, for observing elsewhere. */
   onCopySessionLink: () => void;
   onCopyWatchLink: () => void;
+  /** Reopen the getting-started card. */
+  onShowHelp: () => void;
 };
 
 export class SettingsPanel {
@@ -83,6 +85,9 @@ export class SettingsPanel {
     this.dialog.hidden = true;
     this.dialog.setAttribute("role", "dialog");
     this.dialog.setAttribute("aria-label", "Terminal settings");
+    // Focusable so `show()` can move focus into the dialog without landing on a
+    // control. Not reachable by Tab: -1 keeps it out of the tab order.
+    this.dialog.setAttribute("tabindex", "-1");
     this.dialog.innerHTML = `
       <div class="settings-header">
         <h2>Settings</h2>
@@ -130,6 +135,9 @@ export class SettingsPanel {
         <button type="button" id="settings-share-watch" title="Recipients can watch this session but never type or take control">👁 Copy watch-only link</button>
         <p class="settings-note">Opens the focused pane read-only for whoever you send it to.</p>
       </div>
+      <div class="settings-share">
+        <button type="button" id="settings-help">? Shortcuts &amp; gestures</button>
+      </div>
       <div class="settings-about" id="settings-about" hidden>
         <span id="settings-version"></span>
         <span id="settings-version-update" class="settings-about-update" hidden></span>
@@ -158,6 +166,12 @@ export class SettingsPanel {
     this.root
       .querySelector("#settings-share-watch")
       ?.addEventListener("click", () => this.callbacks.onCopyWatchLink());
+    this.dialog.querySelector("#settings-help")?.addEventListener("click", () => {
+      // Close first: the card is modal and would otherwise open behind the
+      // panel that asked for it.
+      this.close();
+      this.callbacks.onShowHelp();
+    });
 
     if (this.tabTitleInput) {
       this.tabTitleInput.value = initial.tabTitle;
@@ -307,7 +321,11 @@ export class SettingsPanel {
     this.gear?.setAttribute("aria-expanded", "true");
     this.backdrop.hidden = false;
     this.dialog.hidden = false;
-    this.themeSelect?.focus();
+    // The dialog itself, never the theme `select`. A phone opens a select's
+    // native picker the moment it takes focus, so opening settings threw the
+    // theme wheel over the panel every time. Focus still enters the dialog, so
+    // Tab reaches the controls and a screen reader announces the surface.
+    this.dialog.focus({ preventScroll: true });
     if (this.fontSelect?.value === LOCAL_FONT_ID) {
       void this.ensureLocalFontsLoaded();
     }

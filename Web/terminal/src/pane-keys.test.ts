@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { matchPaneCommand, type ChordEvent } from "./pane-keys";
+import { isModifierKey, matchPaneCommand, type ChordEvent } from "./pane-keys";
 
 const chord = (over: Partial<ChordEvent> & { key: string }): ChordEvent => ({
   metaKey: false,
@@ -179,5 +179,26 @@ describe("Option-composed keys on macOS", () => {
     expect(matchPaneCommand(
       { key: "o", metaKey: true, altKey: true, ctrlKey: false, shiftKey: false }, true,
     )).toEqual({ type: "browse-files" });
+  });
+});
+
+// A chord reaches the page as two keydowns. Anything that reacts to "the user
+// started typing" sees the modifier first, and acting on it changes the world
+// the second half of the chord lands in — which is exactly how ⌘C on a touch
+// selection came to clear the selection before its own copy branch ran.
+describe("isModifierKey", () => {
+  it("is true for a modifier pressed on its own", () => {
+    for (const key of ["Control", "Shift", "Meta", "Alt", "AltGraph", "CapsLock"]) {
+      expect(isModifierKey({ key })).toBe(true);
+    }
+  });
+
+  it("is false for the letter that completes a chord", () => {
+    // The `c` of ⌘C carries metaKey, but it is not itself a modifier key.
+    expect(isModifierKey({ key: "c" })).toBe(false);
+    expect(isModifierKey({ key: "Escape" })).toBe(false);
+    expect(isModifierKey({ key: "Enter" })).toBe(false);
+    expect(isModifierKey({ key: "ArrowUp" })).toBe(false);
+    expect(isModifierKey({ key: " " })).toBe(false);
   });
 });

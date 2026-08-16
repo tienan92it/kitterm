@@ -19,8 +19,8 @@ body,
    where the per-pane close button lives. */
 .settings-host {
   position: absolute;
-  bottom: 12px;
-  right: 12px;
+  bottom: calc(12px + var(--safe-bottom));
+  right: calc(12px + var(--safe-right));
   z-index: 4;
   display: flex;
   gap: 8px;
@@ -80,6 +80,13 @@ body,
 .settings-backdrop[hidden],
 .settings-dialog[hidden] {
   display: none !important;
+}
+
+/* The dialog takes focus when it opens so the keyboard has somewhere to start.
+   It is a container, not a control, and its border already marks the boundary,
+   so it draws no ring. Every control inside keeps its own focus style. */
+.settings-dialog:focus {
+  outline: none;
 }
 
 /* Opens upward from the gear, which sits in the bottom-right corner. */
@@ -310,9 +317,18 @@ body,
 
 /* Layout container: panes are positioned absolutely from the layout tree, so
    splitting never re-parents a live xterm node. */
+/* Insets, not padding. Every pane is absolutely positioned as a percentage of
+   this element, and an absolute child resolves against the padding box — so
+   padding here would leave the panes exactly where they were. Moving the edges
+   is what actually clears the status bar and the camera housing when the page
+   owns the whole screen. `bottom` is overridden below on touch devices, where
+   the key row already accounts for the same inset. */
 #terminal {
   position: absolute;
-  inset: 0;
+  top: var(--safe-top);
+  right: var(--safe-right);
+  bottom: var(--safe-bottom);
+  left: var(--safe-left);
   padding: 4px;
 }
 
@@ -410,6 +426,241 @@ body,
   border-color: var(--ui-accent);
 }
 
+/* Getting-started card. Above everything, including the settings panel that
+   can open it, and scrollable so a long shortcut list survives a short
+   landscape phone. */
+.intro-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--ui-scrim);
+  overflow-y: auto;
+}
+
+.intro-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: min(100%, 460px);
+  max-height: 100%;
+  padding: 22px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-2);
+  background: var(--ui-surface);
+  box-shadow: 0 10px 40px var(--ui-scrim);
+  overflow-y: auto;
+}
+
+.intro-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.intro-logo {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  padding: 6px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-2);
+  background: var(--ui-bg-sunken);
+  color: var(--ui-success);
+}
+
+.intro-title {
+  margin: 0;
+  color: var(--ui-text);
+  font: 600 17px/1.2 var(--font-ui);
+}
+
+.intro-tagline {
+  margin: 2px 0 0;
+  color: var(--ui-text-muted);
+  font: 13px/1.4 var(--font-ui);
+}
+
+.intro-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.intro-section-title {
+  margin: 0 0 6px;
+  color: var(--ui-text-faint);
+  font: 600 11px/1 var(--font-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Two columns that stay aligned down the whole list: the keys column takes
+   what the widest chord needs and the description takes the rest. */
+.intro-rows {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  margin: 0;
+  align-items: baseline;
+}
+
+.intro-keys {
+  color: var(--ui-text);
+  font: 12px/1.5 var(--font-mono);
+  white-space: nowrap;
+}
+
+.intro-what {
+  margin: 0;
+  color: var(--ui-text-muted);
+  font: 13px/1.5 var(--font-ui);
+}
+
+.intro-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.intro-hint {
+  color: var(--ui-text-faint);
+  font: 12px/1 var(--font-ui);
+}
+
+.intro-dismiss {
+  padding: 9px 20px;
+  border: 1px solid var(--ui-accent);
+  border-radius: var(--radius-1);
+  background: var(--ui-accent);
+  color: var(--ui-accent-on);
+  font: 600 13px/1 var(--font-ui);
+  cursor: pointer;
+}
+
+.intro-dismiss:hover {
+  background: var(--ui-accent-hover);
+}
+
+/* Touch selection: the actions for text chosen by a long press. Pinned to the
+   top of the pane rather than tracked to the selection, so it never lands
+   under the finger that is still dragging. */
+.selection-bar {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  /* See the read-only rule below: on an observer pane this shares the slot
+     with the "Take control" button, and wins on z-index. */
+  display: flex;
+  gap: 2px;
+  max-width: calc(100% - 16px);
+  padding: 3px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-round);
+  background: var(--ui-surface-2);
+  box-shadow: 0 2px 12px var(--ui-scrim);
+}
+
+.selection-action {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 7px 13px;
+  border: none;
+  border-radius: var(--radius-round);
+  background: transparent;
+  color: var(--ui-text);
+  font: 13px/1 var(--font-ui);
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  /* The bar is the one thing on screen a finger must not scroll or select. */
+  touch-action: none;
+  user-select: none;
+}
+
+.selection-action:active {
+  background: var(--ui-active);
+}
+
+/* An observer pane already owns that slot with its "Take control" button, and
+   copying from a shared session on a phone is exactly when both want it. Drop
+   below the button rather than cover it. */
+.pane-inner:has(.take-control) .selection-bar {
+  top: 44px;
+}
+
+/* The paste route where the clipboard cannot be read: the user's own paste
+   gesture into a real field. Centred and above everything, because it is
+   modal in intent even though it does not block the page. */
+.paste-prompt {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(88%, 380px);
+  padding: 14px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-2);
+  background: var(--ui-surface-2);
+  box-shadow: 0 6px 28px var(--ui-scrim);
+}
+
+.paste-prompt-hint {
+  margin: 0;
+  color: var(--ui-text-muted);
+  font: 12px/1.4 var(--font-ui);
+}
+
+.paste-prompt-field {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-1);
+  background: var(--ui-bg);
+  color: var(--ui-text);
+  /* 16px or larger, or iOS zooms the page when the field takes focus. */
+  font: 16px/1.4 var(--font-mono, monospace);
+  resize: none;
+}
+
+.paste-prompt-field:focus {
+  outline: none;
+  border-color: var(--ui-accent);
+}
+
+.paste-prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.paste-prompt-button {
+  padding: 8px 16px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-1);
+  background: var(--ui-hover);
+  color: var(--ui-text);
+  font: 13px/1 var(--font-ui);
+  cursor: pointer;
+}
+
+.paste-prompt-button.is-primary {
+  border-color: var(--ui-accent);
+  background: var(--ui-accent);
+  color: var(--ui-accent-on);
+}
+
 .pane-splitter {
   position: absolute;
   z-index: 2;
@@ -458,8 +709,8 @@ body.pane-dragging .pane-inner {
      that an enforced boundary rather than a hope. */
   contain: layout style paint;
   position: absolute;
-  left: 12px;
-  bottom: 12px;
+  left: calc(12px + var(--safe-left));
+  bottom: calc(12px + var(--safe-bottom));
   z-index: 2;
   padding: 6px 10px;
   font: 12px/1.4 var(--font-mono);
@@ -577,6 +828,27 @@ body.pane-dragging .pane-inner {
 :root {
   --extra-keys-height: 52px;
   --keyboard-height: 0px;
+  /* The display cut-outs the page must keep clear: the status bar and camera
+     housing, and the home indicator. Named rather than used inline so every
+     edge reads the same value, and so a test can override them — `env()` comes
+     from the user agent and cannot be simulated otherwise.
+
+     Every one of these is 0 in a normal browser tab in portrait, because the
+     browser's own chrome already covers the unsafe edges. They only take a
+     value where the page owns the whole screen: an installed app, or a tab in
+     landscape on a device with a notch. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  /* The bottom inset a bar sits on, trimmed.
+     iOS reports 34px at the bottom, but the home indicator inside that band is
+     a pill roughly 5px tall sitting about 8px off the screen edge. Honouring
+     all 34 leaves a wide empty strip under the key row and costs the terminal
+     two rows. 16px clears the pill and reads as a margin rather than a gap.
+     Raise the 18px to give the indicator more room; lower it to reclaim more
+     of the screen. Floors at 0, so a device with no inset is unaffected. */
+  --safe-bottom-compact: max(0px, calc(var(--safe-bottom) - 18px));
 }
 /* How much of the bottom edge the touch chrome owns: the key row, the safe
    area it pads itself with, and the software keyboard when it is open.
@@ -584,7 +856,7 @@ body.pane-dragging .pane-inner {
    or it ends up underneath a bar that is `position: fixed` above it. */
 body.has-extra-keys {
   --bottom-chrome: calc(
-    var(--extra-keys-height) + env(safe-area-inset-bottom) + var(--keyboard-height)
+    var(--extra-keys-height) + var(--safe-bottom-compact) + var(--keyboard-height)
   );
 }
 /* Terminal sits above the extra-keys row and the software keyboard. */
@@ -612,8 +884,8 @@ body.has-extra-keys #status {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 4px calc(4px + env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom))
-    calc(4px + env(safe-area-inset-left));
+  padding: 4px calc(4px + var(--safe-right)) calc(4px + var(--safe-bottom-compact))
+    calc(4px + var(--safe-left));
   background: var(--ui-bg-sunken);
   border-top: 1px solid var(--ui-border);
   touch-action: manipulation;
