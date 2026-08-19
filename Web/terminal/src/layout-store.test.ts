@@ -125,3 +125,79 @@ describe("takeLegacySessionId", () => {
     expect(takeLegacySessionId()).toBeNull();
   });
 });
+
+// The defect: a home-screen app gets a fresh sessionStorage on every launch, so
+// under the tab rule it could never reattach. Each launch spawned new shells
+// and the scrollback looked lost, while the old shells kept running with
+// nothing pointing at them. An installed app is one window the user reopens, so
+// it stores per-app instead.
+describe("where the layout is stored", () => {
+  const stubBoth = () => {
+    const session = new Map<string, string>();
+    const local = new Map<string, string>();
+    const asStorage = (m: Map<string, string>) => ({
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, v: string) => void m.set(k, v),
+      removeItem: (k: string) => void m.delete(k),
+    });
+    vi.stubGlobal("sessionStorage", asStorage(session));
+    vi.stubGlobal("localStorage", asStorage(local));
+    return { session, local };
+  };
+
+  const asInstalled = (standalone: boolean) => {
+    vi.stubGlobal("window", {
+      matchMedia: (q: string) => ({ matches: standalone && q.includes("standalone") }),
+    });
+    vi.stubGlobal("navigator", {});
+  };
+
+  const layout: LayoutNode = leaf("p1");
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it("uses sessionStorage in a browser tab, so a new tab still starts fresh", async () => {
+    const stores = stubBoth();
+    asInstalled(false);
+    const mod = await import("./layout-store");
+    mod.saveLayout({ root: layout, focus: "p1", sessions: new Map() });
+
+    expect(stores.session.size).toBe(1);
+    expect(stores.local.size).toBe(0);
+  });
+
+  it("uses localStorage in an installed app, so relaunching reattaches", async () => {
+    const stores = stubBoth();
+    asInstalled(true);
+    const mod = await import("./layout-store");
+    mod.saveLayout({ root: layout, focus: "p1", sessions: new Map() });
+
+    expect(stores.local.size).toBe(1);
+    expect(stores.session.size).toBe(0);
+    // A relaunch reads the same store and finds the layout.
+    expect(mod.loadLayout()?.focus).toBe("p1");
+  });
+
+  it("still detects an older iOS home-screen app, which answers no media query", async () => {
+    const stores = stubBoth();
+    vi.stubGlobal("window", { matchMedia: () => ({ matches: false }) });
+    vi.stubGlobal("navigator", { standalone: true });
+    const mod = await import("./layout-store");
+    mod.saveLayout({ root: layout, focus: "p1", sessions: new Map() });
+
+    expect(stores.local.size).toBe(1);
+  });
+
+  it("falls back to a tab when neither signal is available", async () => {
+    const stores = stubBoth();
+    vi.stubGlobal("window", {});
+    vi.stubGlobal("navigator", {});
+    const mod = await import("./layout-store");
+    mod.saveLayout({ root: layout, focus: "p1", sessions: new Map() });
+
+    expect(stores.session.size).toBe(1);
+  });
+});

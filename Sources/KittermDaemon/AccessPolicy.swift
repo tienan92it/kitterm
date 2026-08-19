@@ -136,11 +136,22 @@ public struct AccessPolicy: @unchecked Sendable {
         return namedTokens?.verify(presented)
     }
 
+    /// How long the auth cookie outlives the browser session.
+    ///
+    /// Without a lifetime this is a *session* cookie, which an installed app
+    /// discards on every launch. A browser tab never showed the fault, because
+    /// it keeps session cookies across a reload — but a home-screen app starts
+    /// a new session each time, and its storage container is separate from the
+    /// browser's, so it cannot inherit one either. The result was a 403 on
+    /// every launch with no address bar to present a token in.
+    public static let cookieMaxAge = 60 * 60 * 24 * 30
+
     /// `secure` is set for connections that reached us over TLS (directly or
     /// through a proxy that terminated it), so the browser will not send the
     /// cookie back over plaintext.
     public static func setCookieHeaderValue(for token: String, secure: Bool = false) -> String {
-        "\(cookieName)=\(token); Path=/; HttpOnly; SameSite=Strict" + (secure ? "; Secure" : "")
+        "\(cookieName)=\(token); Path=/; Max-Age=\(cookieMaxAge); HttpOnly; SameSite=Strict"
+            + (secure ? "; Secure" : "")
     }
 
     static func isLoopback(_ address: SocketAddress?) -> Bool {

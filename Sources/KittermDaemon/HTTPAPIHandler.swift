@@ -177,13 +177,26 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             grade = allowed
             authCookie = cookie
         case .reject(let reason):
-            writeJSON(
-                status: .forbidden,
-                body: #"{"ok":false,"error":"\#(reason)"}"#,
-                context: context,
-                version: head.version,
-                keepAlive: false
-            )
+            // A browser navigation gets a page it can act on; everything else
+            // keeps the JSON contract. An installed app has no address bar, so
+            // a JSON body is a dead end there — this form is the only way back
+            // in once its cookie has lapsed or was never set.
+            if Self.wantsHTML(head.headers) {
+                writeHTML(
+                    status: .forbidden,
+                    body: Self.tokenPromptPage(reason: reason),
+                    context: context,
+                    version: head.version
+                )
+            } else {
+                writeJSON(
+                    status: .forbidden,
+                    body: #"{"ok":false,"error":"\#(reason)"}"#,
+                    context: context,
+                    version: head.version,
+                    keepAlive: false
+                )
+            }
             return
         }
 
@@ -1418,6 +1431,86 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             return String(uri[..<q])
         }
         return uri
+    }
+
+    /// True when the client asked for a page rather than data — i.e. a browser
+    /// navigation. Anything else (fetch, curl, the fleet page's polling) keeps
+    /// the JSON error it has always had.
+    static func wantsHTML(_ headers: HTTPHeaders) -> Bool {
+        headers["accept"].contains { $0.contains("text/html") }
+    }
+
+    /// The 403 page: one field, submitted as a plain GET so the token arrives
+    /// as `?token=` on the next request and the normal path sets the cookie.
+    /// No script, because this page is what a locked-out client sees and it has
+    /// to work before anything else does.
+    static func tokenPromptPage(reason: String) -> String {
+        """
+        <!doctype html>
+        <html lang="en"><head><meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+        <title>kitterm — token required</title>
+        <style>
+          :root { color-scheme: dark }
+          body { margin:0; min-height:100vh; display:flex; align-items:center;
+                 justify-content:center; padding:24px;
+                 background:#0d1117; color:#e6edf3;
+                 font:16px/1.5 system-ui,-apple-system,sans-serif }
+          main { width:min(100%,360px) }
+          h1 { margin:0 0 6px; font-size:19px; font-weight:600 }
+          p { margin:0 0 18px; color:#8b97a6; font-size:14px }
+          form { display:flex; flex-direction:column; gap:10px }
+          input { width:100%; box-sizing:border-box; padding:11px 12px;
+                  border:1px solid #2b3440; border-radius:8px;
+                  background:#161b22; color:#e6edf3;
+                  /* 16px or iOS zooms the page when the field takes focus. */
+                  font:16px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace }
+          input:focus { outline:none; border-color:#58a6ff }
+          button { padding:12px; border:0; border-radius:8px;
+                   background:#58a6ff; color:#fff; font:600 15px/1 system-ui;
+                   cursor:pointer }
+        </style></head>
+        <body><main>
+          <h1>kitterm needs a token</h1>
+          <p>\(escapeHTML(reason)). Paste an access token to continue &#8212; this device will stay signed in.</p>
+          <form method="get" action="/">
+            <input name="token" type="password" inputmode="text" autocomplete="off"
+                   autocorrect="off" autocapitalize="off" spellcheck="false"
+                   placeholder="access token" aria-label="Access token" autofocus>
+            <button type="submit">Continue</button>
+          </form>
+        </main></body></html>
+        """
+    }
+
+    /// Minimal escaping for the one interpolated string above.
+    static func escapeHTML(_ text: String) -> String {
+        text.replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+    }
+
+    private func writeHTML(
+        status: HTTPResponseStatus,
+        body: String,
+        context: ChannelHandlerContext,
+        version: HTTPVersion
+    ) {
+        var headers = HTTPHeaders()
+        headers.add(name: "Content-Type", value: "text/html; charset=utf-8")
+        headers.add(name: "Content-Length", value: String(body.utf8.count))
+        headers.add(name: "Cache-Control", value: "no-store")
+        headers.add(name: "Connection", value: "close")
+        context.write(wrapOutboundOut(.head(HTTPResponseHead(
+            version: version, status: status, headers: headers
+        ))), promise: nil)
+        var buffer = context.channel.allocator.buffer(capacity: body.utf8.count)
+        buffer.writeString(body)
+        context.write(wrapOutboundOut(.body(.byteBuffer(buffer))), promise: nil)
+        context.writeAndFlush(wrapOutboundOut(.end(nil))).whenComplete { _ in
+            context.close(promise: nil)
+        }
     }
 
     private func writeJSON(
