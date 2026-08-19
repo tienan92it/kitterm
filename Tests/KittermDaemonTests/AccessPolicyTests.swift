@@ -250,4 +250,83 @@ final class AccessPolicyTests: XCTestCase {
             .reject("cross-origin")
         )
     }
+
+    // MARK: - The auth cookie's lifetime
+
+    /// Without `Max-Age` this is a session cookie. A browser tab never showed
+    /// the fault, because it keeps session cookies across a reload — but an
+    /// installed app starts a new session on every launch and discards it, so
+    /// it met a 403 each time with no address bar to present a token in.
+    func testAuthCookieOutlivesTheBrowserSession() {
+        let header = AccessPolicy.setCookieHeaderValue(for: "abc123")
+        XCTAssertTrue(
+            header.contains("Max-Age=\(AccessPolicy.cookieMaxAge)"),
+            "a session cookie strands an installed app: \(header)"
+        )
+        XCTAssertGreaterThanOrEqual(AccessPolicy.cookieMaxAge, 60 * 60 * 24 * 7)
+    }
+
+    /// The lifetime must not cost the protections the cookie already carried.
+    func testAuthCookieKeepsItsProtections() {
+        let plain = AccessPolicy.setCookieHeaderValue(for: "abc123")
+        XCTAssertTrue(plain.contains("HttpOnly"))
+        XCTAssertTrue(plain.contains("SameSite=Strict"))
+        XCTAssertTrue(plain.contains("Path=/"))
+        XCTAssertFalse(plain.contains("Secure"), "plaintext must not claim Secure")
+
+        let secure = AccessPolicy.setCookieHeaderValue(for: "abc123", secure: true)
+        XCTAssertTrue(secure.contains("; Secure"))
+        XCTAssertTrue(secure.contains("Max-Age=\(AccessPolicy.cookieMaxAge)"))
+    }
+
+    /// The cookie is still the token, so a round trip must survive the new
+    /// attribute rather than parse it as part of the value.
+    func testCookieStillParsesBackToItsToken() {
+        var headers = HTTPHeaders()
+        headers.add(name: "cookie", value: "\(AccessPolicy.cookieName)=abc123")
+        XCTAssertEqual(AccessPolicy.cookieToken(headers), "abc123")
+    }
+}
+
+/// The 403 an installed app meets.
+///
+/// A JSON body is a dead end where there is no address bar, so a navigation
+/// gets a page with a token field instead. Everything else keeps the JSON
+/// contract it has always had.
+final class TokenPromptPageTests: XCTestCase {
+    private func accept(_ value: String) -> HTTPHeaders {
+        var headers = HTTPHeaders()
+        headers.add(name: "accept", value: value)
+        return headers
+    }
+
+    func testBrowserNavigationWantsHTML() {
+        XCTAssertTrue(HTTPAPIHandler.wantsHTML(
+            accept("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+        ))
+    }
+
+    func testProgrammaticClientsStillGetJSON() {
+        XCTAssertFalse(HTTPAPIHandler.wantsHTML(accept("application/json")))
+        XCTAssertFalse(HTTPAPIHandler.wantsHTML(accept("*/*")))
+        XCTAssertFalse(HTTPAPIHandler.wantsHTML(HTTPHeaders()))
+    }
+
+    func testPageCarriesAFieldThatSubmitsAToken() {
+        let page = HTTPAPIHandler.tokenPromptPage(reason: "missing or invalid token")
+        // A GET form to / puts the token in the query, which is the path that
+        // already authenticates and sets the cookie.
+        XCTAssertTrue(page.contains(#"method="get""#))
+        XCTAssertTrue(page.contains(#"action="/""#))
+        XCTAssertTrue(page.contains(#"name="token""#))
+        // No script: this is what a locked-out client sees.
+        XCTAssertFalse(page.lowercased().contains("<script"))
+        XCTAssertTrue(page.contains("missing or invalid token"))
+    }
+
+    func testReasonIsEscapedIntoThePage() {
+        let page = HTTPAPIHandler.tokenPromptPage(reason: "<img src=x onerror=alert(1)>")
+        XCTAssertFalse(page.contains("<img"))
+        XCTAssertTrue(page.contains("&lt;img"))
+    }
 }

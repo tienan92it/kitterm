@@ -1,11 +1,22 @@
 /**
  * Pane layout persistence.
  *
- * sessionStorage is per-tab, which is exactly the scope we want: reloading a tab
- * restores its own splits and reattaches each pane to its still-running shell,
- * while a new tab starts fresh. This deliberately does not survive a browser
- * restart, and does not try to outlive the daemon — a dead session id already
- * degrades into a freshly spawned shell on the daemon side.
+ * The store depends on how the client was launched, because "the same window
+ * again" means different things in a tab and in an installed app.
+ *
+ * **In a browser tab: sessionStorage**, which is per-tab. Reloading restores
+ * that tab's splits and reattaches each pane to its still-running shell, while
+ * a new tab starts fresh. This deliberately does not survive a browser restart.
+ *
+ * **In an installed app: localStorage.** A home-screen app gets a *fresh*
+ * sessionStorage on every launch, so under the tab rule it could never
+ * reattach: each launch spawned new shells and the previous scrollback looked
+ * lost, while the old shells kept running unreferenced. An installed app is a
+ * single window that the user reopens, so per-app is the right scope for it —
+ * and localStorage is per-app inside its own storage container.
+ *
+ * Neither store tries to outlive the daemon: a dead session id already degrades
+ * into a freshly spawned shell on the daemon side, so a stale layout is safe.
  *
  * Every read is defensive: a corrupt blob must fall back to a single fresh pane
  * rather than break boot.
@@ -38,9 +49,40 @@ export type StoredLayout = {
   sessions: Map<PaneId, PaneSession>;
 };
 
+/**
+ * True when this client is an installed app rather than a browser tab.
+ *
+ * `display-mode: standalone` is the launch context the manifest asks for, and
+ * it is what iOS, Android and desktop installs all report. The iOS-only
+ * `navigator.standalone` is the fallback for older home-screen apps that do not
+ * answer the media query.
+ */
+export const isInstalledApp = (): boolean => {
+  try {
+    if (window.matchMedia?.("(display-mode: standalone)").matches) return true;
+    return (navigator as { standalone?: boolean }).standalone === true;
+  } catch {
+    return false;
+  }
+};
+
+/** The *choice* is resolved once — the launch context cannot change without a
+ * reload, and a read and its matching write must never disagree about where
+ * they looked. The storage object itself is re-read every time, so this never
+ * holds a stale reference. */
+let installed: boolean | undefined;
+const store = (): Storage | null => {
+  if (installed === undefined) installed = isInstalledApp();
+  try {
+    return installed ? localStorage : sessionStorage;
+  } catch {
+    return null;
+  }
+};
+
 const readRaw = (key: string): string | null => {
   try {
-    return sessionStorage.getItem(key);
+    return store()?.getItem(key) ?? null;
   } catch {
     return null;
   }
@@ -48,7 +90,7 @@ const readRaw = (key: string): string | null => {
 
 const writeRaw = (key: string, value: string): void => {
   try {
-    sessionStorage.setItem(key, value);
+    store()?.setItem(key, value);
   } catch {
     // private mode / quota — ignore
   }
@@ -56,7 +98,7 @@ const writeRaw = (key: string, value: string): void => {
 
 const removeRaw = (key: string): void => {
   try {
-    sessionStorage.removeItem(key);
+    store()?.removeItem(key);
   } catch {
     // ignore
   }
