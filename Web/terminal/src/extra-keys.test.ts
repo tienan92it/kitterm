@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { StickyModifiers, type KeySpec, keyBytes , repeatsOnHold, DEFAULT_LAYOUT } from "./extra-keys";
+import {
+  StickyModifiers,
+  type KeySpec,
+  keyBytes,
+  keyboardTapPlan,
+  keyboardToggleFace,
+  repeatsOnHold,
+  DEFAULT_LAYOUT,
+} from "./extra-keys";
 
 const spec = (over: Partial<KeySpec> = {}): KeySpec => ({
   key: "a",
@@ -105,5 +113,56 @@ describe("backspace", () => {
   it("is not in the default bar", () => {
     const keys = DEFAULT_LAYOUT.flat();
     expect(keys.some((k) => k.kind === "key" && k.key === "Backspace")).toBe(false);
+  });
+});
+
+// The row exists to keep the keyboard up; this one key exists to drop it, so
+// reading a build log or a diff on a phone gets the screen back.
+describe("the keyboard toggle", () => {
+  const key = DEFAULT_LAYOUT.flat().find((k) => k.kind === "keyboard");
+
+  it("is in the default row", () => {
+    expect(key).toBeDefined();
+  });
+
+  it("carries a label for each direction, so it says what a tap will do", () => {
+    expect(key).toMatchObject({ kind: "keyboard" });
+    if (key?.kind !== "keyboard") throw new Error("unreachable");
+    expect(key.label.length).toBeGreaterThan(0);
+    expect(key.labelWhenOpen.length).toBeGreaterThan(0);
+    expect(key.labelWhenOpen).not.toBe(key.label);
+  });
+
+  it("never repeats on hold — a toggle held down must not flap", () => {
+    if (!key) throw new Error("unreachable");
+    expect(repeatsOnHold(key)).toBe(false);
+  });
+
+  // The constraint the issue says decides whether this works at all: iOS Safari
+  // opens the keyboard only for a focus() inside a live user gesture, and
+  // preventDefault spends that gesture.
+  it("does not preventDefault when it is about to show the keyboard", () => {
+    expect(keyboardTapPlan(false)).toEqual({ open: true, preventDefault: false });
+  });
+
+  it("does preventDefault when hiding, so focus stays in the terminal", () => {
+    expect(keyboardTapPlan(true)).toEqual({ open: false, preventDefault: true });
+  });
+
+  it("always asks for the opposite of the keyboard's real state", () => {
+    expect(keyboardTapPlan(true).open).toBe(false);
+    expect(keyboardTapPlan(false).open).toBe(true);
+  });
+
+  it("shows the hide face while the keyboard is up and the show face when it is down", () => {
+    const face = { label: "⌨", labelWhenOpen: "⌨▾" };
+    expect(keyboardToggleFace(face, true)).toEqual({
+      label: "⌨▾",
+      ariaLabel: "Hide the keyboard",
+    });
+    expect(keyboardToggleFace(face, false)).toEqual({
+      label: "⌨",
+      ariaLabel: "Show the keyboard",
+    });
   });
 });

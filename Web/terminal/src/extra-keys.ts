@@ -8,13 +8,31 @@
  * keyboard stays up.
  */
 
+import { isKeyboardOpen } from "./keyboard-insets";
+
 export type KeySpec = { key: string; ctrl: boolean; alt: boolean };
 
 /** An action key. `ctrl`/`alt` preset a combo (e.g. Ctrl-C) that fires
  * regardless of the sticky modifiers. */
 type ActionKey = { kind: "key"; label: string; key: string; ctrl?: boolean; alt?: boolean };
 type ModifierKey = { kind: "mod"; label: string; mod: "ctrl" | "alt" };
-export type ExtraKey = ActionKey | ModifierKey;
+/**
+ * Puts the soft keyboard away, and brings it back.
+ *
+ * The odd one out: every other key here exists to keep the keyboard up, and
+ * this one exists to drop it, because reading a build log or a diff on a phone
+ * needs the screen back. Two labels, because the button has to say what a tap
+ * will do — and the keyboard can be dismissed by other means, so which label
+ * shows is decided by the tracked inset rather than by anything we remember.
+ */
+type KeyboardKey = {
+  kind: "keyboard";
+  /** Shown while the keyboard is closed: a tap opens it. */
+  label: string;
+  /** Shown while the keyboard is open: a tap dismisses it. */
+  labelWhenOpen: string;
+};
+export type ExtraKey = ActionKey | ModifierKey | KeyboardKey;
 
 /** One row of the keys a soft keyboard lacks and a terminal needs most: escape
  * and tab, sticky Ctrl for the long tail (Ctrl-D/Z/A/E…), a one-tap Ctrl-C
@@ -30,6 +48,30 @@ export function repeatsOnHold(key: ExtraKey): boolean {
   return ["Backspace", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(key.key);
 }
 
+/**
+ * What a tap on the keyboard toggle should do, given the keyboard's real state.
+ *
+ * Pure, because `preventDefault` is the detail that decides whether this button
+ * works at all. **Hiding** prevents the default, like every other key here, so
+ * focus never leaves the terminal and the blur is ours to make. **Showing must
+ * not**: iOS Safari opens the keyboard only for a `focus()` made inside a live
+ * user gesture, and preventing the default spends that gesture — the same trap
+ * that forced the attach control to be a `<label>` rather than a button.
+ */
+export function keyboardTapPlan(open: boolean): { open: boolean; preventDefault: boolean } {
+  return { open: !open, preventDefault: open };
+}
+
+/** How the toggle presents itself for a given keyboard state. */
+export function keyboardToggleFace(
+  key: { label: string; labelWhenOpen: string },
+  open: boolean,
+): { label: string; ariaLabel: string } {
+  return open
+    ? { label: key.labelWhenOpen, ariaLabel: "Hide the keyboard" }
+    : { label: key.label, ariaLabel: "Show the keyboard" };
+}
+
 export const DEFAULT_LAYOUT: ExtraKey[][] = [
   [
     { kind: "key", label: "Esc", key: "Escape" },
@@ -40,6 +82,7 @@ export const DEFAULT_LAYOUT: ExtraKey[][] = [
     { kind: "key", label: "↑", key: "ArrowUp" },
     { kind: "key", label: "↓", key: "ArrowDown" },
     { kind: "key", label: "→", key: "ArrowRight" },
+    { kind: "keyboard", label: "⌨", labelWhenOpen: "⌨▾" },
   ],
 ];
 
@@ -137,6 +180,8 @@ export class ExtraKeysBar {
   readonly element: HTMLElement;
   private readonly mods = new StickyModifiers();
   private readonly modButtons = new Map<"ctrl" | "alt", HTMLButtonElement>();
+  /** The keyboard toggle, kept so its label can follow the tracked inset. */
+  private keyboardButton: { button: HTMLButtonElement; key: KeyboardKey } | null = null;
 
   constructor(
     private readonly onKey: (spec: KeySpec) => void,
@@ -144,6 +189,9 @@ export class ExtraKeysBar {
     private readonly onAttach?: (files: readonly File[]) => void,
     private readonly onBrowse?: () => void,
     private readonly onDismissPicker?: () => void,
+    /** Asked to open the keyboard (`true`) or put it away (`false`). The bar
+     * decides the direction; the caller owns the terminal that has focus. */
+    private readonly onToggleKeyboard?: (open: boolean) => void,
   ) {
     this.element = document.createElement("div");
     this.element.className = "extra-keys";
@@ -272,6 +320,14 @@ export class ExtraKeysBar {
     btn.className = "extra-key";
     btn.textContent = key.label;
 
+    if (key.kind === "keyboard") {
+      btn.classList.add("extra-key-keyboard");
+      this.keyboardButton = { button: btn, key };
+      this.wireKeyboardToggle(btn);
+      this.syncKeyboardState();
+      return btn;
+    }
+
     const act = key.kind === "mod" ? () => this.tapModifier(key.mod) : () => this.tapKey(key);
     if (key.kind === "mod") {
       btn.classList.add("extra-key-mod");
@@ -280,6 +336,67 @@ export class ExtraKeysBar {
 
     this.wireTap(btn, act, repeatsOnHold(key));
     return btn;
+  }
+
+  /**
+   * The keyboard toggle, wired by hand because the two directions need
+   * opposite treatment.
+   *
+   * **Hiding** behaves like every other key: `preventDefault` on touchstart so
+   * focus never leaves the terminal, then blur it deliberately.
+   *
+   * **Showing** must *not* `preventDefault`. iOS Safari opens the keyboard only
+   * for a `focus()` made inside a real user gesture, and preventing the default
+   * spends that gesture — the same trap the attach control documents, which is
+   * why that one is a `<label>` and not a button. So the show direction lets
+   * the event run and focuses during it.
+   *
+   * Because the show path leaves the default alone, the browser may hand focus
+   * to this button afterwards and drop the keyboard again. The click that
+   * follows re-focuses the terminal, which repairs that and is harmless when
+   * nothing stole focus.
+   */
+  private wireKeyboardToggle(btn: HTMLButtonElement): void {
+    btn.tabIndex = -1;
+    let lastTouchAt = -Infinity;
+
+    const act = (event: Event, isTouch: boolean): void => {
+      const plan = keyboardTapPlan(isKeyboardOpen());
+      if (plan.preventDefault) event.preventDefault();
+      if (isTouch) lastTouchAt = performance.now();
+      this.onToggleKeyboard?.(plan.open);
+      // The inset lags the gesture; paint the intent now and let the tracker
+      // correct it if the keyboard disagrees.
+      this.renderKeyboardLabel(plan.open);
+    };
+
+    btn.addEventListener("mousedown", (event) => act(event, false));
+    // Not passive: the hide direction calls preventDefault.
+    btn.addEventListener("touchstart", (event) => act(event, true), { passive: false });
+    btn.addEventListener("click", (event) => {
+      // A ghost click after our own touch must not toggle straight back — but
+      // it is still the moment to reclaim focus the browser may have taken on
+      // the show path.
+      if (performance.now() - lastTouchAt < 700) {
+        if (isKeyboardOpen()) this.onToggleKeyboard?.(true);
+        return;
+      }
+      act(event, false);
+    });
+  }
+
+  /** Adopt the keyboard's actual state. Called on every tracked inset change,
+   * so dismissing the keyboard by any other means still corrects the label. */
+  syncKeyboardState(): void {
+    this.renderKeyboardLabel(isKeyboardOpen());
+  }
+
+  private renderKeyboardLabel(open: boolean): void {
+    const entry = this.keyboardButton;
+    if (!entry) return;
+    const face = keyboardToggleFace(entry.key, open);
+    entry.button.textContent = face.label;
+    entry.button.setAttribute("aria-label", face.ariaLabel);
   }
 
   private tapModifier(mod: "ctrl" | "alt"): void {
