@@ -62,6 +62,28 @@ export function keyboardTapPlan(open: boolean): { open: boolean; preventDefault:
   return { open: !open, preventDefault: open };
 }
 
+/**
+ * Whether a click that follows our own touch should act.
+ *
+ * It must not, and getting this wrong is what made the button flicker. Tapping
+ * to hide blurs on touchstart, the keyboard then takes a moment to slide shut,
+ * and the ghost click lands while the inset still reads *open* — so anything
+ * that re-derives intent from the inset at that instant concludes "show" and
+ * reopens exactly what the touch just closed.
+ *
+ * `showPending` is the one case a ghost click must act on: the show direction
+ * defers to the click, because focusing during touchstart is undone by the
+ * browser's own tap handling.
+ */
+export function ghostClickShouldAct(
+  msSinceTouch: number,
+  showPending: boolean,
+  ghostWindowMs = 700,
+): boolean {
+  if (showPending) return true;
+  return msSinceTouch >= ghostWindowMs;
+}
+
 /** How the toggle presents itself for a given keyboard state. */
 export function keyboardToggleFace(
   key: { label: string; labelWhenOpen: string },
@@ -359,29 +381,41 @@ export class ExtraKeysBar {
   private wireKeyboardToggle(btn: HTMLButtonElement): void {
     btn.tabIndex = -1;
     let lastTouchAt = -Infinity;
+    let showOnClick = false;
 
-    const act = (event: Event, isTouch: boolean): void => {
-      const plan = keyboardTapPlan(isKeyboardOpen());
-      if (plan.preventDefault) event.preventDefault();
-      if (isTouch) lastTouchAt = performance.now();
-      this.onToggleKeyboard?.(plan.open);
-      // The inset lags the gesture; paint the intent now and let the tracker
-      // correct it if the keyboard disagrees.
-      this.renderKeyboardLabel(plan.open);
+    const apply = (open: boolean): void => {
+      this.onToggleKeyboard?.(open);
+      this.renderKeyboardLabel(open);
     };
 
-    btn.addEventListener("mousedown", (event) => act(event, false));
-    // Not passive: the hide direction calls preventDefault.
-    btn.addEventListener("touchstart", (event) => act(event, true), { passive: false });
-    btn.addEventListener("click", (event) => {
-      // A ghost click after our own touch must not toggle straight back — but
-      // it is still the moment to reclaim focus the browser may have taken on
-      // the show path.
-      if (performance.now() - lastTouchAt < 700) {
-        if (isKeyboardOpen()) this.onToggleKeyboard?.(true);
-        return;
-      }
-      act(event, false);
+    btn.addEventListener(
+      "touchstart",
+      (event) => {
+        lastTouchAt = performance.now();
+        const plan = keyboardTapPlan(isKeyboardOpen());
+        if (plan.preventDefault) {
+          // Hiding: hold focus where it is, and make the blur ourselves.
+          event.preventDefault();
+          showOnClick = false;
+          apply(false);
+          return;
+        }
+        // Showing: leave the default alone *and do nothing yet*. Focusing here
+        // does open the keyboard, and then the browser's own tap handling runs
+        // and takes focus straight back off the textarea — which is the
+        // flicker. The click below is the first moment nothing will undo it.
+        showOnClick = true;
+      },
+      // Not passive: the hide direction calls preventDefault.
+      { passive: false },
+    );
+
+    btn.addEventListener("click", () => {
+      const pending = showOnClick;
+      showOnClick = false;
+      if (!ghostClickShouldAct(performance.now() - lastTouchAt, pending)) return;
+      // A deferred show, or a real mouse click with no touch before it.
+      apply(pending ? true : keyboardTapPlan(isKeyboardOpen()).open);
     });
   }
 
@@ -395,6 +429,10 @@ export class ExtraKeysBar {
     const entry = this.keyboardButton;
     if (!entry) return;
     const face = keyboardToggleFace(entry.key, open);
+    // Only when it actually changes. The keyboard animates, so the tracker
+    // reports a dozen distinct heights per open, and rewriting the label on
+    // each one churned the DOM through the whole gesture for no reason.
+    if (entry.button.textContent === face.label) return;
     entry.button.textContent = face.label;
     entry.button.setAttribute("aria-label", face.ariaLabel);
   }

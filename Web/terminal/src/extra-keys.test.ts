@@ -4,6 +4,7 @@ import {
   StickyModifiers,
   type KeySpec,
   keyBytes,
+  ghostClickShouldAct,
   keyboardTapPlan,
   keyboardToggleFace,
   repeatsOnHold,
@@ -164,5 +165,29 @@ describe("the keyboard toggle", () => {
       label: "⌨",
       ariaLabel: "Show the keyboard",
     });
+  });
+});
+
+// The bug this fixes, found on a phone: tapping to hide blurred on touchstart,
+// and the ghost click landed while the keyboard was still sliding shut. The
+// inset still read open, so the click concluded "show" and reopened what the
+// touch had just closed. Every hide undid itself, which is what the flicker was.
+describe("the ghost click after a toggle tap", () => {
+  it("does nothing while the keyboard is still closing", () => {
+    expect(ghostClickShouldAct(50, false)).toBe(false);
+    expect(ghostClickShouldAct(699, false)).toBe(false);
+  });
+
+  // The show direction defers to the click on purpose: focusing during
+  // touchstart opens the keyboard and the browser's own tap handling then takes
+  // focus straight back off, which is the other half of the flicker.
+  it("does act when a show was deferred to it, however soon it arrives", () => {
+    expect(ghostClickShouldAct(0, true)).toBe(true);
+    expect(ghostClickShouldAct(50, true)).toBe(true);
+  });
+
+  it("acts for a real mouse click, which no touch preceded", () => {
+    expect(ghostClickShouldAct(Number.POSITIVE_INFINITY, false)).toBe(true);
+    expect(ghostClickShouldAct(700, false)).toBe(true);
   });
 });
