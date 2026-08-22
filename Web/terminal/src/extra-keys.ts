@@ -9,7 +9,7 @@
  */
 
 import { isKeyboardOpen } from "./keyboard-insets";
-import { buildIcon, buildIconFromPaths, type IconName } from "./icons";
+import { KEYBOARD_SLASH_PATH, buildIcon, type IconName } from "./icons";
 
 export type KeySpec = { key: string; ctrl: boolean; alt: boolean };
 
@@ -95,21 +95,17 @@ export function ghostClickShouldAct(
 }
 
 /**
- * The chevron beneath the keyboard, which is the whole of the state.
+ * How the toggle presents itself for a given keyboard state.
  *
- * Down while the keyboard is up, because a tap sends it down; up while it is
- * away, because a tap brings it back. Only this path changes between states, so
- * the icon never jumps — the body stays exactly where it was.
+ * Struck through while the keyboard is up, because a tap puts it away; plain
+ * while it is down, because a tap brings it back. The same convention as every
+ * other "-off" icon, so it needs no learning — and the keyboard body never
+ * moves between the two, only the stroke over it.
  */
-export function keyboardChevronPath(open: boolean): string {
-  // Wide and shallow, the way Apple's own keyboard.chevron.compact.down is
-  // drawn — a steeper one at this size reads as a caret rather than a hint.
-  return open ? "M8.8 18.6 12 21.4 15.2 18.6" : "M8.8 21.4 12 18.6 15.2 21.4";
-}
-
-/** What the toggle announces for a given keyboard state. */
-export function keyboardToggleFace(open: boolean): { ariaLabel: string } {
-  return { ariaLabel: open ? "Hide the keyboard" : "Show the keyboard" };
+export function keyboardToggleFace(open: boolean): { ariaLabel: string; struck: boolean } {
+  return open
+    ? { ariaLabel: "Hide the keyboard", struck: true }
+    : { ariaLabel: "Show the keyboard", struck: false };
 }
 
 export const DEFAULT_LAYOUT: ExtraKey[][] = [
@@ -222,7 +218,7 @@ export class ExtraKeysBar {
   private readonly modButtons = new Map<"ctrl" | "alt", HTMLButtonElement>();
   /** The keyboard toggle, kept so the icon can follow the tracked inset.
    * Only the chevron moves, so only that path is held. */
-  private keyboardButton: { button: HTMLButtonElement; chevron: SVGPathElement } | null = null;
+  private keyboardButton: { button: HTMLButtonElement; slash: SVGPathElement } | null = null;
 
   constructor(
     private readonly onKey: (spec: KeySpec) => void,
@@ -319,29 +315,19 @@ export class ExtraKeysBar {
    * this replaces.
    */
   /**
-   * The keyboard toggle, drawn on the same grid as the rest of the set but
-   * built here rather than in `ICONS`, because one of its paths changes: the
-   * chevron flips with the keyboard's state and the caller keeps a handle on it.
+   * The keyboard toggle: the set's keyboard, with a slash laid over it that is
+   * shown or hidden as the keyboard moves. Built here rather than taken whole
+   * from `ICONS` because that one path has to stay mutable.
    */
-  private buildIcon(): { svg: SVGSVGElement; chevron: SVGPathElement } {
-    const svg = buildIconFromPaths([
-      // Body, then four keys on top and three below with the middle one
-      // widened into a space bar. Two rows are what make it read as a keyboard
-      // — a single bar reads as a monitor.
-      "M4.5 5.5h15a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 14V7a1.5 1.5 0 0 1 1.5-1.5z",
-      "M6.6 9h.6",
-      "M9.9 9h.6",
-      "M13.2 9h.6",
-      "M16.5 9h.6",
-      "M6.6 12.2h.6",
-      "M9.9 12.2h4.2",
-      "M16.5 12.2h.6",
-    ]);
-    const ns = "http://www.w3.org/2000/svg";
-    const chevron = document.createElementNS(ns, "path");
-    chevron.setAttribute("d", keyboardChevronPath(false));
-    svg.append(chevron);
-    return { svg, chevron };
+  private buildIcon(): { svg: SVGSVGElement; slash: SVGPathElement } {
+    const svg = buildIcon("keyboard");
+    const slash = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    slash.setAttribute("d", KEYBOARD_SLASH_PATH);
+    // Hidden to start with, so the first sync always has something to change
+    // and the accessible name is written with it.
+    slash.style.display = "none";
+    svg.append(slash);
+    return { svg, slash };
   }
 
   private browseButton(): HTMLButtonElement {
@@ -398,9 +384,10 @@ export class ExtraKeysBar {
 
     if (key.kind === "keyboard") {
       btn.classList.add("extra-key-keyboard");
-      const { svg, chevron } = this.buildIcon();
+      const { svg, slash } = this.buildIcon();
       btn.append(svg);
-      this.keyboardButton = { button: btn, chevron };
+      btn.setAttribute("aria-label", keyboardToggleFace(false).ariaLabel);
+      this.keyboardButton = { button: btn, slash };
       this.wireKeyboardToggle(btn);
       this.syncKeyboardState();
       return btn;
@@ -490,13 +477,14 @@ export class ExtraKeysBar {
   private renderKeyboardLabel(open: boolean): void {
     const entry = this.keyboardButton;
     if (!entry) return;
-    const path = keyboardChevronPath(open);
+    const face = keyboardToggleFace(open);
+    const display = face.struck ? "" : "none";
     // Only when it actually changes. The keyboard animates, so the tracker
     // reports a dozen distinct heights per open, and rewriting on each one
     // churned the DOM through the whole gesture for no reason.
-    if (entry.chevron.getAttribute("d") === path) return;
-    entry.chevron.setAttribute("d", path);
-    entry.button.setAttribute("aria-label", keyboardToggleFace(open).ariaLabel);
+    if (entry.slash.style.display === display) return;
+    entry.slash.style.display = display;
+    entry.button.setAttribute("aria-label", face.ariaLabel);
   }
 
   private tapModifier(mod: "ctrl" | "alt"): void {

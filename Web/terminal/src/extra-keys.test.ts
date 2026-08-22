@@ -5,7 +5,6 @@ import {
   type KeySpec,
   keyBytes,
   ghostClickShouldAct,
-  keyboardChevronPath,
   keyboardTapPlan,
   keyboardToggleFace,
   repeatsOnHold,
@@ -156,23 +155,16 @@ describe("the keyboard toggle", () => {
   });
 
   it("announces what a tap will do", () => {
-    expect(keyboardToggleFace(true)).toEqual({ ariaLabel: "Hide the keyboard" });
-    expect(keyboardToggleFace(false)).toEqual({ ariaLabel: "Show the keyboard" });
+    expect(keyboardToggleFace(true).ariaLabel).toBe("Hide the keyboard");
+    expect(keyboardToggleFace(false).ariaLabel).toBe("Show the keyboard");
   });
 
-  // Only the chevron changes between states, so the keyboard body never jumps.
-  // Down while the keyboard is up, because a tap sends it down.
-  it("points the chevron the way a tap will move the keyboard", () => {
-    const up = keyboardChevronPath(false);
-    const down = keyboardChevronPath(true);
-    expect(down).not.toBe(up);
-    // "M<x> <y> <x> <y> <x> <y>": the apex is the middle pair. Lower than the
-    // ends means it points down; higher means up. y grows downward in SVG.
-    const ys = (d: string) => d.split(" ").map(Number).filter((n) => !Number.isNaN(n));
-    const [downStart, , downApex] = [ys(down)[0], 0, ys(down)[2]];
-    const [upStart, , upApex] = [ys(up)[0], 0, ys(up)[2]];
-    expect(downApex).toBeGreaterThan(downStart);
-    expect(upApex).toBeLessThan(upStart);
+  // The "-off" convention, as in mic-off and eye-off: struck through while
+  // the keyboard is up, because a tap puts it away. Only the stroke changes,
+  // so the keyboard body never moves between the two states.
+  it("strikes the keyboard through only while it is up", () => {
+    expect(keyboardToggleFace(true).struck).toBe(true);
+    expect(keyboardToggleFace(false).struck).toBe(false);
   });
 });
 
