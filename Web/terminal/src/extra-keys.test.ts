@@ -5,6 +5,7 @@ import {
   type KeySpec,
   keyBytes,
   ghostClickShouldAct,
+  keyboardChevronPath,
   keyboardTapPlan,
   keyboardToggleFace,
   repeatsOnHold,
@@ -126,12 +127,11 @@ describe("the keyboard toggle", () => {
     expect(key).toBeDefined();
   });
 
-  it("carries a label for each direction, so it says what a tap will do", () => {
-    expect(key).toMatchObject({ kind: "keyboard" });
-    if (key?.kind !== "keyboard") throw new Error("unreachable");
-    expect(key.label.length).toBeGreaterThan(0);
-    expect(key.labelWhenOpen.length).toBeGreaterThan(0);
-    expect(key.labelWhenOpen).not.toBe(key.label);
+  // Drawn, not lettered: U+2328 renders as a detailed little keyboard that
+  // carries more line work than a 20px button can show, and differs per
+  // platform. The key holds no glyph at all now.
+  it("carries no glyph, because the icon is drawn", () => {
+    expect(key).toEqual({ kind: "keyboard" });
   });
 
   it("never repeats on hold — a toggle held down must not flap", () => {
@@ -155,16 +155,24 @@ describe("the keyboard toggle", () => {
     expect(keyboardTapPlan(false).open).toBe(true);
   });
 
-  it("shows the hide face while the keyboard is up and the show face when it is down", () => {
-    const face = { label: "⌨", labelWhenOpen: "⌨▾" };
-    expect(keyboardToggleFace(face, true)).toEqual({
-      label: "⌨▾",
-      ariaLabel: "Hide the keyboard",
-    });
-    expect(keyboardToggleFace(face, false)).toEqual({
-      label: "⌨",
-      ariaLabel: "Show the keyboard",
-    });
+  it("announces what a tap will do", () => {
+    expect(keyboardToggleFace(true)).toEqual({ ariaLabel: "Hide the keyboard" });
+    expect(keyboardToggleFace(false)).toEqual({ ariaLabel: "Show the keyboard" });
+  });
+
+  // Only the chevron changes between states, so the keyboard body never jumps.
+  // Down while the keyboard is up, because a tap sends it down.
+  it("points the chevron the way a tap will move the keyboard", () => {
+    const up = keyboardChevronPath(false);
+    const down = keyboardChevronPath(true);
+    expect(down).not.toBe(up);
+    // "M<x> <y> <x> <y> <x> <y>": the apex is the middle pair. Lower than the
+    // ends means it points down; higher means up. y grows downward in SVG.
+    const ys = (d: string) => d.split(" ").map(Number).filter((n) => !Number.isNaN(n));
+    const [downStart, , downApex] = [ys(down)[0], 0, ys(down)[2]];
+    const [upStart, , upApex] = [ys(up)[0], 0, ys(up)[2]];
+    expect(downApex).toBeGreaterThan(downStart);
+    expect(upApex).toBeLessThan(upStart);
   });
 });
 

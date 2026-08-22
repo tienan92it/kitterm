@@ -917,6 +917,15 @@ body.has-extra-keys #status {
 .extra-key:active {
   background: var(--ui-active);
 }
+/* The keyboard toggle is the one drawn key in the row. Sized explicitly: an
+   svg with no width fills its flex box, which at this key width is the whole
+   button. 20px sits it at the same visual weight as the lettered keys. */
+.extra-key-keyboard svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
 .extra-key-mod.armed {
   background: var(--ui-accent);
   border-color: var(--ui-accent-hover);

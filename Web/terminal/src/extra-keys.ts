@@ -21,17 +21,15 @@ type ModifierKey = { kind: "mod"; label: string; mod: "ctrl" | "alt" };
  *
  * The odd one out: every other key here exists to keep the keyboard up, and
  * this one exists to drop it, because reading a build log or a diff on a phone
- * needs the screen back. Two labels, because the button has to say what a tap
- * will do — and the keyboard can be dismissed by other means, so which label
- * shows is decided by the tracked inset rather than by anything we remember.
+ * needs the screen back.
+ *
+ * Drawn rather than lettered. The obvious glyph, U+2328, renders as a detailed
+ * little keyboard that carries far more line work than a 20px button can show,
+ * and it looks different on every platform. A path we own stays legible at this
+ * size, matches the stroke weight of the rest of the UI, and takes
+ * `currentColor` with the theme.
  */
-type KeyboardKey = {
-  kind: "keyboard";
-  /** Shown while the keyboard is closed: a tap opens it. */
-  label: string;
-  /** Shown while the keyboard is open: a tap dismisses it. */
-  labelWhenOpen: string;
-};
+type KeyboardKey = { kind: "keyboard" };
 export type ExtraKey = ActionKey | ModifierKey | KeyboardKey;
 
 /** One row of the keys a soft keyboard lacks and a terminal needs most: escape
@@ -84,14 +82,22 @@ export function ghostClickShouldAct(
   return msSinceTouch >= ghostWindowMs;
 }
 
-/** How the toggle presents itself for a given keyboard state. */
-export function keyboardToggleFace(
-  key: { label: string; labelWhenOpen: string },
-  open: boolean,
-): { label: string; ariaLabel: string } {
-  return open
-    ? { label: key.labelWhenOpen, ariaLabel: "Hide the keyboard" }
-    : { label: key.label, ariaLabel: "Show the keyboard" };
+/**
+ * The chevron beneath the keyboard, which is the whole of the state.
+ *
+ * Down while the keyboard is up, because a tap sends it down; up while it is
+ * away, because a tap brings it back. Only this path changes between states, so
+ * the icon never jumps — the body stays exactly where it was.
+ */
+export function keyboardChevronPath(open: boolean): string {
+  // Wide and shallow, the way Apple's own keyboard.chevron.compact.down is
+  // drawn — a steeper one at this size reads as a caret rather than a hint.
+  return open ? "M8.6 18.6 12 21.6 15.4 18.6" : "M8.6 21.6 12 18.6 15.4 21.6";
+}
+
+/** What the toggle announces for a given keyboard state. */
+export function keyboardToggleFace(open: boolean): { ariaLabel: string } {
+  return { ariaLabel: open ? "Hide the keyboard" : "Show the keyboard" };
 }
 
 export const DEFAULT_LAYOUT: ExtraKey[][] = [
@@ -104,7 +110,7 @@ export const DEFAULT_LAYOUT: ExtraKey[][] = [
     { kind: "key", label: "↑", key: "ArrowUp" },
     { kind: "key", label: "↓", key: "ArrowDown" },
     { kind: "key", label: "→", key: "ArrowRight" },
-    { kind: "keyboard", label: "⌨", labelWhenOpen: "⌨▾" },
+    { kind: "keyboard" },
   ],
 ];
 
@@ -202,8 +208,9 @@ export class ExtraKeysBar {
   readonly element: HTMLElement;
   private readonly mods = new StickyModifiers();
   private readonly modButtons = new Map<"ctrl" | "alt", HTMLButtonElement>();
-  /** The keyboard toggle, kept so its label can follow the tracked inset. */
-  private keyboardButton: { button: HTMLButtonElement; key: KeyboardKey } | null = null;
+  /** The keyboard toggle, kept so the icon can follow the tracked inset.
+   * Only the chevron moves, so only that path is held. */
+  private keyboardButton: { button: HTMLButtonElement; chevron: SVGPathElement } | null = null;
 
   constructor(
     private readonly onKey: (spec: KeySpec) => void,
@@ -289,6 +296,60 @@ export class ExtraKeysBar {
     });
   }
 
+  /**
+   * A keyboard: a rounded body, two rows of key marks with a space bar, and a
+   * chevron underneath for the direction.
+   *
+   * The two rows are what make it read as a keyboard at all. A single bar is
+   * simpler still, but it reads as a monitor — the marks are the detail that
+   * earns its place. Everything else is left out, because at 20px more line
+   * work only turns to mush, which was the complaint about the U+2328 glyph
+   * this replaces.
+   */
+  private static readonly SVG_NS = "http://www.w3.org/2000/svg";
+
+  private buildIcon(): { svg: SVGSVGElement; chevron: SVGPathElement } {
+    const ns = ExtraKeysBar.SVG_NS;
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    // 1.5 rather than 1.6: at 20px the key marks sit close enough that a
+    // heavier stroke closes the gaps between them.
+    svg.setAttribute("stroke-width", "1.5");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+
+    const body = document.createElementNS(ns, "rect");
+    body.setAttribute("x", "2.6");
+    body.setAttribute("y", "4.4");
+    body.setAttribute("width", "18.8");
+    body.setAttribute("height", "11.2");
+    body.setAttribute("rx", "2.4");
+
+    svg.append(body);
+    // Four keys on top; three below, the middle one widened into a space bar.
+    for (const d of [
+      "M6.2 8.2h1",
+      "M9.4 8.2h1",
+      "M12.6 8.2h1",
+      "M15.8 8.2h1",
+      "M6.2 11.8h1",
+      "M9.4 11.8h4.2",
+      "M15.8 11.8h1",
+    ]) {
+      const key = document.createElementNS(ns, "path");
+      key.setAttribute("d", d);
+      svg.append(key);
+    }
+
+    const chevron = document.createElementNS(ns, "path");
+    chevron.setAttribute("d", keyboardChevronPath(false));
+    svg.append(chevron);
+    return { svg, chevron };
+  }
+
   private browseButton(): HTMLButtonElement {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -340,16 +401,18 @@ export class ExtraKeysBar {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "extra-key";
-    btn.textContent = key.label;
 
     if (key.kind === "keyboard") {
       btn.classList.add("extra-key-keyboard");
-      this.keyboardButton = { button: btn, key };
+      const { svg, chevron } = this.buildIcon();
+      btn.append(svg);
+      this.keyboardButton = { button: btn, chevron };
       this.wireKeyboardToggle(btn);
       this.syncKeyboardState();
       return btn;
     }
 
+    btn.textContent = key.label;
     const act = key.kind === "mod" ? () => this.tapModifier(key.mod) : () => this.tapKey(key);
     if (key.kind === "mod") {
       btn.classList.add("extra-key-mod");
@@ -428,13 +491,13 @@ export class ExtraKeysBar {
   private renderKeyboardLabel(open: boolean): void {
     const entry = this.keyboardButton;
     if (!entry) return;
-    const face = keyboardToggleFace(entry.key, open);
+    const path = keyboardChevronPath(open);
     // Only when it actually changes. The keyboard animates, so the tracker
-    // reports a dozen distinct heights per open, and rewriting the label on
-    // each one churned the DOM through the whole gesture for no reason.
-    if (entry.button.textContent === face.label) return;
-    entry.button.textContent = face.label;
-    entry.button.setAttribute("aria-label", face.ariaLabel);
+    // reports a dozen distinct heights per open, and rewriting on each one
+    // churned the DOM through the whole gesture for no reason.
+    if (entry.chevron.getAttribute("d") === path) return;
+    entry.chevron.setAttribute("d", path);
+    entry.button.setAttribute("aria-label", keyboardToggleFace(open).ariaLabel);
   }
 
   private tapModifier(mod: "ctrl" | "alt"): void {
