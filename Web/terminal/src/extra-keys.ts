@@ -9,12 +9,24 @@
  */
 
 import { isKeyboardOpen } from "./keyboard-insets";
+import { buildIcon, buildIconFromPaths, type IconName } from "./icons";
 
 export type KeySpec = { key: string; ctrl: boolean; alt: boolean };
 
 /** An action key. `ctrl`/`alt` preset a combo (e.g. Ctrl-C) that fires
- * regardless of the sticky modifiers. */
-type ActionKey = { kind: "key"; label: string; key: string; ctrl?: boolean; alt?: boolean };
+ * regardless of the sticky modifiers.
+ *
+ * `icon` draws the key instead of lettering it, and `label` becomes its
+ * accessible name. Keys that *are* words keep their letters — see `icons.ts`
+ * for why the row is split that way. */
+type ActionKey = {
+  kind: "key";
+  label: string;
+  key: string;
+  ctrl?: boolean;
+  alt?: boolean;
+  icon?: IconName;
+};
 type ModifierKey = { kind: "mod"; label: string; mod: "ctrl" | "alt" };
 /**
  * Puts the soft keyboard away, and brings it back.
@@ -92,7 +104,7 @@ export function ghostClickShouldAct(
 export function keyboardChevronPath(open: boolean): string {
   // Wide and shallow, the way Apple's own keyboard.chevron.compact.down is
   // drawn — a steeper one at this size reads as a caret rather than a hint.
-  return open ? "M8.6 18.6 12 21.6 15.4 18.6" : "M8.6 21.6 12 18.6 15.4 21.6";
+  return open ? "M8.8 18.6 12 21.4 15.2 18.6" : "M8.8 21.4 12 18.6 15.2 21.4";
 }
 
 /** What the toggle announces for a given keyboard state. */
@@ -106,10 +118,10 @@ export const DEFAULT_LAYOUT: ExtraKey[][] = [
     { kind: "key", label: "Tab", key: "Tab" },
     { kind: "mod", label: "Ctrl", mod: "ctrl" },
     { kind: "key", label: "⌃C", key: "c", ctrl: true },
-    { kind: "key", label: "←", key: "ArrowLeft" },
-    { kind: "key", label: "↑", key: "ArrowUp" },
-    { kind: "key", label: "↓", key: "ArrowDown" },
-    { kind: "key", label: "→", key: "ArrowRight" },
+    { kind: "key", label: "Left", key: "ArrowLeft", icon: "arrow-left" },
+    { kind: "key", label: "Up", key: "ArrowUp", icon: "arrow-up" },
+    { kind: "key", label: "Down", key: "ArrowDown", icon: "arrow-down" },
+    { kind: "key", label: "Right", key: "ArrowRight", icon: "arrow-right" },
     { kind: "keyboard" },
   ],
 ];
@@ -306,44 +318,26 @@ export class ExtraKeysBar {
    * work only turns to mush, which was the complaint about the U+2328 glyph
    * this replaces.
    */
-  private static readonly SVG_NS = "http://www.w3.org/2000/svg";
-
+  /**
+   * The keyboard toggle, drawn on the same grid as the rest of the set but
+   * built here rather than in `ICONS`, because one of its paths changes: the
+   * chevron flips with the keyboard's state and the caller keeps a handle on it.
+   */
   private buildIcon(): { svg: SVGSVGElement; chevron: SVGPathElement } {
-    const ns = ExtraKeysBar.SVG_NS;
-    const svg = document.createElementNS(ns, "svg");
-    svg.setAttribute("viewBox", "0 0 24 24");
-    svg.setAttribute("aria-hidden", "true");
-    svg.setAttribute("fill", "none");
-    svg.setAttribute("stroke", "currentColor");
-    // 1.5 rather than 1.6: at 20px the key marks sit close enough that a
-    // heavier stroke closes the gaps between them.
-    svg.setAttribute("stroke-width", "1.5");
-    svg.setAttribute("stroke-linecap", "round");
-    svg.setAttribute("stroke-linejoin", "round");
-
-    const body = document.createElementNS(ns, "rect");
-    body.setAttribute("x", "2.6");
-    body.setAttribute("y", "4.4");
-    body.setAttribute("width", "18.8");
-    body.setAttribute("height", "11.2");
-    body.setAttribute("rx", "2.4");
-
-    svg.append(body);
-    // Four keys on top; three below, the middle one widened into a space bar.
-    for (const d of [
-      "M6.2 8.2h1",
-      "M9.4 8.2h1",
-      "M12.6 8.2h1",
-      "M15.8 8.2h1",
-      "M6.2 11.8h1",
-      "M9.4 11.8h4.2",
-      "M15.8 11.8h1",
-    ]) {
-      const key = document.createElementNS(ns, "path");
-      key.setAttribute("d", d);
-      svg.append(key);
-    }
-
+    const svg = buildIconFromPaths([
+      // Body, then four keys on top and three below with the middle one
+      // widened into a space bar. Two rows are what make it read as a keyboard
+      // — a single bar reads as a monitor.
+      "M4.5 5.5h15a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 14V7a1.5 1.5 0 0 1 1.5-1.5z",
+      "M6.6 9h.6",
+      "M9.9 9h.6",
+      "M13.2 9h.6",
+      "M16.5 9h.6",
+      "M6.6 12.2h.6",
+      "M9.9 12.2h4.2",
+      "M16.5 12.2h.6",
+    ]);
+    const ns = "http://www.w3.org/2000/svg";
     const chevron = document.createElementNS(ns, "path");
     chevron.setAttribute("d", keyboardChevronPath(false));
     svg.append(chevron);
@@ -354,7 +348,7 @@ export class ExtraKeysBar {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "extra-key extra-key-browse";
-    btn.textContent = "⌸";
+    btn.append(buildIcon("folder"));
     btn.setAttribute("aria-label", "Browse files on this machine");
     this.wireTap(btn, () => this.onBrowse?.());
     return btn;
@@ -375,7 +369,7 @@ export class ExtraKeysBar {
     label.className = "extra-key extra-key-attach";
     label.title = "Attach a file";
     label.setAttribute("aria-label", "Attach a file");
-    label.append(document.createTextNode("＋"));
+    label.append(buildIcon("paperclip"));
 
     const input = document.createElement("input");
     input.type = "file";
@@ -412,7 +406,12 @@ export class ExtraKeysBar {
       return btn;
     }
 
-    btn.textContent = key.label;
+    if (key.kind === "key" && key.icon) {
+      btn.append(buildIcon(key.icon));
+      btn.setAttribute("aria-label", key.label);
+    } else {
+      btn.textContent = key.label;
+    }
     const act = key.kind === "mod" ? () => this.tapModifier(key.mod) : () => this.tapKey(key);
     if (key.kind === "mod") {
       btn.classList.add("extra-key-mod");
