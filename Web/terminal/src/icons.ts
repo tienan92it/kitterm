@@ -44,18 +44,22 @@ export const ICONS: Record<IconName, readonly string[]> = {
   // Attach a file from this device. Drawn open and shallow: the usual tight
   // paperclip spiral fills in completely at 20px.
   "paperclip": ["M16.5 9.4 10 15.9a2.1 2.1 0 0 0 3 3l6.5-6.5a4.2 4.2 0 0 0-6-6l-6.6 6.6a6.3 6.3 0 0 0 8.9 8.9l5.7-5.7"],
-  // Body, then four keys above and three below with the middle one widened
-  // into a space bar. Two rows are what make it read as a keyboard; a single
-  // bar reads as a monitor. Centred in the box, because nothing sits under it.
+  // Three rows — two of keys and a space bar — in a body that fills the box.
+  // A keyboard is a wide, short shape, so drawn small it reads as slighter than
+  // the arrows beside it; filling the grid is what makes it sit at their
+  // weight. Rows are spaced 3.4 apart, which is the closest they can sit before
+  // a 2-wide stroke closes the gaps at 20px.
   "keyboard": [
-    "M4.5 7h15A1.5 1.5 0 0 1 21 8.5v7a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 15.5v-7A1.5 1.5 0 0 1 4.5 7z",
-    "M6.6 10.3h.6",
-    "M9.9 10.3h.6",
-    "M13.2 10.3h.6",
-    "M16.5 10.3h.6",
-    "M6.6 13.7h.6",
-    "M9.9 13.7h4.2",
-    "M16.5 13.7h.6",
+    "M4.5 5h15A1.5 1.5 0 0 1 21 6.5v11a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-11A1.5 1.5 0 0 1 4.5 5z",
+    "M6.2 8.6h.6",
+    "M9.9 8.6h.6",
+    "M13.6 8.6h.6",
+    "M17.3 8.6h.6",
+    "M6.2 12h.6",
+    "M9.9 12h.6",
+    "M13.6 12h.6",
+    "M17.3 12h.6",
+    "M8.6 15.4h6.8",
   ],
 } as const;
 
@@ -67,7 +71,7 @@ export const ICONS: Record<IconName, readonly string[]> = {
  * is drawn over the keyboard rather than being an icon of its own, and because
  * the toggle shows and hides it as the keyboard moves.
  */
-export const KEYBOARD_SLASH_PATH = "M4.5 4.5 19.5 19.5";
+export const KEYBOARD_SLASH_PATH = "M3.6 3.6 20.4 20.4";
 
 export const ICON_VIEWBOX = "0 0 24 24";
 export const ICON_STROKE_WIDTH = "2";
