@@ -452,11 +452,17 @@ export class TerminalApp implements PaneHost {
       (files) => void this.focusedPane?.attachFiles(files),
       () => this.focusedPane?.toggleFilePicker(),
       () => this.focusedPane?.focus(),
+      (open) => (open ? this.focusedPane?.focus() : this.focusedPane?.blur()),
     );
     document.body.append(bar.element);
     document.body.classList.add("has-extra-keys");
-    // Lift the row and terminal above the software keyboard.
-    this.disposeKeyboardInsets = trackKeyboardInsets();
+    // Lift the row and terminal above the software keyboard, and let the toggle
+    // follow it: the keyboard can be dismissed without touching the row, and
+    // the button must not then claim it is still up.
+    this.disposeKeyboardInsets = trackKeyboardInsets(
+      document.documentElement,
+      () => bar.syncKeyboardState(),
+    );
   }
 
   paneSearchRequested(pane: TerminalPane): void {

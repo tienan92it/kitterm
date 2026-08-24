@@ -917,6 +917,16 @@ body.has-extra-keys #status {
 .extra-key:active {
   background: var(--ui-active);
 }
+/* Every drawn key in the row. Sized explicitly: an svg with no width fills its
+   flex box, which at this key width is the whole button. 20px puts the icons at
+   the same visual weight as the row's 16px lettered keys. */
+.extra-key svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+  flex: none;
+}
+
 .extra-key-mod.armed {
   background: var(--ui-accent);
   border-color: var(--ui-accent-hover);

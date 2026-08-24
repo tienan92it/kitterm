@@ -28,18 +28,44 @@ export function keyboardInset(
 }
 
 /**
+ * Whether the keyboard is up, read from the inset this module publishes.
+ *
+ * The single source of truth on purpose: the user can dismiss the keyboard
+ * without touching kitterm — the browser's own control, a hardware key, a
+ * swipe — and a boolean we kept ourselves would then be wrong. Anything that
+ * shows keyboard state has to ask the viewport, not its own memory.
+ *
+ * An unset property means no tracker is running, which reads as closed. That is
+ * the safe default: the toggle then offers to *show* the keyboard, and showing
+ * one that is already up costs nothing.
+ */
+export function isKeyboardOpen(root: HTMLElement = document.documentElement): boolean {
+  const raw = root.style.getPropertyValue("--keyboard-height");
+  return Number.parseFloat(raw) > 0;
+}
+
+/**
  * Track the keyboard and publish `--keyboard-height`. Returns a disposer.
  * No-op where visualViewport is unavailable.
+ *
+ * `onChange` fires only when the height actually changes, so a caller can
+ * follow the keyboard without polling. visualViewport emits on every scroll,
+ * and most of those carry the same inset.
  */
 export function trackKeyboardInsets(
   root: HTMLElement = document.documentElement,
+  onChange?: (px: number) => void,
 ): () => void {
   const vv = window.visualViewport;
   if (!vv) return () => {};
 
+  let last: number | null = null;
   const update = (): void => {
     const px = keyboardInset(window.innerHeight, vv.height, vv.offsetTop);
     root.style.setProperty("--keyboard-height", `${px}px`);
+    if (px === last) return;
+    last = px;
+    onChange?.(px);
   };
 
   update();
