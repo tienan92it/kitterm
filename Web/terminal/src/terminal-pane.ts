@@ -1,6 +1,7 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal, type IMarker } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
@@ -226,6 +227,15 @@ export class TerminalPane {
     this.terminal.loadAddon(this.fitAddon);
     this.terminal.loadAddon(this.searchAddon);
     this.terminal.loadAddon(new UnicodeGraphemesAddon());
+    // URLs in output become openable. `noopener` so the opened page cannot
+    // reach back through `window.opener` — this one is handed a URL that
+    // arrived as terminal output, from whatever the shell was running.
+    this.terminal.loadAddon(
+      new WebLinksAddon((event, uri) => {
+        event.preventDefault();
+        window.open(uri, "_blank", "noopener,noreferrer");
+      }),
+    );
 
     this.session = new KittermSession({
       onOpen: () => {
