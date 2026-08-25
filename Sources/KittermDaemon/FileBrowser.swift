@@ -89,4 +89,39 @@ enum FileBrowser {
         let parent = directory.path == "/" ? nil : directory.deletingLastPathComponent().path
         return Listing(path: directory.path, parent: parent, entries: Array(entries))
     }
+
+    /// What a single path names, if anything.
+    struct Stat: Sendable {
+        /// Exactly what the caller asked about, so a reply can be matched to a
+        /// request without the caller re-deriving our resolution.
+        let requested: String
+        let exists: Bool
+        let isDirectory: Bool
+        /// The resolved absolute path, so a later read need not resolve twice.
+        let resolved: String
+    }
+
+    /// Answer "does this name anything" for several paths at once.
+    ///
+    /// The client asks about every path-shaped token on a screen of output, and a
+    /// screen can name files in many directories. Listing each parent to find out
+    /// would send directory contents across the wire merely to underline a word;
+    /// this sends back one line per question instead.
+    ///
+    /// Resolution is `resolve`'s, so `~`, relative-to-cwd and symlinks behave
+    /// exactly as they do for browsing. A path that resolves to nothing is not an
+    /// error: "no" is the answer, and the client leaves the text plain.
+    static func stat(_ requested: [String], base: String?) -> [Stat] {
+        requested.map { candidate in
+            let url = resolve(candidate, base: base)
+            var isDirectory: ObjCBool = false
+            let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+            return Stat(
+                requested: candidate,
+                exists: exists,
+                isDirectory: exists && isDirectory.boolValue,
+                resolved: url.path
+            )
+        }
+    }
 }

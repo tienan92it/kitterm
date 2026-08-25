@@ -116,18 +116,3 @@ export function pathCandidates(line: string): Candidate[] {
   }
   return found;
 }
-
-/**
- * Whether a pane's paths can be resolved against the machine the daemon runs on.
- *
- * A shell inside `ssh` or a container reports its own cwd through OSC 7, and
- * kitterm honours it — right for the tab title, wrong for this. A relative path
- * would then be resolved locally, and `src/main.ts` may well exist here too, as
- * a different file. Absolute paths are no safer: `/etc/hosts` exists on both.
- *
- * So when the cwd arrived in-band, nothing on that pane is linked. A missing
- * link is a small loss; a link that opens the wrong machine's file is a lie.
- */
-export function pathsAreLocal(cwdCameInBand: boolean): boolean {
-  return !cwdCameInBand;
-}

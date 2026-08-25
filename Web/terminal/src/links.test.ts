@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { looksLikePath, pathCandidates, pathsAreLocal, trimSurroundings } from "./links";
+import { looksLikePath, pathCandidates, trimSurroundings } from "./links";
 
 const texts = (line: string) => pathCandidates(line).map((c) => c.text);
 
@@ -82,18 +82,5 @@ describe("pathCandidates", () => {
   // The shape a compiler actually prints.
   it("handles a diagnostic line", () => {
     expect(texts("ERROR in ./src/app.tsx:12:5")).toContain("./src/app.tsx:12:5");
-  });
-});
-
-// A pane inside ssh or a container reports the *remote* cwd through OSC 7. The
-// daemon would resolve a path against the local filesystem, where the same name
-// may exist as a different file — so nothing on such a pane is linked.
-describe("pathsAreLocal", () => {
-  it("is false once the cwd has arrived in-band", () => {
-    expect(pathsAreLocal(true)).toBe(false);
-  });
-
-  it("is true for a pane whose cwd only the daemon reports", () => {
-    expect(pathsAreLocal(false)).toBe(true);
   });
 });

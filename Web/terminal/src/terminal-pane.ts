@@ -22,6 +22,7 @@ import type { FaviconState } from "./favicon";
 import { dragMayCarryFiles, insertionText, quoteForShell, readDrop, uploadDroppedFiles } from "./file-drop";
 import { FilePicker } from "./file-picker";
 import { OutputFlowControl } from "./flow-control";
+import { PathLinks, type PathStat } from "./path-links";
 import { resolveFontFamily } from "./fonts";
 import { isModifierKey, matchPaneCommand, type PaneCommand } from "./pane-keys";
 import {
@@ -174,6 +175,8 @@ export class TerminalPane {
     rect: DOMRect;
   } | null = null;
   private pastePrompt: PastePromptHandle | null = null;
+  /** Paths in output, confirmed against the daemon before they become links. */
+  private pathLinks: PathLinks | null = null;
   private readonly watchHint: boolean;
   private folderValue: string | null = null;
   private reconnectTimer: number | null = null;
@@ -258,6 +261,11 @@ export class TerminalPane {
 
     this.terminal.open(options.container);
     this.suppressAutofill();
+    this.pathLinks = new PathLinks(this.terminal, {
+      stat: (paths) => this.statPaths(paths),
+      onOpen: (stat, text) => this.openPath(stat, text),
+      cwd: () => this.cwd,
+    });
     this.registerKittyHandlers();
     this.registerCwdHandlers();
     this.registerMarkHandlers();
@@ -339,6 +347,19 @@ export class TerminalPane {
   /// drop this copies nothing, so the agent reads and edits the actual file,
   /// and a folder works as well as a file.
   toggleFilePicker(): void {
+    const picker = this.ensureFilePicker();
+    // A second tap on the same control puts it away — on a phone the button
+    // is the only way back, and reopening what is already open reads as broken.
+    if (picker.isOpen) {
+      picker.hide();
+      return;
+    }
+    void picker.show(this.cwd);
+  }
+
+  /** Built on first use, by whichever reaches it first: the toolbar button or
+   * a clicked directory in the output. */
+  private ensureFilePicker(): FilePicker {
     if (!this.filePicker) {
       this.filePicker = new FilePicker({
         sessionId: () => this.sessionIdValue,
@@ -352,13 +373,7 @@ export class TerminalPane {
       });
       this.containerEl.append(this.filePicker.element);
     }
-    // A second tap on the same control puts it away — on a phone the button
-    // is the only way back, and reopening what is already open reads as broken.
-    if (this.filePicker.isOpen) {
-      this.filePicker.hide();
-      return;
-    }
-    void this.filePicker.show(this.cwd);
+    return this.filePicker;
   }
 
   /// Where the terminal cursor is, in pane coordinates, so the picker can open
@@ -512,6 +527,8 @@ export class TerminalPane {
     if (this.disposed) return;
     this.disposed = true;
     this.clearReconnectTimer();
+    this.pathLinks?.dispose();
+    this.pathLinks = null;
     this.cancelLongPress();
     this.stopEdgeScroll();
     this.selectionBar?.remove();
@@ -1303,6 +1320,46 @@ export class TerminalPane {
     input.setAttribute("autocomplete", "off");
   }
 
+  /**
+   * Ask the daemon which of these paths name anything.
+   *
+   * Repeated `path=` rather than one delimited value: a path may contain any
+   * byte but NUL, so no separator is safe. The session id goes along so a
+   * relative path resolves against *this* shell's directory.
+   */
+  private async statPaths(paths: readonly string[]): Promise<Map<string, PathStat>> {
+    const params = new URLSearchParams();
+    for (const path of paths) params.append("path", path);
+    if (this.sessionIdValue) params.set("session", this.sessionIdValue);
+
+    const response = await fetch(`/api/files/stat?${params.toString()}`, {
+      credentials: "same-origin",
+    });
+    if (!response.ok) throw new Error(`stat failed: ${response.status}`);
+    const body = (await response.json()) as {
+      paths?: { path: string; exists: boolean; dir?: boolean; resolved?: string }[];
+    };
+    const answers = new Map<string, PathStat>();
+    for (const entry of body.paths ?? []) {
+      answers.set(entry.path, {
+        exists: entry.exists,
+        dir: entry.dir === true,
+        resolved: entry.resolved ?? "",
+      });
+    }
+    return answers;
+  }
+
+  /** A confirmed path was clicked. A directory opens the browser there; a file
+   * has no viewer yet, so its resolved path is offered instead of nothing. */
+  private openPath(stat: PathStat, text: string): void {
+    if (stat.dir) {
+      void this.ensureFilePicker().show(stat.resolved || text);
+      return;
+    }
+    this.host.paneFlash(stat.resolved || text, 8000);
+  }
+
   /** Copy selection: ⌘C, or Ctrl+Shift+C — never bare Ctrl+C, which is an
    * interrupt the shell must keep receiving. */
   private isCopyChord(event: KeyboardEvent): boolean {
@@ -1391,6 +1448,8 @@ export class TerminalPane {
   /** Leave select mode. The selection goes with it: a stale highlight with no
    * way to act on it is worse than none. */
   private endSelection(): void {
+    this.pathLinks?.dispose();
+    this.pathLinks = null;
     this.cancelLongPress();
     this.stopEdgeScroll();
     this.selectAnchor = null;

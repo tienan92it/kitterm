@@ -360,6 +360,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             )
         case (.GET, "/api/files"):
             serveFileListing(grade: grade, head: head, context: context)
+        case (.GET, "/api/files/stat"):
+            serveFileStat(grade: grade, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/"):
             writeJSON(
                 status: .notFound,
@@ -1510,6 +1512,90 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         context.write(wrapOutboundOut(.body(.byteBuffer(buffer))), promise: nil)
         context.writeAndFlush(wrapOutboundOut(.end(nil))).whenComplete { _ in
             context.close(promise: nil)
+        }
+    }
+
+    /// Does each of these paths name anything?
+    ///
+    /// The client asks before it draws a path in output as a link, because a link
+    /// that opens nothing is worse than plain text. It asks about a whole screen
+    /// at once: a screen can name files in many directories, and confirming each
+    /// through `/api/files` would ship those directories' contents across the wire
+    /// just to underline a word.
+    ///
+    /// Same access story as the listing it sits beside — full grade, no allowlist,
+    /// the OS decides what is visible — because this answers strictly less than
+    /// the listing already does.
+    private func serveFileStat(
+        grade: TokenGrade,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        // Repeated `path=` rather than one delimited value: a path may contain
+        // any byte except NUL, so there is no separator left to split on.
+        let requested = DaemonServer.queryValues("path", fromRequestURI: head.uri)
+        guard !requested.isEmpty else {
+            writeJSON(
+                status: .badRequest,
+                body: #"{"ok":false,"error":"no path given"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let capped = Array(requested.prefix(KittermConstants.maxStatBatch))
+        let sessionID = DaemonServer.queryValue("session", fromRequestURI: head.uri)
+            .flatMap(UUID.init(uuidString:))
+
+        let loop = context.eventLoop
+        let boundContext = NIOLoopBound(context, eventLoop: loop)
+        let promise = loop.makePromise(of: [FileBrowser.Stat].self)
+        promise.completeWithTask {
+            var cwd: String?
+            if let sessionID { cwd = await self.registry.session(sessionID)?.liveCwd }
+            // Off the event loop: a stat can block on a stalled mount, and the
+            // loop is shared with every session's output.
+            return await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    continuation.resume(returning: FileBrowser.stat(capped, base: cwd))
+                }
+            }
+        }
+        promise.futureResult.whenComplete { result in
+            let context = boundContext.value
+            guard case .success(let stats) = result else {
+                self.writeJSON(
+                    status: .internalServerError,
+                    body: #"{"ok":false,"error":"stat failed"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+                return
+            }
+            let payload: [String: Any] = [
+                "ok": true,
+                "paths": stats.map { stat -> [String: Any] in
+                    var item: [String: Any] = ["path": stat.requested, "exists": stat.exists]
+                    if stat.exists {
+                        item["dir"] = stat.isDirectory
+                        item["resolved"] = stat.resolved
+                    }
+                    return item
+                },
+            ]
+            let text = (try? JSONSerialization.data(withJSONObject: payload))
+                .flatMap { String(data: $0, encoding: .utf8) }
+                ?? #"{"ok":false,"error":"encoding failed"}"#
+            self.writeJSON(
+                status: .ok, body: text, context: context,
+                version: head.version, keepAlive: head.isKeepAlive
+            )
         }
     }
 
