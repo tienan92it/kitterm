@@ -362,6 +362,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             serveFileListing(grade: grade, head: head, context: context)
         case (.GET, "/api/files/stat"):
             serveFileStat(grade: grade, head: head, context: context)
+        case (.GET, "/api/files/content"):
+            serveFileContent(grade: grade, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/"):
             writeJSON(
                 status: .notFound,
@@ -1596,6 +1598,93 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 status: .ok, body: text, context: context,
                 version: head.version, keepAlive: head.isKeepAlive
             )
+        }
+    }
+
+    /// A file's bytes, for previewing what a path in output points at.
+    ///
+    /// Reading is not the risk: a full token can already type `cat`. The risk is
+    /// the browser, because this is served from kitterm's own origin — a file
+    /// returned as `text/html` or `image/svg+xml` would run its script against
+    /// the auth cookie. `FilePreview` therefore never honours a file's own type,
+    /// and the headers here say so a second time: nothing is sniffed, nothing
+    /// may load, and anything unrecognised is a download rather than a render.
+    private func serveFileContent(
+        grade: TokenGrade,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let requested = DaemonServer.queryValue("path", fromRequestURI: head.uri) else {
+            writeJSON(
+                status: .badRequest,
+                body: #"{"ok":false,"error":"no path given"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let sessionID = DaemonServer.queryValue("session", fromRequestURI: head.uri)
+            .flatMap(UUID.init(uuidString:))
+
+        let loop = context.eventLoop
+        let boundContext = NIOLoopBound(context, eventLoop: loop)
+        let promise = loop.makePromise(of: FilePreview.Payload?.self)
+        promise.completeWithTask {
+            var cwd: String?
+            if let sessionID { cwd = await self.registry.session(sessionID)?.liveCwd }
+            let url = FileBrowser.resolve(requested, base: cwd)
+            // Off the loop: reading a file blocks, and the loop carries every
+            // session's output.
+            return await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    continuation.resume(returning: try? FilePreview.read(url))
+                }
+            }
+        }
+        promise.futureResult.whenComplete { result in
+            let context = boundContext.value
+            guard case .success(.some(let payload)) = result else {
+                self.writeJSON(
+                    status: .notFound,
+                    body: #"{"ok":false,"error":"cannot read that file"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+                return
+            }
+            var headers = HTTPHeaders()
+            headers.add(name: "Content-Type", value: payload.contentType)
+            headers.add(name: "Content-Length", value: String(payload.data.count))
+            // Never guess past what we chose, never let the response fetch
+            // anything, and never let it be framed.
+            headers.add(name: "X-Content-Type-Options", value: "nosniff")
+            headers.add(name: "Content-Security-Policy", value: "default-src 'none'; sandbox")
+            headers.add(name: "Cache-Control", value: "no-store")
+            let safeName = FilePreview.headerSafeName(payload.filename)
+            headers.add(
+                name: "Content-Disposition",
+                value: (payload.attachment ? "attachment" : "inline") + "; filename=\"\(safeName)\""
+            )
+            // Same truncation contract as the command-output route.
+            headers.add(name: "X-Kitterm-Total-Bytes", value: "\(payload.totalBytes)")
+            headers.add(name: "X-Kitterm-Truncated", value: payload.truncated ? "1" : "0")
+            headers.add(name: "X-Kitterm-Kind", value: payload.kind)
+
+            context.write(self.wrapOutboundOut(.head(HTTPResponseHead(
+                version: head.version, status: .ok, headers: headers
+            ))), promise: nil)
+            var buffer = context.channel.allocator.buffer(capacity: payload.data.count)
+            buffer.writeBytes(payload.data)
+            context.write(self.wrapOutboundOut(.body(.byteBuffer(buffer))), promise: nil)
+            context.writeAndFlush(self.wrapOutboundOut(.end(nil))).whenComplete { _ in
+                if !head.isKeepAlive { context.close(promise: nil) }
+            }
         }
     }
 

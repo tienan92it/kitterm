@@ -22,6 +22,7 @@ import type { FaviconState } from "./favicon";
 import { dragMayCarryFiles, insertionText, quoteForShell, readDrop, uploadDroppedFiles } from "./file-drop";
 import { FilePicker } from "./file-picker";
 import { OutputFlowControl } from "./flow-control";
+import { showPreview, type PreviewHandle, type PreviewMeta } from "./file-preview";
 import { PathLinks, type PathStat } from "./path-links";
 import { resolveFontFamily } from "./fonts";
 import { isModifierKey, matchPaneCommand, type PaneCommand } from "./pane-keys";
@@ -177,6 +178,7 @@ export class TerminalPane {
   private pastePrompt: PastePromptHandle | null = null;
   /** Paths in output, confirmed against the daemon before they become links. */
   private pathLinks: PathLinks | null = null;
+  private preview: PreviewHandle | null = null;
   private readonly watchHint: boolean;
   private folderValue: string | null = null;
   private reconnectTimer: number | null = null;
@@ -529,6 +531,8 @@ export class TerminalPane {
     this.clearReconnectTimer();
     this.pathLinks?.dispose();
     this.pathLinks = null;
+    this.preview?.close();
+    this.preview = null;
     this.cancelLongPress();
     this.stopEdgeScroll();
     this.selectionBar?.remove();
@@ -1350,14 +1354,52 @@ export class TerminalPane {
     return answers;
   }
 
-  /** A confirmed path was clicked. A directory opens the browser there; a file
-   * has no viewer yet, so its resolved path is offered instead of nothing. */
+  /** A confirmed path was clicked: a directory opens the browser there, a file
+   * opens a preview. */
   private openPath(stat: PathStat, text: string): void {
     if (stat.dir) {
       void this.ensureFilePicker().show(stat.resolved || text);
       return;
     }
-    this.host.paneFlash(stat.resolved || text, 8000);
+    void this.previewFile(stat.resolved || text);
+  }
+
+  /**
+   * Fetch a file and show it.
+   *
+   * The kind comes from the daemon's own header rather than from the bytes:
+   * it decided what was safe to render, and a second guess here is how the two
+   * come to disagree.
+   */
+  private async previewFile(path: string): Promise<void> {
+    const params = new URLSearchParams({ path });
+    if (this.sessionIdValue) params.set("session", this.sessionIdValue);
+    let response: Response;
+    try {
+      response = await fetch(`/api/files/content?${params.toString()}`, {
+        credentials: "same-origin",
+      });
+    } catch {
+      this.host.paneFlash("Could not reach the daemon");
+      return;
+    }
+    if (!response.ok) {
+      this.host.paneFlash("Could not read that file");
+      return;
+    }
+    const meta: PreviewMeta = {
+      kind: (response.headers.get("X-Kitterm-Kind") as PreviewMeta["kind"]) || "binary",
+      totalBytes: Number(response.headers.get("X-Kitterm-Total-Bytes") ?? "0"),
+      truncated: response.headers.get("X-Kitterm-Truncated") === "1",
+      filename: path.slice(path.lastIndexOf("/") + 1) || path,
+    };
+    const body = await response.blob();
+    if (this.disposed) return;
+    this.preview?.close();
+    this.preview = showPreview(this.containerEl, meta, body, () => {
+      this.preview = null;
+      this.terminal.focus();
+    });
   }
 
   /** Copy selection: ⌘C, or Ctrl+Shift+C — never bare Ctrl+C, which is an
@@ -1450,6 +1492,8 @@ export class TerminalPane {
   private endSelection(): void {
     this.pathLinks?.dispose();
     this.pathLinks = null;
+    this.preview?.close();
+    this.preview = null;
     this.cancelLongPress();
     this.stopEdgeScroll();
     this.selectAnchor = null;
