@@ -1560,8 +1560,11 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         let boundContext = NIOLoopBound(context, eventLoop: loop)
         let promise = loop.makePromise(of: [FileBrowser.Stat].self)
         promise.completeWithTask {
-            var cwd: String?
-            if let sessionID { cwd = await self.registry.session(sessionID)?.liveCwd }
+            // Bound to a `let` before the hop: a `var` captured by the closure
+            // below is a data race, and only the stricter toolchain says so.
+            let cwd: String? = sessionID == nil
+                ? nil
+                : await self.registry.session(sessionID!)?.liveCwd
             // Off the event loop: a stat can block on a stalled mount, and the
             // loop is shared with every session's output.
             return await withCheckedContinuation { continuation in
@@ -1637,8 +1640,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         let boundContext = NIOLoopBound(context, eventLoop: loop)
         let promise = loop.makePromise(of: FilePreview.Payload?.self)
         promise.completeWithTask {
-            var cwd: String?
-            if let sessionID { cwd = await self.registry.session(sessionID)?.liveCwd }
+            let cwd: String? = sessionID == nil
+                ? nil
+                : await self.registry.session(sessionID!)?.liveCwd
             let url = FileBrowser.resolve(requested, base: cwd)
             // Off the loop: reading a file blocks, and the loop carries every
             // session's output.
