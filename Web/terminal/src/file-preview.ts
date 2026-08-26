@@ -6,10 +6,16 @@
  * sniffing the bytes again: two places guessing at a content type is how one of
  * them ends up wrong.
  *
+ * Source is coloured, and every span is built with `textContent`. A file's
+ * bytes never become markup here, which is the same rule the daemon follows by
+ * refusing to serve HTML as HTML.
+ *
  * The overlay is a peer of the paste prompt and the file picker: it lives inside
  * the pane, closes on Escape or a tap outside, and hands focus back to the
  * terminal underneath.
  */
+
+import { languageFor, tokenize, type Language } from "./highlight";
 
 /** What the daemon said about the file it sent. */
 export interface PreviewMeta {
@@ -45,6 +51,47 @@ export function describePreview(meta: PreviewMeta): string {
   const size = formatBytes(meta.totalBytes);
   if (meta.kind === "binary") return `${size} · not previewable`;
   return meta.truncated ? `${size} · showing the first part` : size;
+}
+
+/**
+ * The source, in a gutter-and-code pair.
+ *
+ * The gutter is one text node rather than an element per line: a 5000-line file
+ * would otherwise cost 5000 elements before a single word is coloured. Both
+ * columns share the pane's line height, which is what keeps the numbers level
+ * with their lines.
+ */
+function buildCode(text: string, language: Language): HTMLElement {
+  // A file's last newline ends its last line; it does not start another.
+  const source = text.endsWith("\n") ? text.slice(0, -1) : text;
+
+  const view = document.createElement("div");
+  view.className = "preview-code";
+
+  const gutter = document.createElement("div");
+  gutter.className = "code-gutter";
+  // The numbers are scenery for a screen reader, and they are not selectable,
+  // so copying a block of code copies the code.
+  gutter.setAttribute("aria-hidden", "true");
+  const lines = source.split("\n").length;
+  gutter.textContent = Array.from({ length: lines }, (_, i) => String(i + 1)).join("\n");
+
+  const code = document.createElement("pre");
+  code.className = "code-text";
+  for (const token of tokenize(source, language)) {
+    if (token.kind === "plain") {
+      code.append(document.createTextNode(token.text));
+      continue;
+    }
+    const span = document.createElement("span");
+    span.className = `tok-${token.kind}`;
+    // Never innerHTML. The file may be the hostile one.
+    span.textContent = token.text;
+    code.append(span);
+  }
+
+  view.append(gutter, code);
+  return view;
 }
 
 /**
@@ -109,14 +156,12 @@ export function showPreview(
     frame.src = urlFor();
     bodyEl.append(frame);
   } else if (meta.kind === "text") {
-    const pre = document.createElement("pre");
-    pre.className = "preview-text";
     // As text, always. The daemon sends HTML and SVG here too, precisely so
     // they are read rather than run.
     void body.text().then((text) => {
-      pre.textContent = text;
+      if (!scrim.isConnected) return;
+      bodyEl.append(buildCode(text, languageFor(meta.filename)));
     });
-    bodyEl.append(pre);
   } else {
     const note = document.createElement("p");
     note.className = "preview-note";
