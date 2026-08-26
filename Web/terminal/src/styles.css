@@ -681,13 +681,58 @@ body,
   border: 0;
 }
 
-.preview-text {
+/* Source, in two columns. The code scrolls sideways inside its own column
+   rather than sliding under a sticky gutter: a sticky gutter is composited on
+   its own layer, and the code's glyphs draw over it at the seam. Here the two
+   never overlap, so there is nothing to draw over. */
+.preview-code {
+  display: flex;
+  align-items: stretch;
+  min-height: 100%;
+  font: 12.5px/1.6 var(--font-mono);
+}
+
+.code-gutter {
+  flex: none;
+  padding: 12px 10px;
+  border-right: 1px solid var(--ui-border);
+  background: var(--ui-bg-sunken);
+  color: var(--ui-text-faint);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: pre;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* `min-width: 0` or the flex item refuses to shrink below its longest line and
+   the whole card grows instead. `overflow-y: hidden` keeps this a one-axis
+   scroller: setting only `overflow-x` makes the other axis `auto` as well, and
+   iOS then treats a vertical swipe here as this box's to keep rather than the
+   card's. Nothing is clipped — the height is the content's. */
+.code-text {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
   margin: 0;
   padding: 12px 14px;
   color: var(--ui-text);
-  font: 12.5px/1.6 var(--font-mono);
+  font: inherit;
   white-space: pre;
 }
+
+/* One class per token kind. Italic is deliberately absent: most terminal fonts
+   have no italic face, and the synthesised slant closes up at this size. */
+.tok-comment { color: var(--code-comment); }
+.tok-string { color: var(--code-string); }
+.tok-number { color: var(--code-number); }
+.tok-keyword { color: var(--code-keyword); }
+.tok-name { color: var(--code-name); }
+.tok-attr { color: var(--code-attr); }
+.tok-link { color: var(--code-link); text-decoration: underline; }
+.tok-error { color: var(--code-error); }
+.tok-punct { color: var(--code-punct); }
 
 .preview-note {
   margin: 0;

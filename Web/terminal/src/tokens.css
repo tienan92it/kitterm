@@ -64,6 +64,21 @@
   --ui-danger: var(--term-red, #f85149);
   --ui-success: var(--term-green, #3fb950);
 
+  /* --- code ----------------------------------------------------------- */
+  /* Syntax colours are the terminal theme's own ANSI colours, so a preview
+     wears the palette of the shell behind it. A bundled editor theme would put
+     a second palette on the screen, and one of the two would always look
+     wrong. The six roles below are the ones every editor theme agrees on. */
+  --code-comment: var(--ui-text-faint);
+  --code-string: var(--term-green, #3fb950);
+  --code-number: var(--term-cyan, #39c5cf);
+  --code-keyword: var(--term-magenta, #bc8cff);
+  --code-name: var(--term-blue, #58a6ff);
+  --code-attr: var(--term-yellow, #d29922);
+  --code-link: var(--term-cyan, #39c5cf);
+  --code-error: var(--term-red, #f85149);
+  --code-punct: var(--ui-text-muted);
+
   /* --- overlays ------------------------------------------------------- */
   /* A scrim should darken, not tint, so it stays absolute. The veil is the
      background at partial alpha, for chrome floating over terminal output. */
