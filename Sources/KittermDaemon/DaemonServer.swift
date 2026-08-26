@@ -301,6 +301,19 @@ public final class DaemonServer: @unchecked Sendable {
         return UUID(uuidString: raw)
     }
 
+    /// Every value given for a repeated parameter, in the order they appeared.
+    ///
+    /// `?path=a&path=b` is the only way to pass a list of paths: a path may
+    /// contain any byte but NUL, so there is no character left to delimit them
+    /// with that some real filename could not also contain.
+    static func queryValues(_ name: String, fromRequestURI uri: String) -> [String] {
+        guard let components = URLComponents(string: uri) else { return [] }
+        return components.queryItems?
+            .filter { $0.name == name }
+            .compactMap { $0.value }
+            .filter { !$0.isEmpty } ?? []
+    }
+
     static func queryValue(_ name: String, fromRequestURI uri: String) -> String? {
         guard let components = URLComponents(string: uri),
               let value = components.queryItems?.first(where: { $0.name == name })?.value,

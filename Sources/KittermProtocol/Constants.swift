@@ -50,6 +50,13 @@ public enum KittermConstants: Sendable {
     /// larger output returns its tail so a flood can't serialize megabytes on
     /// the event loop.
     public static let apiCommandOutputMaxBytes: Int = 256 * 1024
+    /// Paths one stat request may ask about.
+    ///
+    /// The client asks about a screen of output at a time, and a screen holds a
+    /// few dozen path-shaped tokens at most. The cap is what stops a crafted
+    /// request turning one call into thousands of filesystem hits.
+    public static let maxStatBatch: Int = 128
+
     /// Shell-integration marks kept per session (FIFO beyond the cap).
     public static let sessionMarkCap: Int = 1000
 
