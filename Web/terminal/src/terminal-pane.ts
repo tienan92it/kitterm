@@ -201,6 +201,10 @@ export class TerminalPane {
   private exitedValue = false;
   /** Coalesces a burst of ResizeObserver callbacks into one fit per frame. */
   private fitHandle: number | null = null;
+  /** Something is animating this pane's box; hold the fit until it lands. */
+  private fitHeld = false;
+  /** A fit fell due while held, and is owed once the hold lifts. */
+  private fitPending = false;
 
   private readonly containerEl: HTMLElement;
   private filePicker: FilePicker | null = null;
@@ -747,11 +751,37 @@ export class TerminalPane {
     this.resizeObserver.observe(container);
   }
 
+  /**
+   * Hold the fit while something animates this pane's box, and take the one
+   * fit that is owed when it lands.
+   *
+   * The software keyboard slides for about a third of a second and the viewport
+   * reports a new height every frame of it. Following each one costs a WebGL
+   * atlas rebuild and a resize on the wire, and the shell answers every SIGWINCH
+   * by redrawing its prompt — measured at nine terminal sizes and 48 canvas
+   * rebuilds for a single slide, which is what the flicker was.
+   *
+   * The box still moves the whole time. Only the fit waits, so the canvas is
+   * briefly the wrong size behind chrome that is sliding over it anyway.
+   */
+  setFitHeld(held: boolean): void {
+    if (this.fitHeld === held) return;
+    this.fitHeld = held;
+    if (held || !this.fitPending) return;
+    this.fitPending = false;
+    this.scheduleFit();
+  }
+
   /** Coalesce to one fit per frame: a splitter drag can fire the observer for
    * every pane many times per frame, and each fit measures the DOM and puts a
    * resize on the wire. */
   scheduleFit(): void {
-    if (this.disposed || this.fitHandle !== null) return;
+    if (this.disposed) return;
+    if (this.fitHeld) {
+      this.fitPending = true;
+      return;
+    }
+    if (this.fitHandle !== null) return;
     this.fitHandle = requestAnimationFrame(() => {
       this.fitHandle = null;
       this.fitAndResize();

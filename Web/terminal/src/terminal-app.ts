@@ -482,16 +482,24 @@ export class TerminalApp implements PaneHost {
     // Lift the row and terminal above the software keyboard, and follow a
     // dismissal made outside kitterm: iOS builds its own dismiss key above the
     // keyboard and gives no way to refuse it, so pressing it has to count.
-    this.disposeKeyboardInsets = trackKeyboardInsets(document.documentElement, (px) => {
-      const next = onKeyboardInset(this.keyboard, px > 0);
-      if (next === this.keyboard) return;
-      this.keyboard = next;
-      // No blur-and-focus here. The field is already unfocused — that is how
-      // the keyboard went away — so the mode is all that needs correcting,
-      // before the next tap refocuses.
-      this.focusedPane?.applySoftKeyboard();
-      toggle.setShown(next.intent === "shown");
-    });
+    this.disposeKeyboardInsets = trackKeyboardInsets(
+      document.documentElement,
+      (px, settled) => {
+        // The panes keep their old geometry until the keyboard stops moving.
+        // Refitting every reported height rebuilds the WebGL atlas and sends a
+        // resize the shell answers by redrawing — a dozen times per slide.
+        for (const pane of this.panes.values()) pane.setFitHeld(!settled);
+
+        const next = onKeyboardInset(this.keyboard, px > 0);
+        if (next === this.keyboard) return;
+        this.keyboard = next;
+        // No blur-and-focus here. The field is already unfocused — that is how
+        // the keyboard went away — so the mode is all that needs correcting,
+        // before the next tap refocuses.
+        this.focusedPane?.applySoftKeyboard();
+        toggle.setShown(next.intent === "shown");
+      },
+    );
   }
 
   /**

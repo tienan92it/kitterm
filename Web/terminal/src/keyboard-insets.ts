@@ -31,33 +31,68 @@ export function keyboardInset(
 }
 
 /**
+ * How long the inset must hold still before the keyboard counts as arrived.
+ *
+ * A keyboard slides for around a third of a second and the viewport reports a
+ * new height every frame of it. Work that costs something — refitting a
+ * terminal, telling the shell its new size — belongs at the end of that, not
+ * nine times along the way.
+ */
+const SETTLE_MS = 120;
+
+/**
  * Track the keyboard and publish `--keyboard-height`. Returns a disposer.
  * No-op where visualViewport is unavailable.
  *
  * `onChange` fires only when the height actually changes, so a caller can
- * follow the keyboard without polling. visualViewport emits on every scroll,
- * and most of those carry the same inset.
+ * follow the keyboard without polling: visualViewport emits on every scroll,
+ * and most of those carry the same inset. `settled` says whether the keyboard
+ * has stopped moving, so a caller can do the cheap part on every frame and the
+ * expensive part once.
  */
 export function trackKeyboardInsets(
   root: HTMLElement = document.documentElement,
-  onChange?: (px: number) => void,
+  onChange?: (px: number, settled: boolean) => void,
+  settleMs: number = SETTLE_MS,
 ): () => void {
   const vv = window.visualViewport;
   if (!vv) return () => {};
 
   let last: number | null = null;
-  const update = (): void => {
-    const px = keyboardInset(window.innerHeight, vv.height, vv.offsetTop);
+  let settleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const read = (): number => keyboardInset(window.innerHeight, vv.height, vv.offsetTop);
+
+  // Written only on a real change. A custom property on the root invalidates
+  // style for the whole document, and this fires on every scroll.
+  const write = (px: number): void => {
     root.style.setProperty("--keyboard-height", `${px}px`);
-    if (px === last) return;
     last = px;
-    onChange?.(px);
   };
 
-  update();
+  const update = (): void => {
+    const px = read();
+    if (px === last) return;
+    write(px);
+    onChange?.(px, false);
+    if (settleTimer !== null) clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => {
+      settleTimer = null;
+      onChange?.(px, true);
+    }, settleMs);
+  };
+
+  // The first report is not a slide. Nothing is animating yet, so it arrives
+  // settled and no caller holds work for it — a page that opens with no
+  // keyboard must not defer its first fit by the settle time.
+  const initial = read();
+  write(initial);
+  onChange?.(initial, true);
+
   vv.addEventListener("resize", update);
   vv.addEventListener("scroll", update);
   return () => {
+    if (settleTimer !== null) clearTimeout(settleTimer);
     vv.removeEventListener("resize", update);
     vv.removeEventListener("scroll", update);
     root.style.removeProperty("--keyboard-height");
