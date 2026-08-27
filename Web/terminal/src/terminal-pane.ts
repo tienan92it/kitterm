@@ -23,7 +23,7 @@ import { dragMayCarryFiles, insertionText, quoteForShell, readDrop, uploadDroppe
 import { FilePicker } from "./file-picker";
 import { OutputFlowControl } from "./flow-control";
 import { showPreview, type PreviewHandle, type PreviewMeta } from "./file-preview";
-import { inputModeFor } from "./soft-keyboard";
+import { contentShiftPx, inputModeFor } from "./soft-keyboard";
 import { PathLinks, type PathStat } from "./path-links";
 import { resolveFontFamily } from "./fonts";
 import { isModifierKey, matchPaneCommand, type PaneCommand } from "./pane-keys";
@@ -205,6 +205,11 @@ export class TerminalPane {
   private fitHeld = false;
   /** A fit fell due while held, and is owed once the hold lifts. */
   private fitPending = false;
+  /** The box's height at the last fit, which is the height the canvas is drawn
+   * at. How far the box has moved since is how far the content has to move to
+   * keep its bottom line in place. Read at the fit, not when a hold begins: by
+   * then the box has already taken the first step of the slide. */
+  private fittedBoxHeight = 0;
 
   private readonly containerEl: HTMLElement;
   private filePicker: FilePicker | null = null;
@@ -767,9 +772,44 @@ export class TerminalPane {
   setFitHeld(held: boolean): void {
     if (this.fitHeld === held) return;
     this.fitHeld = held;
-    if (held || !this.fitPending) return;
+    if (held) return;
+    if (!this.fitPending) {
+      this.clearHoldShift();
+      return;
+    }
+    // The shift stays until the fit replaces it, so no frame is drawn with the
+    // old canvas back in the old place.
     this.fitPending = false;
     this.scheduleFit();
+  }
+
+  private boxHeight(): number {
+    return this.terminal.element?.clientHeight ?? 0;
+  }
+
+  /**
+   * The element the canvases live in.
+   *
+   * `.xterm` is fluid and follows the box on its own; `.xterm-screen` is sized
+   * in whole cells by the last fit and does not. That is the one that hangs
+   * below a shrinking box, and the one to move.
+   */
+  private screenEl(): HTMLElement | null {
+    return this.terminal.element?.querySelector<HTMLElement>(".xterm-screen") ?? null;
+  }
+
+  /** Keep the bottom line where it is while the fit is held — see
+   * `contentShiftPx`. A transform, so it costs no repaint. */
+  private holdShift(): void {
+    const el = this.screenEl();
+    if (!el) return;
+    const shift = contentShiftPx(this.boxHeight(), this.fittedBoxHeight);
+    el.style.transform = shift === 0 ? "" : `translateY(${shift}px)`;
+  }
+
+  private clearHoldShift(): void {
+    const el = this.screenEl();
+    if (el?.style.transform) el.style.transform = "";
   }
 
   /** Coalesce to one fit per frame: a splitter drag can fire the observer for
@@ -779,6 +819,7 @@ export class TerminalPane {
     if (this.disposed) return;
     if (this.fitHeld) {
       this.fitPending = true;
+      this.holdShift();
       return;
     }
     if (this.fitHandle !== null) return;
@@ -791,11 +832,14 @@ export class TerminalPane {
   private fitAndResize(): void {
     // Observers render at the controller's size; never fight it locally.
     if (this.disposed || this.exitedValue || this.readOnlyValue) return;
+    // The canvas is about to be the right size, so the compensation goes.
+    this.clearHoldShift();
     try {
       this.fitAddon.fit();
     } catch {
       return;
     }
+    this.fittedBoxHeight = this.boxHeight();
     const cols = this.terminal.cols;
     const rows = this.terminal.rows;
     if (cols > 0 && rows > 0 && this.session.ready) {

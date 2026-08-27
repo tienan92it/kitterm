@@ -83,3 +83,20 @@ export function onKeyboardInset(state: KeyboardState, open: boolean): KeyboardSt
   if (state.intent !== "shown" || !state.seenOpen) return state;
   return { intent: "hidden", seenOpen: false };
 }
+
+/**
+ * How far the drawn content has to move to keep its bottom line in place.
+ *
+ * The canvas is drawn at the size the last fit gave it and hangs from the top
+ * of its box. While the fit is held, the box moves and the canvas does not, so
+ * the prompt slides behind the keyboard on the way up and a gap opens under it
+ * on the way down — and every line jumps back at the moment the fit lands.
+ * Moving the canvas by the same amount the box moved holds it all still. The
+ * top rows slide out under the pane's clip, which is what should happen.
+ *
+ * Zero before anything has been fitted: there is no reference to move against.
+ */
+export function contentShiftPx(boxHeight: number, fittedBoxHeight: number): number {
+  if (fittedBoxHeight <= 0) return 0;
+  return boxHeight - fittedBoxHeight;
+}

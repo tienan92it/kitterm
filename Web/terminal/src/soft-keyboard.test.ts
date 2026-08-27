@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  contentShiftPx,
   inputModeFor,
   initialKeyboardState,
   onKeyboardInset,
@@ -92,5 +93,27 @@ describe("onKeyboardInset", () => {
     state = onKeyboardInset(state, true);
     state = onKeyboardInset(state, false); // iOS dismiss key
     expect(state.intent).toBe("hidden");
+  });
+});
+
+describe("contentShiftPx", () => {
+  it("moves nothing while the box is the size it was fitted to", () => {
+    expect(contentShiftPx(790, 790)).toBe(0);
+  });
+
+  // The keyboard pushes the box up. Without the shift the prompt goes behind
+  // the keyboard and stays there until the fit lands, then jumps back.
+  it("lifts the content by as much as the box lost", () => {
+    expect(contentShiftPx(437, 790)).toBe(-353);
+  });
+
+  // And the other way, or a gap opens under the last line while it closes.
+  it("lowers the content by as much as the box gained", () => {
+    expect(contentShiftPx(790, 437)).toBe(353);
+  });
+
+  it("stays still before anything has been fitted", () => {
+    expect(contentShiftPx(790, 0)).toBe(0);
+    expect(contentShiftPx(790, -1)).toBe(0);
   });
 });
