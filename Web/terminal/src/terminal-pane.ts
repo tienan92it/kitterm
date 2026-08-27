@@ -23,6 +23,7 @@ import { dragMayCarryFiles, insertionText, quoteForShell, readDrop, uploadDroppe
 import { FilePicker } from "./file-picker";
 import { OutputFlowControl } from "./flow-control";
 import { showPreview, type PreviewHandle, type PreviewMeta } from "./file-preview";
+import { inputModeFor } from "./soft-keyboard";
 import { PathLinks, type PathStat } from "./path-links";
 import { resolveFontFamily } from "./fonts";
 import { isModifierKey, matchPaneCommand, type PaneCommand } from "./pane-keys";
@@ -102,6 +103,9 @@ export interface PaneHost {
   paneFocusRequested(pane: TerminalPane): void;
   /** ⌘F inside this pane. */
   paneSearchRequested(pane: TerminalPane): void;
+  /** Whether the user currently wants the software keyboard on screen. Asked
+   * on every focus, because focusing is what would otherwise raise it. */
+  softKeyboardWanted(): boolean;
 }
 
 export type TerminalPaneOptions = {
@@ -339,7 +343,7 @@ export class TerminalPane {
         void this.attachFiles(payload.files as readonly File[]);
       } else if (payload.kind === "text") {
         // Text dragged in from elsewhere behaves like a paste.
-        this.terminal.focus();
+        this.focus();
         this.terminal.paste(payload.text);
       }
     });
@@ -366,12 +370,12 @@ export class TerminalPane {
       this.filePicker = new FilePicker({
         sessionId: () => this.sessionIdValue,
         insert: (paths) => {
-          this.terminal.focus();
+          this.focus();
           this.terminal.paste(paths.map(quoteForShell).join(" ") + " ");
         },
         flash: (message) => this.host.paneFlash(message),
         cursorAnchor: () => this.cursorAnchor(),
-        restoreFocus: () => this.terminal.focus(),
+        restoreFocus: () => this.focus(),
       });
       this.containerEl.append(this.filePicker.element);
     }
@@ -417,7 +421,7 @@ export class TerminalPane {
     if (uploaded.length > 0) {
       // Focus first: a drop can land on an unfocused pane, and WebKit will not
       // deliver the paste to a terminal that is not focused.
-      this.terminal.focus();
+      this.focus();
       this.terminal.paste(insertionText(uploaded));
     }
     if (errors.length > 0) {
@@ -464,17 +468,52 @@ export class TerminalPane {
   }
 
   focus(): void {
+    // Before focusing, never after: a phone decides whether to raise the
+    // keyboard at the moment the field takes focus, and does not look again
+    // while it stays focused.
+    this.applySoftKeyboard();
+    this.terminal.focus();
+  }
+
+  /**
+   * Put this pane's input field in the mode the user asked for.
+   *
+   * `inputmode="none"` is what lets a pane be focused and quiet: it still takes
+   * hardware keys and still receives what the extra-keys row sends, and it
+   * raises no software keyboard. Without it, focus and keyboard are the same
+   * thing, and every tap on the terminal undoes a deliberate hide.
+   */
+  applySoftKeyboard(): void {
+    const input = this.terminal.textarea;
+    if (!input) return;
+    input.inputMode = inputModeFor(this.host.softKeyboardWanted() ? "shown" : "hidden");
+  }
+
+  /**
+   * The toolbar key was pressed. Change the mode and make the field look again.
+   *
+   * The blur is not incidental. A phone reads `inputmode` when a field takes
+   * focus and ignores a later change, so the pair is the only way to move the
+   * keyboard while the pane keeps focus — and keeping focus is what makes the
+   * extra-keys row and a hardware keyboard go on working after a hide.
+   */
+  setSoftKeyboard(shown: boolean): void {
+    const input = this.terminal.textarea;
+    if (!input) return;
+    input.inputMode = inputModeFor(shown ? "shown" : "hidden");
+    input.blur();
     this.terminal.focus();
   }
 
   /** Deliver a key from the on-screen extra-keys row, respecting the app's
-   * cursor-keys mode. Keeps the terminal focused so the keyboard stays up. */
+   * cursor-keys mode. Keeps the terminal focused; whether that shows a keyboard
+   * is the toolbar key's business, not this one's. */
   sendExtraKey(spec: KeySpec): void {
     if (this.exitedValue || this.readOnlyValue) return;
     const bytes = keyBytes(spec, this.terminal.modes.applicationCursorKeysMode);
     if (bytes) this.session.sendInput(bytes);
-    // Keep the terminal focused so the soft keyboard stays up.
-    this.terminal.focus();
+    // Keep the terminal focused, so the row's next key still lands here.
+    this.focus();
   }
 
   blur(): void {
@@ -1398,7 +1437,7 @@ export class TerminalPane {
     this.preview?.close();
     this.preview = showPreview(this.containerEl, meta, body, () => {
       this.preview = null;
-      this.terminal.focus();
+      this.focus();
     });
   }
 

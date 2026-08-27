@@ -10,6 +10,9 @@
  *
  * We publish that height as the CSS variable `--keyboard-height`; the layout
  * lifts the extra-keys row and the terminal by it.
+ *
+ * This module measures and nothing more. What the user *wants* the keyboard to
+ * do is `soft-keyboard.ts`, which takes the height reported here as one input.
  */
 
 /**
@@ -25,23 +28,6 @@ export function keyboardInset(
   const covered = layoutHeight - (viewportHeight + offsetTop);
   // Below this, it's viewport chrome jitter, not a keyboard.
   return covered > 40 ? Math.round(covered) : 0;
-}
-
-/**
- * Whether the keyboard is up, read from the inset this module publishes.
- *
- * The single source of truth on purpose: the user can dismiss the keyboard
- * without touching kitterm — the browser's own control, a hardware key, a
- * swipe — and a boolean we kept ourselves would then be wrong. Anything that
- * shows keyboard state has to ask the viewport, not its own memory.
- *
- * An unset property means no tracker is running, which reads as closed. That is
- * the safe default: the toggle then offers to *show* the keyboard, and showing
- * one that is already up costs nothing.
- */
-export function isKeyboardOpen(root: HTMLElement = document.documentElement): boolean {
-  const raw = root.style.getPropertyValue("--keyboard-height");
-  return Number.parseFloat(raw) > 0;
 }
 
 /**

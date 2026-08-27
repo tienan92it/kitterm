@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { isKeyboardOpen, keyboardInset, trackKeyboardInsets } from "./keyboard-insets";
+import { keyboardInset, trackKeyboardInsets } from "./keyboard-insets";
 
 describe("keyboardInset", () => {
   it("is zero when the viewport fills the window", () => {
@@ -26,31 +26,6 @@ describe("keyboardInset", () => {
 
   it("rounds fractional heights", () => {
     expect(keyboardInset(800, 500.4, 0)).toBe(300);
-  });
-});
-
-describe("isKeyboardOpen", () => {
-  const rootWith = (value: string | null): HTMLElement =>
-    ({
-      style: {
-        getPropertyValue: (name: string) =>
-          name === "--keyboard-height" && value !== null ? value : "",
-      },
-    }) as unknown as HTMLElement;
-
-  it("is open for a tracked inset above zero", () => {
-    expect(isKeyboardOpen(rootWith("336px"))).toBe(true);
-  });
-
-  it("is closed at zero", () => {
-    expect(isKeyboardOpen(rootWith("0px"))).toBe(false);
-  });
-
-  // No tracker running reads as closed, so the toggle offers to *show* the
-  // keyboard. Showing one that is already up costs nothing; hiding one that is
-  // already down would strand the user with no keyboard and no obvious way back.
-  it("is closed when nothing has published an inset", () => {
-    expect(isKeyboardOpen(rootWith(null))).toBe(false);
   });
 });
 
@@ -111,10 +86,11 @@ describe("trackKeyboardInsets change notification", () => {
     const seen: number[] = [];
     trackKeyboardInsets(root, (px) => seen.push(px));
 
-    // The user dismissed it somewhere else; the viewport grows back.
+    // The user dismissed it somewhere else; the viewport grows back. The zero
+    // is what tells `soft-keyboard.ts` to adopt that dismissal.
     (window.visualViewport as { height: number }).height = 800;
     listeners.get("resize")?.();
     expect(seen).toEqual([336, 0]);
-    expect(isKeyboardOpen(root)).toBe(false);
+    expect(root.style.getPropertyValue("--keyboard-height")).toBe("0px");
   });
 });

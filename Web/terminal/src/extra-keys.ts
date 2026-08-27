@@ -8,7 +8,6 @@
  * keyboard stays up.
  */
 
-import { isKeyboardOpen } from "./keyboard-insets";
 import { KEYBOARD_SLASH_PATH, buildIcon, type IconName } from "./icons";
 
 export type KeySpec = { key: string; ctrl: boolean; alt: boolean };
@@ -56,20 +55,6 @@ export const KEY_REPEAT_INTERVAL_MS = 55;
 export function repeatsOnHold(key: ExtraKey): boolean {
   if (key.kind !== "key") return false;
   return ["Backspace", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(key.key);
-}
-
-/**
- * What a tap on the keyboard toggle should do, given the keyboard's real state.
- *
- * Pure, because `preventDefault` is the detail that decides whether this button
- * works at all. **Hiding** prevents the default, like every other key here, so
- * focus never leaves the terminal and the blur is ours to make. **Showing must
- * not**: iOS Safari opens the keyboard only for a `focus()` made inside a live
- * user gesture, and preventing the default spends that gesture — the same trap
- * that forced the attach control to be a `<label>` rather than a button.
- */
-export function keyboardTapPlan(open: boolean): { open: boolean; preventDefault: boolean } {
-  return { open: !open, preventDefault: open };
 }
 
 /**
@@ -216,9 +201,18 @@ export class ExtraKeysBar {
   readonly element: HTMLElement;
   private readonly mods = new StickyModifiers();
   private readonly modButtons = new Map<"ctrl" | "alt", HTMLButtonElement>();
-  /** The keyboard toggle, kept so the icon can follow the tracked inset.
-   * Only the chevron moves, so only that path is held. */
+  /** The keyboard toggle, kept so its stroke can follow the keyboard.
+   * Only that path moves, so only that path is held. */
   private keyboardButton: { button: HTMLButtonElement; slash: SVGPathElement } | null = null;
+  /**
+   * What the keyboard is doing, as told by the shell.
+   *
+   * Not measured. The viewport reports the keyboard's *height*, which lags a
+   * tap by the length of the slide animation — deriving the button's next
+   * action from it is what made this button flicker: a tap to hide was read
+   * back as "still open", so the follow-up click reopened it.
+   */
+  private keyboardShown = true;
 
   constructor(
     private readonly onKey: (spec: KeySpec) => void,
@@ -389,7 +383,7 @@ export class ExtraKeysBar {
       btn.setAttribute("aria-label", keyboardToggleFace(false).ariaLabel);
       this.keyboardButton = { button: btn, slash };
       this.wireKeyboardToggle(btn);
-      this.syncKeyboardState();
+      this.renderKeyboardLabel(this.keyboardShown);
       return btn;
     }
 
@@ -414,7 +408,7 @@ export class ExtraKeysBar {
    * opposite treatment.
    *
    * **Hiding** behaves like every other key: `preventDefault` on touchstart so
-   * focus never leaves the terminal, then blur it deliberately.
+   * focus never leaves the terminal.
    *
    * **Showing** must *not* `preventDefault`. iOS Safari opens the keyboard only
    * for a `focus()` made inside a real user gesture, and preventing the default
@@ -432,18 +426,18 @@ export class ExtraKeysBar {
     let lastTouchAt = -Infinity;
     let showOnClick = false;
 
-    const apply = (open: boolean): void => {
-      this.onToggleKeyboard?.(open);
-      this.renderKeyboardLabel(open);
+    const apply = (shown: boolean): void => {
+      this.keyboardShown = shown;
+      this.onToggleKeyboard?.(shown);
+      this.renderKeyboardLabel(shown);
     };
 
     btn.addEventListener(
       "touchstart",
       (event) => {
         lastTouchAt = performance.now();
-        const plan = keyboardTapPlan(isKeyboardOpen());
-        if (plan.preventDefault) {
-          // Hiding: hold focus where it is, and make the blur ourselves.
+        if (this.keyboardShown) {
+          // Hiding: hold focus where it is, and make the change ourselves.
           event.preventDefault();
           showOnClick = false;
           apply(false);
@@ -464,14 +458,15 @@ export class ExtraKeysBar {
       showOnClick = false;
       if (!ghostClickShouldAct(performance.now() - lastTouchAt, pending)) return;
       // A deferred show, or a real mouse click with no touch before it.
-      apply(pending ? true : keyboardTapPlan(isKeyboardOpen()).open);
+      apply(pending ? true : !this.keyboardShown);
     });
   }
 
-  /** Adopt the keyboard's actual state. Called on every tracked inset change,
-   * so dismissing the keyboard by any other means still corrects the label. */
-  syncKeyboardState(): void {
-    this.renderKeyboardLabel(isKeyboardOpen());
+  /** The shell says the keyboard moved — by this button, or by the dismiss key
+   * iOS puts above the keyboard and gives no way to refuse. */
+  setKeyboardShown(shown: boolean): void {
+    this.keyboardShown = shown;
+    this.renderKeyboardLabel(shown);
   }
 
   private renderKeyboardLabel(open: boolean): void {
@@ -479,9 +474,7 @@ export class ExtraKeysBar {
     if (!entry) return;
     const face = keyboardToggleFace(open);
     const display = face.struck ? "" : "none";
-    // Only when it actually changes. The keyboard animates, so the tracker
-    // reports a dozen distinct heights per open, and rewriting on each one
-    // churned the DOM through the whole gesture for no reason.
+    // Only when it actually changes, so a repeated call costs nothing.
     if (entry.slash.style.display === display) return;
     entry.slash.style.display = display;
     entry.button.setAttribute("aria-label", face.ariaLabel);

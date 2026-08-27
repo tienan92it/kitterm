@@ -5,7 +5,6 @@ import {
   type KeySpec,
   keyBytes,
   ghostClickShouldAct,
-  keyboardTapPlan,
   keyboardToggleFace,
   repeatsOnHold,
   DEFAULT_LAYOUT,
@@ -138,22 +137,6 @@ describe("the keyboard toggle", () => {
     expect(repeatsOnHold(key)).toBe(false);
   });
 
-  // The constraint the issue says decides whether this works at all: iOS Safari
-  // opens the keyboard only for a focus() inside a live user gesture, and
-  // preventDefault spends that gesture.
-  it("does not preventDefault when it is about to show the keyboard", () => {
-    expect(keyboardTapPlan(false)).toEqual({ open: true, preventDefault: false });
-  });
-
-  it("does preventDefault when hiding, so focus stays in the terminal", () => {
-    expect(keyboardTapPlan(true)).toEqual({ open: false, preventDefault: true });
-  });
-
-  it("always asks for the opposite of the keyboard's real state", () => {
-    expect(keyboardTapPlan(true).open).toBe(false);
-    expect(keyboardTapPlan(false).open).toBe(true);
-  });
-
   it("announces what a tap will do", () => {
     expect(keyboardToggleFace(true).ariaLabel).toBe("Hide the keyboard");
     expect(keyboardToggleFace(false).ariaLabel).toBe("Show the keyboard");
@@ -168,10 +151,10 @@ describe("the keyboard toggle", () => {
   });
 });
 
-// The bug this fixes, found on a phone: tapping to hide blurred on touchstart,
-// and the ghost click landed while the keyboard was still sliding shut. The
-// inset still read open, so the click concluded "show" and reopened what the
-// touch had just closed. Every hide undid itself, which is what the flicker was.
+// The bug this fixes, found on a phone: tapping to hide acted on touchstart,
+// and the ghost click that follows acted again — so every hide undid itself,
+// which is what the flicker was. The toggle now holds its own state rather than
+// re-reading the viewport, but the ghost click still has to be refused.
 describe("the ghost click after a toggle tap", () => {
   it("does nothing while the keyboard is still closing", () => {
     expect(ghostClickShouldAct(50, false)).toBe(false);
