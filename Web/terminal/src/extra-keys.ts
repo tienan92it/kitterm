@@ -8,7 +8,7 @@
  * keyboard stays up.
  */
 
-import { KEYBOARD_SLASH_PATH, buildIcon, type IconName } from "./icons";
+import { buildIcon, type IconName } from "./icons";
 
 export type KeySpec = { key: string; ctrl: boolean; alt: boolean };
 
@@ -27,21 +27,7 @@ type ActionKey = {
   icon?: IconName;
 };
 type ModifierKey = { kind: "mod"; label: string; mod: "ctrl" | "alt" };
-/**
- * Puts the soft keyboard away, and brings it back.
- *
- * The odd one out: every other key here exists to keep the keyboard up, and
- * this one exists to drop it, because reading a build log or a diff on a phone
- * needs the screen back.
- *
- * Drawn rather than lettered. The obvious glyph, U+2328, renders as a detailed
- * little keyboard that carries far more line work than a 20px button can show,
- * and it looks different on every platform. A path we own stays legible at this
- * size, matches the stroke weight of the rest of the UI, and takes
- * `currentColor` with the theme.
- */
-type KeyboardKey = { kind: "keyboard" };
-export type ExtraKey = ActionKey | ModifierKey | KeyboardKey;
+export type ExtraKey = ActionKey | ModifierKey;
 
 /** One row of the keys a soft keyboard lacks and a terminal needs most: escape
  * and tab, sticky Ctrl for the long tail (Ctrl-D/Z/A/E…), a one-tap Ctrl-C
@@ -57,20 +43,6 @@ export function repeatsOnHold(key: ExtraKey): boolean {
   return ["Backspace", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(key.key);
 }
 
-/**
- * How the toggle presents itself for a given keyboard state.
- *
- * Struck through while the keyboard is up, because a tap puts it away; plain
- * while it is down, because a tap brings it back. The same convention as every
- * other "-off" icon, so it needs no learning — and the keyboard body never
- * moves between the two, only the stroke over it.
- */
-export function keyboardToggleFace(open: boolean): { ariaLabel: string; struck: boolean } {
-  return open
-    ? { ariaLabel: "Hide the keyboard", struck: true }
-    : { ariaLabel: "Show the keyboard", struck: false };
-}
-
 export const DEFAULT_LAYOUT: ExtraKey[][] = [
   [
     { kind: "key", label: "Esc", key: "Escape" },
@@ -81,7 +53,6 @@ export const DEFAULT_LAYOUT: ExtraKey[][] = [
     { kind: "key", label: "Up", key: "ArrowUp", icon: "arrow-up" },
     { kind: "key", label: "Down", key: "ArrowDown", icon: "arrow-down" },
     { kind: "key", label: "Right", key: "ArrowRight", icon: "arrow-right" },
-    { kind: "keyboard" },
   ],
 ];
 
@@ -179,31 +150,12 @@ export class ExtraKeysBar {
   readonly element: HTMLElement;
   private readonly mods = new StickyModifiers();
   private readonly modButtons = new Map<"ctrl" | "alt", HTMLButtonElement>();
-  /** The keyboard toggle, kept so its stroke can follow the keyboard.
-   * Only that path moves, so only that path is held. */
-  private keyboardButton: { button: HTMLButtonElement; slash: SVGPathElement } | null = null;
-  /**
-   * What the keyboard is doing, as told by the shell.
-   *
-   * Not measured. The viewport reports the keyboard's *height*, which lags a
-   * tap by the length of the slide animation — deriving the button's next
-   * action from it is what made this button flicker: a tap to hide was read
-   * back as "still open", so the follow-up click reopened it.
-   */
-  private keyboardShown = true;
-
   constructor(
     private readonly onKey: (spec: KeySpec) => void,
     layout: ExtraKey[][] = DEFAULT_LAYOUT,
     private readonly onAttach?: (files: readonly File[]) => void,
     private readonly onBrowse?: () => void,
     private readonly onDismissPicker?: () => void,
-    /** Asked to open the keyboard (`true`) or put it away (`false`). The bar
-     * decides the direction; the caller owns the terminal that has focus. */
-    private readonly onToggleKeyboard?: (open: boolean) => void,
-    /** The press has begun. The caller lets go of focus and changes nothing
-     * else — see `wireKeyboardToggle` for why this is a separate event. */
-    private readonly onArmKeyboard?: () => void,
   ) {
     this.element = document.createElement("div");
     this.element.className = "extra-keys";
@@ -279,32 +231,6 @@ export class ExtraKeysBar {
     });
   }
 
-  /**
-   * A keyboard: a rounded body, two rows of key marks with a space bar, and a
-   * chevron underneath for the direction.
-   *
-   * The two rows are what make it read as a keyboard at all. A single bar is
-   * simpler still, but it reads as a monitor — the marks are the detail that
-   * earns its place. Everything else is left out, because at 20px more line
-   * work only turns to mush, which was the complaint about the U+2328 glyph
-   * this replaces.
-   */
-  /**
-   * The keyboard toggle: the set's keyboard, with a slash laid over it that is
-   * shown or hidden as the keyboard moves. Built here rather than taken whole
-   * from `ICONS` because that one path has to stay mutable.
-   */
-  private buildIcon(): { svg: SVGSVGElement; slash: SVGPathElement } {
-    const svg = buildIcon("keyboard");
-    const slash = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    slash.setAttribute("d", KEYBOARD_SLASH_PATH);
-    // Hidden to start with, so the first sync always has something to change
-    // and the accessible name is written with it.
-    slash.style.display = "none";
-    svg.append(slash);
-    return { svg, slash };
-  }
-
   private browseButton(): HTMLButtonElement {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -357,17 +283,6 @@ export class ExtraKeysBar {
     btn.type = "button";
     btn.className = "extra-key";
 
-    if (key.kind === "keyboard") {
-      btn.classList.add("extra-key-keyboard");
-      const { svg, slash } = this.buildIcon();
-      btn.append(svg);
-      btn.setAttribute("aria-label", keyboardToggleFace(false).ariaLabel);
-      this.keyboardButton = { button: btn, slash };
-      this.wireKeyboardToggle(btn);
-      this.renderKeyboardLabel(this.keyboardShown);
-      return btn;
-    }
-
     if (key.kind === "key" && key.icon) {
       btn.append(buildIcon(key.icon));
       btn.setAttribute("aria-label", key.label);
@@ -382,69 +297,6 @@ export class ExtraKeysBar {
 
     this.wireTap(btn, act, repeatsOnHold(key));
     return btn;
-  }
-
-  /**
-   * The keyboard toggle, wired across two events rather than one.
-   *
-   * A phone raises the keyboard only for a `focus()` that moves a field from
-   * unfocused to focused, made inside a live user gesture. It reads the field's
-   * `inputmode` at that moment and never looks again while the field stays
-   * focused. The terminal's field is almost always already focused, so a single
-   * handler cannot do it: a blur and a focus in the same task are not that
-   * move, and the keyboard stays down. On device that looked like a dead key —
-   * tapping it did nothing until the terminal was touched again.
-   *
-   * So the press is split. **`touchstart` lets go of focus** and changes
-   * nothing else, and **`click` sets the mode and takes focus back**, one event
-   * later, still inside the gesture. Both directions run the same path; only
-   * the mode differs, and `preventDefault` is never called — the hide direction
-   * used to need it to protect a focus it no longer holds.
-   *
-   * An abandoned press — a finger that slides off, a scroll — leaves a blurred
-   * terminal and nothing else, which the next tap puts right by itself.
-   */
-  private wireKeyboardToggle(btn: HTMLButtonElement): void {
-    btn.tabIndex = -1;
-    let armed = false;
-
-    btn.addEventListener(
-      "touchstart",
-      () => {
-        armed = true;
-        this.onArmKeyboard?.();
-      },
-      { passive: true },
-    );
-
-    btn.addEventListener("click", () => {
-      // A mouse, with no touch before it: the release has to happen here. There
-      // is no soft keyboard to raise on such a device, so the same task is fine.
-      if (!armed) this.onArmKeyboard?.();
-      armed = false;
-      const shown = !this.keyboardShown;
-      this.keyboardShown = shown;
-      this.onToggleKeyboard?.(shown);
-      this.renderKeyboardLabel(shown);
-    });
-  }
-
-  /** The shell says the keyboard moved — by this button, or by the dismiss key
-   * iOS puts above the keyboard and gives no way to refuse. */
-  setKeyboardShown(shown: boolean): void {
-    this.keyboardShown = shown;
-    this.renderKeyboardLabel(shown);
-  }
-
-  private renderKeyboardLabel(open: boolean): void {
-    const entry = this.keyboardButton;
-    if (!entry) return;
-    const face = keyboardToggleFace(open);
-    const display = face.struck ? "" : "none";
-    // Only when it actually changes, so a repeated call costs nothing.
-    if (entry.slash.style.display === display) return;
-    entry.slash.style.display = display;
-    entry.button.setAttribute("aria-label", face.ariaLabel);
   }
 
   private tapModifier(mod: "ctrl" | "alt"): void {

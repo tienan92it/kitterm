@@ -4,7 +4,6 @@ import {
   StickyModifiers,
   type KeySpec,
   keyBytes,
-  keyboardToggleFace,
   repeatsOnHold,
   DEFAULT_LAYOUT,
 } from "./extra-keys";
@@ -115,37 +114,12 @@ describe("backspace", () => {
   });
 });
 
-// The row exists to keep the keyboard up; this one key exists to drop it, so
-// reading a build log or a diff on a phone gets the screen back.
+// The keyboard key is not in this row. It floats at the bottom centre, on the
+// gear's line — see `keyboard-toggle.ts`. The other keys here are things a
+// terminal needs *while* you type; that one decides whether you are typing at
+// all, and is reached far more often than any of them.
 describe("the keyboard toggle", () => {
-  const key = DEFAULT_LAYOUT.flat().find((k) => k.kind === "keyboard");
-
-  it("is in the default row", () => {
-    expect(key).toBeDefined();
-  });
-
-  // Drawn, not lettered: U+2328 renders as a detailed little keyboard that
-  // carries more line work than a 20px button can show, and differs per
-  // platform. The key holds no glyph at all now.
-  it("carries no glyph, because the icon is drawn", () => {
-    expect(key).toEqual({ kind: "keyboard" });
-  });
-
-  it("never repeats on hold — a toggle held down must not flap", () => {
-    if (!key) throw new Error("unreachable");
-    expect(repeatsOnHold(key)).toBe(false);
-  });
-
-  it("announces what a tap will do", () => {
-    expect(keyboardToggleFace(true).ariaLabel).toBe("Hide the keyboard");
-    expect(keyboardToggleFace(false).ariaLabel).toBe("Show the keyboard");
-  });
-
-  // The "-off" convention, as in mic-off and eye-off: struck through while
-  // the keyboard is up, because a tap puts it away. Only the stroke changes,
-  // so the keyboard body never moves between the two states.
-  it("strikes the keyboard through only while it is up", () => {
-    expect(keyboardToggleFace(true).struck).toBe(true);
-    expect(keyboardToggleFace(false).struck).toBe(false);
+  it("is not one of the row's keys", () => {
+    expect(DEFAULT_LAYOUT.flat().some((k) => k.label === undefined)).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
 import { writeClipboard } from "./clipboard";
 import { ExtraKeysBar, isTouchPrimary } from "./extra-keys";
+import { KeyboardToggle } from "./keyboard-toggle";
 import {
   initialKeyboardState,
   onKeyboardInset,
@@ -107,9 +108,9 @@ export class TerminalApp implements PaneHost {
   private paneCounter = 0;
   private disposed = false;
   private disposeKeyboardInsets: (() => void) | null = null;
-  /** The on-screen key row, on touch devices. Held so the keyboard toggle can
-   * be told what the keyboard is doing. */
-  private extraKeys: ExtraKeysBar | null = null;
+  /** The floating keyboard key, on touch devices. Held so it can be told when
+   * the keyboard moves without it — iOS has its own dismiss key. */
+  private keyboardToggle: KeyboardToggle | null = null;
   /** What the user last asked the keyboard to do — see `soft-keyboard.ts`. */
   private keyboard: KeyboardState = initialKeyboardState(isTouchPrimary());
   private readonly wakeLock = createWakeLock();
@@ -463,16 +464,21 @@ export class TerminalApp implements PaneHost {
       (files) => void this.focusedPane?.attachFiles(files),
       () => this.focusedPane?.toggleFilePicker(),
       () => this.focusedPane?.focus(),
-      (shown) => this.setSoftKeyboard(shown),
-      () => this.focusedPane?.releaseFocusForKeyboard(),
     );
     document.body.append(bar.element);
     document.body.classList.add("has-extra-keys");
-    this.extraKeys = bar;
-    // The row is built before it is told anything, and a phone starts with the
-    // keyboard away — without this the key would offer to hide a keyboard that
-    // is not there.
-    bar.setKeyboardShown(this.softKeyboardWanted());
+
+    // The keyboard key floats on its own, at the bottom centre on the gear's
+    // line. It is not one of the row's keys: those are things a terminal needs
+    // *while* you type, and this one decides whether you are typing at all, so
+    // it is reached far more often than any of them.
+    const toggle = new KeyboardToggle({
+      shown: this.softKeyboardWanted(),
+      onArm: () => this.focusedPane?.releaseFocusForKeyboard(),
+      onToggle: (shown) => this.setSoftKeyboard(shown),
+    });
+    this.keyboardToggle = toggle;
+    document.body.append(toggle.element);
     // Lift the row and terminal above the software keyboard, and follow a
     // dismissal made outside kitterm: iOS builds its own dismiss key above the
     // keyboard and gives no way to refuse it, so pressing it has to count.
@@ -484,7 +490,7 @@ export class TerminalApp implements PaneHost {
       // the keyboard went away — so the mode is all that needs correcting,
       // before the next tap refocuses.
       this.focusedPane?.applySoftKeyboard();
-      bar.setKeyboardShown(next.intent === "shown");
+      toggle.setShown(next.intent === "shown");
     });
   }
 
@@ -501,7 +507,7 @@ export class TerminalApp implements PaneHost {
    */
   private setSoftKeyboard(shown: boolean): void {
     this.keyboard = onKeyboardToggle(shown);
-    this.extraKeys?.setKeyboardShown(shown);
+    this.keyboardToggle?.setShown(shown);
     this.focusedPane?.setSoftKeyboard(shown);
   }
 

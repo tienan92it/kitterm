@@ -70,6 +70,59 @@ body,
   }
 }
 
+/* The keyboard key: the gear's line, the screen's centre.
+   Centred between the safe insets rather than on the raw viewport, so a notch
+   in landscape does not push it off true. */
+.keyboard-toggle-host {
+  position: absolute;
+  bottom: calc(12px + var(--safe-bottom));
+  left: calc(50% + (var(--safe-left) - var(--safe-right)) / 2);
+  transform: translateX(-50%);
+  z-index: 4;
+}
+
+/* Same treatment as the gear, so the two read as one family of floating
+   chrome: a veil over the output, a border, and 40px of tap target. It is more
+   present than the gear because it is pressed far more often, but it still sits
+   over terminal text and must not shout. */
+.keyboard-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-round);
+  background: var(--ui-veil);
+  color: var(--ui-text);
+  cursor: pointer;
+  opacity: 0.75;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  touch-action: manipulation;
+  transition: opacity 0.12s ease, background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.keyboard-toggle svg {
+  display: block;
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+
+.keyboard-toggle:active {
+  opacity: 1;
+  background: var(--ui-active);
+  border-color: var(--ui-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .keyboard-toggle {
+    transition: none;
+  }
+}
+
 .settings-backdrop {
   position: fixed;
   inset: 0;
@@ -974,6 +1027,10 @@ body.pane-dragging .pane-inner {
 :root {
   --extra-keys-height: 52px;
   --keyboard-height: 0px;
+  /* The height of the chrome that floats over the output on its own line: the
+     gear, and the keyboard key beside it. Named so the status line can clear
+     both by referring to them rather than to a number. */
+  --floating-chrome: 40px;
   /* The display cut-outs the page must keep clear: the status bar and camera
      housing, and the home indicator. Named rather than used inline so every
      edge reads the same value, and so a test can override them — `env()` comes
@@ -1009,11 +1066,18 @@ body.has-extra-keys {
 body.has-extra-keys #terminal {
   bottom: var(--bottom-chrome);
 }
-/* The gear and the status line are absolutely positioned inside #app, so they
-   do not inherit the terminal's inset and were being covered outright. */
+/* The gear, the keyboard key and the status line are absolutely positioned
+   inside #app, so they do not inherit the terminal's inset and were being
+   covered outright. */
 body.has-extra-keys .settings-host,
-body.has-extra-keys #status {
+body.has-extra-keys .keyboard-toggle-host {
   bottom: calc(var(--bottom-chrome) + 12px);
+}
+/* A line above them. The keyboard key sits at the centre of that line and the
+   gear at its right, so a status of any length ran underneath one or the other
+   and lost its middle or its end. */
+body.has-extra-keys #status {
+  bottom: calc(var(--bottom-chrome) + 12px + var(--floating-chrome) + 8px);
 }
 .extra-keys {
   /* Chrome floats over the terminal. Containment keeps a restyle or reflow
