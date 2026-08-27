@@ -58,28 +58,6 @@ export function repeatsOnHold(key: ExtraKey): boolean {
 }
 
 /**
- * Whether a click that follows our own touch should act.
- *
- * It must not, and getting this wrong is what made the button flicker. Tapping
- * to hide blurs on touchstart, the keyboard then takes a moment to slide shut,
- * and the ghost click lands while the inset still reads *open* — so anything
- * that re-derives intent from the inset at that instant concludes "show" and
- * reopens exactly what the touch just closed.
- *
- * `showPending` is the one case a ghost click must act on: the show direction
- * defers to the click, because focusing during touchstart is undone by the
- * browser's own tap handling.
- */
-export function ghostClickShouldAct(
-  msSinceTouch: number,
-  showPending: boolean,
-  ghostWindowMs = 700,
-): boolean {
-  if (showPending) return true;
-  return msSinceTouch >= ghostWindowMs;
-}
-
-/**
  * How the toggle presents itself for a given keyboard state.
  *
  * Struck through while the keyboard is up, because a tap puts it away; plain
@@ -223,6 +201,9 @@ export class ExtraKeysBar {
     /** Asked to open the keyboard (`true`) or put it away (`false`). The bar
      * decides the direction; the caller owns the terminal that has focus. */
     private readonly onToggleKeyboard?: (open: boolean) => void,
+    /** The press has begun. The caller lets go of focus and changes nothing
+     * else — see `wireKeyboardToggle` for why this is a separate event. */
+    private readonly onArmKeyboard?: () => void,
   ) {
     this.element = document.createElement("div");
     this.element.className = "extra-keys";
@@ -404,61 +385,47 @@ export class ExtraKeysBar {
   }
 
   /**
-   * The keyboard toggle, wired by hand because the two directions need
-   * opposite treatment.
+   * The keyboard toggle, wired across two events rather than one.
    *
-   * **Hiding** behaves like every other key: `preventDefault` on touchstart so
-   * focus never leaves the terminal.
+   * A phone raises the keyboard only for a `focus()` that moves a field from
+   * unfocused to focused, made inside a live user gesture. It reads the field's
+   * `inputmode` at that moment and never looks again while the field stays
+   * focused. The terminal's field is almost always already focused, so a single
+   * handler cannot do it: a blur and a focus in the same task are not that
+   * move, and the keyboard stays down. On device that looked like a dead key —
+   * tapping it did nothing until the terminal was touched again.
    *
-   * **Showing** must *not* `preventDefault`. iOS Safari opens the keyboard only
-   * for a `focus()` made inside a real user gesture, and preventing the default
-   * spends that gesture — the same trap the attach control documents, which is
-   * why that one is a `<label>` and not a button. So the show direction lets
-   * the event run and focuses during it.
+   * So the press is split. **`touchstart` lets go of focus** and changes
+   * nothing else, and **`click` sets the mode and takes focus back**, one event
+   * later, still inside the gesture. Both directions run the same path; only
+   * the mode differs, and `preventDefault` is never called — the hide direction
+   * used to need it to protect a focus it no longer holds.
    *
-   * Because the show path leaves the default alone, the browser may hand focus
-   * to this button afterwards and drop the keyboard again. The click that
-   * follows re-focuses the terminal, which repairs that and is harmless when
-   * nothing stole focus.
+   * An abandoned press — a finger that slides off, a scroll — leaves a blurred
+   * terminal and nothing else, which the next tap puts right by itself.
    */
   private wireKeyboardToggle(btn: HTMLButtonElement): void {
     btn.tabIndex = -1;
-    let lastTouchAt = -Infinity;
-    let showOnClick = false;
-
-    const apply = (shown: boolean): void => {
-      this.keyboardShown = shown;
-      this.onToggleKeyboard?.(shown);
-      this.renderKeyboardLabel(shown);
-    };
+    let armed = false;
 
     btn.addEventListener(
       "touchstart",
-      (event) => {
-        lastTouchAt = performance.now();
-        if (this.keyboardShown) {
-          // Hiding: hold focus where it is, and make the change ourselves.
-          event.preventDefault();
-          showOnClick = false;
-          apply(false);
-          return;
-        }
-        // Showing: leave the default alone *and do nothing yet*. Focusing here
-        // does open the keyboard, and then the browser's own tap handling runs
-        // and takes focus straight back off the textarea — which is the
-        // flicker. The click below is the first moment nothing will undo it.
-        showOnClick = true;
+      () => {
+        armed = true;
+        this.onArmKeyboard?.();
       },
-      // Not passive: the hide direction calls preventDefault.
-      { passive: false },
+      { passive: true },
     );
 
     btn.addEventListener("click", () => {
-      const pending = showOnClick;
-      showOnClick = false;
-      if (!ghostClickShouldAct(performance.now() - lastTouchAt, pending)) return;
-      // A deferred show, or a real mouse click with no touch before it.
-      apply(pending ? true : !this.keyboardShown);
+      // A mouse, with no touch before it: the release has to happen here. There
+      // is no soft keyboard to raise on such a device, so the same task is fine.
+      if (!armed) this.onArmKeyboard?.();
+      armed = false;
+      const shown = !this.keyboardShown;
+      this.keyboardShown = shown;
+      this.onToggleKeyboard?.(shown);
+      this.renderKeyboardLabel(shown);
     });
   }
 

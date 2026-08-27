@@ -482,6 +482,9 @@ export class TerminalPane {
    * hardware keys and still receives what the extra-keys row sends, and it
    * raises no software keyboard. Without it, focus and keyboard are the same
    * thing, and every tap on the terminal undoes a deliberate hide.
+   *
+   * Applied on every focus, because the focus is the only moment a phone reads
+   * it.
    */
   applySoftKeyboard(): void {
     const input = this.terminal.textarea;
@@ -490,19 +493,31 @@ export class TerminalPane {
   }
 
   /**
-   * The toolbar key was pressed. Change the mode and make the field look again.
+   * The second half of a toolbar-key press: set the mode, then take focus.
    *
-   * The blur is not incidental. A phone reads `inputmode` when a field takes
-   * focus and ignores a later change, so the pair is the only way to move the
-   * keyboard while the pane keeps focus — and keeping focus is what makes the
-   * extra-keys row and a hardware keyboard go on working after a hide.
+   * Order matters and so does the caller's. A phone reads `inputmode` when a
+   * field takes focus and never looks again while it stays focused, so raising
+   * the keyboard needs a real unfocused-to-focused move inside the gesture —
+   * which is why `releaseFocusForKeyboard` runs first, one event earlier. A
+   * blur and a focus in the same task do not count as that move: the keyboard
+   * simply does not come up, which is what happened on device.
    */
   setSoftKeyboard(shown: boolean): void {
     const input = this.terminal.textarea;
     if (!input) return;
     input.inputMode = inputModeFor(shown ? "shown" : "hidden");
-    input.blur();
     this.terminal.focus();
+  }
+
+  /**
+   * The first half: let go of focus, so the focus that follows is a move.
+   *
+   * Nothing else changes here. If the press is abandoned — a finger that slides
+   * off the key, a scroll — the mode is untouched and the next tap on the
+   * terminal simply takes focus back the way it already would.
+   */
+  releaseFocusForKeyboard(): void {
+    this.terminal.blur();
   }
 
   /** Deliver a key from the on-screen extra-keys row, respecting the app's

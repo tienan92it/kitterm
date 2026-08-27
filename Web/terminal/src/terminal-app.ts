@@ -464,6 +464,7 @@ export class TerminalApp implements PaneHost {
       () => this.focusedPane?.toggleFilePicker(),
       () => this.focusedPane?.focus(),
       (shown) => this.setSoftKeyboard(shown),
+      () => this.focusedPane?.releaseFocusForKeyboard(),
     );
     document.body.append(bar.element);
     document.body.classList.add("has-extra-keys");
@@ -491,8 +492,12 @@ export class TerminalApp implements PaneHost {
    * The toolbar key, and the only thing that raises or lowers the keyboard.
    *
    * Focus used to be the switch, which meant every tap on the terminal
-   * reversed a deliberate hide. The pane now stays focused either way and
-   * `inputmode` carries the decision.
+   * reversed a deliberate hide. `inputmode` carries the decision now, so a tap
+   * takes focus back without bringing the keyboard with it.
+   *
+   * This runs on the key's `click`, one event after its `touchstart` released
+   * focus. Both halves are needed and neither works alone — see
+   * `wireKeyboardToggle`.
    */
   private setSoftKeyboard(shown: boolean): void {
     this.keyboard = onKeyboardToggle(shown);
