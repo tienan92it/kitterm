@@ -62,6 +62,8 @@ enum KittermMain {
                 print(AgentHooks.settingsJSON(port: readPort() ?? KittermConstants.defaultPort))
             case "token":
                 try tokenCommand(args.dropFirst())
+            case "identity":
+                try SigningIdentity.command(args.dropFirst())
             case "version", "--version", "-v":
                 print(installedVersion() ?? "dev")
             case "serve":
@@ -165,7 +167,13 @@ enum KittermMain {
               kitterm integrate [zsh|bash]
               kitterm hooks           # Claude Code hook config for approvals  # print the OSC 133/633 snippet
               kitterm token create <name> [--watch] | list | revoke <name>
+              kitterm identity [status|setup|sign]
               kitterm version
+
+            identity gives the binaries a stable local signing identity, so
+            macOS file-access grants (Full Disk Access included) survive
+            upgrades instead of dying with each release's ad-hoc hash. setup
+            runs once; every later install re-signs automatically.
 
             start runs the daemon under launchd for this login session, so panes
             are attributed to kitterm rather than to whichever terminal launched

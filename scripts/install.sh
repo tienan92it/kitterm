@@ -55,6 +55,32 @@ tar -xzf "$TMP/$TARBALL" -C "$TMP"
 # otherwise the first launch is blocked with "cannot be opened".
 xattr -dr com.apple.quarantine "$TMP/bin" "$TMP/lib" "$TMP/share" 2>/dev/null || true
 
+# Stable identity, when this machine has one (`kitterm identity setup`).
+# An ad-hoc binary's identity is a hash of its own bytes, so every release
+# resets every macOS file-access grant — Full Disk Access included. Re-signing
+# with the local certificate keeps the identity constant across releases, and
+# the grants survive. Signed before the smoke test, so what is tested is what
+# is installed.
+SIGN_DIR="${KITTERM_STATE_DIR:-$HOME/.kitterm}/signing"
+SIGN_KC="$SIGN_DIR/signing.keychain-db"
+if [ -f "$SIGN_KC" ] && [ -f "$SIGN_DIR/keychain-pass" ] \
+    && security find-identity -v -p codesigning "$SIGN_KC" 2>/dev/null \
+        | grep -q '"kitterm-local"'; then
+    echo "==> signing with the local identity (kitterm-local)"
+    security unlock-keychain -p "$(cat "$SIGN_DIR/keychain-pass")" "$SIGN_KC" \
+        || die "could not unlock the signing keychain"
+    # No --keychain: identity resolution walks the search list, which
+    # `kitterm identity setup` registered the keychain in. A failure here is
+    # loud on purpose — falling back to ad-hoc would silently reset every
+    # file-access grant again; `kitterm identity setup` repairs the state.
+    codesign --force --timestamp=none --sign kitterm-local \
+        "$TMP/lib/kitterm/kitterm" "$TMP/lib/kitterm/kitterm-spawn-helper" \
+        || die "local signing failed (run 'kitterm identity setup', then retry); existing install left untouched"
+else
+    echo "==> no local signing identity; binaries stay ad-hoc"
+    echo "    (macOS forgets file-access grants at every upgrade — 'kitterm identity setup' fixes that)"
+fi
+
 # Smoke-test in the staging dir so a non-launching binary (wrong macOS
 # minimum, bad slice) is caught while the old install is still intact.
 "$TMP/lib/kitterm/kitterm" --help >/dev/null 2>&1 \
