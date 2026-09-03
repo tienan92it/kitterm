@@ -1,0 +1,373 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "kitterm system architecture",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1300,
+      660
+    ],
+    "views": [
+      {
+        "id": "browser-path",
+        "label": "Browser path",
+        "focus": [
+          "browser",
+          "access",
+          "ws",
+          "registry",
+          "pty",
+          "shell"
+        ],
+        "note": "A tab attaches over one WebSocket and becomes a real shell."
+      },
+      {
+        "id": "agent-path",
+        "label": "Agent path",
+        "focus": [
+          "agent",
+          "access",
+          "api",
+          "registry",
+          "pty"
+        ],
+        "note": "A program drives sessions through the read-mostly HTTP API."
+      },
+      {
+        "id": "durability",
+        "label": "Durability",
+        "focus": [
+          "pty",
+          "log",
+          "state",
+          "registry"
+        ],
+        "note": "The ring and the state directory make detach and restart survivable."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "browser",
+      "type": "frontend",
+      "label": "Browser tab",
+      "sublabel": "xterm.js client",
+      "tag": "split panes",
+      "pos": [
+        30,
+        130
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "agent",
+      "type": "external",
+      "label": "Agent / orchestrator",
+      "sublabel": "HTTP client",
+      "pos": [
+        30,
+        300
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "proxy",
+      "type": "cloud",
+      "label": "Reverse proxy",
+      "sublabel": "tailscale serve / nginx",
+      "tag": "optional",
+      "pos": [
+        30,
+        470
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "access",
+      "type": "security",
+      "label": "AccessPolicy",
+      "sublabel": "Host/Origin + tokens",
+      "tag": "full / watch",
+      "pos": [
+        240,
+        300
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "ws",
+      "type": "backend",
+      "label": "WebSocket handler",
+      "sublabel": "binary frames /ws",
+      "pos": [
+        450,
+        160
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "HTTPAPIHandler",
+      "sublabel": "/api/* JSON + bytes",
+      "pos": [
+        450,
+        440
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "registry",
+      "type": "backend",
+      "label": "SessionRegistry",
+      "sublabel": "sessions, linger, reap",
+      "pos": [
+        670,
+        300
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "pty",
+      "type": "backend",
+      "label": "PtySession",
+      "sublabel": "master fd, batcher",
+      "pos": [
+        890,
+        300
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "log",
+      "type": "database",
+      "label": "SessionLog",
+      "sublabel": "4 MiB ring, offsets",
+      "pos": [
+        890,
+        130
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "state",
+      "type": "database",
+      "label": "~/.kitterm/",
+      "sublabel": "tokens, logs, history",
+      "pos": [
+        670,
+        470
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "shell",
+      "type": "external",
+      "label": "Shell",
+      "sublabel": "zsh / bash / ssh vm",
+      "pos": [
+        1110,
+        300
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "helper",
+      "type": "backend",
+      "label": "kitterm-spawn-helper",
+      "sublabel": "controlling TTY",
+      "pos": [
+        1110,
+        470
+      ],
+      "size": [
+        150,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "kitterm daemon \u2014 Swift + SwiftNIO, loopback :3418",
+      "wraps": [
+        "access",
+        "ws",
+        "api",
+        "registry",
+        "pty",
+        "log"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "browser-attach",
+      "from": "browser",
+      "to": "access",
+      "label": "WS + HTTP",
+      "variant": "emphasis",
+      "toSide": "top"
+    },
+    {
+      "id": "agent-api",
+      "from": "agent",
+      "to": "access",
+      "label": "REST",
+      "toSide": "left"
+    },
+    {
+      "id": "proxy-fwd",
+      "from": "proxy",
+      "to": "access",
+      "label": "remote: token required",
+      "variant": "dashed",
+      "toSide": "bottom"
+    },
+    {
+      "id": "access-ws",
+      "from": "access",
+      "to": "ws"
+    },
+    {
+      "id": "access-api",
+      "from": "access",
+      "to": "api"
+    },
+    {
+      "id": "ws-registry",
+      "from": "ws",
+      "to": "registry",
+      "label": "attach / spawn"
+    },
+    {
+      "id": "api-registry",
+      "from": "api",
+      "to": "registry",
+      "label": "state, input, wait"
+    },
+    {
+      "id": "registry-pty",
+      "from": "registry",
+      "to": "pty",
+      "label": "owns"
+    },
+    {
+      "id": "pty-log",
+      "from": "pty",
+      "to": "log",
+      "label": "every output byte",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "ws-replay",
+      "from": "log",
+      "to": "ws",
+      "label": "replay ?since",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "pty-helper",
+      "from": "pty",
+      "to": "helper",
+      "label": "spawn",
+      "fromSide": "bottom",
+      "toSide": "left"
+    },
+    {
+      "id": "helper-shell",
+      "from": "helper",
+      "to": "shell",
+      "label": "exec",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "shell-pty",
+      "from": "shell",
+      "to": "pty",
+      "label": "PTY I/O",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "state-spill",
+      "from": "registry",
+      "to": "state",
+      "label": "logs, drops, history",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        745,
+        378
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "One process, no emulation",
+      "items": [
+        "The daemon never interprets screen state; xterm.js owns the grid",
+        "OscMarkScanner is the one bounded exception: it indexes OSC 133/633 marks",
+        "No Node on the hot path"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Durability",
+      "items": [
+        "Every output byte flows through a 4 MiB ring with absolute offsets",
+        "A reconnect with ?since=<offset> replays exactly the missed bytes",
+        "--retain-logs spills past the ring to ~/.kitterm/logs"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Access",
+      "items": [
+        "Loopback is trusted; --lan and proxies require a token",
+        "Watch tokens observe only: no input, no control, no spawn",
+        "POST input exists only with --agent-control"
+      ]
+    }
+  ]
+}

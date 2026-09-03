@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Live upgrade: exec takeover",
+    "quality_profile": "showcase",
+    "viewBox": [940, 720],
+    "column_fit": "spread",
+    "views": [
+      { "id": "quiesce", "label": "Quiesce", "focus": ["cli", "old", "client"], "note": "The old daemon accepts, then tears down every socket." },
+      { "id": "handover", "label": "Handover", "focus": ["old", "state", "new"], "note": "It writes state and log rings, then execs the new binary." },
+      { "id": "rehydrate", "label": "Rehydrate", "focus": ["new", "state", "client"], "note": "The new daemon rebuilds sessions and replays the exact gap." }
+    ]
+  },
+  "participants": [
+    { "id": "cli", "type": "external", "label": "kitterm CLI", "sublabel": "upgrade --live" },
+    { "id": "old", "type": "backend", "label": "Old daemon", "sublabel": "running binary" },
+    { "id": "state", "type": "database", "label": "Takeover state", "sublabel": "disk + log rings" },
+    { "id": "new", "type": "backend", "label": "New daemon", "sublabel": "same PID" },
+    { "id": "client", "type": "frontend", "label": "Browser client", "sublabel": "xterm.js" }
+  ],
+  "segments": [
+    { "from": 170, "to": 300, "label": "Quiesce" },
+    { "from": 315, "to": 470, "label": "Handover" },
+    { "from": 485, "to": 660, "label": "Rehydrate" }
+  ],
+  "messages": [
+    { "id": "request", "from": "cli", "to": "old", "y": 190, "label": "POST /api/upgrade/takeover", "variant": "emphasis", "note": "smoke-test the on-disk binary first" },
+    { "id": "accepted", "from": "old", "to": "cli", "y": 232, "label": "200 accepted", "variant": "return" },
+    { "id": "close", "from": "old", "to": "client", "y": 285, "label": "close listeners and sockets", "variant": "security", "note": "flush batchers, close read channels" },
+    { "id": "write-state", "from": "old", "to": "state", "y": 355, "label": "write versioned state + rings", "variant": "emphasis", "note": "clear FD_CLOEXEC on each master fd" },
+    { "id": "execv", "from": "old", "to": "new", "y": 425, "label": "execv(serve --takeover)", "variant": "emphasis", "note": "same PID; PTY children keep running" },
+    { "id": "read-state", "from": "new", "to": "state", "y": 500, "label": "read, then delete", "variant": "default", "note": "rebuild PtySession; re-bind; restart watchers" },
+    { "id": "reconnect", "from": "client", "to": "new", "y": 575, "label": "reconnect ?since=<offset>", "variant": "emphasis" },
+    { "id": "replay", "from": "new", "to": "client", "y": 618, "label": "exact replay, no resync", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "old", "from": 184, "to": 440, "type": "backend" },
+    { "participant": "state", "from": 349, "to": 514, "type": "database" },
+    { "participant": "new", "from": 425, "to": 660, "type": "backend" },
+    { "participant": "client", "from": 569, "to": 660, "type": "frontend" }
+  ],
+  "cards": [
+    { "dot": "amber", "title": "Quiesce", "items": ["The endpoint answers 200 before teardown, so a caller inside a pane gets its reply", "Teardown runs on the single event loop, so no reader races it", "Bytes not yet read stay in the kernel PTY buffer and survive exec"] },
+    { "dot": "emerald", "title": "Handover", "items": ["Only the master fds and the session state cross the boundary", "FD_CLOEXEC is cleared just before exec and set again after adoption", "The old binary writes the versioned state; the new binary reads it"] },
+    { "dot": "cyan", "title": "Rehydrate", "items": ["The new daemon rebuilds each PtySession around its inherited fd", "The ring came across, so ?since hits the exact-gap path (resync=0)", "Every failure degrades to today's upgrade --restart or better"] }
+  ]
+}

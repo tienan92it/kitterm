@@ -201,6 +201,9 @@ token away from remote code execution.
 
 ## Building from source
 
+For the parts, the session lifecycle, and the data flows — with diagrams — see
+[docs/architecture.md](docs/architecture.md).
+
 Requires Swift 6 and Node 22+ with pnpm.
 
 ```sh

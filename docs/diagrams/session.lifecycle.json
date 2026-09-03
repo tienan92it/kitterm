@@ -1,0 +1,288 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "kitterm session lifecycle",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1080,
+      630
+    ],
+    "views": [
+      {
+        "id": "main-path",
+        "label": "Main path",
+        "focus": [
+          "spawned",
+          "attached",
+          "exited",
+          "reaped"
+        ],
+        "note": "A session lives from spawn to reap; the shell exit is a phase, not the end."
+      },
+      {
+        "id": "detach-loop",
+        "label": "Detach and reattach",
+        "focus": [
+          "attached",
+          "detached"
+        ],
+        "note": "A disconnect detaches the PTY; a reconnect replays the exact gap."
+      },
+      {
+        "id": "endings",
+        "label": "Endings",
+        "focus": [
+          "detached",
+          "exited",
+          "reaped",
+          "killed"
+        ],
+        "note": "Expiry, linger, and DELETE all land in reap."
+      }
+    ]
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "Session phases"
+    },
+    {
+      "id": "waiting",
+      "label": "Detached"
+    },
+    {
+      "id": "terminal",
+      "label": "Forced end"
+    }
+  ],
+  "states": [
+    {
+      "id": "spawned",
+      "type": "start",
+      "label": "Spawned",
+      "sublabel": "controlling TTY",
+      "lane": "main",
+      "col": 0,
+      "step": "01",
+      "tag": "entry"
+    },
+    {
+      "id": "attached",
+      "type": "active",
+      "label": "Attached",
+      "sublabel": "controller + observers",
+      "lane": "main",
+      "col": 1,
+      "step": "02",
+      "tag": "live"
+    },
+    {
+      "id": "exited",
+      "type": "neutral",
+      "label": "Shell exited",
+      "sublabel": "labelled: kept",
+      "lane": "main",
+      "col": 2,
+      "step": "03",
+      "tag": "exited:true"
+    },
+    {
+      "id": "reaped",
+      "type": "success",
+      "label": "Reaped",
+      "sublabel": "logs and drops deleted",
+      "lane": "main",
+      "col": 3,
+      "step": "04",
+      "tag": "gone"
+    },
+    {
+      "id": "detached",
+      "type": "waiting",
+      "label": "Detached",
+      "sublabel": "ring keeps every byte",
+      "lane": "waiting",
+      "col": 0,
+      "tag": "5 min / linger"
+    },
+    {
+      "id": "killed",
+      "type": "failure",
+      "label": "Deleted",
+      "sublabel": "DELETE via API",
+      "lane": "terminal",
+      "col": 0,
+      "tag": "--agent-control"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "first-attach",
+      "from": "spawned",
+      "to": "attached",
+      "label": "first client",
+      "variant": "emphasis",
+      "route": "straight",
+      "labelAt": [
+        171,
+        122
+      ]
+    },
+    {
+      "id": "shell-exit",
+      "from": "attached",
+      "to": "exited",
+      "label": "shell exits",
+      "route": "straight",
+      "labelAt": [
+        325,
+        122
+      ]
+    },
+    {
+      "id": "linger-over",
+      "from": "exited",
+      "to": "reaped",
+      "label": "linger over",
+      "route": "straight",
+      "labelAt": [
+        479,
+        122
+      ]
+    },
+    {
+      "id": "drop",
+      "from": "attached",
+      "to": "detached",
+      "label": "last client leaves",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          248,
+          240
+        ],
+        [
+          402,
+          240
+        ]
+      ],
+      "labelAt": [
+        278,
+        232
+      ]
+    },
+    {
+      "id": "reattach",
+      "from": "detached",
+      "to": "attached",
+      "label": "?since=<offset>",
+      "variant": "emphasis",
+      "fromSide": "left",
+      "toSide": "bottom",
+      "via": [
+        [
+          170,
+          307
+        ],
+        [
+          170,
+          215
+        ],
+        [
+          248,
+          215
+        ]
+      ],
+      "labelAt": [
+        250,
+        290
+      ]
+    },
+    {
+      "id": "window-expires",
+      "from": "detached",
+      "to": "reaped",
+      "label": "window expires",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "bottom",
+      "via": [
+        [
+          556,
+          307
+        ]
+      ],
+      "labelAt": [
+        556,
+        240
+      ],
+      "labelDx": 52
+    },
+    {
+      "id": "force-delete",
+      "from": "detached",
+      "to": "killed",
+      "label": "DELETE",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        447,
+        393
+      ],
+      "route": "straight"
+    },
+    {
+      "id": "killed-reaped",
+      "from": "killed",
+      "to": "reaped",
+      "label": "at once",
+      "variant": "security",
+      "fromSide": "right",
+      "toSide": "right",
+      "via": [
+        [
+          645,
+          479
+        ],
+        [
+          645,
+          157
+        ]
+      ],
+      "labelAt": [
+        645,
+        390
+      ],
+      "labelDx": -35
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Live",
+      "items": [
+        "One controller types; observers watch; opcode 5 hands control over live",
+        "Every output byte lands in the 4 MiB ring with an absolute offset"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Detached",
+      "items": [
+        "Browser sessions wait 5 minutes; labelled sessions wait the linger window",
+        "A reconnect with ?since=<offset> replays exactly the missed bytes"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Ends",
+      "items": [
+        "A labelled session outlives its shell: exited:true, exitCode, readable /commands",
+        "Reap deletes retained logs and dropped files for the session"
+      ]
+    }
+  ]
+}

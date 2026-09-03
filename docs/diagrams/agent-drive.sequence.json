@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Drive a shell from a program",
+    "quality_profile": "showcase",
+    "viewBox": [900, 760],
+    "column_fit": "spread",
+    "views": [
+      { "id": "write", "label": "Write", "focus": ["agent", "api", "pty"], "note": "POST input types the command into the shell." },
+      { "id": "wait", "label": "Wait", "focus": ["agent", "api", "marks"], "note": "The wait route blocks until the command exits." },
+      { "id": "read", "label": "Read", "focus": ["agent", "api", "log"], "note": "The output route returns the command's bytes." }
+    ]
+  },
+  "participants": [
+    { "id": "agent", "type": "external", "label": "Orchestrator", "sublabel": "HTTP client" },
+    { "id": "api", "type": "backend", "label": "HTTPAPIHandler", "sublabel": "/api/*" },
+    { "id": "pty", "type": "backend", "label": "PtySession", "sublabel": "shell master" },
+    { "id": "marks", "type": "backend", "label": "OscMarkScanner", "sublabel": "OSC 133/633" },
+    { "id": "log", "type": "database", "label": "SessionLog", "sublabel": "ring + retained" }
+  ],
+  "segments": [
+    { "from": 170, "to": 300, "label": "Write" },
+    { "from": 315, "to": 545, "label": "Run + wait" },
+    { "from": 560, "to": 700, "label": "Read" }
+  ],
+  "messages": [
+    { "id": "post-input", "from": "agent", "to": "api", "y": 190, "label": "POST /input  (bytes + \\n)", "variant": "emphasis", "note": "needs --agent-control" },
+    { "id": "type", "from": "api", "to": "pty", "y": 232, "label": "write to shell", "variant": "default" },
+    { "id": "ok", "from": "api", "to": "agent", "y": 274, "label": "{ok, bytes}", "variant": "return" },
+    { "id": "wait", "from": "agent", "to": "api", "y": 335, "label": "GET /commands/<n>/wait", "variant": "emphasis", "note": "read-only, blocks" },
+    { "id": "scan-start", "from": "pty", "to": "marks", "y": 388, "label": "OSC 133;A prompt / ;C run", "variant": "default" },
+    { "id": "scan-exit", "from": "pty", "to": "marks", "y": 440, "label": "OSC 133;D exit code", "variant": "default", "note": "command n closes" },
+    { "id": "wait-return", "from": "api", "to": "agent", "y": 500, "label": "{exit, durationMs, outputUrl}", "variant": "return", "note": "timeout -> {running,timedOut}, ask again" },
+    { "id": "get-output", "from": "agent", "to": "api", "y": 575, "label": "GET /commands/<n>/output", "variant": "emphasis" },
+    { "id": "read-range", "from": "api", "to": "log", "y": 618, "label": "byte range [start, end]", "variant": "default" },
+    { "id": "bytes", "from": "log", "to": "agent", "y": 665, "label": "output bytes (tail if > 256 KiB)", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "api", "from": 184, "to": 288, "type": "backend" },
+    { "participant": "pty", "from": 226, "to": 454, "type": "backend" },
+    { "participant": "marks", "from": 382, "to": 454, "type": "backend" },
+    { "participant": "api", "from": 329, "to": 514, "type": "backend" },
+    { "participant": "api", "from": 569, "to": 679, "type": "backend" },
+    { "participant": "log", "from": 612, "to": 679, "type": "database" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "The execute() contract", "items": ["POST /input writes bytes; include your own \\n and \\x03 for Ctrl-C", "GET /commands/<n>/wait blocks for the exit code (max 300s)", "GET /commands/<n>/output returns the command's bytes"] },
+    { "dot": "cyan", "title": "Stable command numbers", "items": ["OscMarkScanner indexes marks even when nobody watches the session", "index n is stable for the session's life; an aged-out index answers 410", "POST /input names the command when the shell does not"] },
+    { "dot": "rose", "title": "Access and lifetime", "items": ["Input needs --agent-control; wait and output are read-only", "A labelled session outlives its shell: exited:true and exitCode stay readable", "--retain-logs answers output ranges the 4 MiB ring dropped"] }
+  ]
+}
