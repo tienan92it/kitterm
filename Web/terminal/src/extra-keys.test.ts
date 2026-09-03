@@ -4,9 +4,6 @@ import {
   StickyModifiers,
   type KeySpec,
   keyBytes,
-  ghostClickShouldAct,
-  keyboardTapPlan,
-  keyboardToggleFace,
   repeatsOnHold,
   DEFAULT_LAYOUT,
 } from "./extra-keys";
@@ -117,77 +114,12 @@ describe("backspace", () => {
   });
 });
 
-// The row exists to keep the keyboard up; this one key exists to drop it, so
-// reading a build log or a diff on a phone gets the screen back.
+// The keyboard key is not in this row. It floats at the bottom centre, on the
+// gear's line — see `keyboard-toggle.ts`. The other keys here are things a
+// terminal needs *while* you type; that one decides whether you are typing at
+// all, and is reached far more often than any of them.
 describe("the keyboard toggle", () => {
-  const key = DEFAULT_LAYOUT.flat().find((k) => k.kind === "keyboard");
-
-  it("is in the default row", () => {
-    expect(key).toBeDefined();
-  });
-
-  // Drawn, not lettered: U+2328 renders as a detailed little keyboard that
-  // carries more line work than a 20px button can show, and differs per
-  // platform. The key holds no glyph at all now.
-  it("carries no glyph, because the icon is drawn", () => {
-    expect(key).toEqual({ kind: "keyboard" });
-  });
-
-  it("never repeats on hold — a toggle held down must not flap", () => {
-    if (!key) throw new Error("unreachable");
-    expect(repeatsOnHold(key)).toBe(false);
-  });
-
-  // The constraint the issue says decides whether this works at all: iOS Safari
-  // opens the keyboard only for a focus() inside a live user gesture, and
-  // preventDefault spends that gesture.
-  it("does not preventDefault when it is about to show the keyboard", () => {
-    expect(keyboardTapPlan(false)).toEqual({ open: true, preventDefault: false });
-  });
-
-  it("does preventDefault when hiding, so focus stays in the terminal", () => {
-    expect(keyboardTapPlan(true)).toEqual({ open: false, preventDefault: true });
-  });
-
-  it("always asks for the opposite of the keyboard's real state", () => {
-    expect(keyboardTapPlan(true).open).toBe(false);
-    expect(keyboardTapPlan(false).open).toBe(true);
-  });
-
-  it("announces what a tap will do", () => {
-    expect(keyboardToggleFace(true).ariaLabel).toBe("Hide the keyboard");
-    expect(keyboardToggleFace(false).ariaLabel).toBe("Show the keyboard");
-  });
-
-  // The "-off" convention, as in mic-off and eye-off: struck through while
-  // the keyboard is up, because a tap puts it away. Only the stroke changes,
-  // so the keyboard body never moves between the two states.
-  it("strikes the keyboard through only while it is up", () => {
-    expect(keyboardToggleFace(true).struck).toBe(true);
-    expect(keyboardToggleFace(false).struck).toBe(false);
-  });
-});
-
-// The bug this fixes, found on a phone: tapping to hide blurred on touchstart,
-// and the ghost click landed while the keyboard was still sliding shut. The
-// inset still read open, so the click concluded "show" and reopened what the
-// touch had just closed. Every hide undid itself, which is what the flicker was.
-describe("the ghost click after a toggle tap", () => {
-  it("does nothing while the keyboard is still closing", () => {
-    expect(ghostClickShouldAct(50, false)).toBe(false);
-    expect(ghostClickShouldAct(699, false)).toBe(false);
-  });
-
-  // The show direction defers to the click on purpose: focusing during
-  // touchstart opens the keyboard and the browser's own tap handling then takes
-  // focus straight back off, which is the other half of the flicker.
-  it("does act when a show was deferred to it, however soon it arrives", () => {
-    expect(ghostClickShouldAct(0, true)).toBe(true);
-    expect(ghostClickShouldAct(50, true)).toBe(true);
-  });
-
-  it("acts for a real mouse click, which no touch preceded", () => {
-    expect(ghostClickShouldAct(Number.POSITIVE_INFINITY, false)).toBe(true);
-    expect(ghostClickShouldAct(700, false)).toBe(true);
+  it("is not one of the row's keys", () => {
+    expect(DEFAULT_LAYOUT.flat().some((k) => k.label === undefined)).toBe(false);
   });
 });

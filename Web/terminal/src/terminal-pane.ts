@@ -23,6 +23,7 @@ import { dragMayCarryFiles, insertionText, quoteForShell, readDrop, uploadDroppe
 import { FilePicker } from "./file-picker";
 import { OutputFlowControl } from "./flow-control";
 import { showPreview, type PreviewHandle, type PreviewMeta } from "./file-preview";
+import { contentShiftPx, inputModeFor } from "./soft-keyboard";
 import { PathLinks, type PathStat } from "./path-links";
 import { resolveFontFamily } from "./fonts";
 import { isModifierKey, matchPaneCommand, type PaneCommand } from "./pane-keys";
@@ -102,6 +103,9 @@ export interface PaneHost {
   paneFocusRequested(pane: TerminalPane): void;
   /** ⌘F inside this pane. */
   paneSearchRequested(pane: TerminalPane): void;
+  /** Whether the user currently wants the software keyboard on screen. Asked
+   * on every focus, because focusing is what would otherwise raise it. */
+  softKeyboardWanted(): boolean;
 }
 
 export type TerminalPaneOptions = {
@@ -197,6 +201,15 @@ export class TerminalPane {
   private exitedValue = false;
   /** Coalesces a burst of ResizeObserver callbacks into one fit per frame. */
   private fitHandle: number | null = null;
+  /** Something is animating this pane's box; hold the fit until it lands. */
+  private fitHeld = false;
+  /** A fit fell due while held, and is owed once the hold lifts. */
+  private fitPending = false;
+  /** The box's height at the last fit, which is the height the canvas is drawn
+   * at. How far the box has moved since is how far the content has to move to
+   * keep its bottom line in place. Read at the fit, not when a hold begins: by
+   * then the box has already taken the first step of the slide. */
+  private fittedBoxHeight = 0;
 
   private readonly containerEl: HTMLElement;
   private filePicker: FilePicker | null = null;
@@ -339,7 +352,7 @@ export class TerminalPane {
         void this.attachFiles(payload.files as readonly File[]);
       } else if (payload.kind === "text") {
         // Text dragged in from elsewhere behaves like a paste.
-        this.terminal.focus();
+        this.focus();
         this.terminal.paste(payload.text);
       }
     });
@@ -366,12 +379,12 @@ export class TerminalPane {
       this.filePicker = new FilePicker({
         sessionId: () => this.sessionIdValue,
         insert: (paths) => {
-          this.terminal.focus();
+          this.focus();
           this.terminal.paste(paths.map(quoteForShell).join(" ") + " ");
         },
         flash: (message) => this.host.paneFlash(message),
         cursorAnchor: () => this.cursorAnchor(),
-        restoreFocus: () => this.terminal.focus(),
+        restoreFocus: () => this.focus(),
       });
       this.containerEl.append(this.filePicker.element);
     }
@@ -417,7 +430,7 @@ export class TerminalPane {
     if (uploaded.length > 0) {
       // Focus first: a drop can land on an unfocused pane, and WebKit will not
       // deliver the paste to a terminal that is not focused.
-      this.terminal.focus();
+      this.focus();
       this.terminal.paste(insertionText(uploaded));
     }
     if (errors.length > 0) {
@@ -464,17 +477,67 @@ export class TerminalPane {
   }
 
   focus(): void {
+    // Before focusing, never after: a phone decides whether to raise the
+    // keyboard at the moment the field takes focus, and does not look again
+    // while it stays focused.
+    this.applySoftKeyboard();
     this.terminal.focus();
   }
 
+  /**
+   * Put this pane's input field in the mode the user asked for.
+   *
+   * `inputmode="none"` is what lets a pane be focused and quiet: it still takes
+   * hardware keys and still receives what the extra-keys row sends, and it
+   * raises no software keyboard. Without it, focus and keyboard are the same
+   * thing, and every tap on the terminal undoes a deliberate hide.
+   *
+   * Applied on every focus, because the focus is the only moment a phone reads
+   * it.
+   */
+  applySoftKeyboard(): void {
+    const input = this.terminal.textarea;
+    if (!input) return;
+    input.inputMode = inputModeFor(this.host.softKeyboardWanted() ? "shown" : "hidden");
+  }
+
+  /**
+   * The second half of a toolbar-key press: set the mode, then take focus.
+   *
+   * Order matters and so does the caller's. A phone reads `inputmode` when a
+   * field takes focus and never looks again while it stays focused, so raising
+   * the keyboard needs a real unfocused-to-focused move inside the gesture —
+   * which is why `releaseFocusForKeyboard` runs first, one event earlier. A
+   * blur and a focus in the same task do not count as that move: the keyboard
+   * simply does not come up, which is what happened on device.
+   */
+  setSoftKeyboard(shown: boolean): void {
+    const input = this.terminal.textarea;
+    if (!input) return;
+    input.inputMode = inputModeFor(shown ? "shown" : "hidden");
+    this.terminal.focus();
+  }
+
+  /**
+   * The first half: let go of focus, so the focus that follows is a move.
+   *
+   * Nothing else changes here. If the press is abandoned — a finger that slides
+   * off the key, a scroll — the mode is untouched and the next tap on the
+   * terminal simply takes focus back the way it already would.
+   */
+  releaseFocusForKeyboard(): void {
+    this.terminal.blur();
+  }
+
   /** Deliver a key from the on-screen extra-keys row, respecting the app's
-   * cursor-keys mode. Keeps the terminal focused so the keyboard stays up. */
+   * cursor-keys mode. Keeps the terminal focused; whether that shows a keyboard
+   * is the toolbar key's business, not this one's. */
   sendExtraKey(spec: KeySpec): void {
     if (this.exitedValue || this.readOnlyValue) return;
     const bytes = keyBytes(spec, this.terminal.modes.applicationCursorKeysMode);
     if (bytes) this.session.sendInput(bytes);
-    // Keep the terminal focused so the soft keyboard stays up.
-    this.terminal.focus();
+    // Keep the terminal focused, so the row's next key still lands here.
+    this.focus();
   }
 
   blur(): void {
@@ -693,11 +756,73 @@ export class TerminalPane {
     this.resizeObserver.observe(container);
   }
 
+  /**
+   * Hold the fit while something animates this pane's box, and take the one
+   * fit that is owed when it lands.
+   *
+   * The software keyboard slides for about a third of a second and the viewport
+   * reports a new height every frame of it. Following each one costs a WebGL
+   * atlas rebuild and a resize on the wire, and the shell answers every SIGWINCH
+   * by redrawing its prompt — measured at nine terminal sizes and 48 canvas
+   * rebuilds for a single slide, which is what the flicker was.
+   *
+   * The box still moves the whole time. Only the fit waits, so the canvas is
+   * briefly the wrong size behind chrome that is sliding over it anyway.
+   */
+  setFitHeld(held: boolean): void {
+    if (this.fitHeld === held) return;
+    this.fitHeld = held;
+    if (held) return;
+    if (!this.fitPending) {
+      this.clearHoldShift();
+      return;
+    }
+    // The shift stays until the fit replaces it, so no frame is drawn with the
+    // old canvas back in the old place.
+    this.fitPending = false;
+    this.scheduleFit();
+  }
+
+  private boxHeight(): number {
+    return this.terminal.element?.clientHeight ?? 0;
+  }
+
+  /**
+   * The element the canvases live in.
+   *
+   * `.xterm` is fluid and follows the box on its own; `.xterm-screen` is sized
+   * in whole cells by the last fit and does not. That is the one that hangs
+   * below a shrinking box, and the one to move.
+   */
+  private screenEl(): HTMLElement | null {
+    return this.terminal.element?.querySelector<HTMLElement>(".xterm-screen") ?? null;
+  }
+
+  /** Keep the bottom line where it is while the fit is held — see
+   * `contentShiftPx`. A transform, so it costs no repaint. */
+  private holdShift(): void {
+    const el = this.screenEl();
+    if (!el) return;
+    const shift = contentShiftPx(this.boxHeight(), this.fittedBoxHeight);
+    el.style.transform = shift === 0 ? "" : `translateY(${shift}px)`;
+  }
+
+  private clearHoldShift(): void {
+    const el = this.screenEl();
+    if (el?.style.transform) el.style.transform = "";
+  }
+
   /** Coalesce to one fit per frame: a splitter drag can fire the observer for
    * every pane many times per frame, and each fit measures the DOM and puts a
    * resize on the wire. */
   scheduleFit(): void {
-    if (this.disposed || this.fitHandle !== null) return;
+    if (this.disposed) return;
+    if (this.fitHeld) {
+      this.fitPending = true;
+      this.holdShift();
+      return;
+    }
+    if (this.fitHandle !== null) return;
     this.fitHandle = requestAnimationFrame(() => {
       this.fitHandle = null;
       this.fitAndResize();
@@ -707,11 +832,14 @@ export class TerminalPane {
   private fitAndResize(): void {
     // Observers render at the controller's size; never fight it locally.
     if (this.disposed || this.exitedValue || this.readOnlyValue) return;
+    // The canvas is about to be the right size, so the compensation goes.
+    this.clearHoldShift();
     try {
       this.fitAddon.fit();
     } catch {
       return;
     }
+    this.fittedBoxHeight = this.boxHeight();
     const cols = this.terminal.cols;
     const rows = this.terminal.rows;
     if (cols > 0 && rows > 0 && this.session.ready) {
@@ -1398,7 +1526,7 @@ export class TerminalPane {
     this.preview?.close();
     this.preview = showPreview(this.containerEl, meta, body, () => {
       this.preview = null;
-      this.terminal.focus();
+      this.focus();
     });
   }
 

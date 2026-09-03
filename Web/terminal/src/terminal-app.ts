@@ -1,5 +1,12 @@
 import { writeClipboard } from "./clipboard";
 import { ExtraKeysBar, isTouchPrimary } from "./extra-keys";
+import { KeyboardToggle } from "./keyboard-toggle";
+import {
+  initialKeyboardState,
+  onKeyboardInset,
+  onKeyboardToggle,
+  type KeyboardState,
+} from "./soft-keyboard";
 import { setFavicon, type FaviconState } from "./favicon";
 import { shouldShowIntro, showIntro, type IntroCard } from "./intro";
 import { LOCAL_FONT_ID, resolveFontFamily, type TerminalFontId } from "./fonts";
@@ -101,6 +108,11 @@ export class TerminalApp implements PaneHost {
   private paneCounter = 0;
   private disposed = false;
   private disposeKeyboardInsets: (() => void) | null = null;
+  /** The floating keyboard key, on touch devices. Held so it can be told when
+   * the keyboard moves without it — iOS has its own dismiss key. */
+  private keyboardToggle: KeyboardToggle | null = null;
+  /** What the user last asked the keyboard to do — see `soft-keyboard.ts`. */
+  private keyboard: KeyboardState = initialKeyboardState(isTouchPrimary());
   private readonly wakeLock = createWakeLock();
   /** A `/?session=` link is a view onto someone else's shell: it must not read
    * or overwrite this tab's saved layout until the user makes it their own. */
@@ -452,17 +464,63 @@ export class TerminalApp implements PaneHost {
       (files) => void this.focusedPane?.attachFiles(files),
       () => this.focusedPane?.toggleFilePicker(),
       () => this.focusedPane?.focus(),
-      (open) => (open ? this.focusedPane?.focus() : this.focusedPane?.blur()),
     );
     document.body.append(bar.element);
     document.body.classList.add("has-extra-keys");
-    // Lift the row and terminal above the software keyboard, and let the toggle
-    // follow it: the keyboard can be dismissed without touching the row, and
-    // the button must not then claim it is still up.
+
+    // The keyboard key floats on its own, at the bottom centre on the gear's
+    // line. It is not one of the row's keys: those are things a terminal needs
+    // *while* you type, and this one decides whether you are typing at all, so
+    // it is reached far more often than any of them.
+    const toggle = new KeyboardToggle({
+      shown: this.softKeyboardWanted(),
+      onArm: () => this.focusedPane?.releaseFocusForKeyboard(),
+      onToggle: (shown) => this.setSoftKeyboard(shown),
+    });
+    this.keyboardToggle = toggle;
+    document.body.append(toggle.element);
+    // Lift the row and terminal above the software keyboard, and follow a
+    // dismissal made outside kitterm: iOS builds its own dismiss key above the
+    // keyboard and gives no way to refuse it, so pressing it has to count.
     this.disposeKeyboardInsets = trackKeyboardInsets(
       document.documentElement,
-      () => bar.syncKeyboardState(),
+      (px, settled) => {
+        // The panes keep their old geometry until the keyboard stops moving.
+        // Refitting every reported height rebuilds the WebGL atlas and sends a
+        // resize the shell answers by redrawing — a dozen times per slide.
+        for (const pane of this.panes.values()) pane.setFitHeld(!settled);
+
+        const next = onKeyboardInset(this.keyboard, px > 0);
+        if (next === this.keyboard) return;
+        this.keyboard = next;
+        // No blur-and-focus here. The field is already unfocused — that is how
+        // the keyboard went away — so the mode is all that needs correcting,
+        // before the next tap refocuses.
+        this.focusedPane?.applySoftKeyboard();
+        toggle.setShown(next.intent === "shown");
+      },
     );
+  }
+
+  /**
+   * The toolbar key, and the only thing that raises or lowers the keyboard.
+   *
+   * Focus used to be the switch, which meant every tap on the terminal
+   * reversed a deliberate hide. `inputmode` carries the decision now, so a tap
+   * takes focus back without bringing the keyboard with it.
+   *
+   * This runs on the key's `click`, one event after its `touchstart` released
+   * focus. Both halves are needed and neither works alone — see
+   * `wireKeyboardToggle`.
+   */
+  private setSoftKeyboard(shown: boolean): void {
+    this.keyboard = onKeyboardToggle(shown);
+    this.keyboardToggle?.setShown(shown);
+    this.focusedPane?.setSoftKeyboard(shown);
+  }
+
+  softKeyboardWanted(): boolean {
+    return this.keyboard.intent === "shown";
   }
 
   paneSearchRequested(pane: TerminalPane): void {
