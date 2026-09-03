@@ -42,7 +42,7 @@ enum KittermMain {
             case "service":
                 try service(args.dropFirst())
             case "upgrade", "update":
-                try upgrade()
+                try upgrade(restartAfter: args.dropFirst().contains("--restart"))
             case "integrate":
                 // Snippet only, nothing else on stdout — it is made for piping:
                 //   kitterm integrate >> ~/.zshrc
@@ -163,7 +163,8 @@ enum KittermMain {
               kitterm service install [same flags as start]
               kitterm service uninstall | status
               kitterm service sync    # rewrite the plist from this build, no restart
-              kitterm upgrade         # install the latest release
+              kitterm upgrade [--restart]  # install the latest release; --restart
+                                      # takes over now (drops panes; safe from a pane)
               kitterm integrate [zsh|bash]
               kitterm hooks           # Claude Code hook config for approvals  # print the OSC 133/633 snippet
               kitterm token create <name> [--watch] | list | revoke <name>
@@ -884,7 +885,7 @@ enum KittermMain {
     /// used to be something you could only do from outside kitterm. The new
     /// build is staged on disk and takes over at the next daemon start —
     /// automatic at the next login when the service is installed.
-    private static func upgrade() throws {
+    private static func upgrade(restartAfter: Bool = false) throws {
         guard let prefix = installedPrefix() else {
             throw CLIError.upgradeUnavailable(
                 detail: "kitterm is not running from an installed location "
@@ -955,12 +956,61 @@ enum KittermMain {
             return
         }
 
+        if restartAfter {
+            try takeOverNow(staged: staged)
+            return
+        }
         print("kitterm \(staged) staged. The daemon is still \(runningBefore) and your panes are untouched.")
         if loginAgentInstalled() {
-            print("it takes over at your next login, or now with `kitterm restart` (drops live panes)")
+            print("it takes over at your next login, or now with `kitterm upgrade --restart` (drops live panes)")
         } else {
             print("it takes over on the next `kitterm restart` (drops live panes)")
         }
+    }
+
+    /**
+     Restart into the staged build, in a way that survives being typed inside a
+     kitterm pane.
+
+     The pane's shell is a child of the daemon and dies with it, taking this
+     process along — which is why upgrading used to need a native terminal. On
+     the launchd path that is fine anyway: `kickstart -k` is a single atomic
+     order, and once `launchctl` has returned, launchd finishes the restart no
+     matter what happens to us. The goodbye is printed *before* the order, so
+     it reaches the pane; nothing printed after is guaranteed to.
+
+     Without the service there is no launchd to finish the job, and a stop
+     followed by a start would strand the daemon dead when this process dies
+     between the two. That path refuses rather than gambles.
+     */
+    private static func takeOverNow(staged: String) throws {
+        guard loginAgentInstalled(), serviceLoaded() else {
+            throw CLIError.upgradeFailed(
+                detail: "kitterm \(staged) is staged, but --restart needs the launchd service "
+                    + "(`kitterm service install`); from a pane, a plain stop-and-start dies "
+                    + "with the pane between the two. Run `kitterm restart` from outside kitterm."
+            )
+        }
+        print("kitterm \(staged) staged; restarting the daemon now.")
+        print("live panes drop and reconnect — the page respawns them where they were.")
+        let result = launchctl(["kickstart", "-k", "gui/\(getuid())/\(serviceLabel)"])
+        guard result.status == 0 else {
+            throw CLIError.serviceFailed(
+                action: "launchctl kickstart",
+                detail: result.output.isEmpty ? "launchctl exited \(result.status)" : result.output
+            )
+        }
+        // Reached only when run from outside kitterm; a pane is gone by now.
+        let port = readPort() ?? KittermConstants.defaultPort
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline {
+            if isHealthy(port: port) {
+                print("kitterm \(staged) is running (port \(port))")
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        print("restarted, but the daemon is not answering yet; see ~/.kitterm/server.log")
     }
 
     /// Shared plist body for both launchd jobs. RunAtLoad is always true — it is
