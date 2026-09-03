@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Reconnect and exact-gap replay",
+    "quality_profile": "showcase",
+    "viewBox": [900, 780],
+    "column_fit": "spread",
+    "views": [
+      { "id": "detach", "label": "Detach", "focus": ["client", "ws", "pty", "log"], "note": "A disconnect detaches the PTY; the shell keeps running." },
+      { "id": "buffer", "label": "Buffer while away", "focus": ["pty", "log"], "note": "Output keeps flowing into the ring with absolute offsets." },
+      { "id": "replay", "label": "Reconnect", "focus": ["client", "ws", "log"], "note": "?since=<offset> replays exactly the missed bytes." }
+    ]
+  },
+  "participants": [
+    { "id": "client", "type": "frontend", "label": "Browser pane", "sublabel": "xterm.js" },
+    { "id": "ws", "type": "backend", "label": "WS handler", "sublabel": "/ws" },
+    { "id": "pty", "type": "backend", "label": "PtySession", "sublabel": "shell master" },
+    { "id": "log", "type": "database", "label": "SessionLog", "sublabel": "4 MiB ring" }
+  ],
+  "segments": [
+    { "from": 170, "to": 300, "label": "Live" },
+    { "from": 315, "to": 470, "label": "Detached" },
+    { "from": 485, "to": 700, "label": "Reconnect + replay" }
+  ],
+  "messages": [
+    { "id": "output-live", "from": "pty", "to": "log", "y": 190, "label": "append output @ offset", "variant": "default" },
+    { "id": "stream-live", "from": "log", "to": "ws", "y": 232, "label": "batched bytes", "variant": "default" },
+    { "id": "to-client", "from": "ws", "to": "client", "y": 274, "label": "S->C 0 output", "variant": "return", "note": "client counts received bytes" },
+    { "id": "disconnect", "from": "client", "to": "ws", "y": 335, "label": "socket drops", "variant": "security" },
+    { "id": "detach", "from": "ws", "to": "pty", "y": 377, "label": "detach, keep reading", "variant": "emphasis" },
+    { "id": "buffer", "from": "pty", "to": "log", "y": 430, "label": "append while detached", "variant": "default", "note": "ring rotates past 4 MiB" },
+    { "id": "reconnect", "from": "client", "to": "ws", "y": 505, "label": "GET /ws?session=<id>&since=<offset>", "variant": "emphasis" },
+    { "id": "snapshot", "from": "ws", "to": "log", "y": 548, "label": "snapshot(from: offset)", "variant": "default" },
+    { "id": "logstate", "from": "ws", "to": "client", "y": 600, "label": "S->C 8 logState (resync=0)", "variant": "return" },
+    { "id": "replay", "from": "log", "to": "client", "y": 645, "label": "exact gap bytes", "variant": "emphasis", "note": "no full-ring resync" },
+    { "id": "resume", "from": "pty", "to": "client", "y": 690, "label": "live output resumes", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "pty", "from": 184, "to": 700, "type": "backend" },
+    { "participant": "log", "from": 184, "to": 660, "type": "database" },
+    { "participant": "ws", "from": 226, "to": 390, "type": "backend" },
+    { "participant": "ws", "from": 499, "to": 614, "type": "backend" },
+    { "participant": "client", "from": 268, "to": 300, "type": "frontend" },
+    { "participant": "client", "from": 499, "to": 700, "type": "frontend" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "Absolute offsets", "items": ["Every output byte gets an absolute stream offset in the ring", "The client counts the bytes it received and remembers the offset", "Detached reads never pause; the ring rotates instead"] },
+    { "dot": "amber", "title": "Detach, do not kill", "items": ["A dropped socket detaches the PTY; the shell keeps running", "The client auto-reconnects with backoff and on focus/online/visible", "An unreattached session is reaped after 5 minutes"] },
+    { "dot": "cyan", "title": "Exact replay", "items": ["?since=<offset> returns exactly the bytes the client missed", "logState carries resync=0 when the offset is still in the ring", "A rotated-out offset falls back to the full ring plus a resync flag"] }
+  ]
+}
