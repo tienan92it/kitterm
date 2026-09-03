@@ -68,6 +68,28 @@ final class SigningIdentityTests: XCTestCase {
         XCTAssertEqual(SigningIdentity.state(fromFindIdentity: output), .missing)
     }
 
+    // MARK: - list-keychains
+
+    /// The listing is quoted and indented; the paths inside are what `-s`
+    /// needs back. Losing one would orphan that keychain from the search list.
+    func testSearchListParsesQuotedPaths() {
+        let output = """
+            "/Users/x/Library/Keychains/login.keychain-db"
+            "/Users/x/.kitterm/signing/signing.keychain-db"
+        """
+        XCTAssertEqual(
+            SigningIdentity.searchList(fromListKeychains: output),
+            [
+                "/Users/x/Library/Keychains/login.keychain-db",
+                "/Users/x/.kitterm/signing/signing.keychain-db",
+            ])
+    }
+
+    func testSearchListIgnoresNoise() {
+        XCTAssertEqual(SigningIdentity.searchList(fromListKeychains: ""), [])
+        XCTAssertEqual(SigningIdentity.searchList(fromListKeychains: "no quotes here\n"), [])
+    }
+
     // MARK: - codesign -dvv
 
     func testLocallySignedBinaryIsRecognised() {

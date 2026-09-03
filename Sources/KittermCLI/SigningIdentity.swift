@@ -82,6 +82,20 @@ enum SigningIdentity {
     }
 
     /**
+     The keychain paths in a `security list-keychains` listing: one quoted,
+     indented path per line.
+     */
+    static func searchList(fromListKeychains output: String) -> [String] {
+        output.split(separator: "\n").compactMap { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("\""), trimmed.hasSuffix("\""), trimmed.count >= 2 else {
+                return nil
+            }
+            return String(trimmed.dropFirst().dropLast())
+        }
+    }
+
+    /**
      Whether `codesign -dvv` output says the binary was signed by `name`.
 
      A real signature carries `Authority=<signer>` lines; an ad-hoc one carries
@@ -147,6 +161,8 @@ enum SigningIdentity {
             try createIdentity()
         }
 
+        try ensureInSearchList()
+
         if try currentState() == .untrusted {
             print("macOS will now ask for your login password — it is changing your")
             print("Certificate Trust Settings so this certificate may sign code. Once.")
@@ -190,6 +206,7 @@ enum SigningIdentity {
         guard try currentState() == .valid else {
             throw CLIError.usage("no valid signing identity — run `kitterm identity setup` first")
         }
+        try ensureInSearchList()
         guard let prefix = InstallLayout.prefix(forExecutable: ResolveExecutable.path()) else {
             if reportWhenMissing {
                 print("running from a dev build; nothing installed to sign")
@@ -209,8 +226,7 @@ enum SigningIdentity {
             try? FileManager.default.removeItem(atPath: staged)
             try FileManager.default.copyItem(atPath: binary, toPath: staged)
             let sign = run("/usr/bin/codesign", [
-                "--force", "--timestamp=none", "--keychain", keychainPath,
-                "--sign", name, staged,
+                "--force", "--timestamp=none", "--sign", name, staged,
             ])
             guard sign.status == 0 else {
                 try? FileManager.default.removeItem(atPath: staged)
@@ -292,6 +308,28 @@ enum SigningIdentity {
             }
         }
         print("created identity \(name) in \(keychainPath)")
+    }
+
+    /**
+     Register the keychain in the user's search list, once.
+
+     `codesign --keychain` is not enough: identity resolution walks the search
+     list, and a keychain outside it yields "no identity found" even for an
+     identity that `find-identity` reports valid — verified on device. The
+     existing list is read first and kept whole; `-s` replaces the list, so
+     writing only our own path would orphan the login keychain.
+     */
+    private static func ensureInSearchList() throws {
+        let listing = run("/usr/bin/security", ["list-keychains", "-d", "user"])
+        let current = searchList(fromListKeychains: listing.output)
+        guard !current.contains(keychainPath) else { return }
+        let result = run(
+            "/usr/bin/security",
+            ["list-keychains", "-d", "user", "-s"] + current + [keychainPath])
+        guard result.status == 0 else {
+            throw CLIError.usage("could not add the signing keychain to the search list: \(result.output)")
+        }
+        print("added the signing keychain to the user keychain search list")
     }
 
     // MARK: - Plumbing

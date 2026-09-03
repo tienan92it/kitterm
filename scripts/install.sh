@@ -69,9 +69,13 @@ if [ -f "$SIGN_KC" ] && [ -f "$SIGN_DIR/keychain-pass" ] \
     echo "==> signing with the local identity (kitterm-local)"
     security unlock-keychain -p "$(cat "$SIGN_DIR/keychain-pass")" "$SIGN_KC" \
         || die "could not unlock the signing keychain"
-    codesign --force --timestamp=none --keychain "$SIGN_KC" --sign kitterm-local \
+    # No --keychain: identity resolution walks the search list, which
+    # `kitterm identity setup` registered the keychain in. A failure here is
+    # loud on purpose — falling back to ad-hoc would silently reset every
+    # file-access grant again; `kitterm identity setup` repairs the state.
+    codesign --force --timestamp=none --sign kitterm-local \
         "$TMP/lib/kitterm/kitterm" "$TMP/lib/kitterm/kitterm-spawn-helper" \
-        || die "local signing failed; existing install left untouched"
+        || die "local signing failed (run 'kitterm identity setup', then retry); existing install left untouched"
 else
     echo "==> no local signing identity; binaries stay ad-hoc"
     echo "    (macOS forgets file-access grants at every upgrade — 'kitterm identity setup' fixes that)"
