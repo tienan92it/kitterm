@@ -29,6 +29,10 @@ type SessionRow = {
   lastCommand?: string;
   lastExit?: number;
   profile?: string;
+  /** Server-side name (`POST/PATCH /api/sessions`). */
+  name?: string;
+  /** Free-text status note set by a program or a person. */
+  note?: string;
 };
 
 type Profile = { name: string; command: string; cwd?: string };
@@ -197,18 +201,41 @@ function row(s: SessionRow): HTMLElement {
 
   const top = document.createElement("div");
   top.className = "top";
-  const folder = document.createElement("span");
-  folder.className = "folder";
-  folder.textContent = folderOf(s.cwd);
+  // The server-side name is the headline when one is set; the folder stays
+  // visible as a chip so the row still says where the shell is.
+  const headline = document.createElement("span");
+  headline.className = "folder";
+  headline.textContent = s.name || folderOf(s.cwd);
+  headline.title = s.cwd;
   const state = document.createElement("span");
   state.className = `state ${stateClass(s)}`;
   state.textContent = stateLabel(s);
-  top.append(folder, state);
+  top.append(headline, state);
+  if (s.name) {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.textContent = folderOf(s.cwd);
+    top.append(chip);
+  }
   if (s.profile) {
     const chip = document.createElement("span");
     chip.className = "chip";
     chip.textContent = s.profile;
     top.append(chip);
+  }
+  if (!watchOnly) {
+    const rename = document.createElement("button");
+    rename.type = "button";
+    rename.className = "rename";
+    rename.textContent = s.name ? "rename" : "name";
+    rename.title = "Name this session";
+    rename.addEventListener("click", (event) => {
+      // The button lives inside the row's link; naming must not navigate.
+      event.preventDefault();
+      event.stopPropagation();
+      void renameSession(s);
+    });
+    top.append(rename);
   }
 
   const sub = document.createElement("div");
@@ -217,6 +244,12 @@ function row(s: SessionRow): HTMLElement {
     ? `$ ${s.lastCommand}`
     : `${shellName(s.shell)} · ${s.cwd}`;
   sub.title = s.cwd;
+
+  const note = s.note ? document.createElement("div") : null;
+  if (note && s.note) {
+    note.className = "note";
+    note.textContent = s.note;
+  }
 
   const meta = document.createElement("div");
   meta.className = "meta";
@@ -227,10 +260,31 @@ function row(s: SessionRow): HTMLElement {
   bits.push(`pid ${s.pid}`);
   meta.textContent = bits.join(" · ");
 
-  main.append(top, sub, meta);
+  if (note) main.append(top, sub, note, meta);
+  else main.append(top, sub, meta);
   link.append(dot, main);
   li.append(link);
   return li;
+}
+
+/** Name or rename one session (`PATCH /api/sessions/<id>`). A prompt keeps
+ * this dependency-free and works the same on a phone; the next poll paints
+ * the result, and observers' tabs follow via the daemon's title push. */
+async function renameSession(s: SessionRow): Promise<void> {
+  const next = window.prompt("Session name (empty clears it):", s.name ?? "");
+  if (next === null) return;
+  try {
+    const res = await fetch(`/api/sessions/${encodeURIComponent(s.id)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: next }),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+  } catch {
+    // The next poll reconciles; nothing was lost but the keystrokes.
+  }
+  lastSignature = "";
+  void poll();
 }
 
 /**
@@ -381,3 +435,4 @@ setInterval(() => void poll(), POLL_MS);
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) void poll();
 });
+

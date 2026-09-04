@@ -108,6 +108,12 @@ public enum KittermConstants: Sendable {
     public static let approvalCap = 64
     public static let approvalInputChars = 4096
 
+    /// Human-readable session name (`POST/PATCH /api/sessions`), sized for a
+    /// task headline, and the free-text note beside it, sized for a status
+    /// line plus a link.
+    public static let maxSessionNameLength = 128
+    public static let maxSessionNoteLength = 4096
+
     /// Detach window for sessions a program created (they carry labels). An
     /// orchestrator restart must not cost you your in-flight nodes.
     public static let orchestratedSessionLingerSeconds = 3600

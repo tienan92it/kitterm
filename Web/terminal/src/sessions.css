@@ -50,6 +50,16 @@ h1 { font-size: 20px; margin: 0; font-weight: 600; }
   text-overflow: ellipsis;
 }
 .meta { color: var(--ui-text-faint); font-size: 11.5px; margin-top: 4px; }
+.note {
+  color: var(--ui-text-muted); font-size: 12.5px; margin-top: 3px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rename {
+  margin-left: auto; flex: none; font: inherit; font-size: 11px;
+  color: var(--ui-text-faint); background: none; border: none; cursor: pointer;
+  padding: 2px 6px; border-radius: var(--radius-round);
+}
+.rename:hover { color: var(--ui-text); background: var(--ui-surface-2); }
 
 /* Waiting approvals. Deliberately the loudest thing on the page: an agent is
    stopped until one is answered, and on a phone only the top of the page gets

@@ -46,12 +46,38 @@ public final class PtySession: @unchecked Sendable {
     /// Metadata only (fleet view); the profile's command was injected as
     /// initial input by the spawner.
     public let profileName: String?
-    /// Orchestrator tags (`?label=run:abc,node:build`). Their presence also
-    /// means a program created this session, which the registry uses to decide
-    /// how long to hold it after its client goes away.
-    public let labels: SessionLabels
+    /// A program created this session over the HTTP API (`POST /api/sessions`)
+    /// rather than a browser opening a tab. Grants orchestrated linger
+    /// semantics even with no labels, so an unlabelled API session cannot be
+    /// reaped out from under the program that made it.
+    public let spawnedByAPI: Bool
     public private(set) var cols: UInt16
     public private(set) var rows: UInt16
+
+    /// Orchestrator tags (`?label=run:abc,node:build`). Their presence also
+    /// means a program created this session, which the registry uses to decide
+    /// how long to hold it after its client goes away. Replaceable after spawn
+    /// (`PATCH /api/sessions/<id>`), hence lock-guarded.
+    public var labels: SessionLabels {
+        stateLock.withLock { labelsStorage }
+    }
+
+    /// Should the registry hold this session for the orchestrated linger
+    /// window and keep it readable after its shell exits?
+    public var isOrchestrated: Bool {
+        spawnedByAPI || !labels.isEmpty
+    }
+
+    /// Human-readable name shown as the row headline in the fleet view and as
+    /// the pane's tab title. nil means unnamed.
+    public var name: String? {
+        stateLock.withLock { nameStorage }
+    }
+
+    /// Free-text status note ("waiting on review", a PR link). Metadata only.
+    public var note: String? {
+        stateLock.withLock { noteStorage }
+    }
 
     private let masterFD: Int32
     /// The single domain for every mutable field below. Rules, in order:
@@ -77,6 +103,13 @@ public final class PtySession: @unchecked Sendable {
     /// The last command a program submitted through the input route, used to
     /// name the next command when the shell does not report one itself.
     private var submittedCommand: String?
+    /// Backing stores for `labels`/`name`/`note` (lock-guarded; see above).
+    private var labelsStorage: SessionLabels
+    private var nameStorage: String?
+    private var noteStorage: String?
+    /// Pushes a rename to the attached controller so an open tab follows a
+    /// foreman's rename without a reload. Set at attach, cleared at detach.
+    private var onTitle: ((String) -> Void)?
 
     /// Every output byte flows through this ring; reattach gap-replay,
     /// observer catch-up, and tail replay are all snapshots of it. Offsets
@@ -103,15 +136,20 @@ public final class PtySession: @unchecked Sendable {
         let onOutput: (Data) -> Void
         let onExit: (Int32) -> Void
         let onResize: (UInt16, UInt16) -> Void
+        /// Optional so an older call site keeps compiling; a nil observer just
+        /// misses live renames until its next adopt.
+        let onTitle: ((String) -> Void)?
 
         public init(
             onOutput: @escaping (Data) -> Void,
             onExit: @escaping (Int32) -> Void,
-            onResize: @escaping (UInt16, UInt16) -> Void
+            onResize: @escaping (UInt16, UInt16) -> Void,
+            onTitle: ((String) -> Void)? = nil
         ) {
             self.onOutput = onOutput
             self.onExit = onExit
             self.onResize = onResize
+            self.onTitle = onTitle
         }
     }
 
@@ -140,6 +178,9 @@ public final class PtySession: @unchecked Sendable {
         initialCwd: String,
         profileName: String?,
         labels: SessionLabels,
+        name: String?,
+        note: String?,
+        spawnedByAPI: Bool,
         cols: UInt16,
         rows: UInt16
     ) {
@@ -149,7 +190,10 @@ public final class PtySession: @unchecked Sendable {
         self.shellPath = shellPath
         self.initialCwd = initialCwd
         self.profileName = profileName
-        self.labels = labels
+        self.labelsStorage = labels
+        self.nameStorage = name
+        self.noteStorage = note
+        self.spawnedByAPI = spawnedByAPI
         self.cols = cols
         self.rows = rows
     }
@@ -164,7 +208,10 @@ public final class PtySession: @unchecked Sendable {
         cwd: String? = nil,
         histFile: String? = nil,
         profileName: String? = nil,
-        labels: SessionLabels = SessionLabels()
+        labels: SessionLabels = SessionLabels(),
+        name: String? = nil,
+        note: String? = nil,
+        spawnedByAPI: Bool = false
     ) throws -> PtySession {
         // Before the environment is built: the child is told this, which is how
         // an agent's hook running inside the pane can name the pane.
@@ -301,6 +348,9 @@ public final class PtySession: @unchecked Sendable {
             initialCwd: startCwd,
             profileName: profileName,
             labels: labels,
+            name: name,
+            note: note,
+            spawnedByAPI: spawnedByAPI,
             cols: cols,
             rows: rows
         )
@@ -720,12 +770,14 @@ public final class PtySession: @unchecked Sendable {
         onOutput: @escaping (Data) -> Void,
         onExit: @escaping (Int32) -> Void,
         onCwd: ((String) -> Void)? = nil,
+        onTitle: ((String) -> Void)? = nil,
         replay: ReplayRequest = .fromDetachPoint
     ) -> SessionLog.Snapshot {
         let resumed: (snapshot: SessionLog.Snapshot, wasPaused: Bool) = stateLock.withLock {
             self.onOutput = onOutput
             self.onExit = onExit
             self.onCwd = onCwd
+            self.onTitle = onTitle
             attached = true
             let snapshot: SessionLog.Snapshot
             switch replay {
@@ -766,19 +818,27 @@ public final class PtySession: @unchecked Sendable {
 
     public func detach(onExitWhileDetached: ((Int32) -> Void)? = nil) {
         stopCwdPolling()
-        let wasPaused = stateLock.withLock { () -> Bool in
+        let state: (wasPaused: Bool, missedExit: Int32?) = stateLock.withLock {
             attached = false
             onOutput = nil
             onExit = onExitWhileDetached
             onCwd = nil
+            onTitle = nil
             // The controller saw everything up to here; the gap for the next
             // offset-less attach starts now.
             detachOffset = log.head
             let paused = readingPaused
             readingPaused = false
-            return paused
+            // `deliverExit` fires once and never again. A shell that exited
+            // before this handler was installed (an API spawn whose command
+            // failed at once) would otherwise be an exit nobody hears about.
+            let missed = exitNotified ? shellExitCode : nil
+            return (paused, missed)
         }
-        if wasPaused { setChannelAutoRead(true) }
+        if state.wasPaused { setChannelAutoRead(true) }
+        if let code = state.missedExit {
+            onExitWhileDetached?(code)
+        }
     }
 
     // MARK: - Live cwd polling
@@ -972,6 +1032,46 @@ public final class PtySession: @unchecked Sendable {
     /// Exit code, once the shell has exited.
     public var exitCode: Int32? {
         stateLock.withLock { shellExitCode }
+    }
+
+    /// Rename the session, pushing the new name to the attached controller and
+    /// every observer so open tabs follow without a reload. nil clears the
+    /// name; clients receive an empty title and fall back to their own.
+    public func setName(_ name: String?) {
+        let push: (title: String, handlers: [(String) -> Void], loop: EventLoop?) = stateLock.withLock {
+            nameStorage = name
+            var handlers: [(String) -> Void] = []
+            if attached, let controller = onTitle { handlers.append(controller) }
+            handlers.append(contentsOf: observers.values.compactMap(\.onTitle))
+            return (name ?? "", handlers, eventLoop)
+        }
+        guard !push.handlers.isEmpty else { return }
+        // The handlers write to WebSocket channels, which NIO allows only from
+        // their event loop — and this may be called from a Task thread (the
+        // PATCH route resolves the session inside the registry actor). Hop,
+        // the way `startExitWatcher` delivers an exit; pre-reader there is no
+        // loop and no client to push to either.
+        let deliver = {
+            for handler in push.handlers { handler(push.title) }
+        }
+        if let loop = push.loop {
+            loop.execute(deliver)
+        } else {
+            deliver()
+        }
+    }
+
+    /// Update the free-text note. Metadata only — nothing to push, the fleet
+    /// view reads it on its next poll.
+    public func setNote(_ note: String?) {
+        stateLock.withLock { noteStorage = note }
+    }
+
+    /// Replace the label set. Adding labels to a browser session makes it
+    /// orchestrated (the longer linger window) from then on — deliberate: a
+    /// program that adopts a session takes responsibility for it.
+    public func updateLabels(_ labels: SessionLabels) {
+        stateLock.withLock { labelsStorage = labels }
     }
 
     /// Drop retained output. Separate from `terminate()` so a session can

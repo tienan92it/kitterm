@@ -87,6 +87,12 @@ public final class DaemonServer: @unchecked Sendable {
         // decision and the phone that answers it arrive on different
         // connections, so a per-connection store would never match them up.
         let approvals = ApprovalStore()
+        // One spawn path for a browser tab and the HTTP route alike.
+        let spawnService = SessionSpawnService(
+            registry: registry,
+            recordSessions: config.recordSessions,
+            retainLogs: config.retainLogs
+        )
         // Anything reachable from off-machine — an external bind, or a proxy
         // presenting a public name — needs the token pair.
         let policy: AccessPolicy
@@ -143,7 +149,7 @@ public final class DaemonServer: @unchecked Sendable {
                 }
                 return channel.eventLoop.makeSucceededFuture(HTTPHeaders())
             },
-            upgradePipelineHandler: { [config, group] channel, head in
+            upgradePipelineHandler: { channel, head in
                 // shouldUpgrade already admitted this request; re-derive the
                 // grade so a watch token gets a watch-only connection.
                 let watchOnly: Bool
@@ -176,10 +182,8 @@ public final class DaemonServer: @unchecked Sendable {
                         profileName: profileName,
                         labels: labels,
                         sinceOffset: sinceOffset,
-                        recordSessions: config.recordSessions,
-                        retainLogs: config.retainLogs,
-                        watchOnly: watchOnly,
-                        eventLoopGroup: group
+                        spawnService: spawnService,
+                        watchOnly: watchOnly
                     )
                 )
             }
@@ -205,6 +209,7 @@ public final class DaemonServer: @unchecked Sendable {
                         port: config.port,
                         agentControl: config.agentControl,
                         approvals: approvals,
+                        spawnService: spawnService,
                         connectionIsTLS: sslContext != nil,
                         tlsPort: config.tls?.port,
                         webSocketUpgrader: upgrader
