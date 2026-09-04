@@ -327,6 +327,16 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 return
             }
             serveProfiles(head: head, context: context)
+        case (.POST, _) where path.hasPrefix("/api/sessions/") && path.hasSuffix("/archive"):
+            serveArchive(path: path, grade: grade, head: head, context: context)
+        case (.GET, "/api/archives"):
+            serveArchiveList(head: head, context: context)
+        case (.GET, _) where path.hasPrefix("/api/archives/") && path.hasSuffix("/output"):
+            serveArchiveOutput(path: path, head: head, context: context)
+        case (.GET, _) where path.hasPrefix("/api/archives/"):
+            serveArchiveDetail(path: path, head: head, context: context)
+        case (.DELETE, _) where path.hasPrefix("/api/archives/"):
+            serveArchiveDelete(path: path, grade: grade, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/sessions/") && path.hasSuffix("/marks"):
             serveMarks(path: path, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/sessions/") && path.hasSuffix("/commands"):
@@ -964,6 +974,256 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 context: context, version: head.version, keepAlive: existed && head.isKeepAlive
             )
         }
+    }
+
+    // MARK: - Archive
+
+    /// `POST /api/sessions/<uuid>/archive` — persist a finished session's
+    /// evidence (metadata, commands, marks, output) to disk, then end it. The
+    /// counterpart to the linger window for a session whose work is done but
+    /// worth keeping. Destructive to the live session, so `--agent-control` +
+    /// full grade, like `DELETE`.
+    ///
+    /// Honest scope: this preserves what the session *did*, not what it *was*.
+    /// "Resume" is a foreman convention — spawn a new session with the archived
+    /// name and cwd and a `resumed-from:<id>` label — not a process restore.
+    private func serveArchive(
+        path: String,
+        grade: TokenGrade,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard agentControl else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"agent control disabled; start the daemon with --agent-control"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let components = path.split(separator: "/")
+        // ["api", "sessions", "<uuid>", "archive"]
+        guard components.count == 4, let id = UUID(uuidString: String(components[2])) else {
+            notFound(context: context, version: head.version)
+            return
+        }
+
+        enum Outcome { case ok; case noSession; case failed }
+        let promise = context.eventLoop.makePromise(of: Outcome.self)
+        promise.completeWithTask {
+            guard let session = await self.registry.session(id) else { return .noSession }
+            // Build the metadata JSON here (before any await): everything that
+            // crosses onto the archive queue below is `Data`, which is
+            // Sendable, so the [String: Any] arrays never leave this scope.
+            // Read the captured output first (ring, or the retained log when
+            // older than the ring), bounded to the retained-log ceiling. Its
+            // `start` is where `output.log` begins in the absolute stream —
+            // the commands' offsets are absolute, so the archive must say so.
+            let range = await withCheckedContinuation { continuation in
+                session.outputRange(
+                    from: 0, to: .max,
+                    maxBytes: KittermConstants.retainedLogBytes
+                ) { continuation.resume(returning: $0) }
+            }
+            // The `outputUrl` a live row carries points at a route that 404s
+            // the moment this session is removed; an archive reader slices
+            // `output.log` by offset instead.
+            let commands = session.commandsSnapshot().map { command -> [String: Any] in
+                var item = self.commandJSON(command, sessionID: id)
+                item.removeValue(forKey: "outputUrl")
+                return item
+            }
+            let marks = session.marksSnapshot().map { Self.markJSON($0) }
+            let record = SessionArchive.Record(
+                id: id,
+                name: session.name,
+                note: session.note,
+                labels: session.labels.values,
+                cwd: session.liveCwd,
+                shell: session.shellPath,
+                profile: session.profileName,
+                exitCode: session.exitCode,
+                archivedAt: Date(),
+                commands: commands,
+                marks: marks,
+                outputBase: range.start,
+                outputPruned: range.pruned,
+                outputBytes: range.data.count
+            )
+            // Serialize before the next await: only `Data` crosses onto the
+            // archive queue, so the [String: Any] arrays never leave here.
+            guard let metadata = try? JSONSerialization.data(
+                withJSONObject: record.asJSON(), options: [.sortedKeys]
+            ) else { return .failed }
+            let output = range.data
+            let wrote = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+                SessionArchive.write(id: id, metadata: metadata, output: output) {
+                    continuation.resume(returning: $0)
+                }
+            }
+            guard wrote else { return .failed }
+            // The evidence is safe on disk; end the live session now.
+            await self.registry.remove(id)
+            self.eventLog.append(type: "session.archived", session: id, data: [:])
+            return .ok
+        }
+        promise.futureResult.whenComplete { result in
+            switch (try? result.get()) ?? .failed {
+            case .ok:
+                self.writeJSON(
+                    status: .ok,
+                    body: #"{"ok":true,"id":"\#(id.uuidString)"}"#,
+                    context: context, version: head.version, keepAlive: head.isKeepAlive
+                )
+            case .noSession:
+                self.writeJSON(
+                    status: .notFound,
+                    body: #"{"ok":false,"error":"no such session"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+            case .failed:
+                self.writeJSON(
+                    status: .internalServerError,
+                    body: #"{"ok":false,"error":"could not write the archive"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+            }
+        }
+    }
+
+    /// `GET /api/archives` — every archived session's metadata, newest first.
+    /// Read-only; a small local-file read like `/api/profiles`.
+    private func serveArchiveList(head: HTTPRequestHead, context: ChannelHandlerContext) {
+        // Directory scan + a file read per archive: off the loop, like every
+        // other file I/O, then hop back with the encoded bytes.
+        let loop = context.eventLoop
+        let bound = NIOLoopBound(context, eventLoop: loop)
+        let promise = loop.makePromise(of: Data.self)
+        SessionArchive.list { promise.succeed($0) }
+        promise.futureResult.whenSuccess { data in
+            self.writeJSON(
+                status: .ok, body: String(decoding: data, as: UTF8.self),
+                context: bound.value, version: head.version, keepAlive: head.isKeepAlive
+            )
+        }
+    }
+
+    /// `GET /api/archives/<uuid>` — one archive's full metadata.
+    private func serveArchiveDetail(path: String, head: HTTPRequestHead, context: ChannelHandlerContext) {
+        let components = path.split(separator: "/")
+        // ["api", "archives", "<uuid>"]
+        guard components.count == 3, let id = UUID(uuidString: String(components[2])) else {
+            notFound(context: context, version: head.version)
+            return
+        }
+        let loop = context.eventLoop
+        let bound = NIOLoopBound(context, eventLoop: loop)
+        let promise = loop.makePromise(of: Data?.self)
+        SessionArchive.read(id) { promise.succeed($0) }
+        promise.futureResult.whenSuccess { data in
+            let context = bound.value
+            guard let data, var json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+                self.notFound(context: context, version: head.version)
+                return
+            }
+            json["ok"] = true
+            let body = (try? JSONSerialization.data(withJSONObject: json))
+                .flatMap { String(data: $0, encoding: .utf8) }
+                ?? #"{"ok":false,"error":"encoding failed"}"#
+            self.writeJSON(status: .ok, body: body, context: context, version: head.version, keepAlive: head.isKeepAlive)
+        }
+    }
+
+    /// `GET /api/archives/<uuid>/output` — the archived output bytes.
+    private func serveArchiveOutput(path: String, head: HTTPRequestHead, context: ChannelHandlerContext) {
+        let components = path.split(separator: "/")
+        // ["api", "archives", "<uuid>", "output"]
+        guard components.count == 4, let id = UUID(uuidString: String(components[2])) else {
+            notFound(context: context, version: head.version)
+            return
+        }
+        let loop = context.eventLoop
+        let bound = NIOLoopBound(context, eventLoop: loop)
+        let promise = loop.makePromise(of: Data?.self)
+        SessionArchive.output(id) { promise.succeed($0) }
+        promise.futureResult.whenSuccess { data in
+            let context = bound.value
+            guard let data else {
+                self.notFound(context: context, version: head.version)
+                return
+            }
+            var headers = HTTPHeaders()
+            headers.add(name: "Content-Type", value: "application/octet-stream")
+            headers.add(name: "Content-Length", value: "\(data.count)")
+            headers.add(name: "Connection", value: head.isKeepAlive ? "keep-alive" : "close")
+            let responseHead = HTTPResponseHead(version: head.version, status: .ok, headers: headers)
+            context.write(self.wrapOutboundOut(.head(responseHead)), promise: nil)
+            var buffer = context.channel.allocator.buffer(capacity: data.count)
+            buffer.writeBytes(data)
+            context.write(self.wrapOutboundOut(.body(.byteBuffer(buffer))), promise: nil)
+            context.writeAndFlush(self.wrapOutboundOut(.end(nil))).whenComplete { _ in
+                if !head.isKeepAlive { context.close(promise: nil) }
+            }
+        }
+    }
+
+    /// `DELETE /api/archives/<uuid>` — remove an archive permanently.
+    /// Destructive, so `--agent-control` + full grade.
+    private func serveArchiveDelete(
+        path: String, grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext
+    ) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard agentControl else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"agent control disabled; start the daemon with --agent-control"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let components = path.split(separator: "/")
+        guard components.count == 3, let id = UUID(uuidString: String(components[2])) else {
+            notFound(context: context, version: head.version)
+            return
+        }
+        let loop = context.eventLoop
+        let bound = NIOLoopBound(context, eventLoop: loop)
+        let promise = loop.makePromise(of: Bool.self)
+        SessionArchive.delete(id) { promise.succeed($0) }
+        promise.futureResult.whenSuccess { existed in
+            self.writeJSON(
+                status: existed ? .ok : .notFound,
+                body: existed ? #"{"ok":true}"# : #"{"ok":false,"error":"no such archive"}"#,
+                context: bound.value, version: head.version, keepAlive: existed && head.isKeepAlive
+            )
+        }
+    }
+
+    /// One mark as JSON, the same shape `/marks` serves.
+    private static func markJSON(_ mark: SessionMark) -> [String: Any] {
+        var item: [String: Any] = [
+            "offset": mark.offset,
+            "kind": markKindName(mark.kind),
+            "at": Int(mark.at.timeIntervalSince1970 * 1000),
+        ]
+        if let exit = mark.exit { item["exit"] = exit }
+        if let command = mark.command { item["command"] = command }
+        return item
     }
 
     /// `GET /api/sessions/<uuid>/marks` — the session's shell-integration
