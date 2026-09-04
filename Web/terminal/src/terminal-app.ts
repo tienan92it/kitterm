@@ -349,6 +349,10 @@ export class TerminalApp implements PaneHost {
     this.scheduleLayoutPersist();
   }
 
+  paneServerNameChanged(pane: TerminalPane): void {
+    if (pane.id === this.focusedId) this.refreshTitle();
+  }
+
   paneRoleChanged(pane: TerminalPane): void {
     if (pane.id === this.focusedId) {
       // Renaming the tab is part of controlling the session.
@@ -861,7 +865,9 @@ export class TerminalApp implements PaneHost {
 
   private refreshTitle(): void {
     const base = composeTabTitle({
-      custom: this.settingsValue.tabTitle,
+      // The name typed in settings wins; the session's server-side name
+      // (a foreman's `POST/PATCH /api/sessions`) fills in when there is none.
+      custom: this.settingsValue.tabTitle || (this.focusedPane?.serverName ?? ""),
       showFolder: this.settingsValue.tabTitleShowFolder,
       folder: this.focusedPane?.folder ?? null,
     });

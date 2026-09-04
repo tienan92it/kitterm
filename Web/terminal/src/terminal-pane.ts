@@ -95,6 +95,8 @@ export interface PaneHost {
   paneSessionId(pane: TerminalPane, id: string, replaced: boolean): void;
   /** The shell's cwd changed — drives the tab title while focused. */
   paneFolderChanged(pane: TerminalPane): void;
+  /** The daemon named or renamed this pane's session (title frame). */
+  paneServerNameChanged(pane: TerminalPane): void;
   /** Controller/observer resolved. */
   paneRoleChanged(pane: TerminalPane): void;
   /** A pane keybinding fired. */
@@ -185,6 +187,8 @@ export class TerminalPane {
   private preview: PreviewHandle | null = null;
   private readonly watchHint: boolean;
   private folderValue: string | null = null;
+  /** Server-side session name, from the daemon's title frame. */
+  private serverNameValue: string | null = null;
   private reconnectTimer: number | null = null;
   private reconnectAttempt = 0;
   private lastConnectAt = 0;
@@ -462,6 +466,10 @@ export class TerminalPane {
 
   get folder(): string | null {
     return this.folderValue;
+  }
+
+  get serverName(): string | null {
+    return this.serverNameValue;
   }
 
   get readOnly(): boolean {
@@ -910,10 +918,15 @@ export class TerminalPane {
           this.terminal.resize(frame.cols, frame.rows);
         }
         break;
-      case "title":
-        // Legacy frame: current daemons no longer send it. The tab title comes
-        // from the custom name plus the cwd, so there is nothing to do.
+      case "title": {
+        // The session's server-side name (`POST/PATCH /api/sessions`). Empty
+        // clears it — the daemon pushes "" when a name is removed. A custom
+        // name typed in settings still wins; see the app's refreshTitle.
+        const name = frame.title.trim();
+        this.serverNameValue = name || null;
+        this.host.paneServerNameChanged(this);
         break;
+      }
       case "cwd":
         // Latest report wins, whatever the source. The daemon only re-sends
         // when the *local* process changes directory (ssh/docker never do),

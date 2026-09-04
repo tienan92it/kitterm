@@ -27,12 +27,12 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     /// The client's count of output bytes it already has (`?since=`); the
     /// daemon replays exactly the gap after it. Takes precedence over `fresh`.
     private let sinceOffset: UInt64?
-    private let recordSessions: Bool
-    private let retainLogs: Bool
+    /// The shared spawn path (`SessionSpawnService`), so a tab and the HTTP
+    /// route create sessions through the same steps.
+    private let spawnService: SessionSpawnService
     /// Watch-grade auth: this connection may only observe an existing session
     /// — never claim control, never take over, never spawn a shell.
     private let watchOnly: Bool
-    private let eventLoopGroup: EventLoopGroup
     private var sessionID: UUID?
     private var pty: PtySession?
     private var batcher: OutputBatcher?
@@ -58,10 +58,8 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         profileName: String? = nil,
         labels: SessionLabels = SessionLabels(),
         sinceOffset: UInt64? = nil,
-        recordSessions: Bool = false,
-        retainLogs: Bool = false,
-        watchOnly: Bool = false,
-        eventLoopGroup: EventLoopGroup
+        spawnService: SessionSpawnService,
+        watchOnly: Bool = false
     ) {
         self.registry = registry
         self.handoff = handoff
@@ -72,10 +70,8 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         self.profileName = profileName
         self.labels = labels
         self.sinceOffset = sinceOffset
-        self.recordSessions = recordSessions
-        self.retainLogs = retainLogs
+        self.spawnService = spawnService
         self.watchOnly = watchOnly
-        self.eventLoopGroup = eventLoopGroup
     }
 
     func handlerAdded(context: ChannelHandlerContext) {
@@ -212,96 +208,49 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     }
 
     private func spawnNew(context: ChannelHandlerContext) {
-        // The query names a profile; the command comes only from the user's
-        // profiles.json. An unknown name closes loudly rather than silently
-        // spawning a plain shell the client believes is the profile.
-        var profile: SessionProfile?
-        if let profileName {
-            guard let found = SessionProfiles.find(profileName) else {
-                closePolicy(context: context, reason: "unknown profile: \(profileName)")
-                return
-            }
-            profile = found
-        }
+        let session: PtySession
         do {
-            let session = try PtySession.spawn(
-                cwd: Self.validatedCwd(requestedCwd) ?? Self.validatedCwd(profile?.cwd),
-                histFile: Self.historyFile(for: histKey),
-                profileName: profile?.name,
-                labels: labels
+            // The query names a profile; the command comes only from the
+            // user's profiles.json. An unknown name closes loudly rather than
+            // silently spawning a plain shell the client believes is the
+            // profile. Profile/initial input is queued as type-ahead, ahead of
+            // any queued client frames, which are handled after wire().
+            session = try spawnService.prepare(
+                SessionSpawnService.Request(
+                    cwd: requestedCwd,
+                    histKey: histKey,
+                    profileName: profileName,
+                    labels: labels
+                )
             )
-            // Queued as type-ahead: it flushes when the reader channel adopts
-            // the PTY and the shell executes it at its first read — visible,
-            // echoed, and in this pane's history like a typed command. Ahead
-            // of any queued client frames, which are handled after wire().
-            if let profile {
-                try? session.write(Data((profile.command + "\n").utf8))
-            }
-            self.pty = session
-            if recordSessions,
-               let recorder = SessionRecorder(
-                   directory: DaemonPaths.recordingsDirectory,
-                   cols: session.cols,
-                   rows: session.rows,
-                   shell: session.shellPath
-               ) {
-                session.attachRecorder(recorder)
-            }
-            let registry = self.registry
-            let reader = session.makeReader(group: eventLoopGroup, eventLoop: context.eventLoop)
-            let setup = reader.flatMap { () -> EventLoopFuture<UUID?> in
-                let idPromise = context.eventLoop.makePromise(of: UUID?.self)
-                idPromise.completeWithTask { await registry.register(session) }
-                return idPromise.futureResult
-            }
-            setup.whenFailure { [weak self, weak context] error in
-                guard let self, let context else { return }
-                let reason = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-                FileHandle.standardError.write(Data("kitterm: \(reason)\n".utf8))
-                self.closePolicy(context: context, reason: reason)
-            }
-            setup.whenSuccess { [weak self, weak context] registered in
-                // Refused: the daemon is at its session ceiling. The shell was
-                // spawned to make the check atomic, so it has to go back.
-                guard let id = registered else {
-                    session.terminate()
-                    if let self, let context {
-                        self.closePolicy(
-                            context: context,
-                            reason: """
-                                too many sessions open \
-                                (limit \(KittermConstants.maxConcurrentSessions)); \
-                                close one or delete an idle session
-                                """
-                        )
-                    }
-                    return
-                }
-                guard let self, let context, !self.closed else {
-                    Task { await registry.remove(id) }
-                    return
-                }
-                self.sessionID = id
-                if self.retainLogs {
-                    session.attachLogStore { origin in
-                        SessionLogStore(
-                            directory: DaemonPaths.logsDirectory,
-                            sessionID: id,
-                            maxBytes: KittermConstants.retainedLogBytes,
-                            origin: origin
-                        )
-                    }
-                }
-                self.sendSessionId(id, context: context)
-                self.sendRole(.controller, context: context)
-                self.sendMeta(context: context, session: session)
-                self.wire(session: session, context: context)
-                self.registerAsController(context: context)
-            }
         } catch {
             let reason = (error as? LocalizedError)?.errorDescription ?? "pty spawn failed"
             FileHandle.standardError.write(Data("kitterm: \(reason)\n".utf8))
             closePolicy(context: context, reason: reason)
+            return
+        }
+        self.pty = session
+        let registry = self.registry
+        let setup = spawnService.activate(session, attached: true, eventLoop: context.eventLoop)
+        setup.whenFailure { [weak self, weak context] error in
+            // Includes the registry ceiling: the shell was spawned to make the
+            // cap check atomic, and the service has already terminated it.
+            guard let self, let context else { return }
+            let reason = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            FileHandle.standardError.write(Data("kitterm: \(reason)\n".utf8))
+            self.closePolicy(context: context, reason: reason)
+        }
+        setup.whenSuccess { [weak self, weak context] id in
+            guard let self, let context, !self.closed else {
+                Task { await registry.remove(id) }
+                return
+            }
+            self.sessionID = id
+            self.sendSessionId(id, context: context)
+            self.sendRole(.controller, context: context)
+            self.sendMeta(context: context, session: session)
+            self.wire(session: session, context: context)
+            self.registerAsController(context: context)
         }
     }
 
@@ -337,6 +286,10 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
                     return
                 }
                 self.writeBinary(encoded, context: context)
+            },
+            onTitle: { [weak self, weak context] title in
+                guard let self, let context else { return }
+                self.sendTitle(title, context: context)
             },
             replay: replay
         )
@@ -458,6 +411,10 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
                 }
                 self.writeBinary(encoded, context: context)
             },
+            onTitle: { [weak self, weak context] title in
+                guard let self, let context else { return }
+                self.sendTitle(title, context: context)
+            },
             replay: .sinceOffset(pty.logHead)
         )
         // Empty replay, but the frame still re-anchors the client's offset.
@@ -494,40 +451,22 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
                 if let encoded = try? ServerFrame.resize(cols: cols, rows: rows).encode() {
                     self.writeBinary(encoded, context: context)
                 }
+            },
+            onTitle: { [weak self, weak context] title in
+                guard let self, let context else { return }
+                self.sendTitle(title, context: context)
             }
         )
     }
 
-    /// Deep-link cwd (`/?cwd=…`): expand `~`, require an existing directory;
-    /// anything else falls back to the default (home).
+    /// Forwarders: the logic moved to `SessionSpawnService` when the HTTP
+    /// spawn route arrived, so both spawn paths validate identically.
     static func validatedCwd(_ raw: String?) -> String? {
-        guard var path = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty else {
-            return nil
-        }
-        if path == "~" {
-            path = FileManager.default.homeDirectoryForCurrentUser.path
-        } else if path.hasPrefix("~/") {
-            path = FileManager.default.homeDirectoryForCurrentUser.path + String(path.dropFirst(1))
-        }
-        guard path.hasPrefix("/") else { return nil }
-        let resolved = URL(fileURLWithPath: path).standardizedFileURL.path
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: resolved, isDirectory: &isDirectory),
-              isDirectory.boolValue
-        else {
-            return nil
-        }
-        return resolved
+        SessionSpawnService.validatedCwd(raw)
     }
 
-    /// Per-pane history file for `?hist=<key>`. The key is sanitized to a strict
-    /// allowlist so it can never escape `~/.kitterm/history/`; anything invalid
-    /// yields nil, and the shell falls back to its own default HISTFILE.
     static func historyFile(for key: String?) -> String? {
-        guard let key, !key.isEmpty, key.count <= 128 else { return nil }
-        let allowed = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-")
-        guard key.allSatisfy(allowed.contains) else { return nil }
-        return DaemonPaths.historyDirectory.appendingPathComponent(key).path
+        SessionSpawnService.historyFile(for: key)
     }
 
     // MARK: - Outbound
@@ -587,9 +526,20 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         if let encoded = try? ServerFrame.cwd(cwd).encode() {
             writeBinary(encoded, context: context)
         }
-        // No `title` frame: the shell name is already in `sessionMeta`, and the
-        // client builds its tab title from the custom name plus the cwd. The
-        // opcode stays in the protocol so older clients keep decoding.
+        // The server-side name rides the long-dormant title opcode; a client
+        // with its own custom name keeps it (the local name wins). Nothing is
+        // sent for an unnamed session, so an old client sees exactly the old
+        // frames.
+        if let name = session.name, let encoded = try? ServerFrame.title(name).encode() {
+            writeBinary(encoded, context: context)
+        }
+    }
+
+    /// A rename (`PATCH /api/sessions/<id>`) landed while this client is
+    /// attached — push it so the tab follows without a reload.
+    private func sendTitle(_ title: String, context: ChannelHandlerContext) {
+        guard !closed, let encoded = try? ServerFrame.title(title).encode() else { return }
+        writeBinary(encoded, context: context)
     }
 
     private func sendOutput(_ buffer: ByteBuffer, context: ChannelHandlerContext) {

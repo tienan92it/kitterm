@@ -17,6 +17,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// Tool calls waiting on a human. Shared across connections — the hook that
     /// registers one and the phone that answers it are different requests.
     private let approvals: ApprovalStore
+    /// The shared spawn path, so `POST /api/sessions` creates sessions through
+    /// exactly the steps a browser tab does.
+    private let spawnService: SessionSpawnService
     /// This connection arrived on the TLS listener, so auth cookies may carry
     /// `Secure`.
     private let connectionIsTLS: Bool
@@ -43,6 +46,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         port: Int = KittermConstants.defaultPort,
         agentControl: Bool = false,
         approvals: ApprovalStore = ApprovalStore(),
+        spawnService: SessionSpawnService? = nil,
         connectionIsTLS: Bool = false,
         tlsPort: Int? = nil,
         staticRoot: URL? = StaticFileServer.cachedRoot,
@@ -53,6 +57,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.port = port
         self.agentControl = agentControl
         self.approvals = approvals
+        self.spawnService = spawnService ?? SessionSpawnService(registry: registry)
         self.connectionIsTLS = connectionIsTLS
         self.tlsPort = tlsPort
         self.staticRoot = staticRoot
@@ -295,6 +300,14 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             )
         case (.GET, "/api/sessions"):
             serveSessions(head: head, context: context)
+        case (.POST, "/api/sessions"):
+            serveSpawn(
+                body: body,
+                bodyOverflow: bodyOverflow,
+                grade: grade,
+                head: head,
+                context: context
+            )
         case (.GET, "/api/profiles"):
             // Full grade only. Profiles are connect commands (ssh hosts,
             // docker invocations) a watch client could never run anyway —
@@ -321,8 +334,21 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             where path.hasPrefix("/api/sessions/") && path.contains("/commands/")
                 && path.hasSuffix("/output"):
             serveCommandOutput(path: path, head: head, context: context)
+        case (.GET, _) where path.hasPrefix("/api/sessions/"):
+            // After every suffixed sessions route, so this only catches the
+            // bare `/api/sessions/<id>` — one session's listing row.
+            serveSessionDetail(path: path, head: head, context: context)
         case (.DELETE, _) where path.hasPrefix("/api/sessions/"):
             serveDelete(path: path, grade: grade, head: head, context: context)
+        case (.PATCH, _) where path.hasPrefix("/api/sessions/"):
+            serveSessionPatch(
+                path: path,
+                body: body,
+                bodyOverflow: bodyOverflow,
+                grade: grade,
+                head: head,
+                context: context
+            )
         case (.POST, _) where path.hasPrefix("/api/sessions/") && path.hasSuffix("/input"):
             serveInput(
                 path: path,
@@ -437,29 +463,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             if let filter {
                 summaries = summaries.filter { SessionLabels($0.labels).matches(filter: filter) }
             }
-            let items: [[String: Any]] = summaries.map { summary in
-                let derived = DerivedSessionState.derive(from: summary.marks)
-                var item: [String: Any] = [
-                    "id": summary.id.uuidString,
-                    "shell": summary.shell,
-                    "cwd": summary.cwd,
-                    "pid": summary.pid,
-                    "attached": summary.attached,
-                    "observers": summary.observerCount,
-                    "state": derived.state.rawValue,
-                    "marks": summary.marks.count,
-                ]
-                if let command = derived.lastCommand { item["lastCommand"] = command }
-                if let exit = derived.lastExit { item["lastExit"] = exit }
-                if let profile = summary.profile { item["profile"] = profile }
-                if !summary.labels.isEmpty { item["labels"] = summary.labels }
-                if summary.exited {
-                    // Kept only so its records can still be read.
-                    item["exited"] = true
-                    if let code = summary.exitCode { item["exitCode"] = Int(code) }
-                }
-                return item
-            }
+            let items: [[String: Any]] = summaries.map(Self.sessionItem)
             let body: String
             if let data = try? JSONSerialization.data(withJSONObject: ["ok": true, "sessions": items]),
                let text = String(data: data, encoding: .utf8) {
@@ -475,6 +479,382 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 keepAlive: head.isKeepAlive
             )
         }
+    }
+
+    /// One session's listing row. Shared by the list and the single-session
+    /// route so the two can never drift apart.
+    private static func sessionItem(_ summary: SessionRegistry.SessionSummary) -> [String: Any] {
+        let derived = DerivedSessionState.derive(from: summary.marks)
+        var item: [String: Any] = [
+            "id": summary.id.uuidString,
+            "shell": summary.shell,
+            "cwd": summary.cwd,
+            "pid": summary.pid,
+            "attached": summary.attached,
+            "observers": summary.observerCount,
+            "state": derived.state.rawValue,
+            "marks": summary.marks.count,
+        ]
+        if let command = derived.lastCommand { item["lastCommand"] = command }
+        if let exit = derived.lastExit { item["lastExit"] = exit }
+        if let profile = summary.profile { item["profile"] = profile }
+        if let name = summary.name { item["name"] = name }
+        if let note = summary.note { item["note"] = note }
+        if !summary.labels.isEmpty { item["labels"] = summary.labels }
+        if summary.exited {
+            // Kept only so its records can still be read.
+            item["exited"] = true
+            if let code = summary.exitCode { item["exitCode"] = Int(code) }
+        }
+        return item
+    }
+
+    /// `GET /api/sessions/<uuid>` — one session's listing row. What the MCP
+    /// bridge and a foreman's deep-read want without fetching the whole fleet.
+    private func serveSessionDetail(
+        path: String,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        let components = path.split(separator: "/")
+        // ["api", "sessions", "<uuid>"]
+        guard components.count == 3, let id = UUID(uuidString: String(components[2])) else {
+            notFound(context: context, version: head.version)
+            return
+        }
+        let promise = context.eventLoop.makePromise(of: SessionRegistry.SessionSummary?.self)
+        promise.completeWithTask {
+            await self.registry.summary(id)
+        }
+        promise.futureResult.whenComplete { result in
+            guard case .success(.some(let summary)) = result else {
+                self.writeJSON(
+                    status: .notFound,
+                    body: #"{"ok":false,"error":"no such session"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+                return
+            }
+            var payload = Self.sessionItem(summary)
+            payload["ok"] = true
+            let body: String
+            if let data = try? JSONSerialization.data(withJSONObject: payload),
+               let text = String(data: data, encoding: .utf8) {
+                body = text
+            } else {
+                body = #"{"ok":false,"error":"encoding failed"}"#
+            }
+            self.writeJSON(
+                status: .ok,
+                body: body,
+                context: context, version: head.version, keepAlive: head.isKeepAlive
+            )
+        }
+    }
+
+    /// A request field that failed validation, with the reason for the 400.
+    private struct ValidationError: Error {
+        let reason: String
+    }
+
+    /// Fields a spawn or a patch may carry. Parsed strictly: a program that
+    /// misnames a session should hear so, not get a silently unnamed one.
+    private struct SessionMetadataFields {
+        /// Two-level optionals: outer = "was the key present", inner = the
+        /// value ("null clears").
+        var name: String??
+        var note: String??
+        var labels: SessionLabels?
+
+        static func parse(_ json: [String: Any]) -> Result<SessionMetadataFields, ValidationError> {
+            var fields = SessionMetadataFields()
+            if let raw = json["name"] {
+                if raw is NSNull {
+                    fields.name = .some(nil)
+                } else if let text = raw as? String {
+                    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard trimmed.count <= KittermConstants.maxSessionNameLength else {
+                        return .failure(ValidationError(
+                            reason: "name exceeds \(KittermConstants.maxSessionNameLength) characters"
+                        ))
+                    }
+                    guard !trimmed.unicodeScalars.contains(where: {
+                        $0.value < 0x20 || $0.value == 0x7F
+                    }) else {
+                        return .failure(ValidationError(reason: "name contains control characters"))
+                    }
+                    fields.name = .some(trimmed.isEmpty ? nil : trimmed)
+                } else {
+                    return .failure(ValidationError(reason: "name must be a string"))
+                }
+            }
+            if let raw = json["note"] {
+                if raw is NSNull {
+                    fields.note = .some(nil)
+                } else if let text = raw as? String {
+                    guard text.count <= KittermConstants.maxSessionNoteLength else {
+                        return .failure(ValidationError(
+                            reason: "note exceeds \(KittermConstants.maxSessionNoteLength) characters"
+                        ))
+                    }
+                    fields.note = .some(text.isEmpty ? nil : text)
+                } else {
+                    return .failure(ValidationError(reason: "note must be a string"))
+                }
+            }
+            if let raw = json["labels"] {
+                guard let dict = raw as? [String: Any] else {
+                    return .failure(ValidationError(reason: "labels must be an object of string values"))
+                }
+                guard dict.count <= SessionLabels.maxCount else {
+                    return .failure(ValidationError(reason: "more than \(SessionLabels.maxCount) labels"))
+                }
+                var values: [String: String] = [:]
+                for (rawKey, rawValue) in dict {
+                    let key = rawKey.lowercased()
+                    guard let value = rawValue as? String,
+                          SessionLabels.isValidKey(key),
+                          SessionLabels.isValidValue(value)
+                    else {
+                        return .failure(ValidationError(reason: "invalid label \(rawKey)"))
+                    }
+                    values[key] = value
+                }
+                fields.labels = SessionLabels(values)
+            }
+            return .success(fields)
+        }
+    }
+
+    /// `POST /api/sessions` — spawn a session from JSON, the programmatic
+    /// counterpart of opening a tab. The one route that creates a shell from a
+    /// request body, so it sits behind `--agent-control` + full grade like the
+    /// input route: strictly more powerful than typing into an existing shell.
+    private func serveSpawn(
+        body: Data,
+        bodyOverflow: Bool,
+        grade: TokenGrade,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard agentControl else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"agent control disabled; start the daemon with --agent-control"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        if bodyOverflow {
+            writeJSON(
+                status: .payloadTooLarge,
+                body: #"{"ok":false,"error":"body exceeds \#(KittermConstants.maxInputBytes) bytes"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let json: [String: Any]
+        if body.isEmpty {
+            json = [:]
+        } else if let parsed = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] {
+            json = parsed
+        } else {
+            badRequest("body must be a JSON object", head: head, context: context)
+            return
+        }
+
+        let fields: SessionMetadataFields
+        switch SessionMetadataFields.parse(json) {
+        case .success(let parsed): fields = parsed
+        case .failure(let error):
+            badRequest(error.reason, head: head, context: context)
+            return
+        }
+        // A program that names a directory wants the error, not a silent
+        // fallback to home — unlike a browser deep link, which degrades.
+        var cwd: String?
+        if let raw = json["cwd"] {
+            guard let text = raw as? String, let valid = SessionSpawnService.validatedCwd(text) else {
+                badRequest("cwd is not an existing directory", head: head, context: context)
+                return
+            }
+            cwd = valid
+        }
+        var initialInput: Data?
+        if let raw = json["input"] {
+            guard let text = raw as? String, !text.isEmpty else {
+                badRequest("input must be a non-empty string", head: head, context: context)
+                return
+            }
+            initialInput = Data(text.utf8)
+        }
+        let profileName = json["profile"] as? String
+        let cols = (json["cols"] as? Int).map { UInt16(clamping: $0) }
+        let rows = (json["rows"] as? Int).map { UInt16(clamping: $0) }
+
+        let session: PtySession
+        do {
+            session = try spawnService.prepare(
+                SessionSpawnService.Request(
+                    cwd: cwd,
+                    profileName: profileName,
+                    labels: fields.labels ?? SessionLabels(),
+                    name: fields.name ?? nil,
+                    note: fields.note ?? nil,
+                    cols: cols ?? KittermConstants.defaultCols,
+                    rows: rows ?? KittermConstants.defaultRows,
+                    initialInput: initialInput,
+                    spawnedByAPI: true
+                )
+            )
+        } catch SessionSpawnService.SpawnFailure.unknownProfile(let name) {
+            badRequest("unknown profile: \(name)", head: head, context: context)
+            return
+        } catch {
+            let reason = (error as? LocalizedError)?.errorDescription ?? "pty spawn failed"
+            writeJSON(
+                status: .internalServerError,
+                body: Self.errorBody(reason),
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+
+        spawnService.activate(session, attached: false, eventLoop: context.eventLoop)
+            .whenComplete { result in
+                switch result {
+                case .success(let id):
+                    var payload: [String: Any] = [
+                        "ok": true,
+                        "id": id.uuidString,
+                        // Paths, not URLs: `/api/lan` owns external-URL
+                        // construction, and a duplicated rule is a stale link.
+                        "wsPath": "/ws?session=\(id.uuidString)",
+                        "pagePath": "/?session=\(id.uuidString)",
+                    ]
+                    if let name = session.name { payload["name"] = name }
+                    let body = (try? JSONSerialization.data(withJSONObject: payload))
+                        .flatMap { String(data: $0, encoding: .utf8) }
+                        ?? #"{"ok":false,"error":"encoding failed"}"#
+                    self.writeJSON(
+                        status: .created,
+                        body: body,
+                        context: context, version: head.version, keepAlive: head.isKeepAlive
+                    )
+                case .failure(let error):
+                    let atCapacity: Bool
+                    if case SessionSpawnService.SpawnFailure.atCapacity = error {
+                        atCapacity = true
+                    } else {
+                        atCapacity = false
+                    }
+                    let reason = (error as? LocalizedError)?.errorDescription
+                        ?? error.localizedDescription
+                    self.writeJSON(
+                        status: atCapacity ? .serviceUnavailable : .internalServerError,
+                        body: Self.errorBody(reason),
+                        context: context, version: head.version, keepAlive: false
+                    )
+                }
+            }
+    }
+
+    /// `PATCH /api/sessions/<uuid>` — update name, note, or labels. Metadata
+    /// only, so full grade suffices without `--agent-control`: nothing here
+    /// drives a shell, same reasoning that keeps approval decisions outside
+    /// the flag.
+    private func serveSessionPatch(
+        path: String,
+        body: Data,
+        bodyOverflow: Bool,
+        grade: TokenGrade,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let components = path.split(separator: "/")
+        // ["api", "sessions", "<uuid>"]
+        guard components.count == 3, let id = UUID(uuidString: String(components[2])) else {
+            notFound(context: context, version: head.version)
+            return
+        }
+        if bodyOverflow {
+            writeJSON(
+                status: .payloadTooLarge,
+                body: #"{"ok":false,"error":"body exceeds \#(KittermConstants.maxInputBytes) bytes"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any],
+              !json.isEmpty
+        else {
+            badRequest("body must be a JSON object with name, note, or labels",
+                       head: head, context: context)
+            return
+        }
+        let fields: SessionMetadataFields
+        switch SessionMetadataFields.parse(json) {
+        case .success(let parsed): fields = parsed
+        case .failure(let error):
+            badRequest(error.reason, head: head, context: context)
+            return
+        }
+        let promise = context.eventLoop.makePromise(of: Bool.self)
+        promise.completeWithTask {
+            guard let session = await self.registry.session(id) else { return false }
+            if let name = fields.name { session.setName(name) }
+            if let note = fields.note { session.setNote(note) }
+            if let labels = fields.labels {
+                session.updateLabels(labels)
+                // The linger window follows the labels; an armed clock must
+                // be re-armed with the new one.
+                await self.registry.labelsChanged(id)
+            }
+            return true
+        }
+        promise.futureResult.whenComplete { result in
+            let existed = (try? result.get()) ?? false
+            self.writeJSON(
+                status: existed ? .ok : .notFound,
+                body: existed
+                    ? #"{"ok":true}"#
+                    : #"{"ok":false,"error":"no such session"}"#,
+                context: context, version: head.version, keepAlive: existed && head.isKeepAlive
+            )
+        }
+    }
+
+    /// A 400 whose reason is a plain string (no user data needing escaping).
+    private func badRequest(_ reason: String, head: HTTPRequestHead, context: ChannelHandlerContext) {
+        writeJSON(
+            status: .badRequest,
+            body: Self.errorBody(reason),
+            context: context, version: head.version, keepAlive: false
+        )
+    }
+
+    /// `{"ok":false,"error":…}` with the reason JSON-escaped — reasons can
+    /// carry user strings (a profile name, a label key).
+    private static func errorBody(_ reason: String) -> String {
+        (try? JSONSerialization.data(withJSONObject: ["ok": false, "error": reason]))
+            .flatMap { String(data: $0, encoding: .utf8) }
+            ?? #"{"ok":false,"error":"encoding failed"}"#
     }
 
     /// `DELETE /api/sessions/<uuid>` — end a session and its shell now.

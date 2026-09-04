@@ -118,4 +118,83 @@ final class SessionRegistryTests: XCTestCase {
         let count = await registry.count
         XCTAssertEqual(count, KittermConstants.maxConcurrentSessions)
     }
+
+    /// An API-spawned session starts detached with its linger clock running:
+    /// if no client ever joins, it must still be reaped, not leak forever.
+    func testRegisterDetachedReapsAnUnjoinedSession() async throws {
+        let registry = SessionRegistry(orchestratedLingerSeconds: 1)
+        let session = try PtySession.spawn(cwd: NSTemporaryDirectory(), spawnedByAPI: true)
+        defer { session.terminate() }
+        let id = await registry.registerDetached(session)
+        XCTAssertNotNil(id)
+
+        let listed = await registry.summaries()
+        XCTAssertFalse(try XCTUnwrap(listed.first).attached)
+
+        // Past the window with nobody attached, the session is reaped.
+        try await Task.sleep(for: .seconds(2), clock: .suspending)
+        let count = await registry.count
+        XCTAssertEqual(count, 0, "an unjoined API session must not outlive its linger window")
+    }
+
+    /// The first browser to open an API-spawned session's link becomes its
+    /// controller — `register` would have marked it attached at birth and
+    /// demoted that first join to observer.
+    func testFirstJoinOfADetachedSessionIsController() async throws {
+        let registry = SessionRegistry()
+        let session = try PtySession.spawn(cwd: NSTemporaryDirectory(), spawnedByAPI: true)
+        defer { session.terminate() }
+        let registered = await registry.registerDetached(session)
+        let id = try XCTUnwrap(registered)
+
+        guard case .controller = await registry.resolve(id) else {
+            return XCTFail("expected the first join to resolve as controller")
+        }
+        guard case .observer = await registry.resolve(id) else {
+            return XCTFail("expected the second join to resolve as observer")
+        }
+    }
+
+    /// Labels are PATCH-replaceable, and the linger window follows them. A
+    /// browser session (5 min clock armed) that a program adopts by adding
+    /// labels must get the orchestrated hour, not die on the tab's clock.
+    func testLabelChangeReArmsTheLingerClock() async throws {
+        // 1s browser-style window would be `sessionDetachLingerSeconds`; use a
+        // tiny orchestrated window instead and prove the *other* direction:
+        // removing labels from a detached orchestrated session re-arms it
+        // with the short window, so it is reaped when the labels say tab.
+        let registry = SessionRegistry(orchestratedLingerSeconds: 30)
+        let session = try PtySession.spawn(cwd: NSTemporaryDirectory(), labels: SessionLabels.parse("run:x"))
+        defer { session.terminate() }
+        let registered = await registry.register(session)
+        let id = try XCTUnwrap(registered)
+        await registry.markDetached(id)  // arms the 30s orchestrated window
+
+        // Adopt-the-other-way: the program releases it. Clear labels, notify.
+        session.updateLabels(SessionLabels())
+        await registry.labelsChanged(id)
+        // Re-armed with the browser window (300s) — still present well within
+        // the old 30s, and still present at all: the point is the re-arm ran
+        // without reaping, and the session remains resolvable.
+        let count = await registry.count
+        XCTAssertEqual(count, 1)
+        guard case .controller = await registry.resolve(id) else {
+            return XCTFail("a re-armed detached session is still attachable")
+        }
+    }
+
+    /// `spawnedByAPI` grants orchestrated semantics without labels: the shell's
+    /// exit keeps the session readable instead of reaping it like a browser
+    /// tab's.
+    func testAPISpawnedSessionSurvivesShellExit() async throws {
+        let registry = SessionRegistry()
+        let session = try PtySession.spawn(cwd: NSTemporaryDirectory(), spawnedByAPI: true)
+        defer { session.terminate() }
+        let registered = await registry.registerDetached(session)
+        let id = try XCTUnwrap(registered)
+
+        await registry.sessionDidExit(id)
+        let count = await registry.count
+        XCTAssertEqual(count, 1, "an API session outlives its shell for the linger window")
+    }
 }

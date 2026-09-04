@@ -9,7 +9,6 @@ public actor SessionRegistry {
     /// disconnects, so an orchestrator that restarts finds its nodes running.
     /// Bounded so a crash cannot leak shells forever.
     private let orchestratedLinger: Int
-
     public init(
         orchestratedLingerSeconds: Int = KittermConstants.orchestratedSessionLingerSeconds
     ) {
@@ -38,6 +37,19 @@ public actor SessionRegistry {
         return id
     }
 
+    /// Admit a session no client is attached to (`POST /api/sessions`). The
+    /// linger clock starts immediately: `register` would mark it attached, so
+    /// a session nobody ever joins would never start the clock, and the first
+    /// browser to open its link would resolve as observer instead of
+    /// controller.
+    public func registerDetached(_ session: PtySession) -> UUID? {
+        guard sessions.count < KittermConstants.maxConcurrentSessions else { return nil }
+        let id = session.sessionID
+        sessions[id] = session
+        scheduleLinger(id)
+        return id
+    }
+
     /// Read-only lookup (API handlers); does not affect controller claims.
     public func session(_ id: UUID) -> PtySession? {
         sessions[id]
@@ -62,6 +74,10 @@ public actor SessionRegistry {
         public let observerCount: Int
         /// Session profile this shell was started from, if any.
         public let profile: String?
+        /// Human-readable name (`POST/PATCH /api/sessions`), if set.
+        public let name: String?
+        /// Free-text status note, if set.
+        public let note: String?
         /// Orchestrator tags, for attributing a session to a graph node.
         public let labels: [String: String]
         /// Shell-integration marks, newest last — the caller derives state.
@@ -76,22 +92,31 @@ public actor SessionRegistry {
     /// Every live session, for `/api/sessions`. Ordered by id for stability.
     public func summaries() -> [SessionSummary] {
         sessions
-            .map { id, session in
-                SessionSummary(
-                    id: id,
-                    shell: session.shellPath,
-                    cwd: session.liveCwd,
-                    pid: session.pid,
-                    attached: attachedIDs.contains(id),
-                    observerCount: session.observerCount,
-                    profile: session.profileName,
-                    labels: session.labels.values,
-                    marks: session.marksSnapshot(),
-                    exited: !session.isRunning,
-                    exitCode: session.exitCode
-                )
-            }
+            .map { id, session in makeSummary(id: id, session: session) }
             .sorted { $0.id.uuidString < $1.id.uuidString }
+    }
+
+    /// One session's listing row, for `GET /api/sessions/<id>`.
+    public func summary(_ id: UUID) -> SessionSummary? {
+        sessions[id].map { makeSummary(id: id, session: $0) }
+    }
+
+    private func makeSummary(id: UUID, session: PtySession) -> SessionSummary {
+        SessionSummary(
+            id: id,
+            shell: session.shellPath,
+            cwd: session.liveCwd,
+            pid: session.pid,
+            attached: attachedIDs.contains(id),
+            observerCount: session.observerCount,
+            profile: session.profileName,
+            name: session.name,
+            note: session.note,
+            labels: session.labels.values,
+            marks: session.marksSnapshot(),
+            exited: !session.isRunning,
+            exitCode: session.exitCode
+        )
     }
 
     public enum SessionResolution: Sendable {
@@ -107,9 +132,9 @@ public actor SessionRegistry {
     public func resolve(_ id: UUID) -> SessionResolution {
         guard let session = sessions[id] else { return .notFound }
         guard session.isRunning else {
-            // A labelled session is kept after its shell dies so its records
-            // can still be read, so looking at it must not reap it.
-            if session.labels.isEmpty { removeInternal(id) }
+            // An orchestrated session is kept after its shell dies so its
+            // records can still be read, so looking at it must not reap it.
+            if !session.isOrchestrated { removeInternal(id) }
             return .notFound
         }
         lingerTasks.removeValue(forKey: id)?.cancel()
@@ -140,6 +165,15 @@ public actor SessionRegistry {
         }
     }
 
+    /// A session's labels changed (`PATCH`), which may have changed whether it
+    /// is orchestrated. A linger clock already running was armed with the old
+    /// window, so re-arm it: a program that adopts a detached browser session
+    /// must get the hour it was promised, not the tab's five minutes.
+    public func labelsChanged(_ id: UUID) {
+        guard sessions[id] != nil, lingerTasks[id] != nil else { return }
+        scheduleLinger(id)
+    }
+
     /// An observer disconnected; if nobody is left, start the linger clock.
     public func observerLeft(_ id: UUID) {
         guard let session = sessions[id] else { return }
@@ -152,7 +186,7 @@ public actor SessionRegistry {
         lingerTasks[id]?.cancel()
         // A tab that went away is probably closed for good; a program's session
         // is probably mid-run with its caller restarting.
-        let window = sessions[id]?.labels.isEmpty == false
+        let window = sessions[id]?.isOrchestrated == true
             ? orchestratedLinger
             : KittermConstants.sessionDetachLingerSeconds
         lingerTasks[id] = Task { [weak self] in
@@ -169,7 +203,7 @@ public actor SessionRegistry {
     /// now, as before; nobody wants a corpse in the fleet view.
     public func sessionDidExit(_ id: UUID) {
         guard let session = sessions[id] else { return }
-        guard !session.labels.isEmpty else {
+        guard session.isOrchestrated else {
             removeInternal(id)
             return
         }
