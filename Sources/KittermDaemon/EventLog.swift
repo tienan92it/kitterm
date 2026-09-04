@@ -40,6 +40,11 @@ public struct DaemonEvent: Sendable, Equatable {
 }
 
 public final class EventLog: @unchecked Sendable {
+    /// The identity of this daemon process's feed. A restart resets `seq` to
+    /// zero, so a cursor alone cannot tell "quiet" from "the daemon I was
+    /// watching is gone": every response carries the epoch, and a caller that
+    /// sends its epoch back is told `pruned` the moment it no longer matches.
+    public let epoch: String
     private let lock = NIOLock()
     /// Newest last. Bounded: the oldest is dropped past `capacity`, and
     /// `base` follows so a `since` below it is reported `pruned`.
@@ -60,11 +65,31 @@ public final class EventLog: @unchecked Sendable {
     private let maxWaiters: Int
 
     public init(
+        epoch: String = EventLog.newEpoch(),
         capacity: Int = KittermConstants.eventLogCapacity,
         maxWaiters: Int = KittermConstants.eventLogMaxWaiters
     ) {
+        self.epoch = epoch
         self.capacity = capacity
         self.maxWaiters = maxWaiters
+    }
+
+    /// A fresh epoch id: random, so two daemons started in the same
+    /// millisecond (a test, a restart loop) still tell apart.
+    public static func newEpoch() -> String {
+        UUID().uuidString.lowercased()
+    }
+
+    /// Record that this daemon process started, as the first event of its
+    /// epoch. A foreman that reads its way back from a stale cursor sees this
+    /// before any `session.created`, so it knows every session id it held is
+    /// gone and re-lists the fleet.
+    public func markStarted(version: String, pid: Int32) {
+        append(type: "daemon.started", session: nil, data: [
+            "epoch": epoch,
+            "version": version,
+            "pid": String(pid),
+        ])
     }
 
     /// Append an event and wake every waiter it satisfies. The promises are
@@ -102,17 +127,31 @@ public final class EventLog: @unchecked Sendable {
 
     /// Events newer than `since` (optionally for one session), the next cursor
     /// to poll with, and whether `since` had aged out of the ring.
-    func snapshot(since: UInt64, session: UUID?) -> (events: [DaemonEvent], next: UInt64, pruned: Bool) {
-        lock.withLock { snapshotLocked(since: since, session: session) }
+    ///
+    /// `epoch` is the caller's, when it sends one. A cursor from another epoch
+    /// is `pruned`, and the reply restarts from the head of this epoch so the
+    /// caller sees `daemon.started` before anything else.
+    func snapshot(
+        since: UInt64, epoch: String? = nil, session: UUID?
+    ) -> (events: [DaemonEvent], next: UInt64, pruned: Bool) {
+        lock.withLock { snapshotLocked(since: since, epoch: epoch, session: session) }
     }
 
     /// Caller holds `lock`.
-    private func snapshotLocked(since: UInt64, session: UUID?) -> (events: [DaemonEvent], next: UInt64, pruned: Bool) {
+    private func snapshotLocked(
+        since requested: UInt64, epoch: String?, session: UUID?
+    ) -> (events: [DaemonEvent], next: UInt64, pruned: Bool) {
+        // A cursor this daemon never issued — a mismatched epoch, or a seq
+        // past the head — belongs to an earlier daemon process. Its owner
+        // missed every event since the restart, so it is pruned and reads
+        // from the start of this epoch.
+        let foreign = (epoch != nil && epoch != self.epoch) || requested > lastSeq
+        let since = foreign ? 0 : requested
         // Retained events are seq in [base, lastSeq]. The caller missed some
         // when the next one it wants, `since + 1`, has already been dropped —
         // i.e. `since < base - 1`. `base > 1` means eviction has actually
         // happened (an un-evicted log's base is its first seq, 1).
-        let pruned = base > 1 && since < base - 1
+        let pruned = foreign || (base > 1 && since < base - 1)
         var events = ring.filter { $0.seq > since }
         if let session {
             events = events.filter { $0.session == session }
@@ -121,9 +160,10 @@ public final class EventLog: @unchecked Sendable {
     }
 
     enum PollOutcome {
-        /// Something to return now: newer events, a pruned cursor, or a cursor
-        /// already past the head (answered with no events and the true `next`
-        /// so the caller corrects itself instead of parking to its deadline).
+        /// Something to return now: newer events, or a pruned cursor — which
+        /// includes one from another epoch, answered with this epoch's events
+        /// so the caller learns of the restart instead of parking to its
+        /// deadline.
         case ready(events: [DaemonEvent], next: UInt64, pruned: Bool)
         /// Parked; the future completes when a matching event is appended.
         case waiting(id: UInt64, future: EventLoopFuture<Void>)
@@ -136,10 +176,10 @@ public final class EventLog: @unchecked Sendable {
     /// append (the registry actor's lifecycle events) could land in, parking
     /// a request whose event was already in the ring — the same shape
     /// `PtySession.awaitCommandEnd` guards against.
-    func poll(since: UInt64, session: UUID?, on loop: EventLoop) -> PollOutcome {
+    func poll(since: UInt64, epoch: String? = nil, session: UUID?, on loop: EventLoop) -> PollOutcome {
         lock.withLock {
-            let snapshot = snapshotLocked(since: since, session: session)
-            if !snapshot.events.isEmpty || snapshot.pruned || since > lastSeq {
+            let snapshot = snapshotLocked(since: since, epoch: epoch, session: session)
+            if !snapshot.events.isEmpty || snapshot.pruned {
                 return .ready(events: snapshot.events, next: snapshot.next, pruned: snapshot.pruned)
             }
             guard waiters.count < maxWaiters else { return .tooManyWaiters }

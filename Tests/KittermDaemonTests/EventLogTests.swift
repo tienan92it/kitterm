@@ -132,18 +132,66 @@ final class EventLogTests: XCTestCase {
         XCTAssertEqual(next, 1)
     }
 
-    /// A cursor past the head answers now with the true `next`, instead of
-    /// parking to its deadline — the one way an any-grade caller could tie up
-    /// a waiter slot with a request nothing will ever satisfy.
-    func testCursorPastHeadAnswersImmediately() {
+    /// A cursor past the head answers now, instead of parking to its deadline
+    /// — the one way an any-grade caller could tie up a waiter slot with a
+    /// request nothing will ever satisfy. This daemon never issued such a
+    /// cursor, so it comes from an earlier daemon process: the caller is
+    /// told `pruned` and reads this epoch from its start.
+    func testCursorPastHeadIsPrunedAndReadsFromTheStart() {
         let log = EventLog()
         log.append(type: "e", session: nil)
         guard case .ready(let events, let next, let pruned) = log.poll(since: 999, session: nil, on: loop) else {
             return XCTFail("a cursor past the head must not park")
         }
-        XCTAssertTrue(events.isEmpty)
+        XCTAssertEqual(events.map(\.type), ["e"], "the caller missed this epoch's events; it gets them")
         XCTAssertEqual(next, 1, "the caller learns the real head and corrects itself")
-        XCTAssertFalse(pruned)
+        XCTAssertTrue(pruned, "a cursor this daemon never issued is a stale one")
         XCTAssertEqual(log.waiterCount, 0)
+    }
+
+    /// `markStarted` is the first event of an epoch and names it, so a
+    /// foreman reading from a stale cursor sees the restart before any
+    /// session it might still find.
+    func testMarkStartedIsTheFirstEventAndCarriesTheEpoch() {
+        let log = EventLog(epoch: "abc")
+        log.markStarted(version: "0.0.0", pid: 42)
+        log.append(type: "session.created", session: UUID())
+        let snap = log.snapshot(since: 0, session: nil)
+        XCTAssertEqual(snap.events.first?.type, "daemon.started")
+        XCTAssertEqual(snap.events.first?.data["epoch"], "abc")
+        XCTAssertEqual(snap.events.first?.data["version"], "0.0.0")
+        XCTAssertEqual(snap.events.first?.data["pid"], "42")
+        XCTAssertEqual(log.epoch, "abc")
+    }
+
+    /// A caller that sends the epoch it last saw is answered `pruned` the
+    /// moment it no longer matches — even when its seq happens to fit inside
+    /// the new daemon's ring, which a bare `since` could not detect.
+    func testForeignEpochIsPrunedAndReadsFromTheStart() {
+        let log = EventLog(epoch: "new")
+        log.markStarted(version: "0.0.0", pid: 1)
+        for _ in 0..<5 { log.append(type: "e", session: nil) }
+        // A cursor of 3 from the old daemon fits inside [1, 6] here.
+        let stale = log.snapshot(since: 3, epoch: "old", session: nil)
+        XCTAssertTrue(stale.pruned)
+        XCTAssertEqual(stale.events.first?.type, "daemon.started")
+        XCTAssertEqual(stale.events.count, 6, "everything in this epoch, not just seq > 3")
+        XCTAssertEqual(stale.next, 6)
+        // The same cursor with the right epoch reads normally.
+        let current = log.snapshot(since: 3, epoch: "new", session: nil)
+        XCTAssertFalse(current.pruned)
+        XCTAssertEqual(current.events.map(\.seq), [4, 5, 6])
+        // A foreign epoch never parks, even on an otherwise quiet log.
+        guard case .ready(_, _, let pruned) = log.poll(since: 6, epoch: "old", session: nil, on: loop) else {
+            return XCTFail("a foreign epoch must answer at once")
+        }
+        XCTAssertTrue(pruned)
+        XCTAssertEqual(log.waiterCount, 0)
+    }
+
+    /// Two logs never share an epoch by default: the id is what tells a
+    /// restarted daemon from the one before it.
+    func testEpochsAreDistinctByDefault() {
+        XCTAssertNotEqual(EventLog().epoch, EventLog().epoch)
     }
 }

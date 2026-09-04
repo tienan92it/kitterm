@@ -143,6 +143,42 @@ final class EventRouteTests: XCTestCase {
         XCTAssertEqual(status, 404)
     }
 
+    /// Every answer names the daemon's epoch, and a caller that sends back
+    /// another one is told `pruned` and read from this epoch's start — a
+    /// restart is a fact on the feed, not a connection error.
+    func testEpochRidesOnEveryAnswerAndAForeignOneIsPruned() async throws {
+        eventLog.markStarted(version: "0.0.0", pid: 1)
+        let id = try await registerSession()
+
+        let fresh = try await get("/api/events?since=0")
+        XCTAssertEqual(fresh["epoch"] as? String, eventLog.epoch)
+        XCTAssertEqual(fresh["pruned"] as? Bool, false)
+        let cursor = try XCTUnwrap(fresh["next"] as? UInt64)
+
+        // The old daemon's cursor, with the old daemon's epoch.
+        let stale = try await get("/api/events?since=\(cursor)&epoch=an-older-daemon")
+        XCTAssertEqual(stale["pruned"] as? Bool, true)
+        XCTAssertEqual(stale["epoch"] as? String, eventLog.epoch)
+        let items = try events(stale)
+        XCTAssertEqual(items.first?["type"] as? String, "daemon.started")
+        XCTAssertEqual((items.first?["data"] as? [String: Any])?["epoch"] as? String, eventLog.epoch)
+        XCTAssertTrue(items.contains { ($0["session"] as? String) == id.uuidString })
+
+        // The same cursor with the right epoch is quiet, not pruned.
+        let current = try await get("/api/events?since=\(cursor)&epoch=\(eventLog.epoch)&timeout=1")
+        XCTAssertEqual(current["pruned"] as? Bool, false)
+        XCTAssertEqual(try events(current).count, 0)
+    }
+
+    /// An old client that sends no epoch still learns of a restart when its
+    /// cursor is past the new daemon's head.
+    func testCursorPastTheHeadIsPrunedWithoutAnEpoch() async throws {
+        eventLog.markStarted(version: "0.0.0", pid: 1)
+        let stale = try await get("/api/events?since=5000&timeout=1")
+        XCTAssertEqual(stale["pruned"] as? Bool, true)
+        XCTAssertEqual(try events(stale).first?["type"] as? String, "daemon.started")
+    }
+
     /// A session filter narrows the feed to one crew member.
     func testSessionFilter() async throws {
         let id = try await registerSession()

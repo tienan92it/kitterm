@@ -23,8 +23,9 @@ informed and you route decisions to the user.
    `spawn_session name="<task>" labels={crew:"<crew>", task:"<slug>"} input="claude\n"`
    Then send the task prompt with `send_input`.
 
-2. Call `wait_for_events since=<cursor>` and block. Start `cursor` at 0; after
-   each call, set it to the returned `next`.
+2. Call `wait_for_events since=<cursor> epoch=<epoch>` and block. Start
+   `cursor` at 0 with no epoch; after each call, set them to the returned
+   `next` and `epoch`.
 
 3. When the call returns, act on each event:
    - `agent.status` with `needs-input`, or `approval.pending`: tell the user
@@ -34,6 +35,10 @@ informed and you route decisions to the user.
      with `list_commands` then `read_output`. If the work is right, tell the
      user it is ready. If not, send a correction with `send_input`.
    - `session.exited` with a non-zero code: the session failed. Report it.
+   - `daemon.started`, or a result whose `epoch` changed: the daemon
+     restarted and every session id you hold is gone. Call `list_sessions`,
+     match respawned panes by labels and cwd, spawn again what is missing, and
+     send each fresh shell its task again.
 
 4. When the user says a task is merged, `kill_session` for it.
 

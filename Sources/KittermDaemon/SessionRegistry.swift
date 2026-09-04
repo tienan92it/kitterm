@@ -13,13 +13,18 @@ public actor SessionRegistry {
     /// Appended to from actor context, which is off the event loop — safe
     /// because `EventLog` is `NIOLock`-guarded, not loop-confined.
     private let eventLog: EventLog?
+    /// Names and labels kept on disk so a pane respawned after a daemon
+    /// restart keeps them; nil in the tests that do not exercise it.
+    private let respawnHints: RespawnHintStore?
 
     public init(
         orchestratedLingerSeconds: Int = KittermConstants.orchestratedSessionLingerSeconds,
-        eventLog: EventLog? = nil
+        eventLog: EventLog? = nil,
+        respawnHints: RespawnHintStore? = nil
     ) {
         self.orchestratedLinger = orchestratedLingerSeconds
         self.eventLog = eventLog
+        self.respawnHints = respawnHints
     }
 
     private var sessions: [UUID: PtySession] = [:]
@@ -33,7 +38,11 @@ public actor SessionRegistry {
     /// Admit a session, or return nil at `maxConcurrentSessions`. The check
     /// lives here because it is the only place it is atomic — counting and
     /// inserting as separate awaits lets concurrent opens slip past the cap.
-    public func register(_ session: PtySession) -> UUID? {
+    ///
+    /// `respawnOf` names the session a pane held before a daemon restart, when
+    /// this one replaces it; the `session.created` event carries it so a
+    /// foreman can pair the new id with the one it lost.
+    public func register(_ session: PtySession, respawnOf: UUID? = nil) -> UUID? {
         guard sessions.count < KittermConstants.maxConcurrentSessions else { return nil }
         // The session minted this before spawning, so its shell already carries
         // it in KITTERM_SESSION_ID. Minting another here would give the same
@@ -41,7 +50,8 @@ public actor SessionRegistry {
         let id = session.sessionID
         sessions[id] = session
         attachedIDs.insert(id)
-        emitCreated(session)
+        recordHints(session)
+        emitCreated(session, respawnOf: respawnOf)
         return id
     }
 
@@ -55,14 +65,30 @@ public actor SessionRegistry {
         let id = session.sessionID
         sessions[id] = session
         scheduleLinger(id)
+        recordHints(session)
         emitCreated(session)
         return id
     }
 
-    private func emitCreated(_ session: PtySession) {
+    private func emitCreated(_ session: PtySession, respawnOf: UUID? = nil) {
         var data = ["shell": session.shellPath]
         if let name = session.name { data["name"] = name }
+        if let respawnOf { data["respawnOf"] = respawnOf.uuidString }
         eventLog?.append(type: "session.created", session: session.sessionID, data: data)
+    }
+
+    private func recordHints(_ session: PtySession) {
+        respawnHints?.record(id: session.sessionID, name: session.name, labels: session.labels)
+    }
+
+    /// The name and labels a session had before the daemon restarted, for the
+    /// pane that comes back asking for it. Consumed: a second reattach with
+    /// the same stale id gets a plain shell. Nil while the session still
+    /// exists (an exited orchestrated session keeps its records, and its
+    /// name must not be cloned onto a new shell beside it).
+    public func takeRespawnHints(for id: UUID) -> RespawnHints? {
+        guard sessions[id] == nil else { return nil }
+        return respawnHints?.take(id: id)
     }
 
     /// Read-only lookup (API handlers); does not affect controller claims.
@@ -191,8 +217,16 @@ public actor SessionRegistry {
     /// window, so re-arm it: a program that adopts a detached browser session
     /// must get the hour it was promised, not the tab's five minutes.
     public func labelsChanged(_ id: UUID) {
-        guard sessions[id] != nil, lingerTasks[id] != nil else { return }
+        guard let session = sessions[id] else { return }
+        recordHints(session)
+        guard lingerTasks[id] != nil else { return }
         scheduleLinger(id)
+    }
+
+    /// A session's name changed (`PATCH`); keep the on-disk copy current.
+    public func nameChanged(_ id: UUID) {
+        guard let session = sessions[id] else { return }
+        recordHints(session)
     }
 
     /// An observer disconnected; if nobody is left, start the linger clock.
@@ -272,6 +306,7 @@ public actor SessionRegistry {
             session.terminate()
             session.discardRetainedOutput()
             SessionDrops.discard(sessionID: id)
+            respawnHints?.forget(id: id)
             eventLog?.append(type: "session.removed", session: id, data: [:])
         }
     }

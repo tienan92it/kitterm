@@ -98,9 +98,10 @@ enum MCPTools {
             ),
             tool(
                 "wait_for_events",
-                "The foreman's heartbeat: block until something changes across the whole crew — a status change, an approval, a spawn, an exit, or a posted note — then return the events. Pass the `next` cursor from the previous call as `since`. One call watches every session at once; re-invoke in a loop. A timeout returns no events, which just means \"still quiet\".",
+                "The foreman's heartbeat: block until something changes across the whole crew — a status change, an approval, a spawn, an exit, or a posted note — then return the events. Pass the `next` cursor from the previous call as `since` and its `epoch` as `epoch`. One call watches every session at once; re-invoke in a loop. A timeout returns no events, which just means \"still quiet\". A result whose `epoch` differs from the last one means the daemon restarted: every session id you held is gone, the first event is `daemon.started`, and `pruned` is true. Re-list the sessions and match them by labels and cwd.",
                 properties: [
                     "since": ["type": "integer", "description": "Cursor from the previous call's `next` (0 to start)"],
+                    "epoch": ["type": "string", "description": "The previous call's `epoch`; omit on the first call. A mismatch is answered at once with `pruned` true"],
                     "session": ["type": "string", "description": "Optional: only this session's events"],
                     "timeout": ["type": "integer", "description": "Seconds to wait (default 25, max 300)"],
                 ]
@@ -205,6 +206,9 @@ enum MCPTools {
         case "wait_for_events":
             var query: [String] = []
             query.append("since=\((arguments["since"] as? Int) ?? 0)")
+            if let epoch = arguments["epoch"] as? String, !epoch.isEmpty {
+                query.append("epoch=\(escape(epoch))")
+            }
             if let timeout = arguments["timeout"] as? Int { query.append("timeout=\(timeout)") }
             if let session = arguments["session"] as? String, !session.isEmpty {
                 query.append("session=\(escape(session))")

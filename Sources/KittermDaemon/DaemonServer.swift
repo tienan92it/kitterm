@@ -72,10 +72,14 @@ public final class DaemonServer: @unchecked Sendable {
     public init(config: DaemonConfig = DaemonConfig()) {
         self.config = config
         let eventLog = EventLog()
+        // The first event of this epoch: a foreman whose cursor predates it
+        // reads this before any session it can still find.
+        eventLog.markStarted(version: BuildVersion.running, pid: getpid())
         self.eventLog = eventLog
         self.registry = SessionRegistry(
             orchestratedLingerSeconds: config.orchestratedLingerSeconds,
-            eventLog: eventLog
+            eventLog: eventLog,
+            respawnHints: RespawnHintStore(file: DaemonPaths.respawnHintsFile)
         )
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
     }

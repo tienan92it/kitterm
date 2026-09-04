@@ -573,6 +573,9 @@ document.addEventListener("visibilitychange", () => {
  * answers 404 once and the watcher stops — the 2s poll still covers it.
  */
 let eventCursor = 0;
+/** The daemon's epoch from the last answer. Sent back so a cursor from before
+ * a restart is answered `pruned` (and repaints) instead of silently reused. */
+let eventEpoch: string | null = null;
 async function watchEvents(): Promise<void> {
   for (;;) {
     if (document.hidden) {
@@ -582,14 +585,21 @@ async function watchEvents(): Promise<void> {
       continue;
     }
     try {
-      const res = await fetch(`/api/events?since=${eventCursor}&timeout=25`, {
+      const epochParam = eventEpoch ? `&epoch=${encodeURIComponent(eventEpoch)}` : "";
+      const res = await fetch(`/api/events?since=${eventCursor}&timeout=25${epochParam}`, {
         headers: { accept: "application/json" },
       });
       if (res.status === 404) return; // old daemon; the poll covers it
       if (!res.ok) throw new Error(String(res.status));
-      const data = (await res.json()) as { next?: number; events?: unknown[] };
+      const data = (await res.json()) as {
+        next?: number;
+        epoch?: string;
+        pruned?: boolean;
+        events?: unknown[];
+      };
       if (typeof data.next === "number") eventCursor = data.next;
-      if ((data.events?.length ?? 0) > 0) void poll();
+      if (typeof data.epoch === "string") eventEpoch = data.epoch;
+      if (data.pruned || (data.events?.length ?? 0) > 0) void poll();
     } catch {
       // Network blip or daemon restart — back off, then resume the watch.
       await new Promise((r) => setTimeout(r, POLL_MS));

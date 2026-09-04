@@ -20,8 +20,10 @@ per dimension, each blind to the others, then collect their findings.
    Then `send_input` the review prompt: the diff to read, the one dimension to
    judge, and the instruction to post its findings with a note.
 
-3. Wait for the crew with `wait_for_events since=<cursor>`. Each session posts
-   its findings as a `note` and then reports `completed`.
+3. Wait for the crew with `wait_for_events since=<cursor> epoch=<epoch>`. Each
+   session posts its findings as a `note` and then reports `completed`. A
+   changed `epoch` means the daemon restarted and the crew is gone: list the
+   sessions again and respawn the missing reviewers.
 
 4. Collect the notes. Dedupe overlapping findings. Rank each from nit to
    blocking.
