@@ -532,6 +532,63 @@ public final class PtySession: @unchecked Sendable {
         writeToChannel(flush.channel, flush.bytes)
     }
 
+    /// Whether a shell is reading the terminal, or a program has taken the
+    /// foreground (`claude`, `vim`, `ssh`, a `sleep`).
+    ///
+    /// `tcgetpgrp` on the master names the foreground process group, and the
+    /// group leader's executable says what it is. The leader is judged by
+    /// name rather than by pid: `exec claude` keeps the shell's pid and is
+    /// still a program, a nested `zsh` is still a shell, and macOS's `/bin/sh`
+    /// re-executes itself as `bash`. No group yet (the helper has not claimed
+    /// the tty) or an error (the pty is gone) reads as the shell, which keeps
+    /// the old behaviour for every caller that never asked.
+    public var foregroundIsShell: Bool {
+        let group = tcgetpgrp(masterFD)
+        guard group > 0 else { return true }
+        guard let leader = Self.executablePath(ofPID: group) else { return group == pid }
+        let name = URL(fileURLWithPath: leader).lastPathComponent
+        return name == URL(fileURLWithPath: shellPath).lastPathComponent
+            || Self.shellNames.contains(name)
+    }
+
+    /// Programs that read a line feed as Enter, whichever one was spawned.
+    private static let shellNames: Set<String> = [
+        "sh", "bash", "zsh", "fish", "dash", "ksh", "tcsh", "csh",
+    ]
+
+    /// How long a typed chunk settles before Enter follows it, for a program
+    /// reading raw keys. Claude Code treats a chunk of text with `\r` on the
+    /// end as one paste and keeps the `\r` as text; a separate key 20ms later
+    /// submits (measured against 2.1.260), so 100ms is a wide margin.
+    public static let programEnterDelay: UInt64 = 100_000_000  // nanoseconds
+
+    /// Type `text` and press Enter, as whoever reads the terminal expects it.
+    /// Returns the byte count written.
+    ///
+    /// A shell at its prompt takes the text and a line feed in one write —
+    /// the contract every caller of the input route already relies on, and
+    /// what names the command it creates. A program that took the foreground
+    /// reads raw keys, and a keyboard's Enter is a carriage return: Claude
+    /// Code's prompt keeps a bare line feed as text and never submits, while
+    /// `\r` submits. The text and the key go in two writes with a settle
+    /// between, or the pair arrives as one paste whose Enter is swallowed. A
+    /// cooked-mode program still sees a newline, because the tty maps `\r`
+    /// to `\n` (ICRNL). An empty `text` presses Enter alone.
+    public func typeLine(_ text: Data) async throws -> Int {
+        guard !foregroundIsShell else {
+            let line = text + Data("\n".utf8)
+            noteSubmittedCommand(line)
+            try write(line)
+            return line.count
+        }
+        if !text.isEmpty {
+            try write(text)
+            try await Task.sleep(nanoseconds: Self.programEnterDelay)
+        }
+        try write(Data("\r".utf8))
+        return text.count + 1
+    }
+
     /// Called with the lock released — `writeAndFlush` runs the pipeline inline
     /// when already on the event loop.
     private func writeToChannel(_ channel: Channel, _ bytes: Data) {
@@ -884,6 +941,24 @@ public final class PtySession: @unchecked Sendable {
         buffer[count] = 0
         let path = String(cString: buffer)
         return path.isEmpty ? nil : path
+        #endif
+    }
+
+    /// The executable a process is running, or nil for a reaped pid or any
+    /// failure. The same kind of kernel-state read as `currentDirectory`.
+    static func executablePath(ofPID pid: pid_t) -> String? {
+        #if canImport(Darwin)
+        // PROC_PIDPATHINFO_MAXSIZE is a macro Swift cannot see: 4 * MAXPATHLEN.
+        var buffer = [CChar](repeating: 0, count: 4 * Int(PATH_MAX))
+        let count = proc_pidpath(pid, &buffer, UInt32(buffer.count))
+        guard count > 0 else { return nil }
+        return String(cString: buffer)
+        #else
+        var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+        let count = readlink("/proc/\(pid)/exe", &buffer, buffer.count - 1)
+        guard count > 0 else { return nil }
+        buffer[count] = 0
+        return String(cString: buffer)
         #endif
     }
 
