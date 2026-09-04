@@ -50,6 +50,10 @@ public enum KittermConstants: Sendable {
     /// larger output returns its tail so a flood can't serialize megabytes on
     /// the event loop.
     public static let apiCommandOutputMaxBytes: Int = 256 * 1024
+    /// Default tail for `/api/.../output` when the caller names none. A TUI
+    /// redraws its whole area each frame, so this holds several frames of a
+    /// large pane; the cap above is the ceiling.
+    public static let apiOutputTailDefaultBytes: Int = 64 * 1024
     /// Paths one stat request may ask about.
     ///
     /// The client asks about a screen of output at a time, and a screen holds a

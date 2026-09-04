@@ -17,7 +17,8 @@ you confirm the cause. You do not fix it until the user asks.
    instruction to reproduce first.
 
 3. Drive the session to reproduce the bug. Use `send_input` to run commands and
-   `wait_for_command` then `read_output` to read what happened. Do not accept a
+   `wait_for_command` then `read_output` to read what happened; when the
+   session runs a TUI, read the pane with `read_screen` instead. Do not accept a
    theory that has no reproduction.
 
 4. Once reproduced, drive the session to find the root cause. Rank the

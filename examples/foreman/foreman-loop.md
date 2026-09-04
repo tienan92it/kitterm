@@ -21,7 +21,9 @@ informed and you route decisions to the user.
 
 1. For each task the user gives you, spawn a session:
    `spawn_session name="<task>" labels={crew:"<crew>", task:"<slug>"} input="claude\n"`
-   Then send the task prompt with `send_input`.
+   Call `read_screen` first and confirm the pane shows an empty Claude Code
+   prompt (`❯` with the cursor after it; a `{dim}…{/dim}` run there is a
+   placeholder, not typed text). Then send the task prompt with `send_input`.
 
 2. Call `wait_for_events since=<cursor> epoch=<epoch>` and block. Start
    `cursor` at 0 with no epoch; after each call, set them to the returned
@@ -32,8 +34,9 @@ informed and you route decisions to the user.
      which session needs them and link the pane. Do not act.
    - `note`: relay the crew agent's message to the user.
    - `agent.status` with `completed`: read the session's last command output
-     with `list_commands` then `read_output`. If the work is right, tell the
-     user it is ready. If not, send a correction with `send_input`.
+     with `list_commands` then `read_output`, and read the pane itself with
+     `read_screen`. If the work is right, tell the user it is ready. If not,
+     send a correction with `send_input`.
    - `session.exited` with a non-zero code: the session failed. Report it.
    - `daemon.started`, or a result whose `epoch` changed: the daemon
      restarted and every session id you hold is gone. Call `list_sessions`,
