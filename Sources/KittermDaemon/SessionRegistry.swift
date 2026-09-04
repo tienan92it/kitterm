@@ -82,6 +82,10 @@ public actor SessionRegistry {
         public let labels: [String: String]
         /// Shell-integration marks, newest last — the caller derives state.
         public let marks: [SessionMark]
+        /// When output last arrived, for a "stuck" judgment the caller makes.
+        public let lastOutputAt: Date?
+        /// The latest Claude Code hook report, if any.
+        public let agentStatus: AgentStatus?
         /// The shell has exited; the session is kept only so its records can
         /// still be read, and it cannot be attached to.
         public let exited: Bool
@@ -114,6 +118,8 @@ public actor SessionRegistry {
             note: session.note,
             labels: session.labels.values,
             marks: session.marksSnapshot(),
+            lastOutputAt: session.lastOutputAt,
+            agentStatus: session.agentStatus,
             exited: !session.isRunning,
             exitCode: session.exitCode
         )
