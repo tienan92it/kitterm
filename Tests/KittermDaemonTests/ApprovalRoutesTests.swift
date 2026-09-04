@@ -87,6 +87,11 @@ final class ApprovalRoutesTests: XCTestCase {
         try XCTUnwrap(JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any])
     }
 
+    /// The held event: Claude would show a permission dialog for this call.
+    private static let permissionRequest = """
+    {"hook_event_name":"PermissionRequest","tool_name":"Bash",\
+    "tool_input":{"command":"rm -rf build"},"session_id":"abc"}
+    """
     private static let preToolUse = """
     {"hook_event_name":"PreToolUse","tool_name":"Bash",\
     "tool_input":{"command":"rm -rf build"},"session_id":"abc"}
@@ -109,7 +114,7 @@ final class ApprovalRoutesTests: XCTestCase {
 
     func testAllowReachesTheBlockedAgent() async throws {
         let p = port!
-        async let hook = Self.post(port: p, "/api/hooks", Self.preToolUse)
+        async let hook = Self.post(port: p, "/api/hooks", Self.permissionRequest)
 
         let id = try await Self.waitForPendingID(port: p)
         let answered = try await Self.post(
@@ -122,14 +127,14 @@ final class ApprovalRoutesTests: XCTestCase {
         let specific = try XCTUnwrap(
             try Self.json(response.body)["hookSpecificOutput"] as? [String: Any]
         )
-        XCTAssertEqual(specific["hookEventName"] as? String, "PreToolUse")
-        XCTAssertEqual(specific["permissionDecision"] as? String, "allow")
-        XCTAssertEqual(specific["permissionDecisionReason"] as? String, "fine")
+        XCTAssertEqual(specific["hookEventName"] as? String, "PermissionRequest")
+        let decision = try XCTUnwrap(specific["decision"] as? [String: Any])
+        XCTAssertEqual(decision["behavior"] as? String, "allow")
     }
 
     func testDenyReachesTheBlockedAgent() async throws {
         let p = port!
-        async let hook = Self.post(port: p, "/api/hooks", Self.preToolUse)
+        async let hook = Self.post(port: p, "/api/hooks", Self.permissionRequest)
         let id = try await Self.waitForPendingID(port: p)
         _ = try await Self.post(port: p, "/api/approvals/\(id)", #"{"decision":"deny","reason":"not on main"}"#)
 
@@ -137,8 +142,9 @@ final class ApprovalRoutesTests: XCTestCase {
         let specific = try XCTUnwrap(
             try Self.json(response.body)["hookSpecificOutput"] as? [String: Any]
         )
-        XCTAssertEqual(specific["permissionDecision"] as? String, "deny")
-        XCTAssertEqual(specific["permissionDecisionReason"] as? String, "not on main")
+        let decision = try XCTUnwrap(specific["decision"] as? [String: Any])
+        XCTAssertEqual(decision["behavior"] as? String, "deny")
+        XCTAssertEqual(decision["message"] as? String, "not on main")
     }
 
     /// The failure mode that matters most: nobody answers. The agent must get a
@@ -146,7 +152,7 @@ final class ApprovalRoutesTests: XCTestCase {
     /// prompt — not hang until Claude's own hook timeout kills it.
     func testUnansweredHoldExpiresWithNoDecision() async throws {
         let started = Date()
-        let response = try await Self.post(port: port, "/api/hooks?timeout=1", Self.preToolUse)
+        let response = try await Self.post(port: port, "/api/hooks?timeout=1", Self.permissionRequest)
         let elapsed = Date().timeIntervalSince(started)
 
         XCTAssertEqual(response.status, 200)
@@ -161,7 +167,7 @@ final class ApprovalRoutesTests: XCTestCase {
         let session = UUID()
         let p = port!
         async let hook = Self.post(
-            port: p, "/api/hooks?timeout=2", Self.preToolUse,
+            port: p, "/api/hooks?timeout=2", Self.permissionRequest,
             headers: ["X-Kitterm-Session": session.uuidString]
         )
         _ = try await Self.waitForPendingID(port: p)
@@ -170,6 +176,21 @@ final class ApprovalRoutesTests: XCTestCase {
         XCTAssertEqual(items.first?["session"] as? String, session.uuidString)
         XCTAssertEqual(items.first?["tool"] as? String, "Bash")
         _ = try await hook
+    }
+
+    /// `PreToolUse` fires for every tool call, allowed or not, so it must
+    /// never be held: an always-on hook that held it made every Read and Edit
+    /// in a pane wait up to five minutes. It answers `{}` at once and
+    /// registers nothing.
+    func testPreToolUseDoesNotHoldOrRegister() async throws {
+        let started = Date()
+        let response = try await Self.post(port: port, "/api/hooks", Self.preToolUse)
+        XCTAssertEqual(response.status, 200)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5, "must not hold")
+        XCTAssertEqual(try Self.json(response.body).count, 0, "no opinion: \(response.body)")
+        let listed = try Self.json(try await Self.get(port: port, "/api/approvals").body)
+        XCTAssertEqual((listed["approvals"] as? [[String: Any]])?.count ?? 0, 0,
+                       "a PreToolUse must not appear as something to approve")
     }
 
     /// Informational events are recorded and answered at once; nothing waits.
