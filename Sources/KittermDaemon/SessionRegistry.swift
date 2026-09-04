@@ -9,10 +9,17 @@ public actor SessionRegistry {
     /// disconnects, so an orchestrator that restarts finds its nodes running.
     /// Bounded so a crash cannot leak shells forever.
     private let orchestratedLinger: Int
+    /// The daemon-wide event feed; nil in the tests that do not exercise it.
+    /// Appended to from actor context, which is off the event loop — safe
+    /// because `EventLog` is `NIOLock`-guarded, not loop-confined.
+    private let eventLog: EventLog?
+
     public init(
-        orchestratedLingerSeconds: Int = KittermConstants.orchestratedSessionLingerSeconds
+        orchestratedLingerSeconds: Int = KittermConstants.orchestratedSessionLingerSeconds,
+        eventLog: EventLog? = nil
     ) {
         self.orchestratedLinger = orchestratedLingerSeconds
+        self.eventLog = eventLog
     }
 
     private var sessions: [UUID: PtySession] = [:]
@@ -34,6 +41,7 @@ public actor SessionRegistry {
         let id = session.sessionID
         sessions[id] = session
         attachedIDs.insert(id)
+        emitCreated(session)
         return id
     }
 
@@ -47,7 +55,14 @@ public actor SessionRegistry {
         let id = session.sessionID
         sessions[id] = session
         scheduleLinger(id)
+        emitCreated(session)
         return id
+    }
+
+    private func emitCreated(_ session: PtySession) {
+        var data = ["shell": session.shellPath]
+        if let name = session.name { data["name"] = name }
+        eventLog?.append(type: "session.created", session: session.sessionID, data: data)
     }
 
     /// Read-only lookup (API handlers); does not affect controller claims.
@@ -215,6 +230,9 @@ public actor SessionRegistry {
         }
         attachedIDs.remove(id)
         scheduleLinger(id)
+        var data: [String: String] = [:]
+        if let code = session.exitCode { data["exitCode"] = String(code) }
+        eventLog?.append(type: "session.exited", session: id, data: data)
     }
 
     public func remove(_ id: UUID) {
@@ -254,6 +272,7 @@ public actor SessionRegistry {
             session.terminate()
             session.discardRetainedOutput()
             SessionDrops.discard(sessionID: id)
+            eventLog?.append(type: "session.removed", session: id, data: [:])
         }
     }
 }

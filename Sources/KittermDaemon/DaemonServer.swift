@@ -63,13 +63,19 @@ public final class DaemonServer: @unchecked Sendable {
     private let config: DaemonConfig
     private let group: MultiThreadedEventLoopGroup
     private let registry: SessionRegistry
+    /// The daemon-wide control-plane event feed, shared by the registry (which
+    /// appends lifecycle events from off-loop) and every HTTP handler.
+    private let eventLog: EventLog
     /// The plain listener, always present; the TLS listener when configured.
     private var channels: [Channel] = []
 
     public init(config: DaemonConfig = DaemonConfig()) {
         self.config = config
+        let eventLog = EventLog()
+        self.eventLog = eventLog
         self.registry = SessionRegistry(
-            orchestratedLingerSeconds: config.orchestratedLingerSeconds
+            orchestratedLingerSeconds: config.orchestratedLingerSeconds,
+            eventLog: eventLog
         )
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
     }
@@ -80,6 +86,7 @@ public final class DaemonServer: @unchecked Sendable {
 
     public func start() throws {
         let registry = self.registry
+        let eventLog = self.eventLog
         // One coordinator for all connections; only ever touched on the
         // single event-loop thread.
         let handoff = ControlHandoff()
@@ -210,6 +217,7 @@ public final class DaemonServer: @unchecked Sendable {
                         agentControl: config.agentControl,
                         approvals: approvals,
                         spawnService: spawnService,
+                        eventLog: eventLog,
                         connectionIsTLS: sslContext != nil,
                         tlsPort: config.tls?.port,
                         webSocketUpgrader: upgrader

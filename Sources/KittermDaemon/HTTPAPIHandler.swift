@@ -20,6 +20,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// The shared spawn path, so `POST /api/sessions` creates sessions through
     /// exactly the steps a browser tab does.
     private let spawnService: SessionSpawnService
+    /// The daemon-wide event feed behind `GET /api/events`. Handler call sites
+    /// append status/approval/rename/note events here.
+    private let eventLog: EventLog
     /// This connection arrived on the TLS listener, so auth cookies may carry
     /// `Secure`.
     private let connectionIsTLS: Bool
@@ -47,6 +50,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         agentControl: Bool = false,
         approvals: ApprovalStore = ApprovalStore(),
         spawnService: SessionSpawnService? = nil,
+        eventLog: EventLog = EventLog(),
         connectionIsTLS: Bool = false,
         tlsPort: Int? = nil,
         staticRoot: URL? = StaticFileServer.cachedRoot,
@@ -58,6 +62,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.agentControl = agentControl
         self.approvals = approvals
         self.spawnService = spawnService ?? SessionSpawnService(registry: registry)
+        self.eventLog = eventLog
         self.connectionIsTLS = connectionIsTLS
         self.tlsPort = tlsPort
         self.staticRoot = staticRoot
@@ -360,6 +365,17 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             )
         case (.POST, _) where path.hasPrefix("/api/sessions/") && path.hasSuffix("/files"):
             serveDrop(
+                path: path,
+                body: body,
+                bodyOverflow: bodyOverflow,
+                grade: grade,
+                head: head,
+                context: context
+            )
+        case (.GET, "/api/events"):
+            serveEvents(head: head, context: context)
+        case (.POST, _) where path.hasPrefix("/api/sessions/") && path.hasSuffix("/events"):
+            serveNote(
                 path: path,
                 body: body,
                 bodyOverflow: bodyOverflow,
@@ -849,9 +865,12 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             badRequest(error.reason, head: head, context: context)
             return
         }
-        let promise = context.eventLoop.makePromise(of: Bool.self)
+        struct PatchOutcome { let found: Bool; let newName: String? }
+        let promise = context.eventLoop.makePromise(of: PatchOutcome.self)
         promise.completeWithTask {
-            guard let session = await self.registry.session(id) else { return false }
+            guard let session = await self.registry.session(id) else {
+                return PatchOutcome(found: false, newName: nil)
+            }
             if let name = fields.name { session.setName(name) }
             if let note = fields.note { session.setNote(note) }
             if let labels = fields.labels {
@@ -860,10 +879,14 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 // be re-armed with the new one.
                 await self.registry.labelsChanged(id)
             }
-            return true
+            return PatchOutcome(found: true, newName: fields.name ?? nil)
         }
         promise.futureResult.whenComplete { result in
-            let existed = (try? result.get()) ?? false
+            let outcome = (try? result.get()) ?? PatchOutcome(found: false, newName: nil)
+            let existed = outcome.found
+            if existed, let name = outcome.newName {
+                self.eventLog.append(type: "session.renamed", session: id, data: ["name": name])
+            }
             self.writeJSON(
                 status: existed ? .ok : .notFound,
                 body: existed
@@ -1455,6 +1478,162 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         }
     }
 
+    // MARK: - Event feed
+
+    /// `GET /api/events?since=<seq>&timeout=<s>&session=<id>` — the daemon-wide
+    /// control-plane feed. Returns events newer than `since` at once, or parks
+    /// until one arrives (the `/commands/<n>/wait` shape). One parked request
+    /// replaces a foreman polling `/api/sessions` for every crew session.
+    /// Read-only, so any grade: seeing what an agent is doing is observation.
+    private func serveEvents(head: HTTPRequestHead, context: ChannelHandlerContext) {
+        let since = DaemonServer.queryValue("since", fromRequestURI: head.uri)
+            .flatMap(UInt64.init) ?? 0
+        let session = DaemonServer.queryValue("session", fromRequestURI: head.uri)
+            .flatMap(UUID.init(uuidString:))
+        let requested = DaemonServer.queryValue("timeout", fromRequestURI: head.uri)
+            .flatMap(Int.init) ?? KittermConstants.eventWaitDefaultSeconds
+        let timeout = max(1, min(requested, KittermConstants.eventWaitMaxSeconds))
+
+        let loop = context.eventLoop
+        let boundContext = NIOLoopBound(context, eventLoop: loop)
+        // Read-or-park in one lock acquisition, so an event landing between
+        // "nothing yet" and "park me" cannot be missed.
+        let waiterID: UInt64
+        let future: EventLoopFuture<Void>
+        switch eventLog.poll(since: since, session: session, on: loop) {
+        case .ready(let events, let next, let pruned):
+            writeEvents(
+                (events, next, pruned),
+                context: context, version: head.version, keepAlive: head.isKeepAlive
+            )
+            return
+        case .tooManyWaiters:
+            writeJSON(
+                status: .serviceUnavailable,
+                body: #"{"ok":false,"error":"too many event waiters"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        case .waiting(let id, let parked):
+            waiterID = id
+            future = parked
+        }
+        let answered = NIOLoopBoundBox(false, eventLoop: loop)
+        let answer: @Sendable (Bool) -> Void = { timedOut in
+            guard !answered.value else { return }
+            answered.value = true
+            if timedOut { self.eventLog.expire(id: waiterID) }
+            // Re-read whatever the wake found (empty on a pure timeout, which
+            // is a fine answer — the caller polls again with the same cursor).
+            let snapshot = self.eventLog.snapshot(since: since, session: session)
+            self.writeEvents(
+                snapshot,
+                context: boundContext.value,
+                version: head.version,
+                keepAlive: head.isKeepAlive
+            )
+        }
+        let timeoutTask = loop.scheduleTask(in: .seconds(Int64(timeout))) { answer(true) }
+        future.whenComplete { _ in
+            timeoutTask.cancel()
+            answer(false)
+        }
+    }
+
+    private func writeEvents(
+        _ snapshot: (events: [DaemonEvent], next: UInt64, pruned: Bool),
+        context: ChannelHandlerContext,
+        version: HTTPVersion,
+        keepAlive: Bool
+    ) {
+        let payload: [String: Any] = [
+            "ok": true,
+            "events": snapshot.events.map { $0.asJSON() },
+            "next": snapshot.next,
+            "pruned": snapshot.pruned,
+        ]
+        let body = (try? JSONSerialization.data(withJSONObject: payload))
+            .flatMap { String(data: $0, encoding: .utf8) }
+            ?? #"{"ok":false,"error":"encoding failed"}"#
+        writeJSON(status: .ok, body: body, context: context, version: version, keepAlive: keepAlive)
+    }
+
+    /// Publish a hook-driven status change to the event feed, so a foreman
+    /// parked on `/api/events` wakes the moment a crew agent needs it or
+    /// finishes — not on the next 2s poll.
+    private func emitAgentStatus(_ sessionID: UUID, report: AgentReport, message: String?) {
+        var data = ["status": report.rawValue]
+        if let message { data["message"] = message }
+        eventLog.append(type: "agent.status", session: sessionID, data: data)
+    }
+
+    /// `POST /api/sessions/<id>/events` — a crew agent posts a structured note
+    /// ("plan ready for review"). The counterpart to `/api/hooks`: an agent
+    /// *reporting*, not driving, so full grade without `--agent-control`. The
+    /// note lands as a `note` event and, in a foreman loop, wakes the parked
+    /// `/api/events`.
+    private func serveNote(
+        path: String,
+        body: Data,
+        bodyOverflow: Bool,
+        grade: TokenGrade,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let components = path.split(separator: "/")
+        // ["api", "sessions", "<uuid>", "events"]
+        guard components.count == 4, let id = UUID(uuidString: String(components[2])) else {
+            notFound(context: context, version: head.version)
+            return
+        }
+        if bodyOverflow {
+            writeJSON(
+                status: .payloadTooLarge,
+                body: #"{"ok":false,"error":"body too large"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any],
+              let message = json["message"] as? String, !message.isEmpty
+        else {
+            badRequest("body must be {message: string}", head: head, context: context)
+            return
+        }
+        var data = ["message": String(message.prefix(KittermConstants.maxEventNoteLength))]
+        if let extra = json["data"] as? [String: Any] {
+            for (key, value) in extra where value is String {
+                data[key] = (value as? String).map { String($0.prefix(KittermConstants.maxEventNoteLength)) }
+            }
+        }
+        let promise = context.eventLoop.makePromise(of: Bool.self)
+        promise.completeWithTask { await self.registry.session(id) != nil }
+        promise.futureResult.whenComplete { result in
+            guard (try? result.get()) == true else {
+                self.writeJSON(
+                    status: .notFound,
+                    body: #"{"ok":false,"error":"no such session"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+                return
+            }
+            self.eventLog.append(type: "note", session: id, data: data)
+            self.writeJSON(
+                status: .ok,
+                body: #"{"ok":true}"#,
+                context: context, version: head.version, keepAlive: head.isKeepAlive
+            )
+        }
+    }
+
     // MARK: - Agent hooks and approvals
 
     /// Receive a Claude Code hook event.
@@ -1554,8 +1733,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                     let message = (event?["message"] as? String)
                         .map { String($0.prefix(KittermConstants.maxSessionNoteLength)) }
                     session.recordAgentStatus(.needsInput, message: message)
+                    emitAgentStatus(sessionID, report: .needsInput, message: message)
                 case "Stop":
                     session.recordAgentStatus(.completed, message: nil)
+                    emitAgentStatus(sessionID, report: .completed, message: nil)
                 default:
                     break
                 }
@@ -1577,6 +1758,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         // moved on — without it the row would say "needs input" until Stop.
         if let sessionID, let session {
             session.recordAgentStatus(.working, message: nil)
+            emitAgentStatus(sessionID, report: .working, message: nil)
         }
 
         let requested = DaemonServer.queryValue("timeout", fromRequestURI: head.uri)
@@ -1591,6 +1773,15 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             toolInput: toolInput,
             on: loop
         )
+        // A tool call is now blocked on a human — wake anyone parked on the
+        // feed so "needs approval" reaches a foreman at once.
+        if let sessionID {
+            eventLog.append(
+                type: "approval.pending",
+                session: sessionID,
+                data: ["tool": toolName]
+            )
+        }
         // The store is the mutual exclusion: resolve and expire both remove the
         // entry first, so exactly one of them completes the promise.
         let timeoutTask = loop.scheduleTask(in: .seconds(Int64(hold))) {
@@ -1691,6 +1882,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             )
             return
         }
+        // The session behind this approval, read before it is resolved away, so
+        // the resolved event can name it. Same loop, so no race.
+        let approvalSession = approvals.snapshot().first { $0.id == id }?.sessionID
         guard approvals.resolve(id: id, decision: decision) else {
             // Unknown, already answered, or expired — indistinguishable from
             // out here, and all of them mean "too late".
@@ -1701,6 +1895,16 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             )
             return
         }
+        let verdict: String
+        switch decision {
+        case .allow: verdict = "allow"
+        case .deny: verdict = "deny"
+        }
+        eventLog.append(
+            type: "approval.resolved",
+            session: approvalSession,
+            data: ["decision": verdict]
+        )
         writeJSON(
             status: .ok, body: #"{"ok":true}"#,
             context: context, version: head.version, keepAlive: head.isKeepAlive
