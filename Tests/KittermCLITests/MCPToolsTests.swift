@@ -15,11 +15,11 @@ final class MCPToolsTests: XCTestCase {
 
     func testEverySchemaHasNameAndInputSchema() {
         let schemas = MCPTools.schemas()
-        XCTAssertEqual(schemas.count, 12)
+        XCTAssertEqual(schemas.count, 14)
         let names = Set(schemas.compactMap { $0["name"] as? String })
         XCTAssertTrue(names.isSuperset(of: [
             "list_sessions", "spawn_session", "send_input", "wait_for_command",
-            "wait_for_events", "post_note", "kill_session",
+            "wait_for_events", "post_note", "kill_session", "archive_session", "list_archives",
         ]))
         // Deciding is a human privilege: no approve/deny tool is exposed.
         XCTAssertFalse(names.contains("approve"))

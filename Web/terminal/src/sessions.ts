@@ -94,6 +94,9 @@ let profiles: Profile[] = [];
  * rather than shown with buttons that would be refused. */
 let watchOnly = false;
 let approvals: Approval[] = [];
+/** Archived sessions — finished work whose evidence was kept. */
+type ArchivedRow = { id: string; name?: string; cwd?: string; archivedAt?: number; exitCode?: number };
+let archives: ArchivedRow[] = [];
 /** Ids being answered right now, so a second tap cannot double-post. */
 const answering = new Set<string>();
 
@@ -119,9 +122,10 @@ async function poll(): Promise<void> {
   if (inFlight || document.hidden) return;
   inFlight = true;
   try {
-    const [sessionsRes, approvalsRes] = await Promise.all([
+    const [sessionsRes, approvalsRes, archivesRes] = await Promise.all([
       fetch("/api/sessions", { headers: { accept: "application/json" } }),
       fetch("/api/approvals", { headers: { accept: "application/json" } }),
+      fetch("/api/archives", { headers: { accept: "application/json" } }),
     ]);
     if (!sessionsRes.ok) throw new Error(String(sessionsRes.status));
     const data = (await sessionsRes.json()) as { ok: boolean; sessions: SessionRow[] };
@@ -131,6 +135,9 @@ async function poll(): Promise<void> {
     // buttons, because deciding is full grade.
     approvals = approvalsRes.ok
       ? (((await approvalsRes.json()) as { approvals?: Approval[] }).approvals ?? [])
+      : [];
+    archives = archivesRes.ok
+      ? (((await archivesRes.json()) as { archives?: ArchivedRow[] }).archives ?? [])
       : [];
     render(data.sessions ?? []);
   } catch {
@@ -151,7 +158,7 @@ function render(sessions: SessionRow[]): void {
     ...rest,
     agent: agent ? { status: agent.status, message: agent.message } : undefined,
   }));
-  const signature = JSON.stringify([rendered, approvals.map((a) => a.id)]);
+  const signature = JSON.stringify([rendered, approvals.map((a) => a.id), archives.map((a) => a.id)]);
   if (signature === lastSignature) return;
   lastSignature = signature;
   lastSessions = sessions;
@@ -174,6 +181,7 @@ function render(sessions: SessionRow[]): void {
       ? "No live sessions to watch."
       : "No live sessions. Open a tab to start a shell.";
     root.append(empty);
+    if (archives.length > 0) root.append(archivedSection());
     return;
   }
 
@@ -181,6 +189,43 @@ function render(sessions: SessionRow[]): void {
   list.className = "list";
   for (const s of sessions) list.append(row(s));
   root.append(list);
+  if (archives.length > 0) root.append(archivedSection());
+}
+
+/** Whether the user has the archive list open — a rebuild must not snap it
+ * shut under them. */
+let archivedOpen = false;
+
+/** Finished work whose evidence was kept, collapsed below the live crew. */
+function archivedSection(): HTMLElement {
+  const details = document.createElement("details");
+  details.className = "archived";
+  details.open = archivedOpen;
+  details.addEventListener("toggle", () => {
+    archivedOpen = details.open;
+  });
+  const summary = document.createElement("summary");
+  summary.textContent = `Archived (${archives.length})`;
+  details.append(summary);
+
+  const list = document.createElement("ul");
+  list.className = "archived-list";
+  for (const a of archives) {
+    const li = document.createElement("li");
+    const name = document.createElement("span");
+    name.className = "archived-name";
+    name.textContent = a.name || (a.cwd ? folderOf(a.cwd) : a.id.slice(0, 8));
+    const meta = document.createElement("span");
+    meta.className = "archived-meta";
+    const bits: string[] = [];
+    if (typeof a.exitCode === "number") bits.push(`exit ${a.exitCode}`);
+    if (a.archivedAt) bits.push(new Date(a.archivedAt).toLocaleString());
+    meta.textContent = bits.join(" · ");
+    li.append(name, meta);
+    list.append(li);
+  }
+  details.append(list);
+  return details;
 }
 
 function header(count: number): HTMLElement {

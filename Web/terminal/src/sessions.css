@@ -66,6 +66,21 @@ h1 { font-size: 20px; margin: 0; font-weight: 600; }
 }
 .rename:hover { color: var(--ui-text); background: var(--ui-surface-2); }
 
+/* Archived sessions — collapsed evidence of finished work, below the crew. */
+.archived { margin-top: 20px; color: var(--ui-text-muted); }
+.archived > summary {
+  cursor: pointer; font-size: 12.5px; color: var(--ui-text-muted);
+  padding: 6px 2px; user-select: none;
+}
+.archived > summary:hover { color: var(--ui-text); }
+.archived-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.archived-list li {
+  display: flex; justify-content: space-between; gap: 10px;
+  font-size: 12px; padding: 4px 2px;
+}
+.archived-name { color: var(--ui-text); }
+.archived-meta { color: var(--ui-text-faint); font-variant-numeric: tabular-nums; }
+
 /* Waiting approvals. Deliberately the loudest thing on the page: an agent is
    stopped until one is answered, and on a phone only the top of the page gets
    read. Colours still come from the token layer, so it follows the theme. */

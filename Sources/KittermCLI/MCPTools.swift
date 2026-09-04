@@ -125,6 +125,17 @@ enum MCPTools {
                 properties: ["session": idProp],
                 required: ["session"]
             ),
+            tool(
+                "archive_session",
+                "Archive a finished session: save its commands, exit codes, and output to disk, then end it. kitterm keeps what the session did, not a live process — to \"resume\", spawn a new session with the same name and cwd and read the archive for context.",
+                properties: ["session": idProp],
+                required: ["session"]
+            ),
+            tool(
+                "list_archives",
+                "List archived sessions — finished work whose evidence was kept.",
+                properties: [:]
+            ),
         ]
     }
 
@@ -209,6 +220,12 @@ enum MCPTools {
 
         case "kill_session":
             return Call(method: "DELETE", path: "/api/sessions/\(try id(arguments))")
+
+        case "archive_session":
+            return Call(method: "POST", path: "/api/sessions/\(try id(arguments))/archive")
+
+        case "list_archives":
+            return Call(method: "GET", path: "/api/archives")
 
         default:
             throw ToolError.badArguments("unknown tool: \(name)")

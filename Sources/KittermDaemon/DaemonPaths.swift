@@ -89,6 +89,12 @@ public enum DaemonPaths: Sendable {
         stateDirectory.appendingPathComponent("history", isDirectory: true)
     }
 
+    /// Archived sessions: the evidence of a finished session, kept after its
+    /// shell is gone. One directory per archived session id.
+    public static var archiveDirectory: URL {
+        stateDirectory.appendingPathComponent("archive", isDirectory: true)
+    }
+
     /// The web bundle the running daemon pinned at start-up. Written for the
     /// installer, which stages each release's bundle in its own directory and
     /// must not delete the one a live daemon is still serving.
