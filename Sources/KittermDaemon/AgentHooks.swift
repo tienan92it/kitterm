@@ -10,6 +10,9 @@ import KittermProtocol
 ///   only from the keyboard the agent happens to be running on.
 /// - `Notification` does not block; it is how "the agent needs you" reaches the
 ///   fleet view at all. Claude discards this hook's output by design.
+/// - `Stop` does not block either; it marks the agent's turn finished, which
+///   is the `completed` edge in the fleet view. Answered `{}` at once — we
+///   never hold a Stop, we only note it.
 ///
 /// The URL is always loopback: the agent runs on the same machine as the daemon
 /// serving it, so no token is involved even when that daemon is reachable from a
@@ -33,6 +36,7 @@ public enum AgentHooks {
             "hooks": [
                 "PreToolUse": [["hooks": [entry]]],
                 "Notification": [["hooks": [entry]]],
+                "Stop": [["hooks": [entry]]],
             ]
         ]
         let data = try? JSONSerialization.data(

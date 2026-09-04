@@ -36,6 +36,9 @@ h1 { font-size: 20px; margin: 0; font-weight: 600; }
 .dot.idle { background: var(--ui-success); }
 .dot.failed { background: var(--ui-danger); }
 .dot.unknown { background: var(--ui-text-faint); }
+/* Wants the human — the loudest dot after a real failure. */
+.dot.attention { background: var(--ui-warning, var(--ui-danger)); box-shadow: 0 0 0 3px var(--ui-accent-soft); }
+.dot.done { background: var(--ui-success); }
 .main { min-width: 0; flex: 1; }
 .top { display: flex; align-items: baseline; gap: 10px; }
 .folder { font-weight: 600; font-size: 15px; }
@@ -44,6 +47,8 @@ h1 { font-size: 20px; margin: 0; font-weight: 600; }
 .state.idle { color: var(--ui-success); }
 .state.failed { color: var(--ui-danger); }
 .state.unknown { color: var(--ui-text-faint); }
+.state.attention { color: var(--ui-warning, var(--ui-danger)); font-weight: 600; }
+.state.done { color: var(--ui-success); }
 .sub {
   color: var(--ui-text); font-family: var(--font-mono);
   font-size: 12.5px; margin-top: 3px; white-space: nowrap; overflow: hidden;

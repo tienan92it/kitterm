@@ -63,6 +63,9 @@
   /* --- status --------------------------------------------------------- */
   --ui-danger: var(--term-red, #f85149);
   --ui-success: var(--term-green, #3fb950);
+  /* "An agent wants you" — distinct from a real failure. The theme's own
+     yellow, so it follows the palette like every other status colour. */
+  --ui-warning: var(--term-yellow, #d29922);
 
   /* --- code ----------------------------------------------------------- */
   /* Syntax colours are the terminal theme's own ANSI colours, so a preview
