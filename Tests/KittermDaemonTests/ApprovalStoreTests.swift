@@ -108,19 +108,32 @@ final class ApprovalStoreTests: XCTestCase {
 
     // MARK: - the shape Claude Code actually reads
 
+    /// `PermissionRequest`'s shape: `decision {behavior, message}`. An allow
+    /// carries no message (Claude shows none for it); a deny's message is shown
+    /// to the agent verbatim.
     func testHookResponseForAllow() throws {
         let json = try decode(HTTPAPIHandler.hookResponse(for: .allow(reason: "ok")))
         let specific = try XCTUnwrap(json["hookSpecificOutput"] as? [String: Any])
-        XCTAssertEqual(specific["hookEventName"] as? String, "PreToolUse")
-        XCTAssertEqual(specific["permissionDecision"] as? String, "allow")
-        XCTAssertEqual(specific["permissionDecisionReason"] as? String, "ok")
+        XCTAssertEqual(specific["hookEventName"] as? String, "PermissionRequest")
+        let decision = try XCTUnwrap(specific["decision"] as? [String: Any])
+        XCTAssertEqual(decision["behavior"] as? String, "allow")
+        XCTAssertNil(decision["message"])
     }
 
     func testHookResponseForDenyWithoutReason() throws {
         let json = try decode(HTTPAPIHandler.hookResponse(for: .deny(reason: nil)))
         let specific = try XCTUnwrap(json["hookSpecificOutput"] as? [String: Any])
-        XCTAssertEqual(specific["permissionDecision"] as? String, "deny")
-        XCTAssertNil(specific["permissionDecisionReason"])
+        let decision = try XCTUnwrap(specific["decision"] as? [String: Any])
+        XCTAssertEqual(decision["behavior"] as? String, "deny")
+        XCTAssertNil(decision["message"])
+    }
+
+    func testHookResponseForDenyWithReason() throws {
+        let json = try decode(HTTPAPIHandler.hookResponse(for: .deny(reason: "not on main")))
+        let specific = try XCTUnwrap(json["hookSpecificOutput"] as? [String: Any])
+        let decision = try XCTUnwrap(specific["decision"] as? [String: Any])
+        XCTAssertEqual(decision["behavior"] as? String, "deny")
+        XCTAssertEqual(decision["message"] as? String, "not on main")
     }
 
     /// No decision must be an empty object, not a denial: the agent then runs

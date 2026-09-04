@@ -34,16 +34,25 @@ You do three things once.
    The bridge is a stdio MCP server. It proxies the daemon's HTTP API and holds
    no state.
 
-3. Let a crew agent ask you for permission. In the crew session's project, add
-   the hook config so a `PreToolUse` prompt reaches the fleet view:
+3. Let a crew agent ask you for permission. Add the hook config so a
+   permission dialog reaches the fleet view:
 
    ```
    kitterm hooks >> ~/.claude/settings.json
    ```
 
    Merge it by hand — `kitterm hooks` prints the block, it does not edit the
-   file. The daemon then holds a tool call until you allow or deny it from any
-   device. No decision is an answer: on expiry the agent asks in its own pane.
+   file. The held event is `PermissionRequest`, which fires only when Claude
+   would show you a dialog; an auto-allowed tool never touches the daemon, so
+   the hooks are safe to install for every session. The daemon then holds that
+   dialog until you allow or deny it from any device. No decision is an
+   answer: on expiry the agent shows the dialog in its own pane.
+
+   Two limits. A crew you run with `claude -p` never raises a dialog — print
+   mode refuses a tool instead of asking — so give such a crew
+   `--dangerously-skip-permissions` or `--allowedTools`. And a session whose
+   `permissions.defaultMode` is `auto` never asks either; approvals only
+   reach the fleet view from a session that would have asked you.
 
 ## The tools
 
@@ -83,7 +92,8 @@ vocabulary:
 - `unknown` — a new shell, or one with no shell-integration marks.
 
 A crew agent must run Claude Code with `kitterm hooks` installed for
-`needs-input`, `needs-approval`, and `completed`. A session with no hooks still
+`needs-input`, `needs-approval`, and `completed`; `working` comes from its
+`PreToolUse` hook, which is recorded and never held. A session with no hooks still
 reports `working`, `idle`, `failed`, and `exited` from its shell-integration
 marks. So a non-Claude session works at a basic level, and a Claude session
 gets the full vocabulary.

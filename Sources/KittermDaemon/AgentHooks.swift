@@ -3,16 +3,29 @@ import KittermProtocol
 
 /// The Claude Code hook configuration that points an agent at this daemon.
 ///
-/// Two events, for two different jobs:
+/// Four events, for four different jobs:
 ///
-/// - `PreToolUse` blocks. The daemon holds the response until a human decides,
-///   which is what lets a permission prompt be answered from a phone instead of
-///   only from the keyboard the agent happens to be running on.
+/// - `PermissionRequest` blocks. It fires only when Claude would show the
+///   human a permission dialog, and the daemon holds the response until a
+///   human decides — which is what lets that dialog be answered from a phone
+///   instead of only from the keyboard the agent happens to be running on. An
+///   auto-allowed tool never fires it, so nothing that would not have asked is
+///   slowed down. (`PreToolUse` used to be the held hook; it fires for *every*
+///   tool call, allowed or not, which made an always-on hook unusable — every
+///   Read and Edit in a pane waited up to five minutes.)
+/// - `PreToolUse` does not block. It is the `working` edge: the agent is about
+///   to run a tool, which clears a stale "needs input". Answered `{}` at once.
 /// - `Notification` does not block; it is how "the agent needs you" reaches the
 ///   fleet view at all. Claude discards this hook's output by design.
 /// - `Stop` does not block either; it marks the agent's turn finished, which
 ///   is the `completed` edge in the fleet view. Answered `{}` at once — we
 ///   never hold a Stop, we only note it.
+///
+/// Verified against Claude Code 2.1.260: `PermissionRequest` honours a JSON
+/// `hookSpecificOutput.decision {behavior, message}` in an interactive session,
+/// and never fires in `claude -p`, which refuses instead of asking — so a
+/// non-interactive crew needs `--dangerously-skip-permissions` or
+/// `--allowedTools`, not a hold.
 ///
 /// The URL is always loopback: the agent runs on the same machine as the daemon
 /// serving it, so no token is involved even when that daemon is reachable from a
@@ -34,6 +47,7 @@ public enum AgentHooks {
         ]
         let settings: [String: Any] = [
             "hooks": [
+                "PermissionRequest": [["hooks": [entry]]],
                 "PreToolUse": [["hooks": [entry]]],
                 "Notification": [["hooks": [entry]]],
                 "Stop": [["hooks": [entry]]],

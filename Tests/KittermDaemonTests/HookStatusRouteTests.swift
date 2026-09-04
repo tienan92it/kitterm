@@ -126,9 +126,10 @@ final class HookStatusRouteTests: XCTestCase {
     }
 
     /// `PreToolUse` records `working` — the edge that clears a stale
-    /// `needs-input` — and, while it is held, the row reads `needs-approval`
-    /// (the hard fact outranks the report). Answered so the hold releases.
-    func testPreToolUseRecordsWorkingAndHoldsAsNeedsApproval() async throws {
+    /// `needs-input` — and answers at once. A `PermissionRequest` then holds,
+    /// during which the row reads `needs-approval` (the hard fact outranks the
+    /// report). Answered so the hold releases.
+    func testPreToolUseRecordsWorkingAndPermissionRequestHoldsAsNeedsApproval() async throws {
         channel = try makeServer(policy: .loopbackOnly)
         port = channel.localAddress?.port
         let id = try await registerSession()
@@ -140,12 +141,21 @@ final class HookStatusRouteTests: XCTestCase {
         let stale = try await sessionRow(id)
         XCTAssertEqual(stale["mergedState"] as? String, "needs-input")
 
+        // The tool call itself: recorded, never held.
+        let pre = try await post(
+            "/api/hooks", #"{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{}}"#,
+            headers: ["X-Kitterm-Session": id.uuidString]
+        )
+        XCTAssertEqual(pre.body, "{}")
+        let working = try await sessionRow(id)
+        XCTAssertEqual(working["mergedState"] as? String, "working", "PreToolUse clears the stale notification")
+
         let p = port!
         let header = id.uuidString
         let held = Task { () -> Int in
             var request = URLRequest(url: URL(string: "http://127.0.0.1:\(p)/api/hooks?timeout=20")!)
             request.httpMethod = "POST"
-            request.httpBody = Data(#"{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{}}"#.utf8)
+            request.httpBody = Data(#"{"hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{}}"#.utf8)
             request.setValue(header, forHTTPHeaderField: "X-Kitterm-Session")
             let (_, response) = try await URLSession.shared.data(for: request)
             return (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -162,7 +172,7 @@ final class HookStatusRouteTests: XCTestCase {
             }
             try await Task.sleep(nanoseconds: 50_000_000)
         }
-        let approvalID = try XCTUnwrap(pendingID, "the PreToolUse hook never registered a hold")
+        let approvalID = try XCTUnwrap(pendingID, "the PermissionRequest hook never registered a hold")
         let row = try await sessionRow(id)
         XCTAssertEqual(row["mergedState"] as? String, "needs-approval")
         XCTAssertEqual((row["agent"] as? [String: Any])?["status"] as? String, "working")

@@ -1900,9 +1900,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     ///
     /// Configured as `"type": "http"` in settings.json, so the agent POSTs the
     /// event here and reads its verdict from *this response body* — status
-    /// codes cannot block a tool call, only the JSON can. Schema per the hooks
-    /// reference as of 2026-08 (`PreToolUse` blocks; `Notification` is
-    /// informational and its output is discarded).
+    /// codes cannot block a tool call, only the JSON can. `PermissionRequest`
+    /// is the held event — it fires only when a dialog would show;
+    /// `PreToolUse`, `Notification` and `Stop` are informational and answered
+    /// at once.
     ///
     /// Anything unrecognised answers 200 with an empty object, so an
     /// over-broad hook config costs nothing and a schema change degrades to
@@ -1972,7 +1973,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     }
 
     /// The hook, once its session is known. Non-blocking events record and
-    /// answer `{}`; `PreToolUse` records `working` and then holds.
+    /// answer `{}`; `PermissionRequest` holds for a human.
     private func handleHookEvent(
         name: String?,
         event: [String: Any]?,
@@ -1981,14 +1982,20 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         head: HTTPRequestHead,
         context: ChannelHandlerContext
     ) {
-        guard name == "PreToolUse" else {
+        guard name == "PermissionRequest" else {
             // A non-blocking event: record what it says about the agent, then
-            // answer `{}` at once because nothing waits on it. `Notification`
-            // means the agent wants the human; `Stop` means its turn finished.
-            // Anything else is noted by neither — an unknown event degrades to
-            // "no opinion", as it always did.
+            // answer `{}` at once because nothing waits on it. `PreToolUse`
+            // is the `working` edge — the agent is about to run a tool, which
+            // clears a stale "needs input"; it fires for every tool call,
+            // allowed or not, which is exactly why it must never be the held
+            // one. `Notification` means the agent wants the human; `Stop`
+            // means its turn finished. Anything else is noted by neither — an
+            // unknown event degrades to "no opinion", as it always did.
             if let sessionID, let session {
                 switch name {
+                case "PreToolUse":
+                    session.recordAgentStatus(.working, message: nil)
+                    emitAgentStatus(sessionID, report: .working, message: nil)
                 case "Notification":
                     let message = (event?["message"] as? String)
                         .map { String($0.prefix(KittermConstants.maxSessionNoteLength)) }
@@ -2013,14 +2020,12 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             .flatMap { try? JSONSerialization.data(withJSONObject: $0) }
             .map { String(decoding: $0, as: UTF8.self) } ?? "{}"
 
-        // The agent is about to run a tool: the `working` edge. This is what
-        // clears a stale `needs-input` once the human answered and the agent
-        // moved on — without it the row would say "needs input" until Stop.
-        if let sessionID, let session {
-            session.recordAgentStatus(.working, message: nil)
-            emitAgentStatus(sessionID, report: .working, message: nil)
-        }
-
+        // Claude would show a permission dialog now. It only fires for a tool
+        // the session would actually have asked about — an auto-allowed one
+        // never gets here — so the hold below slows nothing that would not
+        // have waited on a human anyway. It never fires in `claude -p`, which
+        // refuses instead of asking; a non-interactive crew wants
+        // `--dangerously-skip-permissions` or `--allowedTools`, not a hold.
         let requested = DaemonServer.queryValue("timeout", fromRequestURI: head.uri)
             .flatMap(Int.init) ?? KittermConstants.approvalHoldDefaultSeconds
         let hold = max(1, min(requested, KittermConstants.approvalHoldMaxSeconds))
@@ -2059,24 +2064,26 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         }
     }
 
-    /// The verdict in the shape Claude Code reads. No decision is an empty
-    /// object on purpose: the agent then runs its normal permission flow and
-    /// asks in its own pane, which is what should happen when nobody answered.
+    /// The verdict in the shape Claude Code reads for `PermissionRequest`
+    /// (`hookSpecificOutput.decision {behavior, message}` — verified against
+    /// 2.1.260: allow ran the tool, deny refused it with the message shown).
+    /// No decision is an empty object on purpose: the agent then shows its own
+    /// dialog in its pane, which is what should happen when nobody answered.
     static func hookResponse(for decision: ApprovalStore.Decision?) -> String {
         guard let decision else { return "{}" }
-        let permission: String
-        let reason: String?
+        var verdict: [String: Any]
         switch decision {
-        case .allow(let why): permission = "allow"; reason = why
-        case .deny(let why): permission = "deny"; reason = why
+        case .allow:
+            verdict = ["behavior": "allow"]
+        case .deny(let why):
+            verdict = ["behavior": "deny"]
+            // Shown to the agent verbatim, so a reason is worth writing.
+            if let why, !why.isEmpty { verdict["message"] = why }
         }
-        var specific: [String: Any] = [
-            "hookEventName": "PreToolUse",
-            "permissionDecision": permission,
+        let specific: [String: Any] = [
+            "hookEventName": "PermissionRequest",
+            "decision": verdict,
         ]
-        if let reason, !reason.isEmpty {
-            specific["permissionDecisionReason"] = reason
-        }
         let payload: [String: Any] = ["hookSpecificOutput": specific]
         return (try? JSONSerialization.data(withJSONObject: payload))
             .map { String(decoding: $0, as: UTF8.self) } ?? "{}"
