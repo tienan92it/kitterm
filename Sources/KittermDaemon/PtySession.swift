@@ -107,6 +107,13 @@ public final class PtySession: @unchecked Sendable {
     private var labelsStorage: SessionLabels
     private var nameStorage: String?
     private var noteStorage: String?
+    /// When output last arrived. A fact the fleet view and a foreman use to
+    /// judge "stuck" (working, but silent for minutes) — the daemon ships the
+    /// timestamp, never the judgment.
+    private var lastOutputAtStorage: Date?
+    /// The latest Claude Code hook report (`AgentStatus`); nil for a session
+    /// whose agent has never reported.
+    private var agentStatusStorage: AgentStatus?
     /// Pushes a rename to the attached controller so an open tab follows a
     /// foreman's rename without a reload. Set at attach, cleared at detach.
     private var onTitle: ((String) -> Void)?
@@ -438,6 +445,9 @@ public final class PtySession: @unchecked Sendable {
                        controller: ((Data) -> Void)?)? = stateLock.withLock {
             guard !terminated, !readingPaused else { return nil }
             log.append(chunk)
+            // One clock read per batched PTY read (already coalesced at ~2ms),
+            // not per byte — below KittermBench's noise floor.
+            lastOutputAtStorage = Date()
             for hit in markHits {
                 // Only kitterm's own snippet and VS Code emit the command line
                 // (OSC 633;E). A shell carrying someone else's OSC 133 — iTerm2,
@@ -1032,6 +1042,24 @@ public final class PtySession: @unchecked Sendable {
     /// Exit code, once the shell has exited.
     public var exitCode: Int32? {
         stateLock.withLock { shellExitCode }
+    }
+
+    /// When output last arrived, or nil if the shell has printed nothing yet.
+    public var lastOutputAt: Date? {
+        stateLock.withLock { lastOutputAtStorage }
+    }
+
+    /// The latest hook report, if any.
+    public var agentStatus: AgentStatus? {
+        stateLock.withLock { agentStatusStorage }
+    }
+
+    /// Record what a hook just reported. A newer report replaces an older one
+    /// — only the latest matters.
+    public func recordAgentStatus(_ report: AgentReport, message: String?) {
+        stateLock.withLock {
+            agentStatusStorage = AgentStatus(report: report, message: message, at: Date())
+        }
     }
 
     /// Rename the session, pushing the new name to the attached controller and

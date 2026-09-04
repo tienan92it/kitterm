@@ -371,6 +371,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             serveHook(
                 body: body,
                 bodyOverflow: bodyOverflow,
+                grade: grade,
                 head: head,
                 context: context
             )
@@ -463,7 +464,11 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             if let filter {
                 summaries = summaries.filter { SessionLabels($0.labels).matches(filter: filter) }
             }
-            let items: [[String: Any]] = summaries.map(Self.sessionItem)
+            // The approval store is loop-confined; this whenComplete runs on the loop.
+            let approvalSessions = Set(self.approvals.snapshot().compactMap(\.sessionID))
+            let items: [[String: Any]] = summaries.map { summary in
+                Self.sessionItem(summary, pendingApproval: approvalSessions.contains(summary.id))
+            }
             let body: String
             if let data = try? JSONSerialization.data(withJSONObject: ["ok": true, "sessions": items]),
                let text = String(data: data, encoding: .utf8) {
@@ -482,9 +487,22 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     }
 
     /// One session's listing row. Shared by the list and the single-session
-    /// route so the two can never drift apart.
-    private static func sessionItem(_ summary: SessionRegistry.SessionSummary) -> [String: Any] {
+    /// route so the two can never drift apart. `pendingApproval` (whether a
+    /// tool call is blocked on a human) is joined here, beside the session's
+    /// own hook report, so a foreman reads one typed status per row instead of
+    /// correlating three endpoints itself.
+    private static func sessionItem(
+        _ summary: SessionRegistry.SessionSummary,
+        pendingApproval: Bool
+    ) -> [String: Any] {
+        let agent = summary.agentStatus
         let derived = DerivedSessionState.derive(from: summary.marks)
+        let merged = MergedSessionState.merge(
+            derived: derived,
+            agent: agent,
+            pendingApproval: pendingApproval,
+            exited: summary.exited
+        )
         var item: [String: Any] = [
             "id": summary.id.uuidString,
             "shell": summary.shell,
@@ -492,7 +510,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             "pid": summary.pid,
             "attached": summary.attached,
             "observers": summary.observerCount,
+            // The mark-only state stays, so anything reading `running|idle|
+            // unknown` keeps working; `mergedState` is the richer view.
             "state": derived.state.rawValue,
+            "mergedState": merged.rawValue,
             "marks": summary.marks.count,
         ]
         if let command = derived.lastCommand { item["lastCommand"] = command }
@@ -501,6 +522,18 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         if let name = summary.name { item["name"] = name }
         if let note = summary.note { item["note"] = note }
         if !summary.labels.isEmpty { item["labels"] = summary.labels }
+        if pendingApproval { item["pendingApproval"] = true }
+        if let at = summary.lastOutputAt {
+            item["lastOutputAt"] = Int(at.timeIntervalSince1970 * 1000)
+        }
+        if let agent {
+            var status: [String: Any] = [
+                "status": agent.report.rawValue,
+                "at": Int(agent.at.timeIntervalSince1970 * 1000),
+            ]
+            if let message = agent.message { status["message"] = message }
+            item["agent"] = status
+        }
         if summary.exited {
             // Kept only so its records can still be read.
             item["exited"] = true
@@ -535,7 +568,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 )
                 return
             }
-            var payload = Self.sessionItem(summary)
+            let pendingApproval = self.approvals.snapshot().contains { $0.sessionID == summary.id }
+            var payload = Self.sessionItem(summary, pendingApproval: pendingApproval)
             payload["ok"] = true
             let body: String
             if let data = try? JSONSerialization.data(withJSONObject: payload),
@@ -1444,9 +1478,23 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     private func serveHook(
         body: Data,
         bodyOverflow: Bool,
+        grade: TokenGrade,
         head: HTTPRequestHead,
         context: ChannelHandlerContext
     ) {
+        // Full grade only. The hook config URL is always loopback (the agent
+        // runs on the daemon's own machine), so this refuses nothing real —
+        // but once these events drive a status the fleet view trusts, an
+        // ungated route would let a watch caller spoof "completed" on any
+        // session.
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
         guard !bodyOverflow else {
             writeJSON(
                 status: .payloadTooLarge,
@@ -1463,11 +1511,55 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         let sessionID = head.headers.first(name: "x-kitterm-session")
             .flatMap(UUID.init(uuidString:))
 
+        // The status a hook reports lives on the session (its lifetime is the
+        // session's), so resolve it first; the rest runs back on this loop.
+        let lookupLoop = context.eventLoop
+        let lookupContext = NIOLoopBound(context, eventLoop: lookupLoop)
+        let lookup = lookupLoop.makePromise(of: PtySession?.self)
+        lookup.completeWithTask {
+            guard let sessionID else { return nil }
+            return await self.registry.session(sessionID)
+        }
+        lookup.futureResult.whenComplete { result in
+            self.handleHookEvent(
+                name: name,
+                event: event,
+                sessionID: sessionID,
+                session: (try? result.get()) ?? nil,
+                head: head,
+                context: lookupContext.value
+            )
+        }
+    }
+
+    /// The hook, once its session is known. Non-blocking events record and
+    /// answer `{}`; `PreToolUse` records `working` and then holds.
+    private func handleHookEvent(
+        name: String?,
+        event: [String: Any]?,
+        sessionID: UUID?,
+        session: PtySession?,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
         guard name == "PreToolUse" else {
-            // Accepted so one hook config can cover both events, and answered
-            // at once because nothing waits on these. `Notification` is not
-            // rendered anywhere yet — that is the next piece, not a promise
-            // this route already keeps.
+            // A non-blocking event: record what it says about the agent, then
+            // answer `{}` at once because nothing waits on it. `Notification`
+            // means the agent wants the human; `Stop` means its turn finished.
+            // Anything else is noted by neither — an unknown event degrades to
+            // "no opinion", as it always did.
+            if let sessionID, let session {
+                switch name {
+                case "Notification":
+                    let message = (event?["message"] as? String)
+                        .map { String($0.prefix(KittermConstants.maxSessionNoteLength)) }
+                    session.recordAgentStatus(.needsInput, message: message)
+                case "Stop":
+                    session.recordAgentStatus(.completed, message: nil)
+                default:
+                    break
+                }
+            }
             writeJSON(
                 status: .ok, body: "{}",
                 context: context, version: head.version, keepAlive: head.isKeepAlive
@@ -1479,6 +1571,13 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         let toolInput = (event?["tool_input"] as? [String: Any])
             .flatMap { try? JSONSerialization.data(withJSONObject: $0) }
             .map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+
+        // The agent is about to run a tool: the `working` edge. This is what
+        // clears a stale `needs-input` once the human answered and the agent
+        // moved on — without it the row would say "needs input" until Stop.
+        if let sessionID, let session {
+            session.recordAgentStatus(.working, message: nil)
+        }
 
         let requested = DaemonServer.queryValue("timeout", fromRequestURI: head.uri)
             .flatMap(Int.init) ?? KittermConstants.approvalHoldDefaultSeconds

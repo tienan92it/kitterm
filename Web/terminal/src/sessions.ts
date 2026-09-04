@@ -17,6 +17,18 @@ import { findThemeById } from "./themes";
 
 type SessionState = "running" | "idle" | "unknown";
 
+type MergedState =
+  | "working"
+  | "needs-approval"
+  | "needs-input"
+  | "completed"
+  | "failed"
+  | "idle"
+  | "exited"
+  | "unknown";
+
+type AgentStatus = { status: "needs-input" | "completed"; message?: string; at: number };
+
 type SessionRow = {
   id: string;
   shell: string;
@@ -25,6 +37,9 @@ type SessionRow = {
   attached: boolean;
   observers: number;
   state: SessionState;
+  /** Crew vocabulary merged from hooks + marks + approvals. Absent on a
+   * daemon too old to send it — the row falls back to `state`. */
+  mergedState?: MergedState;
   marks: number;
   lastCommand?: string;
   lastExit?: number;
@@ -33,6 +48,13 @@ type SessionRow = {
   name?: string;
   /** Free-text status note set by a program or a person. */
   note?: string;
+  /** The session's latest Claude Code hook report. */
+  agent?: AgentStatus;
+  /** A tool call in this session is blocked on a human. */
+  pendingApproval?: boolean;
+  /** When output last arrived (epoch ms). Ticks on every PTY read, so it is
+   * excluded from the render signature. */
+  lastOutputAt?: number;
 };
 
 type Profile = { name: string; command: string; cwd?: string };
@@ -122,10 +144,22 @@ function render(sessions: SessionRow[]): void {
   if (!root) return;
   // Skip DOM churn when nothing changed — this repaints every 2s.
   // Approvals are part of the signature: a new one must repaint immediately.
-  const signature = JSON.stringify([sessions, approvals.map((a) => a.id)]);
+  // `lastOutputAt` and `agent.at` are not: they tick on every PTY read, and a
+  // signature that includes them rebuilds the whole page every poll for any
+  // session producing output — the exact churn this guard exists to prevent.
+  const rendered = sessions.map(({ lastOutputAt: _t, agent, ...rest }) => ({
+    ...rest,
+    agent: agent ? { status: agent.status, message: agent.message } : undefined,
+  }));
+  const signature = JSON.stringify([rendered, approvals.map((a) => a.id)]);
   if (signature === lastSignature) return;
   lastSignature = signature;
   lastSessions = sessions;
+
+  // Title badge: how many sessions want the human right now, so a phone's tab
+  // or home-screen label says "come back" without a push notification.
+  const waiting = attentionCount(sessions) + approvals.length;
+  document.title = waiting > 0 ? `(${waiting}) kitterm — sessions` : "kitterm — sessions";
 
   root.replaceChildren();
   root.append(header(sessions.length));
@@ -245,10 +279,15 @@ function row(s: SessionRow): HTMLElement {
     : `${shellName(s.shell)} · ${s.cwd}`;
   sub.title = s.cwd;
 
-  const note = s.note ? document.createElement("div") : null;
-  if (note && s.note) {
+  // What the agent last said (a Notification's message), shown when it is the
+  // reason the session wants attention. A note set by a person takes the line
+  // otherwise.
+  const agentMessage = s.agent?.message;
+  const noteText = agentMessage ?? s.note;
+  const note = noteText ? document.createElement("div") : null;
+  if (note && noteText) {
     note.className = "note";
-    note.textContent = s.note;
+    note.textContent = noteText;
   }
 
   const meta = document.createElement("div");
@@ -394,18 +433,62 @@ async function decide(id: string, decision: "allow" | "deny"): Promise<void> {
   }
 }
 
-function stateClass(s: SessionRow): string {
-  if (s.state === "running") return "running";
+/** The merged crew state, or a synthesized one for a daemon too old to send
+ * it — so the page keeps working against either. */
+function mergedOf(s: SessionRow): MergedState {
+  if (s.mergedState) return s.mergedState;
+  if (s.state === "running") return "working";
   if (typeof s.lastExit === "number" && s.lastExit !== 0) return "failed";
   if (s.state === "idle") return "idle";
   return "unknown";
 }
 
+/** The visual family (drives dot + chip colour), mapped from the crew state. */
+function stateClass(s: SessionRow): string {
+  switch (mergedOf(s)) {
+    case "working":
+      return "running";
+    case "needs-approval":
+    case "needs-input":
+      return "attention";
+    case "completed":
+      return "done";
+    case "failed":
+      return "failed";
+    case "idle":
+      return "idle";
+    default:
+      return "unknown";
+  }
+}
+
 function stateLabel(s: SessionRow): string {
-  if (s.state === "running") return "running";
-  if (typeof s.lastExit === "number" && s.lastExit !== 0) return `failed (${s.lastExit})`;
-  if (s.state === "idle") return "idle";
-  return "no integration";
+  switch (mergedOf(s)) {
+    case "working":
+      return "working";
+    case "needs-approval":
+      return "needs approval";
+    case "needs-input":
+      return "needs input";
+    case "completed":
+      return "done";
+    case "failed":
+      return typeof s.lastExit === "number" ? `failed (${s.lastExit})` : "failed";
+    case "idle":
+      return "idle";
+    case "exited":
+      return typeof s.lastExit === "number" ? `exited (${s.lastExit})` : "exited";
+    default:
+      return "no integration";
+  }
+}
+
+/** Sessions the human is being asked to act on — the title badge count. */
+function attentionCount(sessions: SessionRow[]): number {
+  return sessions.filter((s) => {
+    const m = mergedOf(s);
+    return m === "needs-input" || m === "needs-approval";
+  }).length;
 }
 
 function folderOf(cwd: string): string {
