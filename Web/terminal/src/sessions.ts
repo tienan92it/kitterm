@@ -513,9 +513,42 @@ function renderError(): void {
 
 
 void fetchProfiles().then(() => poll());
+// The 2s poll is the safety net; the event long-poll below repaints the
+// instant something changes, so "needs input" surfaces without a 2s wait.
 setInterval(() => void poll(), POLL_MS);
 // Hidden tabs skip polling (see poll); refresh immediately on return.
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) void poll();
 });
 
+/**
+ * Watch the daemon-wide event feed. One parked request replaces polling every
+ * session, and any control-plane change (a status, an approval, a spawn, a
+ * note) triggers an immediate repaint. A daemon too old to serve `/api/events`
+ * answers 404 once and the watcher stops — the 2s poll still covers it.
+ */
+let eventCursor = 0;
+async function watchEvents(): Promise<void> {
+  for (;;) {
+    if (document.hidden) {
+      // Don't hold a request open in a backgrounded tab; the visibility
+      // handler repaints on return and the loop resumes then.
+      await new Promise((r) => setTimeout(r, POLL_MS));
+      continue;
+    }
+    try {
+      const res = await fetch(`/api/events?since=${eventCursor}&timeout=25`, {
+        headers: { accept: "application/json" },
+      });
+      if (res.status === 404) return; // old daemon; the poll covers it
+      if (!res.ok) throw new Error(String(res.status));
+      const data = (await res.json()) as { next?: number; events?: unknown[] };
+      if (typeof data.next === "number") eventCursor = data.next;
+      if ((data.events?.length ?? 0) > 0) void poll();
+    } catch {
+      // Network blip or daemon restart — back off, then resume the watch.
+      await new Promise((r) => setTimeout(r, POLL_MS));
+    }
+  }
+}
+void watchEvents();

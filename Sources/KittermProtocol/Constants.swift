@@ -114,6 +114,22 @@ public enum KittermConstants: Sendable {
     public static let maxSessionNameLength = 128
     public static let maxSessionNoteLength = 4096
 
+    /// The daemon-wide control-plane event ring (`GET /api/events`): how many
+    /// recent events it retains, and how many callers may park on it at once
+    /// (503 past the ceiling, like command waiters).
+    public static let eventLogCapacity = 1024
+    public static let eventLogMaxWaiters = 256
+    /// Long-poll window for `GET /api/events` when the caller names none, and
+    /// its ceiling. The default sits under a typical HTTP client deadline so a
+    /// re-poll is cheap. The ceiling is deliberately lower than a command
+    /// wait's: this route is daemon-wide and readable by any grade, so a parked
+    /// request is the one resource a watch-only caller can tie up, and
+    /// `eventLogMaxWaiters × eventWaitMaxSeconds` bounds how long.
+    public static let eventWaitDefaultSeconds = 25
+    public static let eventWaitMaxSeconds = 60
+    /// A `note` an agent posts through `POST /api/sessions/<id>/events`.
+    public static let maxEventNoteLength = 2048
+
     /// Detach window for sessions a program created (they carry labels). An
     /// orchestrator restart must not cost you your in-flight nodes.
     public static let orchestratedSessionLingerSeconds = 3600
