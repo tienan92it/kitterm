@@ -69,6 +69,11 @@ enum KittermMain {
             case "serve":
                 // Internal: foreground daemon process.
                 try serve(port: parsePort(args.dropFirst()), flags: DaemonFlags.parse(args))
+            case "mcp":
+                // Stdio MCP server for a foreman agent. Proxies the HTTP API of
+                // the running daemon; `--port` overrides the discovered port.
+                let port = parsePortFlag(args.dropFirst()) ?? readPort() ?? KittermConstants.defaultPort
+                MCPBridge.run(port: port)
             case "help", "-h", "--help":
                 printUsage()
             default:
@@ -167,6 +172,7 @@ enum KittermMain {
                                       # takes over now (drops panes; safe from a pane)
               kitterm integrate [zsh|bash]
               kitterm hooks           # Claude Code hook config for approvals  # print the OSC 133/633 snippet
+              kitterm mcp             # stdio MCP server: the foreman toolset
               kitterm token create <name> [--watch] | list | revoke <name>
               kitterm identity [status|setup|sign]
               kitterm version
@@ -210,6 +216,12 @@ enum KittermMain {
             Merge it into ~/.claude/settings.json (or .claude/settings.json in
             a project). Nothing answers for you: if no one does, the hold
             expires and the agent asks in its own pane as usual.
+
+            mcp is a stdio MCP server that hands a coding agent the "foreman"
+            toolset — spawn and name crew sessions, watch their typed states,
+            send input, wait on the event feed, post notes. It needs
+            --agent-control on the daemon for the tools that drive shells.
+            Register it once: claude mcp add kitterm -- kitterm mcp
 
             Session profiles (~/.kitterm/profiles.json) name connect commands
             run at session start — open /?profile=<name> or use /sessions:
@@ -264,6 +276,23 @@ enum KittermMain {
             i += 1
         }
         return hosts
+    }
+
+    /// `--port` if the caller gave one, else nil — so a command can fall back
+    /// to the running daemon's discovered port rather than the default.
+    private static func parsePortFlag<S: Sequence>(_ args: S) -> Int? where S.Element == String {
+        let array = Array(args)
+        var i = 0
+        while i < array.count {
+            if array[i] == "--port", i + 1 < array.count, let value = Int(array[i + 1]) {
+                return value
+            }
+            if array[i].hasPrefix("--port="), let value = Int(array[i].dropFirst(7)) {
+                return value
+            }
+            i += 1
+        }
+        return nil
     }
 
     private static func parsePort<S: Sequence>(_ args: S) -> Int where S.Element == String {
