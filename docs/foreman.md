@@ -144,8 +144,13 @@ A foreman runs one loop.
      it.
    - `completed` — verify the work, then move the session to review or end it.
 
-4. End a session when its work merges. `kill_session` ends the shell now,
-   instead of leaving it on the linger clock.
+4. End a session when its work merges. `kill_session` ends the shell now.
+   The linger clock does not do it for you: it reaps an idle shell, not a
+   working session. A crew session with `claude` in the foreground, or one
+   that still prints output, is held past every window, whether or not a
+   browser is open on it (ADR 0002). Only a shell at its prompt that printed
+   nothing for a whole window goes on its own. A session you forget stays
+   until you end it, so `list_sessions` and end the ones you are done with.
 
 ## When the daemon restarts
 
