@@ -64,7 +64,7 @@ The bridge gives the foreman these tools.
 | `get_session` | One session's full status row. |
 | `spawn_session` | Start a crew session. Name it; optionally set cwd, profile, labels, and an initial input line. |
 | `rename_session` | Set a session's name, note, or labels. |
-| `send_input` | Type into a session — a message, an answer, or a command. |
+| `send_input` | Type into a session and press Enter — a message to its agent, an answer, or a command. |
 | `list_commands` | The commands a session ran, with exit codes. |
 | `wait_for_command` | Block until a command finishes, then read its exit code. |
 | `read_output` | Read a command's captured output. |
@@ -120,7 +120,18 @@ A foreman runs one loop.
 
 3. Act on what changed.
    - `needs-input` or `needs-approval` — tell the human, and route them to the
-     pane. Do not answer for them.
+     pane. Do not answer for them. When the human gives you the answer, pass
+     it on with `send_input`:
+
+     ```
+     send_input session=<id> text="Use the retry budget from the config, not a constant."
+     ```
+
+     `send_input` presses Enter after the text the way the session's reader
+     expects it: a newline for a shell, a carriage return for an interactive
+     `claude`. The daemon looks at what is reading the terminal, so one call
+     works for both. Set `enter:false` only to send bare keystrokes, such as
+     Ctrl-C.
    - `note` — a crew agent reported progress ("plan ready for review"). Relay
      it.
    - `completed` — verify the work, then move the session to review or end it.

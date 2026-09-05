@@ -51,15 +51,31 @@ final class MCPToolsTests: XCTestCase {
         XCTAssertEqual((c.jsonBody?["labels"] as? [String: Any])?["crew"] as? String, "alpha")
     }
 
-    func testSendInputAppendsNewlineByDefault() throws {
+    /// The bridge never picks the Enter byte itself: it asks the daemon to
+    /// press Enter, and the daemon sends what the session's foreground reads
+    /// (a line feed for the shell, a carriage return for a claude).
+    func testSendInputAsksTheDaemonToPressEnterByDefault() throws {
         let run = try call("send_input", ["session": deadbeef, "text": "ls"])
         XCTAssertEqual(run.method, "POST")
-        XCTAssertEqual(run.path, "/api/sessions/\(deadbeef)/input")
-        XCTAssertEqual(run.rawBody.map { String(decoding: $0, as: UTF8.self) }, "ls\n")
+        XCTAssertEqual(run.path, "/api/sessions/\(deadbeef)/input?enter=1")
+        XCTAssertEqual(run.rawBody.map { String(decoding: $0, as: UTF8.self) }, "ls")
+
+        // A trailing newline is the caller's own Enter: folded into the
+        // request, never sent as a bare line feed a TUI would keep as text.
+        let line = try call("send_input", ["session": deadbeef, "text": "fix the bug\n"])
+        XCTAssertEqual(line.path, "/api/sessions/\(deadbeef)/input?enter=1")
+        XCTAssertEqual(line.rawBody.map { String(decoding: $0, as: UTF8.self) }, "fix the bug")
+
+        // Enter alone answers a dialog.
+        let confirm = try call("send_input", ["session": deadbeef, "text": ""])
+        XCTAssertEqual(confirm.path, "/api/sessions/\(deadbeef)/input?enter=1")
+        XCTAssertEqual(confirm.rawBody, Data())
 
         // enter:false sends keystrokes as-is — a Ctrl-C, say.
         let keys = try call("send_input", ["session": deadbeef, "text": "\u{03}", "enter": false])
+        XCTAssertEqual(keys.path, "/api/sessions/\(deadbeef)/input")
         XCTAssertEqual(keys.rawBody.map { String(decoding: $0, as: UTF8.self) }, "\u{03}")
+        XCTAssertThrowsError(try call("send_input", ["session": deadbeef, "text": "", "enter": false]))
     }
 
     func testWaitForCommandCarriesTimeout() throws {

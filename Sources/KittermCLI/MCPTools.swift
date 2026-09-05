@@ -63,11 +63,11 @@ enum MCPTools {
             ),
             tool(
                 "send_input",
-                "Type into a crew session's shell — a message, an answer to a prompt, or a command. By default a newline is appended so the line runs; set enter:false to send keystrokes without it (send \"\\u0003\" as text for Ctrl-C).",
+                "Type into a crew session — a message to its agent, an answer to a prompt, or a shell command. By default Enter is pressed after the text, as whatever reads the session expects it (a newline for the shell, a carriage return for an interactive claude), so the text is submitted wherever it lands. Set enter:false to send keystrokes only (send \"\\u0003\" as text for Ctrl-C).",
                 properties: [
                     "session": idProp,
-                    "text": ["type": "string", "description": "The text to type"],
-                    "enter": ["type": "boolean", "description": "Append a newline so a command runs (default true)"],
+                    "text": ["type": "string", "description": "The text to type; may be empty to press Enter alone"],
+                    "enter": ["type": "boolean", "description": "Press Enter after the text so it is submitted (default true)"],
                 ],
                 required: ["session", "text"]
             ),
@@ -176,12 +176,18 @@ enum MCPTools {
                 throw ToolError.badArguments("text is required")
             }
             let enter = (arguments["enter"] as? Bool) ?? true
-            let payload = enter && !text.hasSuffix("\n") ? text + "\n" : text
-            return Call(
-                method: "POST",
-                path: "/api/sessions/\(try id(arguments))/input",
-                rawBody: Data(payload.utf8)
-            )
+            let route = "/api/sessions/\(try id(arguments))/input"
+            guard enter else {
+                guard !text.isEmpty else { throw ToolError.badArguments("text is required") }
+                return Call(method: "POST", path: route, rawBody: Data(text.utf8))
+            }
+            // The daemon presses Enter with the byte the session's foreground
+            // reads — the bridge cannot know whether a shell or a claude is
+            // listening. A trailing newline in the text is the caller's own
+            // Enter, so it is folded into the request rather than sent as a
+            // line feed that an interactive program would keep as text.
+            let line = text.hasSuffix("\n") ? String(text.dropLast()) : text
+            return Call(method: "POST", path: route + "?enter=1", rawBody: Data(line.utf8))
 
         case "list_commands":
             return Call(method: "GET", path: "/api/sessions/\(try id(arguments))/commands")

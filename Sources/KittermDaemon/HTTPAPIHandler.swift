@@ -2183,6 +2183,13 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// newline to submit a command, send `\x03` for Ctrl-C, etc. Capped at
     /// `maxInputBytes`.
     ///
+    /// `?enter=1` presses Enter after the body, as whoever reads the terminal
+    /// expects it: a line feed for the shell, a settled carriage return for a
+    /// program that took the foreground (`PtySession.typeLine`). A caller
+    /// that types into an interactive `claude` needs this — its prompt keeps
+    /// a bare `\n` as text — and a foreman cannot tell from outside what is
+    /// reading. The body may be empty then: Enter alone answers a dialog.
+    ///
     /// This is the one write route. It is off unless the daemon was started
     /// with `--agent-control`, and even then sits behind the same access policy
     /// as every other route — a caller the policy admits can drive any shell as
@@ -2227,7 +2234,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             )
             return
         }
-        guard !body.isEmpty else {
+        let pressEnter = DaemonServer.queryValue("enter", fromRequestURI: head.uri)
+            .map { $0 == "1" || $0 == "true" } ?? false
+        guard !body.isEmpty || pressEnter else {
             writeJSON(
                 status: .badRequest,
                 body: #"{"ok":false,"error":"empty body"}"#,
@@ -2241,6 +2250,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         promise.completeWithTask {
             guard let session = await self.registry.session(id) else { return .noSession }
             do {
+                if pressEnter { return .ok(try await session.typeLine(body)) }
                 session.noteSubmittedCommand(body)
                 try session.write(body)
                 return .ok(body.count)
