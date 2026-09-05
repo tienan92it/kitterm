@@ -45,16 +45,28 @@ let package = Package(
                 ),
             ]
         ),
+        // The bounded terminal renderer behind `read_screen`. Only the CLI
+        // links it: the daemon does not emulate a terminal (ADR 0001), and
+        // keeping it out of KittermDaemon's dependencies is what enforces that.
+        .target(
+            name: "KittermScreen"
+        ),
         .executableTarget(
             name: "KittermCLI",
             dependencies: [
                 "KittermDaemon",
                 "KittermProtocol",
+                "KittermScreen",
             ]
         ),
         .testTarget(
             name: "KittermProtocolTests",
             dependencies: ["KittermProtocol"]
+        ),
+        .testTarget(
+            name: "KittermScreenTests",
+            dependencies: ["KittermScreen"],
+            resources: [.copy("Fixtures")]
         ),
         .testTarget(
             name: "KittermDaemonTests",

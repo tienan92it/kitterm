@@ -349,6 +349,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             where path.hasPrefix("/api/sessions/") && path.contains("/commands/")
                 && path.hasSuffix("/output"):
             serveCommandOutput(path: path, head: head, context: context)
+        case (.GET, _) where path.hasPrefix("/api/sessions/") && path.hasSuffix("/output"):
+            // After the command-output case, so this is the session-wide
+            // tail: `/api/sessions/<id>/output`.
+            serveOutputTail(path: path, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/sessions/"):
             // After every suffixed sessions route, so this only catches the
             // bare `/api/sessions/<id>` — one session's listing row.
@@ -541,6 +545,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             "state": derived.state.rawValue,
             "mergedState": merged.rawValue,
             "marks": summary.marks.count,
+            "cols": Int(summary.cols),
+            "rows": Int(summary.rows),
         ]
         if let command = derived.lastCommand { item["lastCommand"] = command }
         if let exit = derived.lastExit { item["lastExit"] = exit }
@@ -1729,6 +1735,67 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             headers.add(name: "X-Kitterm-Total-Bytes", value: "\(range.total)")
             headers.add(name: "X-Kitterm-Truncated", value: range.truncated ? "1" : "0")
             headers.add(name: "X-Kitterm-Pruned", value: range.pruned ? "1" : "0")
+            headers.add(name: "Connection", value: head.isKeepAlive ? "keep-alive" : "close")
+            let responseHead = HTTPResponseHead(version: head.version, status: .ok, headers: headers)
+            context.write(self.wrapOutboundOut(.head(responseHead)), promise: nil)
+            var buffer = context.channel.allocator.buffer(capacity: range.data.count)
+            buffer.writeBytes(range.data)
+            context.write(self.wrapOutboundOut(.body(.byteBuffer(buffer))), promise: nil)
+            context.writeAndFlush(self.wrapOutboundOut(.end(nil))).whenComplete { _ in
+                if !head.isKeepAlive { context.close(promise: nil) }
+            }
+        }
+    }
+
+    /// `GET /api/sessions/<uuid>/output?tail=<bytes>` — the last `tail` bytes
+    /// of the session's whole output ring, not one command's. This is what a
+    /// renderer outside the daemon needs to show the screen a TUI pane holds
+    /// (ADR 0001): `X-Kitterm-Cols` / `-Rows` carry the pane's size, and
+    /// `X-Kitterm-Start` / `-Head` the absolute offsets of the first byte and
+    /// of the end, so a caller knows the tail begins at a cut. Ring only, read
+    /// under the lock on the loop like the command-output route, with the
+    /// same cap; the daemon never interprets the bytes.
+    private func serveOutputTail(
+        path: String,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        let components = path.split(separator: "/")
+        // ["api", "sessions", "<uuid>", "output"]
+        guard components.count == 4, let id = UUID(uuidString: String(components[2])) else {
+            notFound(context: context, version: head.version)
+            return
+        }
+        let cap = KittermConstants.apiCommandOutputMaxBytes
+        let requested = DaemonServer.queryValue("tail", fromRequestURI: head.uri)
+            .flatMap(Int.init) ?? KittermConstants.apiOutputTailDefaultBytes
+        let tail = max(1, min(requested, cap))
+        let promise = context.eventLoop.makePromise(
+            of: (PtySession.OutputRange, cols: UInt16, rows: UInt16)?.self
+        )
+        promise.completeWithTask {
+            guard let session = await self.registry.session(id) else { return nil }
+            let size = session.paneSize
+            let range = session.outputRange(from: 0, to: UInt64.max, maxBytes: tail)
+            return (range, size.cols, size.rows)
+        }
+        promise.futureResult.whenComplete { result in
+            guard case .success(.some(let found)) = result else {
+                self.writeJSON(
+                    status: .notFound,
+                    body: #"{"ok":false,"error":"no such session"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+                return
+            }
+            let range = found.0
+            var headers = HTTPHeaders()
+            headers.add(name: "Content-Type", value: "application/octet-stream")
+            headers.add(name: "Content-Length", value: "\(range.data.count)")
+            headers.add(name: "X-Kitterm-Cols", value: "\(found.cols)")
+            headers.add(name: "X-Kitterm-Rows", value: "\(found.rows)")
+            headers.add(name: "X-Kitterm-Start", value: "\(range.start)")
+            headers.add(name: "X-Kitterm-Head", value: "\(range.start + UInt64(range.data.count))")
             headers.add(name: "Connection", value: head.isKeepAlive ? "keep-alive" : "close")
             let responseHead = HTTPResponseHead(version: head.version, status: .ok, headers: headers)
             context.write(self.wrapOutboundOut(.head(responseHead)), promise: nil)

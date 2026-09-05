@@ -17,6 +17,17 @@ enum MCPTools {
         /// for the input route, which takes bytes, not JSON.
         var jsonBody: [String: Any]?
         var rawBody: Data?
+        /// Set for `read_screen`: the bridge renders the response bytes at
+        /// these dimensions instead of returning them as text.
+        var screen: ScreenOptions?
+    }
+
+    /// How `read_screen` lays the bytes out. `cols`/`rows` nil means the
+    /// pane's real size, from the response headers.
+    struct ScreenOptions: Equatable {
+        var cols: Int?
+        var rows: Int?
+        var styles: Bool
     }
 
     enum ToolError: Error { case badArguments(String) }
@@ -95,6 +106,18 @@ enum MCPTools {
                     "command": ["type": "integer"],
                 ],
                 required: ["session", "command"]
+            ),
+            tool(
+                "read_screen",
+                "Read what a session's pane shows right now, rendered at its real size — the screen a human sees, not the raw byte stream. Use this before typing into a TUI such as Claude Code: it tells you whether the prompt is empty, what a dialog offers, and where the cursor is. Returns {cols, rows, cursor:{row,col}, lines}. By default a dim run is wrapped in {dim}…{/dim} (Claude Code's ghost suggestion on an empty prompt is dim, not typed text) and an inverse run in {inv}…{/inv}; pass styles:false for plain text.",
+                properties: [
+                    "session": idProp,
+                    "tail": ["type": "integer", "description": "Bytes of recent output to render (default 65536, max 262144). Raise it if the screen looks incomplete."],
+                    "cols": ["type": "integer", "description": "Override the pane width"],
+                    "rows": ["type": "integer", "description": "Override the pane height"],
+                    "styles": ["type": "boolean", "description": "Mark dim and inverse runs (default true)"],
+                ],
+                required: ["session"]
             ),
             tool(
                 "wait_for_events",
@@ -202,6 +225,22 @@ enum MCPTools {
         case "read_output":
             let n = try commandIndex(arguments)
             return Call(method: "GET", path: "/api/sessions/\(try id(arguments))/commands/\(n)/output")
+
+        case "read_screen":
+            var path = "/api/sessions/\(try id(arguments))/output"
+            if let tail = arguments["tail"] as? Int {
+                guard tail >= 1 else { throw ToolError.badArguments("tail must be positive") }
+                path += "?tail=\(tail)"
+            }
+            var options = ScreenOptions(styles: (arguments["styles"] as? Bool) ?? true)
+            for (key, keyPath) in [("cols", \ScreenOptions.cols), ("rows", \ScreenOptions.rows)] {
+                guard let raw = arguments[key] else { continue }
+                guard let value = raw as? Int, value >= 1, value <= 1000 else {
+                    throw ToolError.badArguments("\(key) must be an integer from 1 to 1000")
+                }
+                options[keyPath: keyPath] = value
+            }
+            return Call(method: "GET", path: path, screen: options)
 
         case "wait_for_events":
             var query: [String] = []

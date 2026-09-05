@@ -24,6 +24,9 @@ The design holds three properties.
   The client owns the grid, the cursor, and every CSI or SGR sequence. The one bounded
   exception is `OscMarkScanner`. It matches OSC 133 and OSC 633 marks in the output
   stream, so an unwatched session still has a command index.
+  A rendered screen exists for the foreman (`read_screen`), but the MCP bridge
+  renders it in its own process from the raw tail the daemon serves. See ADR 0001
+  (`adr/0001-read-screen-in-the-bridge.md`).
 - **Durability by design.** Every output byte flows through a 4 MiB ring
   (`SessionLog`) with absolute stream offsets. A reconnect replays the exact bytes the
   client missed. State lives in `~/.kitterm/`, so a restart restores each pane.
@@ -42,6 +45,7 @@ The design holds three properties.
 | `SessionLog` | `SessionLog.swift` | 4 MiB ring; absolute offsets; snapshot replay |
 | `OscMarkScanner` | `OscMarkScanner.swift` | Index OSC 133/633 marks in the stream |
 | `kitterm-spawn-helper` | `KittermSpawnHelper/main.c` | Give the shell a controlling TTY |
+| `ScreenRenderer` | `KittermScreen/ScreenRenderer.swift` | Render a raw tail to a text grid, in the CLI only |
 
 The spawn helper must sit beside the `kitterm` binary. A controlling TTY is required so
 that `Ctrl+C` becomes `SIGINT`.

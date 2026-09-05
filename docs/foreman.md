@@ -68,6 +68,7 @@ The bridge gives the foreman these tools.
 | `list_commands` | The commands a session ran, with exit codes. |
 | `wait_for_command` | Block until a command finishes, then read its exit code. |
 | `read_output` | Read a command's captured output. |
+| `read_screen` | Read what a pane shows, rendered at its real size. Use it before you type into a TUI. |
 | `wait_for_events` | Block until anything changes across the whole crew. |
 | `post_note` | Post a status note onto the event feed. |
 | `list_approvals` | The tool calls blocked waiting for a human. |
@@ -119,6 +120,13 @@ A foreman runs one loop.
    ```
 
 3. Act on what changed.
+   - Before you type into a pane that runs a TUI (Claude Code is one), call
+     `read_screen`. It returns the screen a human sees, at the pane's size,
+     with the cursor position. `read_output` returns the raw bytes of one
+     command, which for a TUI is spinner redraws and cursor moves. A dim run
+     is marked `{dim}…{/dim}`: Claude Code's ghost suggestion on an empty
+     prompt is dim, not typed text, so an empty prompt reads as
+     `❯ {dim}Try "…"{/dim}`. Press Enter only on text you typed.
    - `needs-input` or `needs-approval` — tell the human, and route them to the
      pane. Do not answer for them. When the human gives you the answer, pass
      it on with `send_input`:

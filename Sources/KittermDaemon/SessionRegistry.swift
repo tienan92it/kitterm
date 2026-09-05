@@ -132,6 +132,10 @@ public actor SessionRegistry {
         public let exited: Bool
         /// How the shell exited, when it has.
         public let exitCode: Int32?
+        /// The PTY's size, so a caller can render its output at the pane's
+        /// real width.
+        public let cols: UInt16
+        public let rows: UInt16
     }
 
     /// Every live session, for `/api/sessions`. Ordered by id for stability.
@@ -147,7 +151,8 @@ public actor SessionRegistry {
     }
 
     private func makeSummary(id: UUID, session: PtySession) -> SessionSummary {
-        SessionSummary(
+        let size = session.paneSize
+        return SessionSummary(
             id: id,
             shell: session.shellPath,
             cwd: session.liveCwd,
@@ -162,7 +167,9 @@ public actor SessionRegistry {
             lastOutputAt: session.lastOutputAt,
             agentStatus: session.agentStatus,
             exited: !session.isRunning,
-            exitCode: session.exitCode
+            exitCode: session.exitCode,
+            cols: size.cols,
+            rows: size.rows
         )
     }
 

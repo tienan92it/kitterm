@@ -645,6 +645,13 @@ public final class PtySession: @unchecked Sendable {
         stateLock.withLock { observers.count }
     }
 
+    /// The PTY's current size, as the controller last set it. What a
+    /// renderer outside the daemon needs to lay the output out the way the
+    /// pane does (`GET …/output`, `read_screen`).
+    public var paneSize: (cols: UInt16, rows: UInt16) {
+        stateLock.withLock { (cols, rows) }
+    }
+
     public func addObserver(_ id: UUID, handlers: ObserverHandlers) -> SessionLog.Snapshot {
         stateLock.withLock {
             observers[id] = handlers

@@ -80,11 +80,29 @@ enum MCPBridge {
 
         let result = client.send(call)
         switch result {
-        case .success(let status, let body):
+        case .success(let status, let headers, let data):
             // 2xx is a tool success; anything else is a tool error whose body
             // carries the reason — including the daemon's own 403 that names
             // `--agent-control`, so the agent reads the fix verbatim.
             let ok = (200..<300).contains(status)
+            if ok, let screen = call.screen {
+                // The one tool whose answer is not the daemon's body: the
+                // bytes are rendered here, in the bridge, never in the daemon.
+                do {
+                    let text = try ScreenReport.text(data: data, headers: headers, options: screen)
+                    respond(id: id, result: toolResult(text: text, isError: false))
+                } catch {
+                    respond(
+                        id: id,
+                        result: toolResult(
+                            text: "the daemon did not report the pane size; upgrade kitterm (kitterm upgrade)",
+                            isError: true
+                        )
+                    )
+                }
+                return
+            }
+            let body = String(decoding: data, as: UTF8.self)
             let text = body.isEmpty ? "(\(status))" : body
             respond(id: id, result: toolResult(text: text, isError: !ok))
         case .failure(let reason):
@@ -135,7 +153,10 @@ struct MCPHTTPClient {
     let port: Int
 
     enum Result {
-        case success(status: Int, body: String)
+        /// Headers keyed as the server sent them; look them up
+        /// case-insensitively. The body stays bytes: the output routes serve
+        /// `application/octet-stream`, and a screen render must see them all.
+        case success(status: Int, headers: [String: String], data: Data)
         case failure(String)
     }
 
@@ -166,10 +187,11 @@ struct MCPHTTPClient {
                 outcome = .failure("no HTTP response")
                 return
             }
-            outcome = .success(
-                status: http.statusCode,
-                body: String(decoding: data ?? Data(), as: UTF8.self)
-            )
+            var headers: [String: String] = [:]
+            for (name, value) in http.allHeaderFields {
+                if let name = name as? String, let value = value as? String { headers[name] = value }
+            }
+            outcome = .success(status: http.statusCode, headers: headers, data: data ?? Data())
         }
         task.resume()
         // Just past the daemon's own long-poll ceiling (300s), so a

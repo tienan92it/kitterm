@@ -15,11 +15,12 @@ final class MCPToolsTests: XCTestCase {
 
     func testEverySchemaHasNameAndInputSchema() {
         let schemas = MCPTools.schemas()
-        XCTAssertEqual(schemas.count, 14)
+        XCTAssertEqual(schemas.count, 15)
         let names = Set(schemas.compactMap { $0["name"] as? String })
         XCTAssertTrue(names.isSuperset(of: [
             "list_sessions", "spawn_session", "send_input", "wait_for_command",
             "wait_for_events", "post_note", "kill_session", "archive_session", "list_archives",
+            "read_screen",
         ]))
         // Deciding is a human privilege: no approve/deny tool is exposed.
         XCTAssertFalse(names.contains("approve"))
@@ -89,6 +90,28 @@ final class MCPToolsTests: XCTestCase {
         XCTAssertEqual(c.path, "/api/events?since=12&timeout=20&session=\(deadbeef)")
         let e = try call("wait_for_events", ["since": 12, "epoch": "abc-123"])
         XCTAssertEqual(e.path, "/api/events?since=12&epoch=abc-123")
+    }
+
+    func testReadScreenFetchesTheSessionTailAndRendersIt() throws {
+        let c = try call("read_screen", ["session": deadbeef])
+        XCTAssertEqual(c.method, "GET")
+        XCTAssertEqual(c.path, "/api/sessions/\(deadbeef)/output")
+        // The bridge renders; the daemon only serves bytes. Styles are on
+        // unless switched off, so a ghost suggestion reads as dim.
+        XCTAssertEqual(c.screen, MCPTools.ScreenOptions(cols: nil, rows: nil, styles: true))
+
+        let sized = try call("read_screen", [
+            "session": deadbeef, "tail": 4096, "cols": 80, "rows": 24, "styles": false,
+        ])
+        XCTAssertEqual(sized.path, "/api/sessions/\(deadbeef)/output?tail=4096")
+        XCTAssertEqual(sized.screen, MCPTools.ScreenOptions(cols: 80, rows: 24, styles: false))
+
+        XCTAssertThrowsError(try call("read_screen", ["session": deadbeef, "tail": 0]))
+        XCTAssertThrowsError(try call("read_screen", ["session": deadbeef, "cols": 0]))
+        XCTAssertThrowsError(try call("read_screen", ["session": deadbeef, "rows": 5000]))
+        XCTAssertThrowsError(try call("read_screen", ["session": deadbeef, "cols": "wide"]))
+        // Every other tool returns the daemon's body as-is.
+        XCTAssertNil(try call("read_output", ["session": deadbeef, "command": 1]).screen)
     }
 
     func testKillIsADelete() throws {
