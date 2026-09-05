@@ -881,7 +881,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             guard let session = await self.registry.session(id) else {
                 return PatchOutcome(found: false, newName: nil)
             }
-            if let name = fields.name { session.setName(name) }
+            if let name = fields.name {
+                session.setName(name)
+                await self.registry.nameChanged(id)
+            }
             if let note = fields.note { session.setNote(note) }
             if let labels = fields.labels {
                 session.updateLabels(labels)
@@ -1740,14 +1743,23 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
 
     // MARK: - Event feed
 
-    /// `GET /api/events?since=<seq>&timeout=<s>&session=<id>` — the daemon-wide
-    /// control-plane feed. Returns events newer than `since` at once, or parks
-    /// until one arrives (the `/commands/<n>/wait` shape). One parked request
-    /// replaces a foreman polling `/api/sessions` for every crew session.
-    /// Read-only, so any grade: seeing what an agent is doing is observation.
+    /// `GET /api/events?since=<seq>&epoch=<id>&timeout=<s>&session=<id>` —
+    /// the daemon-wide control-plane feed. Returns events newer than `since`
+    /// at once, or parks until one arrives (the `/commands/<n>/wait` shape).
+    /// One parked request replaces a foreman polling `/api/sessions` for every
+    /// crew session. Read-only, so any grade: seeing what an agent is doing is
+    /// observation.
+    ///
+    /// Every answer carries the daemon's `epoch`. A `since` from another epoch
+    /// (the caller says so with `epoch=`, or the seq is past this daemon's
+    /// head) answers `pruned: true` with this epoch's events from its
+    /// `daemon.started` on, so a foreman learns of a restart from the feed it
+    /// is already parked on, never from a connection error.
     private func serveEvents(head: HTTPRequestHead, context: ChannelHandlerContext) {
         let since = DaemonServer.queryValue("since", fromRequestURI: head.uri)
             .flatMap(UInt64.init) ?? 0
+        let epoch = DaemonServer.queryValue("epoch", fromRequestURI: head.uri)
+            .flatMap { $0.isEmpty ? nil : $0 }
         let session = DaemonServer.queryValue("session", fromRequestURI: head.uri)
             .flatMap(UUID.init(uuidString:))
         let requested = DaemonServer.queryValue("timeout", fromRequestURI: head.uri)
@@ -1760,7 +1772,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         // "nothing yet" and "park me" cannot be missed.
         let waiterID: UInt64
         let future: EventLoopFuture<Void>
-        switch eventLog.poll(since: since, session: session, on: loop) {
+        switch eventLog.poll(since: since, epoch: epoch, session: session, on: loop) {
         case .ready(let events, let next, let pruned):
             writeEvents(
                 (events, next, pruned),
@@ -1785,7 +1797,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             if timedOut { self.eventLog.expire(id: waiterID) }
             // Re-read whatever the wake found (empty on a pure timeout, which
             // is a fine answer — the caller polls again with the same cursor).
-            let snapshot = self.eventLog.snapshot(since: since, session: session)
+            let snapshot = self.eventLog.snapshot(since: since, epoch: epoch, session: session)
             self.writeEvents(
                 snapshot,
                 context: boundContext.value,
@@ -1808,6 +1820,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     ) {
         let payload: [String: Any] = [
             "ok": true,
+            "epoch": eventLog.epoch,
             "events": snapshot.events.map { $0.asJSON() },
             "next": snapshot.next,
             "pruned": snapshot.pruned,

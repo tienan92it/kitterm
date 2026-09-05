@@ -95,29 +95,36 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
             }
             return
         }
-        let claimPromise = context.eventLoop.makePromise(of: SessionRegistry.SessionResolution.self)
+        typealias Claim = (resolution: SessionRegistry.SessionResolution, hints: RespawnHints?)
+        let claimPromise = context.eventLoop.makePromise(of: Claim.self)
         let registry = self.registry
         let reattachID = self.reattachID
         claimPromise.completeWithTask {
-            guard let reattachID else { return .notFound }
-            return await registry.resolve(reattachID)
+            guard let reattachID else { return (.notFound, nil) }
+            let resolution = await registry.resolve(reattachID)
+            // The id the client held is gone — a daemon restart, most likely.
+            // Its name and labels may have outlived the process on disk.
+            if case .notFound = resolution {
+                return (.notFound, await registry.takeRespawnHints(for: reattachID))
+            }
+            return (resolution, nil)
         }
-        claimPromise.futureResult.whenSuccess { [weak self] resolution in
+        claimPromise.futureResult.whenSuccess { [weak self] claim in
             guard let self, !self.closed else {
                 // Channel died before the claim resolved — put the session back.
-                if case .controller(let session) = resolution, let reattachID {
+                if case .controller(let session) = claim.resolution, let reattachID {
                     session.detach()
                     Task { await registry.markDetached(reattachID) }
                 }
                 return
             }
-            switch resolution {
+            switch claim.resolution {
             case .controller(let session):
                 self.adopt(session: session, id: self.reattachID!, context: context)
             case .observer(let session):
                 self.adoptAsObserver(session: session, id: self.reattachID!, context: context)
             case .notFound:
-                self.spawnNew(context: context)
+                self.spawnNew(context: context, hints: claim.hints)
             }
         }
     }
@@ -207,7 +214,28 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         pendingClientFrames = []
     }
 
-    private func spawnNew(context: ChannelHandlerContext) {
+    /// The spawn request for a fresh shell. `hints` are what the session the
+    /// client asked for had before the daemon restarted: its name always
+    /// carries over (a request never names a session), and its labels carry
+    /// over unless the request brought its own. Split out so a test can pin
+    /// the merge without standing up a WebSocket.
+    static func spawnRequest(
+        cwd: String?,
+        histKey: String?,
+        profileName: String?,
+        labels: SessionLabels,
+        hints: RespawnHints?
+    ) -> SessionSpawnService.Request {
+        SessionSpawnService.Request(
+            cwd: cwd,
+            histKey: histKey,
+            profileName: profileName,
+            labels: labels.isEmpty ? (hints?.labels ?? labels) : labels,
+            name: hints?.name
+        )
+    }
+
+    private func spawnNew(context: ChannelHandlerContext, hints: RespawnHints? = nil) {
         let session: PtySession
         do {
             // The query names a profile; the command comes only from the
@@ -216,11 +244,12 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
             // profile. Profile/initial input is queued as type-ahead, ahead of
             // any queued client frames, which are handled after wire().
             session = try spawnService.prepare(
-                SessionSpawnService.Request(
+                Self.spawnRequest(
                     cwd: requestedCwd,
                     histKey: histKey,
                     profileName: profileName,
-                    labels: labels
+                    labels: labels,
+                    hints: hints
                 )
             )
         } catch {
@@ -231,7 +260,12 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         }
         self.pty = session
         let registry = self.registry
-        let setup = spawnService.activate(session, attached: true, eventLoop: context.eventLoop)
+        // A respawn (hints found for the id the client held) is announced as
+        // one, so a foreman can pair the new id with the one it lost.
+        let respawnOf = hints == nil ? nil : reattachID
+        let setup = spawnService.activate(
+            session, attached: true, respawnOf: respawnOf, eventLoop: context.eventLoop
+        )
         setup.whenFailure { [weak self, weak context] error in
             // Includes the registry ceiling: the shell was spawned to make the
             // cap check atomic, and the service has already terminated it.

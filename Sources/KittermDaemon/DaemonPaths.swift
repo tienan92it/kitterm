@@ -95,6 +95,12 @@ public enum DaemonPaths: Sendable {
         stateDirectory.appendingPathComponent("archive", isDirectory: true)
     }
 
+    /// Names and labels of live sessions, so a pane respawned after a daemon
+    /// restart keeps them (`RespawnHintStore`).
+    public static var respawnHintsFile: URL {
+        stateDirectory.appendingPathComponent("respawn.json")
+    }
+
     /// The web bundle the running daemon pinned at start-up. Written for the
     /// installer, which stages each release's bundle in its own directory and
     /// must not delete the one a live daemon is still serving.

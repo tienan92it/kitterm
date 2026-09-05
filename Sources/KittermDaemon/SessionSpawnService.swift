@@ -138,9 +138,13 @@ public final class SessionSpawnService: @unchecked Sendable {
     /// `attached: false` (the API path) also wires exit reporting: with no
     /// controller to observe the exit, `detach(onExitWhileDetached:)` is the
     /// only path by which the registry hears the shell died.
+    ///
+    /// `respawnOf` is the id a pane held before a daemon restart, when this
+    /// session replaces it; it rides on the `session.created` event.
     public func activate(
         _ session: PtySession,
         attached: Bool,
+        respawnOf: UUID? = nil,
         eventLoop: EventLoop
     ) -> EventLoopFuture<UUID> {
         let registry = self.registry
@@ -152,7 +156,7 @@ public final class SessionSpawnService: @unchecked Sendable {
                 let promise = eventLoop.makePromise(of: UUID.self)
                 promise.completeWithTask {
                     let registered = attached
-                        ? await registry.register(session)
+                        ? await registry.register(session, respawnOf: respawnOf)
                         : await registry.registerDetached(session)
                     guard let id = registered else {
                         session.terminate()

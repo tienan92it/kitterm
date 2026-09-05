@@ -87,6 +87,8 @@ final class MCPToolsTests: XCTestCase {
         XCTAssertEqual(try call("wait_for_events", [:]).path, "/api/events?since=0")
         let c = try call("wait_for_events", ["since": 12, "session": deadbeef, "timeout": 20])
         XCTAssertEqual(c.path, "/api/events?since=12&timeout=20&session=\(deadbeef)")
+        let e = try call("wait_for_events", ["since": 12, "epoch": "abc-123"])
+        XCTAssertEqual(e.path, "/api/events?since=12&epoch=abc-123")
     }
 
     func testKillIsADelete() throws {

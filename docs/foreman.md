@@ -112,10 +112,10 @@ A foreman runs one loop.
 2. Wait on the event feed. One `wait_for_events` call watches every session at
    once — it returns the moment any session changes state, an approval appears,
    or an agent posts a note. Pass the `next` cursor from the last call as
-   `since`:
+   `since`, and its `epoch` as `epoch`:
 
    ```
-   wait_for_events since=<cursor>
+   wait_for_events since=<cursor> epoch=<epoch>
    ```
 
 3. Act on what changed.
@@ -138,6 +138,37 @@ A foreman runs one loop.
 
 4. End a session when its work merges. `kill_session` ends the shell now,
    instead of leaving it on the linger clock.
+
+## When the daemon restarts
+
+A daemon restart (`kitterm restart`, `kitterm upgrade --restart`, a crash)
+closes every shell. Every session id you hold is gone, and the event feed
+starts again from zero. The feed tells you so:
+
+- Every `wait_for_events` result carries the daemon's `epoch`. A new value
+  means a new daemon process.
+- The first event of the new epoch is `daemon.started`. Its data holds the
+  `epoch`, the daemon `version`, and its `pid`.
+- A call whose `since` or `epoch` belongs to the old daemon answers at once
+  with `pruned` true and every event of the new epoch, `daemon.started` first.
+
+When the epoch changes, do this:
+
+1. Forget every session id you hold. The sessions are gone. A session you
+   spawned with `spawn_session` does not come back.
+2. Call `list_sessions` again. A browser pane that was open reconnects and gets
+   a new shell with a new id. The new shell keeps the old name and labels, and
+   the pane sends the old cwd, so match a respawned session by its labels and
+   its cwd, never by its id. Its `session.created` event also carries
+   `respawnOf`, the id the pane held before.
+3. Spawn again what is missing. A respawned shell is a fresh shell: the agent
+   that ran in it is gone, so send it its task again.
+4. Continue the loop with the new `epoch` and the `next` cursor from the
+   `pruned` result.
+
+Note the limit: a respawned shell keeps its name, labels, and cwd, not its
+process. Until #47 (live upgrade) lands, an upgrade costs every crew agent its
+run.
 
 ## Crew conventions
 
