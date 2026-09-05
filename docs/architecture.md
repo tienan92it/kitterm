@@ -65,6 +65,12 @@ The lifecycle holds four rules.
 - **Two linger windows.** A browser session waits 300 seconds
   (`sessionDetachLingerSeconds`). A labelled session waits the linger window (3600
   seconds default, `orchestratedSessionLingerSeconds`, `--session-linger` to change).
+- **The clock reaps an idle shell, not a working session.** At the end of its window a
+  labelled session gets a fresh window when a program other than the shell holds the
+  terminal, or when output arrived during the window (ADR 0002). A foreman never
+  attaches, so this is what keeps a crew session alive while it works. A labelled
+  shell at its prompt that printed nothing for a whole window is reaped. A browser
+  session is reaped at its window whatever the shell is doing.
 - **Exit is reportable.** A labelled session that loses its shell is kept with
   `exited: true` and `exitCode`. Its `/commands` and retained output still answer. An
   unlabelled session is reaped as soon as its shell exits.
