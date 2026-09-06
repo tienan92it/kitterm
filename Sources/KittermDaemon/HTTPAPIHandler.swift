@@ -571,6 +571,11 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             item["exited"] = true
             if let code = summary.exitCode { item["exitCode"] = Int(code) }
         }
+        if let since = summary.heldSince {
+            // The linger clock is holding a working session (ADR 0002); a
+            // foreman decides whether that is still wanted.
+            item["heldSince"] = Int(since.timeIntervalSince1970 * 1000)
+        }
         return item
     }
 

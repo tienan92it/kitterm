@@ -38,14 +38,14 @@ enum MCPTools {
         [
             tool(
                 "list_sessions",
-                "List every live session — the crew — with each one's typed state (working / needs-input / needs-approval / completed / failed / idle / exited), name, cwd, and last command.",
+                "List every live session — the crew — with each one's typed state (working / needs-input / needs-approval / completed / failed / idle / exited), name, cwd, and last command. A row with `heldSince` (epoch ms) is one the linger clock kept past its window because a program held the terminal or output arrived; the daemon never ends such a session itself, so end the ones held longer than you tolerate with kill_session.",
                 properties: [
                     "label": ["type": "string", "description": "Optional key:value filter, e.g. crew:alpha"]
                 ]
             ),
             tool(
                 "get_session",
-                "Read one session's full status row by id.",
+                "Read one session's full status row by id, including `heldSince` when the linger clock is holding it.",
                 properties: ["session": idProp],
                 required: ["session"]
             ),
@@ -121,7 +121,7 @@ enum MCPTools {
             ),
             tool(
                 "wait_for_events",
-                "The foreman's heartbeat: block until something changes across the whole crew — a status change, an approval, a spawn, an exit, or a posted note — then return the events. Pass the `next` cursor from the previous call as `since` and its `epoch` as `epoch`. One call watches every session at once; re-invoke in a loop. A timeout returns no events, which just means \"still quiet\". A result whose `epoch` differs from the last one means the daemon restarted: every session id you held is gone, the first event is `daemon.started`, and `pruned` is true. Re-list the sessions and match them by labels and cwd.",
+                "The foreman's heartbeat: block until something changes across the whole crew — a status change, an approval, a spawn, an exit, a posted note, or a `session.lingered` (the linger clock kept a session past a window; its data says why: reason `foreground` with the `program` name, or `output`, and `heldSince`) — then return the events. Pass the `next` cursor from the previous call as `since` and its `epoch` as `epoch`. One call watches every session at once; re-invoke in a loop. A timeout returns no events, which just means \"still quiet\". A result whose `epoch` differs from the last one means the daemon restarted: every session id you held is gone, the first event is `daemon.started`, and `pruned` is true. Re-list the sessions and match them by labels and cwd.",
                 properties: [
                     "since": ["type": "integer", "description": "Cursor from the previous call's `next` (0 to start)"],
                     "epoch": ["type": "string", "description": "The previous call's `epoch`; omit on the first call. A mismatch is answered at once with `pruned` true"],

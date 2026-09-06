@@ -150,7 +150,25 @@ A foreman runs one loop.
    that still prints output, is held past every window, whether or not a
    browser is open on it (ADR 0002). Only a shell at its prompt that printed
    nothing for a whole window goes on its own. A session you forget stays
-   until you end it, so `list_sessions` and end the ones you are done with.
+   until you end it.
+
+5. End the sessions held past your own tolerance. The daemon tells you which
+   ones it holds, and never decides for you:
+   - A held row carries `heldSince`, the epoch millisecond when the first
+     window expired and the clock kept the session. It is set once, stays
+     until a client attaches or the session ends, and is absent on a session
+     the clock is not holding.
+   - Each time a window expires and the clock keeps a session, the feed
+     carries `session.lingered`. Its data says why: `reason` is `foreground`
+     with the `program` name (`claude`, `vim`, `sleep`), or `output`, and
+     `heldSince` repeats the row's value.
+
+   Pick a tolerance for your crew (an hour past `completed`, a day for a
+   session that waits on a human) and act on it: on `session.lingered`, or
+   on each `list_sessions`, compare `heldSince` with now. A held session with
+   `claude` at an empty prompt and nothing left to do is one you forgot.
+   `kill_session` it, or `archive_session` it when its output is worth
+   keeping. The 64 session ceiling is the only bound the daemon applies.
 
 ## When the daemon restarts
 

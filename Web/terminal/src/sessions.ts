@@ -55,6 +55,10 @@ type SessionRow = {
   /** When output last arrived (epoch ms). Ticks on every PTY read, so it is
    * excluded from the render signature. */
   lastOutputAt?: number;
+  /** When the linger clock first kept this session past a window because a
+   * program held it or it printed (epoch ms). Set once, so it is safe in the
+   * render signature. Only a person or a foreman ends such a session. */
+  heldSince?: number;
 };
 
 type Profile = { name: string; command: string; cwd?: string };
@@ -339,6 +343,7 @@ function row(s: SessionRow): HTMLElement {
   meta.className = "meta";
   const bits: string[] = [];
   bits.push(s.attached ? "attached" : "detached");
+  if (typeof s.heldSince === "number") bits.push(`held since ${clockTime(s.heldSince)}`);
   if (s.observers > 0) bits.push(`${s.observers} watching`);
   if (typeof s.lastExit === "number") bits.push(`exit ${s.lastExit}`);
   bits.push(`pid ${s.pid}`);
@@ -534,6 +539,12 @@ function attentionCount(sessions: SessionRow[]): number {
     const m = mergedOf(s);
     return m === "needs-input" || m === "needs-approval";
   }).length;
+}
+
+/** A wall-clock label for a moment that stays fixed once set, so the row's
+ * text is stable between polls (a duration would go stale between repaints). */
+function clockTime(epochMs: number): string {
+  return new Date(epochMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 function folderOf(cwd: string): string {

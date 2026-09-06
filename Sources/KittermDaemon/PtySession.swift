@@ -543,12 +543,23 @@ public final class PtySession: @unchecked Sendable {
     /// the tty) or an error (the pty is gone) reads as the shell, which keeps
     /// the old behaviour for every caller that never asked.
     public var foregroundIsShell: Bool {
+        foregroundProgramName == nil
+    }
+
+    /// The name of the program that holds the terminal, or nil when the
+    /// shell does. The same read as `foregroundIsShell`, kept so a caller
+    /// can say *what* holds the session, not only that something does.
+    public var foregroundProgramName: String? {
         let group = tcgetpgrp(masterFD)
-        guard group > 0 else { return true }
-        guard let leader = Self.executablePath(ofPID: group) else { return group == pid }
+        guard group > 0 else { return nil }
+        guard let leader = Self.executablePath(ofPID: group) else {
+            return group == pid ? nil : "pid \(group)"
+        }
         let name = URL(fileURLWithPath: leader).lastPathComponent
-        return name == URL(fileURLWithPath: shellPath).lastPathComponent
-            || Self.shellNames.contains(name)
+        if name == URL(fileURLWithPath: shellPath).lastPathComponent || Self.shellNames.contains(name) {
+            return nil
+        }
+        return name
     }
 
     /// Programs that read a line feed as Enter, whichever one was spawned.
