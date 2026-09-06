@@ -36,6 +36,11 @@ public actor SessionRegistry {
     private var sessions: [UUID: PtySession] = [:]
     private var attachedIDs: Set<UUID> = []
     private var lingerTasks: [UUID: Task<Void, Never>] = [:]
+    /// When the first linger window expired and the session was kept because
+    /// it was working (ADR 0002). A foreman reads it to find the sessions
+    /// the clock holds on its behalf. Cleared when a client attaches or the
+    /// session goes.
+    private var heldSince: [UUID: Date] = [:]
 
     public var count: Int {
         sessions.count
@@ -106,8 +111,15 @@ public actor SessionRegistry {
     /// control. Cancels the linger clock — someone is watching.
     public func observe(_ id: UUID) -> PtySession? {
         guard let session = sessions[id], session.isRunning else { return nil }
-        lingerTasks.removeValue(forKey: id)?.cancel()
+        stopLinger(id)
         return session
+    }
+
+    /// Someone is watching or driving the session: the clock stops, and a
+    /// hold the clock had recorded is over.
+    private func stopLinger(_ id: UUID) {
+        lingerTasks.removeValue(forKey: id)?.cancel()
+        heldSince.removeValue(forKey: id)
     }
 
     /// A point-in-time view of one session for the listing API.
@@ -142,6 +154,9 @@ public actor SessionRegistry {
         /// real width.
         public let cols: UInt16
         public let rows: UInt16
+        /// When the linger clock first kept this session past a window
+        /// because it was working, if it is held now (ADR 0002).
+        public let heldSince: Date?
     }
 
     /// Every live session, for `/api/sessions`. Ordered by id for stability.
@@ -175,7 +190,8 @@ public actor SessionRegistry {
             exited: !session.isRunning,
             exitCode: session.exitCode,
             cols: size.cols,
-            rows: size.rows
+            rows: size.rows,
+            heldSince: heldSince[id]
         )
     }
 
@@ -197,7 +213,7 @@ public actor SessionRegistry {
             if !session.isOrchestrated { removeInternal(id) }
             return .notFound
         }
-        lingerTasks.removeValue(forKey: id)?.cancel()
+        stopLinger(id)
         if attachedIDs.contains(id) {
             return .observer(session)
         }
@@ -211,7 +227,7 @@ public actor SessionRegistry {
     /// which is harmless against the 300s linger window.
     public func claimControl(_ id: UUID) {
         guard sessions[id] != nil else { return }
-        lingerTasks.removeValue(forKey: id)?.cancel()
+        stopLinger(id)
         attachedIDs.insert(id)
     }
 
@@ -298,6 +314,7 @@ public actor SessionRegistry {
         sessions.removeAll()
         attachedIDs.removeAll()
         lingerTasks.removeAll()
+        heldSince.removeAll()
     }
 
     /// The linger window is up. An exited session is reaped regardless: its
@@ -310,6 +327,11 @@ public actor SessionRegistry {
     /// The check runs here, once per window, instead of on every output
     /// byte: the read path stays free of actor hops, and a session that is
     /// busy every second costs the same as one that is silent.
+    ///
+    /// A kept session is recorded as held from the first window it survived
+    /// (`heldSince`, on its row) and each survival lands on the feed as
+    /// `session.lingered` with its reason, so a foreman can find the
+    /// programs it forgot without polling every row.
     private func lingerExpired(_ id: UUID, armedAt: Date) {
         guard let session = sessions[id] else { return }
         guard session.isRunning else {
@@ -317,16 +339,27 @@ public actor SessionRegistry {
             return
         }
         guard !attachedIDs.contains(id), session.observerCount == 0 else { return }
-        if session.isOrchestrated, Self.isWorking(session, since: armedAt) {
+        if session.isOrchestrated, let reason = Self.holdReason(session, since: armedAt) {
+            let since = heldSince[id] ?? Date()
+            heldSince[id] = since
             scheduleLinger(id)
+            emitLingered(id, reason: reason, since: since)
             return
         }
         removeInternal(id)
     }
 
-    /// Whether a session did work during the window that started at
-    /// `armedAt`. Two signals, both of which a crew session shows and an
-    /// abandoned shell at its prompt does not:
+    /// Why the clock kept a session at the end of a window (ADR 0002).
+    enum HoldReason: Equatable {
+        /// A program other than the shell holds the terminal, by name.
+        case foreground(String)
+        /// Output arrived during the window.
+        case output
+    }
+
+    /// Why a session counts as working during the window that started at
+    /// `armedAt`, or nil for an idle shell. Two signals, both of which a
+    /// crew session shows and an abandoned shell at its prompt does not:
     ///
     /// - A program other than the shell holds the terminal (`claude`, `vim`,
     ///   a rebase's editor, a `sleep`). It may be mid-task or waiting on a
@@ -335,14 +368,26 @@ public actor SessionRegistry {
     ///   fires from a running agent, which already holds the terminal.
     /// - Output arrived since the clock was armed: a background job, a long
     ///   build the shell is waiting on, a prompt just redrawn.
-    static func isWorking(_ session: PtySession, since armedAt: Date) -> Bool {
-        if !session.foregroundIsShell { return true }
-        if let lastOutputAt = session.lastOutputAt, lastOutputAt > armedAt { return true }
-        return false
+    static func holdReason(_ session: PtySession, since armedAt: Date) -> HoldReason? {
+        if let program = session.foregroundProgramName { return .foreground(program) }
+        if let lastOutputAt = session.lastOutputAt, lastOutputAt > armedAt { return .output }
+        return nil
+    }
+
+    private func emitLingered(_ id: UUID, reason: HoldReason, since: Date) {
+        var data = ["heldSince": String(Int(since.timeIntervalSince1970 * 1000))]
+        switch reason {
+        case .foreground(let program):
+            data["reason"] = "foreground"
+            data["program"] = program
+        case .output:
+            data["reason"] = "output"
+        }
+        eventLog?.append(type: "session.lingered", session: id, data: data)
     }
 
     private func removeInternal(_ id: UUID) {
-        lingerTasks.removeValue(forKey: id)?.cancel()
+        stopLinger(id)
         attachedIDs.remove(id)
         if let session = sessions.removeValue(forKey: id) {
             session.terminate()

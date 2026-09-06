@@ -32,6 +32,19 @@ final class MCPToolsTests: XCTestCase {
         }
     }
 
+    /// The bridge passes the daemon's JSON through untouched, so the field a
+    /// foreman must act on is explained where it reads: the tool text.
+    func testHeldSessionsAreExplainedToTheForeman() throws {
+        var descriptions: [String: String] = [:]
+        for schema in MCPTools.schemas() {
+            descriptions[try XCTUnwrap(schema["name"] as? String)] = schema["description"] as? String
+        }
+        XCTAssertTrue(try XCTUnwrap(descriptions["list_sessions"]).contains("heldSince"))
+        XCTAssertTrue(try XCTUnwrap(descriptions["list_sessions"]).contains("kill_session"))
+        XCTAssertTrue(try XCTUnwrap(descriptions["get_session"]).contains("heldSince"))
+        XCTAssertTrue(try XCTUnwrap(descriptions["wait_for_events"]).contains("session.lingered"))
+    }
+
     // MARK: - mapping
 
     func testListSessionsWithAndWithoutFilter() throws {

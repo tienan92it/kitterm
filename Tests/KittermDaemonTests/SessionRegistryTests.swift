@@ -190,6 +190,80 @@ final class SessionRegistryTests: XCTestCase {
         }
     }
 
+    /// A session the clock keeps is reported as held (`heldSince`, the first
+    /// window it survived, fixed after that) and each survival lands on the
+    /// feed as `session.lingered` with its reason. A client attaching ends
+    /// the hold: the clock stops, and the row says so.
+    func testHeldSessionReportsHeldSinceAndEmitsLingered() async throws {
+        let eventLog = EventLog()
+        let registry = SessionRegistry(orchestratedLingerSeconds: 1, eventLog: eventLog)
+        let session = try PtySession.spawn(cwd: NSTemporaryDirectory(), spawnedByAPI: true)
+        defer { session.terminate() }
+        let registered = await registry.registerDetached(session)
+        let id = try XCTUnwrap(registered)
+        let freshSummary = await registry.summary(id)
+        let fresh = try XCTUnwrap(freshSummary)
+        XCTAssertNil(fresh.heldSince, "nothing is held before a window expires")
+
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        defer { group.shutdownGracefully { _ in } }
+        try await session.makeReader(group: group, eventLoop: group.next()).get()
+        try session.write(Data("sleep 4\n".utf8))
+        try await waitUntil("sleep to take the foreground", seconds: 5) { !session.foregroundIsShell }
+
+        func lingered() -> [DaemonEvent] {
+            eventLog.snapshot(since: 0, session: id).events.filter { $0.type == "session.lingered" }
+        }
+        try await waitUntil("two windows to expire with the program running", seconds: 6) {
+            lingered().count >= 2
+        }
+        let events = lingered()
+        let first = try XCTUnwrap(events.first)
+        XCTAssertEqual(first.data["reason"], "foreground")
+        XCTAssertEqual(first.data["program"], "sleep")
+        let heldSince = try XCTUnwrap(first.data["heldSince"])
+        XCTAssertEqual(events[1].data["heldSince"], heldSince, "the hold started once, at the first window")
+
+        let heldSummary = await registry.summary(id)
+        let held = try XCTUnwrap(heldSummary)
+        let rowMillis = try XCTUnwrap(held.heldSince).timeIntervalSince1970 * 1000
+        XCTAssertEqual(String(Int(rowMillis)), heldSince, "the row and the event name the same moment")
+
+        guard case .controller = await registry.resolve(id) else {
+            return XCTFail("a held session is still attachable")
+        }
+        let attachedSummary = await registry.summary(id)
+        let attached = try XCTUnwrap(attachedSummary)
+        XCTAssertNil(attached.heldSince, "a client attaching ends the hold")
+    }
+
+    /// Output during a window is the other reason: a shell at its prompt that
+    /// a background job keeps printing to is held with reason `output`.
+    func testOutputDuringTheWindowIsAHoldReason() async throws {
+        let eventLog = EventLog()
+        let registry = SessionRegistry(orchestratedLingerSeconds: 1, eventLog: eventLog)
+        let session = try PtySession.spawn(cwd: NSTemporaryDirectory(), spawnedByAPI: true)
+        defer { session.terminate() }
+        let registered = await registry.registerDetached(session)
+        let id = try XCTUnwrap(registered)
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        defer { group.shutdownGracefully { _ in } }
+        try await session.makeReader(group: group, eventLoop: group.next()).get()
+
+        // The job runs in the shell's own process group (no job control in a
+        // non-interactive sh), so the shell stays the foreground and only the
+        // ticks hold the session.
+        try session.write(Data("(for i in 1 2 3 4 5 6 7 8 9 10; do echo tick; sleep 0.3; done) &\n".utf8))
+        try await waitUntil("a window to expire while the job prints", seconds: 6) {
+            eventLog.snapshot(since: 0, session: id).events.contains {
+                $0.type == "session.lingered" && $0.data["reason"] == "output"
+            }
+        }
+        let heldSummary = await registry.summary(id)
+        let held = try XCTUnwrap(heldSummary)
+        XCTAssertNotNil(held.heldSince)
+    }
+
     /// An exited orchestrated session is kept for one window so its records
     /// can be read, then reaped. Its shell is gone, so the working test does
     /// not apply, and nothing holds the records open forever.
