@@ -3,12 +3,16 @@ import KittermProtocol
 
 /// Tracks live PTY sessions. A session survives a transient WS disconnect
 /// (sleep/wake, network blip): it is marked detached and reaped only if no
-/// client reattaches within the linger window.
+/// client reattaches within the linger window. A program-created session is
+/// also held while it works (ADR 0002): the clock reaps an idle shell, never
+/// a running program.
 public actor SessionRegistry {
     /// How long a program-created session is held after its last client
     /// disconnects, so an orchestrator that restarts finds its nodes running.
-    /// Bounded so a crash cannot leak shells forever.
+    /// Bounded so a crash cannot leak idle shells forever.
     private let orchestratedLinger: Int
+    /// How long a browser tab's session is held after its client disconnects.
+    private let detachLinger: Int
     /// The daemon-wide event feed; nil in the tests that do not exercise it.
     /// Appended to from actor context, which is off the event loop — safe
     /// because `EventLog` is `NIOLock`-guarded, not loop-confined.
@@ -19,10 +23,12 @@ public actor SessionRegistry {
 
     public init(
         orchestratedLingerSeconds: Int = KittermConstants.orchestratedSessionLingerSeconds,
+        detachLingerSeconds: Int = KittermConstants.sessionDetachLingerSeconds,
         eventLog: EventLog? = nil,
         respawnHints: RespawnHintStore? = nil
     ) {
         self.orchestratedLinger = orchestratedLingerSeconds
+        self.detachLinger = detachLingerSeconds
         self.eventLog = eventLog
         self.respawnHints = respawnHints
     }
@@ -250,12 +256,13 @@ public actor SessionRegistry {
         // is probably mid-run with its caller restarting.
         let window = sessions[id]?.isOrchestrated == true
             ? orchestratedLinger
-            : KittermConstants.sessionDetachLingerSeconds
+            : detachLinger
+        let armedAt = Date()
         lingerTasks[id] = Task { [weak self] in
             // Suspending clock: machine sleep must not consume the window.
             try? await Task.sleep(for: .seconds(window), clock: .suspending)
             guard !Task.isCancelled else { return }
-            await self?.reapIfStillDetached(id)
+            await self?.lingerExpired(id, armedAt: armedAt)
         }
     }
 
@@ -293,17 +300,45 @@ public actor SessionRegistry {
         lingerTasks.removeAll()
     }
 
-    private func reapIfStillDetached(_ id: UUID) {
-        // An exited session is reaped when its window is up regardless: its
-        // shell is already gone, and a reader must not hold the records open
-        // forever.
-        if let session = sessions[id], !session.isRunning {
+    /// The linger window is up. An exited session is reaped regardless: its
+    /// shell is already gone, and a reader must not hold the records open
+    /// forever. A watched session is kept. A detached browser session is
+    /// reaped. A detached orchestrated session is reaped only when it is
+    /// idle; one that is working gets a fresh window, and the check repeats
+    /// at the end of that window (ADR 0002).
+    ///
+    /// The check runs here, once per window, instead of on every output
+    /// byte: the read path stays free of actor hops, and a session that is
+    /// busy every second costs the same as one that is silent.
+    private func lingerExpired(_ id: UUID, armedAt: Date) {
+        guard let session = sessions[id] else { return }
+        guard session.isRunning else {
             removeInternal(id)
             return
         }
-        guard !attachedIDs.contains(id) else { return }
-        if let session = sessions[id], session.observerCount > 0 { return }
+        guard !attachedIDs.contains(id), session.observerCount == 0 else { return }
+        if session.isOrchestrated, Self.isWorking(session, since: armedAt) {
+            scheduleLinger(id)
+            return
+        }
         removeInternal(id)
+    }
+
+    /// Whether a session did work during the window that started at
+    /// `armedAt`. Two signals, both of which a crew session shows and an
+    /// abandoned shell at its prompt does not:
+    ///
+    /// - A program other than the shell holds the terminal (`claude`, `vim`,
+    ///   a rebase's editor, a `sleep`). It may be mid-task or waiting on a
+    ///   human for hours; the registry cannot tell those apart and must not
+    ///   guess. An agent's hook report is not a third signal: a hook only
+    ///   fires from a running agent, which already holds the terminal.
+    /// - Output arrived since the clock was armed: a background job, a long
+    ///   build the shell is waiting on, a prompt just redrawn.
+    static func isWorking(_ session: PtySession, since armedAt: Date) -> Bool {
+        if !session.foregroundIsShell { return true }
+        if let lastOutputAt = session.lastOutputAt, lastOutputAt > armedAt { return true }
+        return false
     }
 
     private func removeInternal(_ id: UUID) {
