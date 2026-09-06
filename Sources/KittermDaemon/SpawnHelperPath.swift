@@ -1,9 +1,14 @@
 import Foundation
 
 enum SpawnHelperPath {
+    /// The helper's executable name. It claims the tty (`setsid`, `TIOCSCTTY`)
+    /// and then execs the shell under the same pid, so for a moment after
+    /// spawn the foreground process group's leader is named this.
+    static let name = "kitterm-spawn-helper"
+
     /// Resolve `kitterm-spawn-helper` next to the running `kitterm` binary (or PATH).
     static func resolve() throws -> String {
-        let name = "kitterm-spawn-helper"
+        let name = Self.name
         let fm = FileManager.default
 
         let arg0 = CommandLine.arguments[0]

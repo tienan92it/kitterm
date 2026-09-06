@@ -556,9 +556,12 @@ public final class PtySession: @unchecked Sendable {
     /// session has terminated. A leader the kernel can no longer name, and
     /// that is not the shell's own pid, reads as `pid <n>`: something other
     /// than the shell held the tty a moment ago, and the linger clock must
-    /// not reap on a race. A name, not a path: it is what a fleet row shows
-    /// and a foreman compares against, and `exec claude` keeps the shell's
-    /// pid.
+    /// not reap on a race. The spawn helper is nobody: it claims the tty and
+    /// then execs the shell under the same pid, so a read in that window
+    /// (CI's runners hit it, a fast machine rarely does) is the shell
+    /// starting, not a program that took the terminal. A name, not a path:
+    /// it is what a fleet row shows and a foreman compares against, and
+    /// `exec claude` keeps the shell's pid.
     public var foregroundProgram: String? {
         guard let leader = foregroundLeader else { return nil }
         guard let name = leader.name else { return leader.group == pid ? nil : "pid \(leader.group)" }
@@ -578,9 +581,12 @@ public final class PtySession: @unchecked Sendable {
         foregroundProgram == nil
     }
 
-    /// The spawned shell, or any shell that reads a line feed as Enter.
+    /// The spawned shell, any shell that reads a line feed as Enter, or the
+    /// helper that is about to exec the shell.
     private func isShellName(_ name: String) -> Bool {
-        name == URL(fileURLWithPath: shellPath).lastPathComponent || Self.shellNames.contains(name)
+        name == URL(fileURLWithPath: shellPath).lastPathComponent
+            || Self.shellNames.contains(name)
+            || name == SpawnHelperPath.name
     }
 
     /// Programs that read a line feed as Enter, whichever one was spawned.
