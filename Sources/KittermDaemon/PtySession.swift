@@ -541,8 +541,10 @@ public final class PtySession: @unchecked Sendable {
     /// linger clock, the Enter key — and nothing on the output path ever
     /// asks. Nil when no group has claimed the tty yet (the helper is still
     /// starting) or the session has terminated: the master fd is closed
-    /// then, and its number may already name another file.
-    private var foregroundLeader: (group: pid_t, name: String?)? {
+    /// then, and its number may already name another file. Internal so a
+    /// test can wait for the shell itself to hold the terminal, which
+    /// `foregroundIsShell` alone cannot tell from nothing holding it yet.
+    var foregroundLeader: (group: pid_t, name: String?)? {
         guard stateLock.withLock({ !terminated }) else { return nil }
         let group = tcgetpgrp(masterFD)
         guard group > 0 else { return nil }
