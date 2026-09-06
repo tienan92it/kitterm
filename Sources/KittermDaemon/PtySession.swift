@@ -532,34 +532,61 @@ public final class PtySession: @unchecked Sendable {
         writeToChannel(flush.channel, flush.bytes)
     }
 
+    /// The process group that holds the terminal: its leader's pid, and the
+    /// leader's executable name when the kernel still knows it.
+    ///
+    /// `tcgetpgrp` on the master names the foreground process group, and
+    /// `proc_pidpath` on its leader says what it runs. Both are microsecond
+    /// kernel reads, so a caller asks at request time — the listing row, the
+    /// linger clock, the Enter key — and nothing on the output path ever
+    /// asks. Nil when no group has claimed the tty yet (the helper is still
+    /// starting) or the session has terminated: the master fd is closed
+    /// then, and its number may already name another file.
+    private var foregroundLeader: (group: pid_t, name: String?)? {
+        guard stateLock.withLock({ !terminated }) else { return nil }
+        let group = tcgetpgrp(masterFD)
+        guard group > 0 else { return nil }
+        let name = Self.executablePath(ofPID: group).map { URL(fileURLWithPath: $0).lastPathComponent }
+        return (group, name)
+    }
+
+    /// The program that took the terminal from the shell — `claude` in a
+    /// crew session, `vim` mid-rebase, `cat` — by executable basename, or nil
+    /// when the shell itself is reading, nothing holds the tty yet, or the
+    /// session has terminated. A leader the kernel can no longer name, and
+    /// that is not the shell's own pid, reads as `pid <n>`: something other
+    /// than the shell held the tty a moment ago, and the linger clock must
+    /// not reap on a race. The spawn helper is nobody: it claims the tty and
+    /// then execs the shell under the same pid, so a read in that window
+    /// (CI's runners hit it, a fast machine rarely does) is the shell
+    /// starting, not a program that took the terminal. A name, not a path:
+    /// it is what a fleet row shows and a foreman compares against, and
+    /// `exec claude` keeps the shell's pid.
+    public var foregroundProgram: String? {
+        guard let leader = foregroundLeader else { return nil }
+        guard let name = leader.name else { return leader.group == pid ? nil : "pid \(leader.group)" }
+        return isShellName(name) ? nil : name
+    }
+
     /// Whether a shell is reading the terminal, or a program has taken the
     /// foreground (`claude`, `vim`, `ssh`, a `sleep`).
     ///
-    /// `tcgetpgrp` on the master names the foreground process group, and the
-    /// group leader's executable says what it is. The leader is judged by
-    /// name rather than by pid: `exec claude` keeps the shell's pid and is
-    /// still a program, a nested `zsh` is still a shell, and macOS's `/bin/sh`
-    /// re-executes itself as `bash`. No group yet (the helper has not claimed
-    /// the tty) or an error (the pty is gone) reads as the shell, which keeps
-    /// the old behaviour for every caller that never asked.
+    /// The leader is judged by name rather than by pid: `exec claude` keeps
+    /// the shell's pid and is still a program, a nested `zsh` is still a
+    /// shell, and macOS's `/bin/sh` re-executes itself as `bash`. No group yet
+    /// (the helper has not claimed the tty) or an error (the pty is gone)
+    /// reads as the shell, which keeps the old behaviour for every caller that
+    /// never asked.
     public var foregroundIsShell: Bool {
-        foregroundProgramName == nil
+        foregroundProgram == nil
     }
 
-    /// The name of the program that holds the terminal, or nil when the
-    /// shell does. The same read as `foregroundIsShell`, kept so a caller
-    /// can say *what* holds the session, not only that something does.
-    public var foregroundProgramName: String? {
-        let group = tcgetpgrp(masterFD)
-        guard group > 0 else { return nil }
-        guard let leader = Self.executablePath(ofPID: group) else {
-            return group == pid ? nil : "pid \(group)"
-        }
-        let name = URL(fileURLWithPath: leader).lastPathComponent
-        if name == URL(fileURLWithPath: shellPath).lastPathComponent || Self.shellNames.contains(name) {
-            return nil
-        }
-        return name
+    /// The spawned shell, any shell that reads a line feed as Enter, or the
+    /// helper that is about to exec the shell.
+    private func isShellName(_ name: String) -> Bool {
+        name == URL(fileURLWithPath: shellPath).lastPathComponent
+            || Self.shellNames.contains(name)
+            || name == SpawnHelperPath.name
     }
 
     /// Programs that read a line feed as Enter, whichever one was spawned.

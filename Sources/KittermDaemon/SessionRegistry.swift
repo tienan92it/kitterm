@@ -157,6 +157,11 @@ public actor SessionRegistry {
         /// When the linger clock first kept this session past a window
         /// because it was working, if it is held now (ADR 0002).
         public let heldSince: Date?
+        /// The program that took the terminal from the shell (`claude`,
+        /// `vim`), by name, or nil when the shell is reading or nothing holds
+        /// the tty. Read from the kernel when the row is built, never tracked
+        /// on the output path.
+        public let foregroundProgram: String?
     }
 
     /// Every live session, for `/api/sessions`. Ordered by id for stability.
@@ -191,7 +196,8 @@ public actor SessionRegistry {
             exitCode: session.exitCode,
             cols: size.cols,
             rows: size.rows,
-            heldSince: heldSince[id]
+            heldSince: heldSince[id],
+            foregroundProgram: session.foregroundProgram
         )
     }
 
@@ -369,7 +375,7 @@ public actor SessionRegistry {
     /// - Output arrived since the clock was armed: a background job, a long
     ///   build the shell is waiting on, a prompt just redrawn.
     static func holdReason(_ session: PtySession, since armedAt: Date) -> HoldReason? {
-        if let program = session.foregroundProgramName { return .foreground(program) }
+        if let program = session.foregroundProgram { return .foreground(program) }
         if let lastOutputAt = session.lastOutputAt, lastOutputAt > armedAt { return .output }
         return nil
     }

@@ -557,6 +557,45 @@ final class PtySessionTests: XCTestCase {
         wait(for: [seen], timeout: 30)
     }
 
+    /// The listing row names what took the terminal. At the prompt nothing
+    /// did, so the read is nil rather than the shell's own name; `cat` in the
+    /// foreground is `cat`; Ctrl-D ends it and the shell is back; and a
+    /// terminated session reads as nothing, because its master fd is closed
+    /// and its number may already name another file.
+    func testForegroundProgramNamesWhatTookTheTerminal() throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        defer { try? group.syncShutdownGracefully() }
+        try session.makeReader(group: group, eventLoop: group.next()).wait()
+
+        XCTAssertNil(session.foregroundProgram, "the shell is not a program that took the terminal")
+        XCTAssertTrue(session.foregroundIsShell)
+
+        try session.write(Data("cat\n".utf8))
+        waitUntil("cat to take the foreground") { session.foregroundProgram == "cat" }
+        XCTAssertFalse(session.foregroundIsShell)
+
+        try session.write(Data("\u{04}".utf8))
+        waitUntil("the shell to take the foreground back") { session.foregroundProgram == nil }
+        XCTAssertTrue(session.foregroundIsShell)
+
+        session.terminate()
+        XCTAssertNil(session.foregroundProgram)
+        XCTAssertTrue(session.foregroundIsShell)
+    }
+
+    private func waitUntil(
+        _ what: String, seconds: TimeInterval = 10,
+        file: StaticString = #filePath, line: UInt = #line,
+        _ condition: () -> Bool
+    ) {
+        let deadline = Date().addingTimeInterval(seconds)
+        while Date() < deadline {
+            if condition() { return }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        XCTFail("timed out waiting for \(what)", file: file, line: line)
+    }
+
     /// The session-profile mechanism: `spawnNew` writes the profile's connect
     /// command right after spawn, *before* the reader channel exists. The
     /// bytes must queue as type-ahead, flush when the reader adopts the PTY,
