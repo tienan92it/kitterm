@@ -110,6 +110,10 @@ A foreman runs one loop.
    spawn_session name="payments-retry-bug" labels={crew:"alpha", task:"retry-bug"} input="claude\n"
    ```
 
+   Then read the pane before you send the task ("Read before you type",
+   below). A fresh `claude` may still sit at the folder-trust dialog, and a
+   task typed into that dialog is lost.
+
 2. Wait on the event feed. One `wait_for_events` call watches every session at
    once — it returns the moment any session changes state, an approval appears,
    or an agent posts a note. Pass the `next` cursor from the last call as
@@ -120,16 +124,9 @@ A foreman runs one loop.
    ```
 
 3. Act on what changed.
-   - Before you type into a pane that runs a TUI (Claude Code is one), call
-     `read_screen`. It returns the screen a human sees, at the pane's size,
-     with the cursor position. `read_output` returns the raw bytes of one
-     command, which for a TUI is spinner redraws and cursor moves. A dim run
-     is marked `{dim}…{/dim}`: Claude Code's ghost suggestion on an empty
-     prompt is dim, not typed text, so an empty prompt reads as
-     `❯ {dim}Try "…"{/dim}`. Press Enter only on text you typed.
    - `needs-input` or `needs-approval` — tell the human, and route them to the
-     pane. Do not answer for them. When the human gives you the answer, pass
-     it on with `send_input`:
+     pane. Do not answer for them. When the human gives you the answer, run
+     "Read before you type", then pass the answer on with `send_input`:
 
      ```
      send_input session=<id> text="Use the retry budget from the config, not a constant."
@@ -143,6 +140,7 @@ A foreman runs one loop.
    - `note` — a crew agent reported progress ("plan ready for review"). Relay
      it.
    - `completed` — verify the work, then move the session to review or end it.
+     A correction goes in the same way: read first, then `send_input`.
 
 4. End a session when its work merges. `kill_session` ends the shell now.
    The linger clock does not do it for you: it reaps an idle shell, not a
@@ -169,6 +167,50 @@ A foreman runs one loop.
    `claude` at an empty prompt and nothing left to do is one you forgot.
    `kill_session` it, or `archive_session` it when its output is worth
    keeping. The 64 session ceiling is the only bound the daemon applies.
+
+## Read before you type
+
+`read_output` returns the raw bytes of one command. For a pane that runs a
+TUI such as Claude Code, those bytes are spinner redraws and cursor moves.
+`read_screen` returns the screen a human sees, at the pane's size, with the
+cursor position, and marks a dim run as `{dim}…{/dim}`. On 2026-09-04 a
+foreman read Claude Code's dim ghost suggestion on an empty prompt as typed
+text and pressed Enter on nothing, and it typed a task into a pane that was
+still at the folder-trust dialog. So the foreman reads before it types.
+
+Do this before every `send_input` into a pane that runs an interactive agent.
+
+1. Call `read_screen`. Find the row the cursor is on.
+2. Type only when the prompt is at the cursor and the input box is empty: the
+   cursor row reads `❯` and the cursor sits right after it. A `{dim}…{/dim}`
+   run at the cursor is a placeholder, so an empty prompt can read as
+   `❯ {dim}Try "…"{/dim}`. Treat it as empty. Never treat it as text, and
+   never press Enter on it.
+3. When the screen shows something else, do not type the message. Act on what
+   the screen shows:
+   - Trust dialog. The pane reads "Is this a project you created or one you
+     trust?" with the options `No, exit` and `Yes, I trust this folder`, and
+     `❯` marks `No, exit`. This is not a permission dialog: it asks about the
+     folder the foreman chose. When the cwd is the repo the user named, send
+     one Down arrow (`send_input text="\u001b[B" enter=false`), read the
+     screen to confirm `❯` now marks `Yes, I trust this folder`, then press
+     Enter alone (`send_input text=""`). Any other cwd: stop and tell the
+     user. Send the arrow and the Enter in two calls: a keystroke and a
+     carriage return in one write can confirm the option that was marked
+     before the keystroke arrived.
+   - Permission dialog. The pane reads "Do you want to proceed?" or a
+     numbered choice with a `Yes` and a `No`. Never answer it. Tell the user
+     and link the pane; the fleet view holds the same dialog.
+   - In-progress turn. The pane shows a spinner line with "esc to
+     interrupt", or a `⏺` tool call that has not returned above the input
+     box. Wait. Call `wait_for_events` until the session reports `completed`
+     or `needs-input`, then read the screen again.
+4. Send the message with `send_input`. Send one dialog keystroke per call,
+   and read the screen between keystrokes.
+5. Call `read_screen` again. Confirm the text you typed now appears above the
+   input box as `❯ <your text>` and the box is empty again. When the text
+   still sits in the box, press Enter alone (`send_input text=""`) and read
+   once more.
 
 ## When the daemon restarts
 
