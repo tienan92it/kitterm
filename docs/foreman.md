@@ -60,7 +60,7 @@ The bridge gives the foreman these tools.
 
 | Tool | Job |
 |------|-----|
-| `list_sessions` | Every crew session with its typed state, name, and last command. |
+| `list_sessions` | Every crew session with its typed state, name, last command, and what holds its terminal. |
 | `get_session` | One session's full status row. |
 | `spawn_session` | Start a crew session. Name it; optionally set cwd, profile, labels, and an initial input line. |
 | `rename_session` | Set a session's name, note, or labels. |
@@ -98,6 +98,17 @@ A crew agent must run Claude Code with `kitterm hooks` installed for
 reports `working`, `idle`, `failed`, and `exited` from its shell-integration
 marks. So a non-Claude session works at a basic level, and a Claude session
 gets the full vocabulary.
+
+## What holds the terminal
+
+Each row also carries `foregroundProgram`: the name of the program that took
+the terminal from the shell, such as `claude` or `vim`. The field is absent
+when the shell itself is at its prompt. Use it to tell a crew session whose
+agent is still running from one whose agent has quit, which the typed state
+alone does not say: `completed` means the agent's turn finished, whether or
+not `claude` is still there to take the next message. The daemon reads the
+field from the kernel when you ask, so it is current at the moment of the
+call.
 
 ## The loop
 

@@ -59,6 +59,9 @@ type SessionRow = {
    * program held it or it printed (epoch ms). Set once, so it is safe in the
    * render signature. Only a person or a foreman ends such a session. */
   heldSince?: number;
+  /** The program that took the terminal from the shell (`claude`, `vim`),
+   * by name. Absent while the shell itself is at its prompt. */
+  foregroundProgram?: string;
 };
 
 type Profile = { name: string; command: string; cwd?: string };
@@ -304,6 +307,15 @@ function row(s: SessionRow): HTMLElement {
     const chip = document.createElement("span");
     chip.className = "chip";
     chip.textContent = s.profile;
+    top.append(chip);
+  }
+  // What holds the terminal: a pane running `claude` and a bare shell look
+  // the same otherwise. The daemon omits the field at a shell prompt.
+  if (s.foregroundProgram) {
+    const chip = document.createElement("span");
+    chip.className = "chip program";
+    chip.textContent = s.foregroundProgram;
+    chip.title = "Reading the terminal";
     top.append(chip);
   }
   if (!watchOnly) {

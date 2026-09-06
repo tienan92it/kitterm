@@ -54,6 +54,25 @@ final class MCPToolsTests: XCTestCase {
         XCTAssertEqual(filtered.path, "/api/sessions?label=crew:alpha")
     }
 
+    /// The session row travels through the bridge untouched, so the field a
+    /// foreman looks for is advertised where the foreman reads: the two
+    /// session tools' descriptions name `foregroundProgram` and its absence.
+    func testSessionToolsAdvertiseTheForegroundProgram() throws {
+        let descriptions = Dictionary(
+            uniqueKeysWithValues: MCPTools.schemas().map {
+                ($0["name"] as? String ?? "", $0["description"] as? String ?? "")
+            }
+        )
+        for tool in ["list_sessions", "get_session"] {
+            let description = try XCTUnwrap(descriptions[tool])
+            XCTAssertTrue(description.contains("foregroundProgram"), tool)
+            XCTAssertTrue(description.contains("absent when the shell"), tool)
+        }
+        // The row is the daemon's own JSON: the mapping stays a bare GET.
+        XCTAssertNil(try call("get_session", ["session": deadbeef]).jsonBody)
+        XCTAssertNil(try call("list_sessions", [:]).screen)
+    }
+
     func testSpawnBuildsAPost() throws {
         let c = try call("spawn_session", [
             "name": "crew-1", "input": "claude\n", "labels": ["crew": "alpha"],

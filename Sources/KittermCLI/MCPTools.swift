@@ -38,14 +38,14 @@ enum MCPTools {
         [
             tool(
                 "list_sessions",
-                "List every live session — the crew — with each one's typed state (working / needs-input / needs-approval / completed / failed / idle / exited), name, cwd, and last command. A row with `heldSince` (epoch ms) is one the linger clock kept past its window because a program held the terminal or output arrived; the daemon never ends such a session itself, so end the ones held longer than you tolerate with kill_session.",
+                "List every live session — the crew — with each one's typed state (working / needs-input / needs-approval / completed / failed / idle / exited), name, cwd, last command, and foregroundProgram: the program that holds the terminal (claude, vim), absent when the shell is at its prompt. A row with `heldSince` (epoch ms) is one the linger clock kept past its window because a program held the terminal or output arrived; the daemon never ends such a session itself, so end the ones held longer than you tolerate with kill_session.",
                 properties: [
                     "label": ["type": "string", "description": "Optional key:value filter, e.g. crew:alpha"]
                 ]
             ),
             tool(
                 "get_session",
-                "Read one session's full status row by id, including `heldSince` when the linger clock is holding it.",
+                "Read one session's full status row by id, including foregroundProgram (what holds the terminal, absent when the shell is at its prompt) and `heldSince` when the linger clock is holding it.",
                 properties: ["session": idProp],
                 required: ["session"]
             ),

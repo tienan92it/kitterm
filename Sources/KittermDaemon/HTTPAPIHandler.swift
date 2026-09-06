@@ -551,6 +551,13 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         if let command = derived.lastCommand { item["lastCommand"] = command }
         if let exit = derived.lastExit { item["lastExit"] = exit }
         if let profile = summary.profile { item["profile"] = profile }
+        // The program that took the terminal from the shell, by name. A
+        // foreman tells a crew session at its `claude` prompt from one whose
+        // agent has quit back to the shell; the fleet row shows it as a chip.
+        // Read from the kernel when the row is built, so it is never stale
+        // and costs the output path nothing. Absent when the shell itself is
+        // reading, or when nothing holds the tty yet.
+        if let program = summary.foregroundProgram { item["foregroundProgram"] = program }
         if let name = summary.name { item["name"] = name }
         if let note = summary.note { item["note"] = note }
         if !summary.labels.isEmpty { item["labels"] = summary.labels }

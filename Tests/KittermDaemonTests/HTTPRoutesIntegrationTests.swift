@@ -229,6 +229,48 @@ final class HTTPRoutesIntegrationTests: XCTestCase {
         }
     }
 
+    // MARK: - foreground program
+
+    /// The row says what took the terminal, by name, and says nothing when the
+    /// shell itself is reading — so a foreman tells a pane at its `claude`
+    /// prompt from one whose agent has quit back to the shell. The list and
+    /// the single-session route share one row builder, so both are checked.
+    func testRowNamesTheForegroundProgramAndOmitsTheShell() async throws {
+        let id = try await makeSession()
+        let session = try XCTUnwrap(sessions.last)
+        try await session.makeReader(group: group, eventLoop: group.next()).get()
+
+        let atPrompt = try json(try await get("/api/sessions/\(id.uuidString)").body)
+        XCTAssertNil(atPrompt["foregroundProgram"])
+
+        try session.write(Data("cat\n".utf8))
+        try await waitUntil("cat to take the foreground") { session.foregroundProgram == "cat" }
+        let detail = try json(try await get("/api/sessions/\(id.uuidString)").body)
+        XCTAssertEqual(detail["foregroundProgram"] as? String, "cat")
+        let listed = try json(try await get("/api/sessions").body)
+        let rows = try XCTUnwrap(listed["sessions"] as? [[String: Any]])
+        let row = try XCTUnwrap(rows.first { $0["id"] as? String == id.uuidString })
+        XCTAssertEqual(row["foregroundProgram"] as? String, "cat")
+
+        try session.write(Data("\u{04}".utf8))
+        try await waitUntil("the shell to take the foreground back") { session.foregroundProgram == nil }
+        let back = try json(try await get("/api/sessions/\(id.uuidString)").body)
+        XCTAssertNil(back["foregroundProgram"])
+    }
+
+    private func waitUntil(
+        _ what: String, seconds: Double = 10,
+        file: StaticString = #filePath, line: UInt = #line,
+        _ condition: () -> Bool
+    ) async throws {
+        let deadline = SuspendingClock.now + .seconds(seconds)
+        while SuspendingClock.now < deadline {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(50), clock: .suspending)
+        }
+        XCTFail("timed out waiting for \(what)", file: file, line: line)
+    }
+
     // MARK: - delete
 
     /// The counterpart to the long detach window: a caller that finished with a
