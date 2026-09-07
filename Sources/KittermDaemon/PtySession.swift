@@ -129,6 +129,10 @@ public final class PtySession: @unchecked Sendable {
     private var detachOffset: UInt64 = 0
     /// Input written before the reader channel exists, flushed on adoption.
     private var pendingInput = Data()
+    /// How many `write` calls the session has taken. A test reads it to
+    /// prove a shell command went in one write and a paced body in pieces.
+    private var inputWriteCount = 0
+    var inputWrites: Int { stateLock.withLock { inputWriteCount } }
     private var attached = false
     private var onOutput: ((Data) -> Void)?
     private var onExit: ((Int32) -> Void)?
@@ -519,6 +523,7 @@ public final class PtySession: @unchecked Sendable {
         guard !data.isEmpty else { return }
         let flush: (channel: Channel, bytes: Data)? = try stateLock.withLock {
             guard !terminated else { throw PtyError.closed }
+            inputWriteCount += 1
             pendingInput.append(data)
             // No reader yet: hold the bytes until the channel is adopted. The
             // daemon always calls `makeReader` before wiring a client, so this
@@ -602,6 +607,41 @@ public final class PtySession: @unchecked Sendable {
     /// submits (measured against 2.1.260), so 100ms is a wide margin.
     public static let programEnterDelay: UInt64 = 100_000_000  // nanoseconds
 
+    /// The most a program in the foreground gets in one write, and the pause
+    /// before the next piece.
+    ///
+    /// The kernel loses nothing here: a Darwin pty hands a raw-mode reader at
+    /// most 1022 bytes (`TTYHOG - 2`) per read and the master goes unwritable
+    /// until the reader drains it, which NIO waits for (measured: 8 KiB
+    /// through one `write` reaches a slow raw reader whole). The loss is in
+    /// the program. Claude Code drops every full read but the last when a
+    /// paste arrives as fast as it can read it: 2.1.260 kept 59 of 2104
+    /// bytes, 672 of 1695 and 177 of 1200 from one write — the tail past the
+    /// 1022-byte reads — and 2.1.263 kept 16 of 8193 and 34 of 16387 while
+    /// taking 7004 whole. The same bytes in pieces with a pause between them
+    /// arrive whole on both versions: 512 bytes every 100ms, 1022 bytes every
+    /// 20ms and 2044 bytes every 100ms, each at 8 KiB. 512 bytes every 50ms
+    /// sits inside that envelope with a margin on both axes, and keeps two
+    /// pieces under one kernel read should the reader fall behind a pause.
+    /// A 64 KiB body (`maxInputBytes`) takes about 6.5s.
+    ///
+    /// Time paces the pieces because nothing on the master says the reader
+    /// has taken them: `FIONREAD` and `TIOCOUTQ` on the master count the
+    /// other direction, the slave is closed after spawn, and Darwin's kqueue
+    /// write filter reports its room as zero (measured).
+    public static let inputPieceBytes = 512
+    public static let inputPiecePause: UInt64 = 50_000_000  // nanoseconds
+
+    /// Type `text` as whoever reads the terminal takes it: one write for the
+    /// shell, paced pieces for a program (`inputPieceBytes`).
+    public func typeText(_ text: Data) async throws {
+        guard !foregroundIsShell else {
+            try write(text)
+            return
+        }
+        try await writePaced(text)
+    }
+
     /// Type `text` and press Enter, as whoever reads the terminal expects it.
     /// Returns the byte count written.
     ///
@@ -610,10 +650,10 @@ public final class PtySession: @unchecked Sendable {
     /// what names the command it creates. A program that took the foreground
     /// reads raw keys, and a keyboard's Enter is a carriage return: Claude
     /// Code's prompt keeps a bare line feed as text and never submits, while
-    /// `\r` submits. The text and the key go in two writes with a settle
-    /// between, or the pair arrives as one paste whose Enter is swallowed. A
-    /// cooked-mode program still sees a newline, because the tty maps `\r`
-    /// to `\n` (ICRNL). An empty `text` presses Enter alone.
+    /// `\r` submits. The text goes in paced pieces, then the key in its own
+    /// write after a settle, or the pair arrives as one paste whose Enter is
+    /// swallowed. A cooked-mode program still sees a newline, because the tty
+    /// maps `\r` to `\n` (ICRNL). An empty `text` presses Enter alone.
     public func typeLine(_ text: Data) async throws -> Int {
         guard !foregroundIsShell else {
             let line = text + Data("\n".utf8)
@@ -622,11 +662,25 @@ public final class PtySession: @unchecked Sendable {
             return line.count
         }
         if !text.isEmpty {
-            try write(text)
+            try await writePaced(text)
             try await Task.sleep(nanoseconds: Self.programEnterDelay)
         }
         try write(Data("\r".utf8))
         return text.count + 1
+    }
+
+    /// Write `text` in pieces of `inputPieceBytes`, `inputPiecePause` apart.
+    /// The sleeps suspend the caller's task, never an event loop.
+    private func writePaced(_ text: Data) async throws {
+        var start = text.startIndex
+        while start < text.endIndex {
+            let end = min(text.endIndex, start + Self.inputPieceBytes)
+            try write(text[start..<end])
+            start = end
+            if start < text.endIndex {
+                try await Task.sleep(nanoseconds: Self.inputPiecePause)
+            }
+        }
     }
 
     /// Called with the lock released — `writeAndFlush` runs the pipeline inline
