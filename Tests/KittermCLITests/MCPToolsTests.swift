@@ -43,6 +43,7 @@ final class MCPToolsTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(descriptions["list_sessions"]).contains("kill_session"))
         XCTAssertTrue(try XCTUnwrap(descriptions["get_session"]).contains("heldSince"))
         XCTAssertTrue(try XCTUnwrap(descriptions["wait_for_events"]).contains("session.lingered"))
+        XCTAssertTrue(try XCTUnwrap(descriptions["wait_for_events"]).contains("per transition"))
     }
 
     // MARK: - mapping

@@ -1463,10 +1463,27 @@ public final class PtySession: @unchecked Sendable {
     }
 
     /// Record what a hook just reported. A newer report replaces an older one
-    /// — only the latest matters.
-    public func recordAgentStatus(_ report: AgentReport, message: String?) {
+    /// — only the latest matters, and its timestamp is the evidence the merge
+    /// rule weighs — so every hook is recorded, even a repeat.
+    ///
+    /// Returns true when the report is a transition: a different status than
+    /// the last one recorded, or the same `needs-input` with a different
+    /// message. The caller appends one `agent.status` event per transition,
+    /// so a busy agent's `PreToolUse` per tool call (dozens a minute) reaches
+    /// the feed as one `working`, not as one event per call.
+    ///
+    /// The memory of the last transition is the stored report itself. It is
+    /// carried through a live-upgrade takeover (`TakeoverState` restores it,
+    /// and the feed keeps its epoch and cursor), so a `working` after the
+    /// takeover stays silent. It ends with the session: a shell that exits
+    /// is reaped with its report, and a fresh session's first report is
+    /// always a transition.
+    @discardableResult
+    public func recordAgentStatus(_ report: AgentReport, message: String?) -> Bool {
         stateLock.withLock {
+            let previous = agentStatusStorage
             agentStatusStorage = AgentStatus(report: report, message: message, at: Date())
+            return previous?.report != report || previous?.message != message
         }
     }
 

@@ -129,8 +129,11 @@ A foreman runs one loop.
 
 2. Wait on the event feed. One `wait_for_events` call watches every session at
    once — it returns the moment any session changes state, an approval appears,
-   or an agent posts a note. Pass the `next` cursor from the last call as
-   `since`, and its `epoch` as `epoch`:
+   or an agent posts a note. The feed carries one `agent.status` event per
+   transition: a session that stays `working` across many tool calls is
+   silent, and a repeated `needs-input` is a new event only when its message
+   changes. Pass the `next` cursor from the last call as `since`, and its
+   `epoch` as `epoch`:
 
    ```
    wait_for_events since=<cursor> epoch=<epoch>
