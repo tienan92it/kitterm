@@ -585,9 +585,13 @@ final class PtySessionTests: XCTestCase {
 
     /// A launcher that execs a binary named after its version keeps the pid
     /// and the argv, so the row names the launcher (ADR 0004). The launcher
-    /// here is a bash script that execs a copy of `cat` at
-    /// `versions/2.1.263` under its own name, as `~/.local/bin/claude` does
-    /// for Claude Code; the executable path alone read `2.1.263`.
+    /// here is a bash script that execs `versions/2.1.263` under its own
+    /// name, as `~/.local/bin/claude` does for Claude Code. The versioned
+    /// path is a symlink to `/bin/cat`: a copy of a platform binary is
+    /// killed at exec on Apple silicon, and an ad-hoc signed copy still
+    /// dies with SIGSEGV on the macos-15 runner (CI run 34091686926). The
+    /// executable path alone read `cat` here, and `2.1.263` for a real
+    /// versioned binary; neither is the launcher.
     func testForegroundProgramNamesTheLauncherNotItsVersionedBinary() throws {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         defer { try? group.syncShutdownGracefully() }
@@ -602,44 +606,14 @@ final class PtySessionTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
 
         let binary = versions.appendingPathComponent("2.1.263")
-        try FileManager.default.copyItem(atPath: "/bin/cat", toPath: binary.path)
-        #if canImport(Darwin)
-        // A copy of a platform binary is killed at exec on Apple silicon
-        // until it carries its own signature; an ad-hoc one is enough.
-        let codesign = Process()
-        codesign.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
-        codesign.arguments = ["--force", "--sign", "-", binary.path]
-        codesign.standardError = FileHandle.nullDevice
-        try codesign.run()
-        codesign.waitUntilExit()
-        XCTAssertEqual(codesign.terminationStatus, 0, "codesign the copied binary")
-        // DIAGNOSTIC (temporary): does the signed copy run at all on this host?
-        let probe = Process()
-        probe.executableURL = binary
-        probe.arguments = ["/dev/null"]
-        let probeErr = Pipe()
-        probe.standardError = probeErr
-        probe.standardOutput = FileHandle.nullDevice
-        try probe.run()
-        probe.waitUntilExit()
-        let probeText = String(decoding: probeErr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        print("DIAG copied cat: reason=\(probe.terminationReason.rawValue) status=\(probe.terminationStatus) stderr=[\(probeText)] path=\(binary.path)")
-        let verify = Process()
-        verify.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
-        verify.arguments = ["-dvv", binary.path]
-        let verifyErr = Pipe()
-        verify.standardError = verifyErr
-        try verify.run()
-        verify.waitUntilExit()
-        print("DIAG codesign -dvv: \(String(decoding: verifyErr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self))")
-        #endif
-        let output = OutputCollector()
-        session.attach(onOutput: output.append, onExit: { _ in })
+        try FileManager.default.createSymbolicLink(atPath: binary.path, withDestinationPath: "/bin/cat")
         let launcher = bin.appendingPathComponent("launcher")
         let script = "#!/bin/bash\nexec -a \"${0##*/}\" \"\(binary.path)\" \"$@\"\n"
         try script.write(to: launcher, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: launcher.path)
 
+        let output = OutputCollector()
+        session.attach(onOutput: output.append, onExit: { _ in })
         try session.write(Data("\(launcher.path)\n".utf8))
         waitUntil("the launcher's binary to take the foreground") { session.foregroundProgram != nil }
         XCTAssertEqual(session.foregroundProgram, "launcher", "pty output: \(output.text)")
