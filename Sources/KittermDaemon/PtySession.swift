@@ -691,13 +691,16 @@ public final class PtySession: @unchecked Sendable {
     }
 
     /// The process group that holds the terminal: its leader's pid, and the
-    /// leader's executable name when the kernel still knows it.
+    /// name the leader was started under when the kernel still knows it.
     ///
-    /// `tcgetpgrp` on the master names the foreground process group, and
-    /// `proc_pidpath` on its leader says what it runs. Both are microsecond
-    /// kernel reads, so a caller asks at request time — the listing row, the
-    /// linger clock, the Enter key — and nothing on the output path ever
-    /// asks. Nil when no group has claimed the tty yet (the helper is still
+    /// `tcgetpgrp` on the master names the foreground process group, and the
+    /// leader's `argv[0]` says what it was invoked as (ADR 0004): a launcher
+    /// that execs a versioned binary keeps the pid and the argv, so `claude`
+    /// stays `claude` where the executable path reads `2.1.263`. The
+    /// executable's basename is the fallback for a leader with no readable
+    /// argv. Both are microsecond kernel reads, so a caller asks at request
+    /// time — the listing row, the linger clock, the Enter key — and nothing
+    /// on the output path ever asks. Nil when no group has claimed the tty yet (the helper is still
     /// starting) or the session has terminated: the master fd is closed
     /// then, and its number may already name another file. Internal so a
     /// test can wait for the shell itself to hold the terminal, which
@@ -706,12 +709,14 @@ public final class PtySession: @unchecked Sendable {
         guard stateLock.withLock({ !terminated }) else { return nil }
         let group = tcgetpgrp(masterFD)
         guard group > 0 else { return nil }
-        let name = Self.executablePath(ofPID: group).map { URL(fileURLWithPath: $0).lastPathComponent }
+        let name = Self.invocationName(ofPID: group)
+            ?? Self.executablePath(ofPID: group).map { URL(fileURLWithPath: $0).lastPathComponent }
         return (group, name)
     }
 
     /// The program that took the terminal from the shell — `claude` in a
-    /// crew session, `vim` mid-rebase, `cat` — by executable basename, or nil
+    /// crew session, `vim` mid-rebase, `cat` — by the name it was started
+    /// under (`argv[0]`, see `foregroundLeader`), or nil
     /// when the shell itself is reading, nothing holds the tty yet, or the
     /// session has terminated. A leader the kernel can no longer name, and
     /// that is not the shell's own pid, reads as `pid <n>`: something other
@@ -1222,6 +1227,53 @@ public final class PtySession: @unchecked Sendable {
         buffer[count] = 0
         let path = String(cString: buffer)
         return path.isEmpty ? nil : path
+        #endif
+    }
+
+    /// The name a process was started under: the last path component of its
+    /// `argv[0]`, less the `-` a login shell carries. Nil for a reaped pid,
+    /// an empty argv, or any failure. `KERN_PROCARGS2` on Darwin and
+    /// `/proc/<pid>/cmdline` on Linux both read the live argv, so a program
+    /// that rewrote its title reads as that title, as in `ps`. The same kind
+    /// of kernel-state read as `currentDirectory`.
+    static func invocationName(ofPID pid: pid_t) -> String? {
+        guard let argv0 = argv0(ofPID: pid), !argv0.isEmpty else { return nil }
+        var name = URL(fileURLWithPath: argv0).lastPathComponent
+        if name.hasPrefix("-") { name.removeFirst() }
+        return name.isEmpty ? nil : name
+    }
+
+    /// A process's `argv[0]` as the kernel holds it, or nil for any failure.
+    private static func argv0(ofPID pid: pid_t) -> String? {
+        #if canImport(Darwin)
+        // The buffer holds an Int32 argc, the exec path, NUL padding, then
+        // the argv strings and the environment, each NUL-terminated.
+        var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
+        var size = 0
+        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return nil }
+        var buffer = [UInt8](repeating: 0, count: size)
+        guard sysctl(&mib, 3, &buffer, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return nil }
+        let argc = buffer.withUnsafeBytes { $0.load(as: Int32.self) }
+        guard argc > 0 else { return nil }
+        var index = MemoryLayout<Int32>.size
+        while index < size, buffer[index] != 0 { index += 1 }
+        while index < size, buffer[index] == 0 { index += 1 }
+        guard index < size else { return nil }
+        let end = buffer[index..<size].firstIndex(of: 0) ?? size
+        return String(decoding: buffer[index..<end], as: UTF8.self)
+        #else
+        let fd = open("/proc/\(pid)/cmdline", O_RDONLY | O_CLOEXEC)
+        guard fd >= 0 else { return nil }
+        defer { _ = close(fd) }
+        var bytes: [UInt8] = []
+        var chunk = [UInt8](repeating: 0, count: 4096)
+        while true {
+            let count = read(fd, &chunk, chunk.count)
+            guard count > 0 else { break }
+            bytes.append(contentsOf: chunk[0..<count])
+            if let end = bytes.firstIndex(of: 0) { return String(decoding: bytes[0..<end], as: UTF8.self) }
+        }
+        return bytes.isEmpty ? nil : String(decoding: bytes, as: UTF8.self)
         #endif
     }
 

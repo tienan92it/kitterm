@@ -583,6 +583,46 @@ final class PtySessionTests: XCTestCase {
         XCTAssertTrue(session.foregroundIsShell)
     }
 
+    /// A launcher that execs a binary named after its version keeps the pid
+    /// and the argv, so the row names the launcher (ADR 0004). The launcher
+    /// here is a bash script that execs `versions/2.1.263` under its own
+    /// name, as `~/.local/bin/claude` does for Claude Code. The versioned
+    /// path is a symlink to `/bin/cat`: a copy of a platform binary is
+    /// killed at exec on Apple silicon, and an ad-hoc signed copy still
+    /// dies with SIGSEGV on the macos-15 runner (CI run 34091686926). The
+    /// executable path alone read `cat` here, and `2.1.263` for a real
+    /// versioned binary; neither is the launcher.
+    func testForegroundProgramNamesTheLauncherNotItsVersionedBinary() throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        defer { try? group.syncShutdownGracefully() }
+        try session.makeReader(group: group, eventLoop: group.next()).wait()
+
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("kitterm-launcher-\(UUID().uuidString)")
+        let versions = root.appendingPathComponent("versions")
+        let bin = root.appendingPathComponent("bin")
+        try FileManager.default.createDirectory(at: versions, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let binary = versions.appendingPathComponent("2.1.263")
+        try FileManager.default.createSymbolicLink(atPath: binary.path, withDestinationPath: "/bin/cat")
+        let launcher = bin.appendingPathComponent("launcher")
+        let script = "#!/bin/bash\nexec -a \"${0##*/}\" \"\(binary.path)\" \"$@\"\n"
+        try script.write(to: launcher, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: launcher.path)
+
+        let output = OutputCollector()
+        session.attach(onOutput: output.append, onExit: { _ in })
+        try session.write(Data("\(launcher.path)\n".utf8))
+        waitUntil("the launcher's binary to take the foreground") { session.foregroundProgram != nil }
+        XCTAssertEqual(session.foregroundProgram, "launcher", "pty output: \(output.text)")
+        XCTAssertFalse(session.foregroundIsShell)
+
+        try session.write(Data("\u{04}".utf8))
+        waitUntil("the shell to take the foreground back") { session.foregroundProgram == nil }
+    }
+
     private func waitUntil(
         _ what: String, seconds: TimeInterval = 10,
         file: StaticString = #filePath, line: UInt = #line,
@@ -799,6 +839,18 @@ private final class CapturedFlag: @unchecked Sendable {
 
 /// Accumulates PTY output until `marker` appears, then signals once. The shell
 /// splits output across arbitrary reads, so the marker may straddle chunks.
+/// Everything the pty produced, for a failure message.
+private final class OutputCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var buffered = ""
+
+    var text: String { lock.withLock { buffered } }
+
+    func append(_ chunk: Data) {
+        lock.withLock { buffered += String(decoding: chunk, as: UTF8.self) }
+    }
+}
+
 private final class MarkerSink: @unchecked Sendable {
     private let lock = NSLock()
     private let marker: String
