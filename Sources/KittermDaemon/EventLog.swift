@@ -74,6 +74,34 @@ public final class EventLog: @unchecked Sendable {
         self.maxWaiters = maxWaiters
     }
 
+    /// Continue the feed another process left off (live upgrade): the same
+    /// epoch, the same ring, and `seq` carrying on from `lastSeq`, so a
+    /// foreman's cursor stays valid and no session is reported gone.
+    public init(
+        restoring state: TakeoverState.EventLogState,
+        capacity: Int = KittermConstants.eventLogCapacity,
+        maxWaiters: Int = KittermConstants.eventLogMaxWaiters
+    ) {
+        self.epoch = state.epoch
+        self.capacity = capacity
+        self.maxWaiters = maxWaiters
+        self.ring = state.events.map(\.event).sorted { $0.seq < $1.seq }
+        if ring.count > capacity { ring.removeFirst(ring.count - capacity) }
+        self.lastSeq = max(state.lastSeq, ring.last?.seq ?? 0)
+        self.base = ring.first?.seq ?? 0
+    }
+
+    /// The feed as it stands, for the takeover state file.
+    public func handoffState() -> TakeoverState.EventLogState {
+        lock.withLock {
+            TakeoverState.EventLogState(
+                epoch: epoch,
+                lastSeq: lastSeq,
+                events: ring.map(TakeoverState.EventRecord.init)
+            )
+        }
+    }
+
     /// A fresh epoch id: random, so two daemons started in the same
     /// millisecond (a test, a restart loop) still tell apart.
     public static func newEpoch() -> String {
@@ -84,12 +112,18 @@ public final class EventLog: @unchecked Sendable {
     /// epoch. A foreman that reads its way back from a stale cursor sees this
     /// before any `session.created`, so it knows every session id it held is
     /// gone and re-lists the fleet.
-    public func markStarted(version: String, pid: Int32) {
-        append(type: "daemon.started", session: nil, data: [
+    ///
+    /// After a live upgrade the event lands inside the epoch it continues,
+    /// with `takeover` true: the process changed its code, and every session
+    /// id the foreman holds is still good.
+    public func markStarted(version: String, pid: Int32, takeover: Bool = false) {
+        var data = [
             "epoch": epoch,
             "version": version,
             "pid": String(pid),
-        ])
+        ]
+        if takeover { data["takeover"] = "true" }
+        append(type: "daemon.started", session: nil, data: data)
     }
 
     /// Append an event and wake every waiter it satisfies. The promises are

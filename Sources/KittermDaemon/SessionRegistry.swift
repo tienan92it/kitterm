@@ -81,6 +81,39 @@ public actor SessionRegistry {
         return id
     }
 
+    /// Admit a session another daemon process handed over (live upgrade).
+    /// Detached, because every socket died with that process; its linger
+    /// clock starts now, and a hold the old clock had recorded carries on
+    /// from the same `heldSince`. No `session.created`: the id is the one a
+    /// foreman already holds, and the feed continues the same epoch.
+    public func adopt(_ session: PtySession, heldSince: Date?) -> Bool {
+        guard sessions.count < KittermConstants.maxConcurrentSessions else { return false }
+        let id = session.sessionID
+        sessions[id] = session
+        if let heldSince { self.heldSince[id] = heldSince }
+        scheduleLinger(id)
+        recordHints(session)
+        return true
+    }
+
+    /// Every session with the hold the clock recorded for it, for the
+    /// takeover state file. Ordered by id, so the file is stable.
+    public func handoffSessions() -> [(session: PtySession, heldSince: Date?)] {
+        sessions
+            .sorted { $0.key.uuidString < $1.key.uuidString }
+            .map { ($0.value, heldSince[$0.key]) }
+    }
+
+    /// Every controller socket died in a takeover that then failed to `exec`
+    /// (`docs/live-upgrade.md`, rung 2): the sessions are still here, all of
+    /// them detached now, so each needs its clock.
+    public func detachAll() {
+        for id in attachedIDs {
+            scheduleLinger(id)
+        }
+        attachedIDs.removeAll()
+    }
+
     private func emitCreated(_ session: PtySession, respawnOf: UUID? = nil) {
         var data = ["shell": session.shellPath]
         if let name = session.name { data["name"] = name }

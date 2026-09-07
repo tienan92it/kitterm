@@ -647,6 +647,14 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
 
     // MARK: - Teardown
 
+    /// Push what the batcher holds before the connection is closed under it
+    /// (live upgrade): `teardown` discards the buffer, and while the ring
+    /// would replay the bytes on reconnect, a client that saw them already
+    /// reconnects with a later offset and a smaller gap. On the event loop.
+    func flushOutput() {
+        batcher?.flushNow()
+    }
+
     private func handlePtyExit(_ code: Int32, context: ChannelHandlerContext) {
         guard !closed else { return }
         ptyExited = true

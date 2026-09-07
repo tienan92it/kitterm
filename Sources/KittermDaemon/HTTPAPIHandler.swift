@@ -33,6 +33,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// connection that has already served an API request. See
     /// `restoreUpgradeHandler(context:)`.
     private let webSocketUpgrader: (any HTTPServerProtocolUpgrader)?
+    /// The live-upgrade coordinator behind `POST /api/upgrade/takeover`; nil
+    /// in a handler built without a server behind it, where the route
+    /// answers 503.
+    private let takeover: TakeoverController?
     private var pendingHead: HTTPRequestHead?
     /// Accumulated request body, capped at `maxInputBytes`; only the input
     /// route reads it. `bodyOverflow` trips once the cap is exceeded so a large
@@ -54,7 +58,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         connectionIsTLS: Bool = false,
         tlsPort: Int? = nil,
         staticRoot: URL? = StaticFileServer.cachedRoot,
-        webSocketUpgrader: (any HTTPServerProtocolUpgrader)? = nil
+        webSocketUpgrader: (any HTTPServerProtocolUpgrader)? = nil,
+        takeover: TakeoverController? = nil
     ) {
         self.registry = registry
         self.policy = policy
@@ -67,6 +72,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.tlsPort = tlsPort
         self.staticRoot = staticRoot
         self.webSocketUpgrader = webSocketUpgrader
+        self.takeover = takeover
     }
 
     /// Put a fresh upgrade handler back in front of us so the *next* request on
@@ -261,6 +267,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 version: head.version,
                 keepAlive: head.isKeepAlive
             )
+        case (.POST, "/api/upgrade/takeover"):
+            serveTakeover(grade: grade, head: head, context: context)
         case (.GET, "/api/lan"):
             // Share-link support: the LAN base URL, plus the token — but only
             // for loopback callers (the machine's own user).
@@ -446,6 +454,88 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 keepAlive: false
             )
         }
+    }
+
+    /// `POST /api/upgrade/takeover` — replace this daemon process with the
+    /// binary on disk without dropping a session (`docs/live-upgrade.md`).
+    ///
+    /// Loopback and full grade: the caller is the machine's own user with
+    /// control, and nobody else may exec code in this process. The binary is
+    /// run once (`--help`) before anything is touched, the answer goes out
+    /// first so a caller inside a pane reads it, and only then do the
+    /// listeners close and the handoff begin.
+    private func serveTakeover(
+        grade: TokenGrade,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        guard AccessPolicy.isLoopback(context.channel.remoteAddress) else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"takeover is loopback only"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let takeover else {
+            writeJSON(
+                status: .serviceUnavailable,
+                body: #"{"ok":false,"error":"takeover is not available in this daemon"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        takeover.admit(on: context.eventLoop).whenSuccess { [weak self] admission in
+            guard let self else { return }
+            switch admission {
+            case .inProgress:
+                self.writeJSON(
+                    status: .conflict,
+                    body: #"{"ok":false,"error":"a takeover is already in progress"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+            case .invalidBinary(let reason):
+                let payload: [String: Any] = ["ok": false, "error": "staged binary failed to run: \(reason)"]
+                self.writeJSON(
+                    status: .unprocessableEntity,
+                    body: Self.encode(payload),
+                    context: context, version: head.version, keepAlive: false
+                )
+            case .accepted(let request):
+                let payload: [String: Any] = [
+                    "ok": true,
+                    "pid": Int(getpid()),
+                    "executable": request.executable,
+                    "running": BuildVersion.running,
+                    "installed": BuildVersion.onDisk(),
+                ]
+                // The response must be on the wire before the listeners go:
+                // the caller may be typing in a pane this daemon serves.
+                self.writeJSON(
+                    status: .ok,
+                    body: Self.encode(payload),
+                    context: context, version: head.version, keepAlive: false
+                ) {
+                    takeover.begin(request)
+                }
+            }
+        }
+    }
+
+    private static func encode(_ payload: [String: Any]) -> String {
+        if let data = try? JSONSerialization.data(withJSONObject: payload),
+           let text = String(data: data, encoding: .utf8) {
+            return text
+        }
+        return #"{"ok":false,"error":"encoding failed"}"#
     }
 
     /// The base URL other devices should use, when a public name is
@@ -2791,12 +2881,15 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         }
     }
 
+    /// `flushed` runs once the whole response has been written, before a
+    /// non-keep-alive connection is closed.
     private func writeJSON(
         status: HTTPResponseStatus,
         body: String,
         context: ChannelHandlerContext,
         version: HTTPVersion,
-        keepAlive: Bool
+        keepAlive: Bool,
+        flushed: (() -> Void)? = nil
     ) {
         var headers = HTTPHeaders()
         headers.add(name: "Content-Type", value: "application/json")
@@ -2809,6 +2902,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         buffer.writeString(body)
         context.write(wrapOutboundOut(.body(.byteBuffer(buffer))), promise: nil)
         context.writeAndFlush(wrapOutboundOut(.end(nil))).whenComplete { _ in
+            flushed?()
             if !keepAlive {
                 context.close(promise: nil)
             }

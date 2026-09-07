@@ -42,6 +42,14 @@ struct SessionMarkStore {
         self.cap = cap
     }
 
+    /// Continue another process's index (live upgrade), so a caller's saved
+    /// command index still names the same command.
+    init(restoring marks: [SessionMark], droppedCommands: Int, cap: Int = KittermConstants.sessionMarkCap) {
+        self.cap = cap
+        self.droppedCommands = droppedCommands
+        for mark in marks { append(mark) }
+    }
+
     /// Index the first still-retained command would carry (1-based).
     var firstRetainedIndex: Int { droppedCommands + 1 }
 

@@ -53,7 +53,9 @@ Do this before every `send_input` into a review session.
 3. Wait for the crew with `wait_for_events since=<cursor> epoch=<epoch>`. Each
    session posts its findings as a `note` and then reports `completed`. A
    changed `epoch` means the daemon restarted and the crew is gone: list the
-   sessions again and respawn the missing reviewers.
+   sessions again and respawn the missing reviewers. A `daemon.started` with
+   `takeover` set to `"true"` in the same `epoch` is an upgrade in place; the
+   crew is still there, so keep waiting.
 
 4. Collect the notes. Dedupe overlapping findings. Rank each from nit to
    blocking.

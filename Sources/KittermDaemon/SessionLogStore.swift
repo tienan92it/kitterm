@@ -22,6 +22,29 @@ final class SessionLogStore: @unchecked Sendable {
     /// Stream offset just past the last byte written.
     private var streamEnd: UInt64
 
+    /// Continue a file another process kept (live upgrade), with the offsets
+    /// it recorded: `rotate` rewrites the file, so its origin lives only in
+    /// memory and must ride along.
+    init?(reopening url: URL, maxBytes: Int, fileBase: UInt64, streamEnd: UInt64) {
+        self.url = url
+        self.maxBytes = maxBytes
+        self.fileBase = fileBase
+        self.streamEnd = streamEnd
+        guard let handle = try? FileHandle(forWritingTo: url) else { return nil }
+        _ = try? handle.seekToEnd()
+        self.writeHandle = handle
+    }
+
+    /// The offsets a successor needs to reopen this file, read on the
+    /// store's queue so every append queued so far has landed. Only the
+    /// takeover path calls this, from off the event loop, before `exec`
+    /// destroys the queue's thread.
+    func handoffState() -> TakeoverState.LogStoreState {
+        queue.sync {
+            TakeoverState.LogStoreState(path: url.path, fileBase: fileBase, streamEnd: streamEnd)
+        }
+    }
+
     /// `origin` is the session's log head when the store is attached — the
     /// stream offset that lands at file position zero.
     init?(directory: URL, sessionID: UUID, maxBytes: Int, origin: UInt64) {
