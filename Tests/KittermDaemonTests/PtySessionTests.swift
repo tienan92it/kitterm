@@ -583,6 +583,51 @@ final class PtySessionTests: XCTestCase {
         XCTAssertTrue(session.foregroundIsShell)
     }
 
+    /// A launcher that execs a binary named after its version keeps the pid
+    /// and the argv, so the row names the launcher (ADR 0004). The launcher
+    /// here is a bash script that execs a copy of `cat` at
+    /// `versions/2.1.263` under its own name, as `~/.local/bin/claude` does
+    /// for Claude Code; the executable path alone read `2.1.263`.
+    func testForegroundProgramNamesTheLauncherNotItsVersionedBinary() throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        defer { try? group.syncShutdownGracefully() }
+        try session.makeReader(group: group, eventLoop: group.next()).wait()
+
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("kitterm-launcher-\(UUID().uuidString)")
+        let versions = root.appendingPathComponent("versions")
+        let bin = root.appendingPathComponent("bin")
+        try FileManager.default.createDirectory(at: versions, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let binary = versions.appendingPathComponent("2.1.263")
+        try FileManager.default.copyItem(atPath: "/bin/cat", toPath: binary.path)
+        #if canImport(Darwin)
+        // A copy of a platform binary is killed at exec on Apple silicon
+        // until it carries its own signature; an ad-hoc one is enough.
+        let codesign = Process()
+        codesign.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        codesign.arguments = ["--force", "--sign", "-", binary.path]
+        codesign.standardError = FileHandle.nullDevice
+        try codesign.run()
+        codesign.waitUntilExit()
+        XCTAssertEqual(codesign.terminationStatus, 0, "codesign the copied binary")
+        #endif
+        let launcher = bin.appendingPathComponent("launcher")
+        let script = "#!/bin/bash\nexec -a \"${0##*/}\" \"\(binary.path)\" \"$@\"\n"
+        try script.write(to: launcher, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: launcher.path)
+
+        try session.write(Data("\(launcher.path)\n".utf8))
+        waitUntil("the launcher's binary to take the foreground") { session.foregroundProgram != nil }
+        XCTAssertEqual(session.foregroundProgram, "launcher")
+        XCTAssertFalse(session.foregroundIsShell)
+
+        try session.write(Data("\u{04}".utf8))
+        waitUntil("the shell to take the foreground back") { session.foregroundProgram == nil }
+    }
+
     private func waitUntil(
         _ what: String, seconds: TimeInterval = 10,
         file: StaticString = #filePath, line: UInt = #line,

@@ -102,8 +102,10 @@ gets the full vocabulary.
 ## What holds the terminal
 
 Each row also carries `foregroundProgram`: the name of the program that took
-the terminal from the shell, such as `claude` or `vim`. The field is absent
-when the shell itself is at its prompt. Use it to tell a crew session whose
+the terminal from the shell, such as `claude` or `vim`. The name is the one
+the program was started under, its `argv[0]`, so a pane that runs Claude Code
+reads `claude` although the launcher execs a binary named after its version
+(ADR 0004). The field is absent when the shell itself is at its prompt. Use it to tell a crew session whose
 agent is still running from one whose agent has quit, which the typed state
 alone does not say: `completed` means the agent's turn finished, whether or
 not `claude` is still there to take the next message. The daemon reads the
