@@ -613,7 +613,28 @@ final class PtySessionTests: XCTestCase {
         try codesign.run()
         codesign.waitUntilExit()
         XCTAssertEqual(codesign.terminationStatus, 0, "codesign the copied binary")
+        // DIAGNOSTIC (temporary): does the signed copy run at all on this host?
+        let probe = Process()
+        probe.executableURL = binary
+        probe.arguments = ["/dev/null"]
+        let probeErr = Pipe()
+        probe.standardError = probeErr
+        probe.standardOutput = FileHandle.nullDevice
+        try probe.run()
+        probe.waitUntilExit()
+        let probeText = String(decoding: probeErr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        print("DIAG copied cat: reason=\(probe.terminationReason.rawValue) status=\(probe.terminationStatus) stderr=[\(probeText)] path=\(binary.path)")
+        let verify = Process()
+        verify.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        verify.arguments = ["-dvv", binary.path]
+        let verifyErr = Pipe()
+        verify.standardError = verifyErr
+        try verify.run()
+        verify.waitUntilExit()
+        print("DIAG codesign -dvv: \(String(decoding: verifyErr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self))")
         #endif
+        let output = OutputCollector()
+        session.attach(onOutput: output.append, onExit: { _ in })
         let launcher = bin.appendingPathComponent("launcher")
         let script = "#!/bin/bash\nexec -a \"${0##*/}\" \"\(binary.path)\" \"$@\"\n"
         try script.write(to: launcher, atomically: true, encoding: .utf8)
@@ -621,7 +642,7 @@ final class PtySessionTests: XCTestCase {
 
         try session.write(Data("\(launcher.path)\n".utf8))
         waitUntil("the launcher's binary to take the foreground") { session.foregroundProgram != nil }
-        XCTAssertEqual(session.foregroundProgram, "launcher")
+        XCTAssertEqual(session.foregroundProgram, "launcher", "pty output: \(output.text)")
         XCTAssertFalse(session.foregroundIsShell)
 
         try session.write(Data("\u{04}".utf8))
@@ -844,6 +865,18 @@ private final class CapturedFlag: @unchecked Sendable {
 
 /// Accumulates PTY output until `marker` appears, then signals once. The shell
 /// splits output across arbitrary reads, so the marker may straddle chunks.
+/// Everything the pty produced, for a failure message.
+private final class OutputCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var buffered = ""
+
+    var text: String { lock.withLock { buffered } }
+
+    func append(_ chunk: Data) {
+        lock.withLock { buffered += String(decoding: chunk, as: UTF8.self) }
+    }
+}
+
 private final class MarkerSink: @unchecked Sendable {
     private let lock = NSLock()
     private let marker: String
