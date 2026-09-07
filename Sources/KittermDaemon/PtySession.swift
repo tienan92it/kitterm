@@ -588,6 +588,33 @@ public final class PtySession: @unchecked Sendable {
         foregroundProgram == nil
     }
 
+    /// The most a canonical-mode tty keeps of one line: `MAX_INPUT` on
+    /// Darwin, the N_TTY line buffer less one on Linux. A line that grows
+    /// past it with no newline is cut there (measured 2026-09-07: Darwin
+    /// kept 1024 bytes of a 2051-byte line, rang a bell per byte after, and
+    /// the reader never saw a line; Linux kept 4095 of 5005 and delivered
+    /// the cut line). The input route refuses a larger body while the
+    /// terminal is in canonical mode, unless the caller forces it.
+    #if canImport(Darwin)
+    public static let canonicalLineBytes = 1024
+    #else
+    public static let canonicalLineBytes = 4095
+    #endif
+
+    /// Whether the terminal is in canonical (cooked) mode: the kernel holds
+    /// a line until its newline and hands the reader whole lines. A `sleep`,
+    /// a program that has not yet set raw mode, or a shell reading a here-doc
+    /// leaves it set; an interactive `claude`, `vim`, or a shell's line editor
+    /// clears it. Read with `tcgetattr` on the master, which reports the
+    /// slave's settings on Darwin and Linux (measured, in both modes and
+    /// after the reader exits). Nil when the pty is gone.
+    public var inputIsCanonical: Bool? {
+        guard stateLock.withLock({ !terminated }) else { return nil }
+        var attributes = termios()
+        guard tcgetattr(masterFD, &attributes) == 0 else { return nil }
+        return attributes.c_lflag & tcflag_t(ICANON) != 0
+    }
+
     /// The spawned shell, any shell that reads a line feed as Enter, or the
     /// helper that is about to exec the shell.
     private func isShellName(_ name: String) -> Bool {

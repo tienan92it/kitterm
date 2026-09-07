@@ -74,11 +74,12 @@ enum MCPTools {
             ),
             tool(
                 "send_input",
-                "Type into a crew session — a message to its agent, an answer to a prompt, or a shell command. By default Enter is pressed after the text, as whatever reads the session expects it (a newline for the shell, a carriage return for an interactive claude), so the text is submitted wherever it lands. Set enter:false to send keystrokes only (send \"\\u0003\" as text for Ctrl-C).",
+                "Type into a crew session — a message to its agent, an answer to a prompt, or a shell command. By default Enter is pressed after the text, as whatever reads the session expects it (a newline for the shell, a carriage return for an interactive claude), so the text is submitted wherever it lands. Set enter:false to send keystrokes only (send \"\\u0003\" as text for Ctrl-C). A text over 1 KiB is refused with a `cooked reader` error while the terminal is in cooked mode — a `sleep`, a program still starting, a shell in a here-doc — because the kernel cuts a cooked line at 1024 bytes and nothing typed would arrive whole. The error names the program (`foregroundProgram`): read the screen, wait for the program to take raw mode (an interactive claude does), then send again. Set force:true to type it anyway.",
                 properties: [
                     "session": idProp,
                     "text": ["type": "string", "description": "The text to type; may be empty to press Enter alone"],
                     "enter": ["type": "boolean", "description": "Press Enter after the text so it is submitted (default true)"],
+                    "force": ["type": "boolean", "description": "Type a text over 1 KiB even while a cooked reader holds the terminal (default false)"],
                 ],
                 required: ["session", "text"]
             ),
@@ -200,7 +201,14 @@ enum MCPTools {
                 throw ToolError.badArguments("text is required")
             }
             let enter = (arguments["enter"] as? Bool) ?? true
+            // The daemon refuses a large text while a cooked reader holds the
+            // terminal; `force` is the caller's word that it knows better.
+            let force = (arguments["force"] as? Bool) ?? false
+            var query: [String] = []
+            if enter { query.append("enter=1") }
+            if force { query.append("force=1") }
             let route = "/api/sessions/\(try id(arguments))/input"
+                + (query.isEmpty ? "" : "?" + query.joined(separator: "&"))
             guard enter else {
                 guard !text.isEmpty else { throw ToolError.badArguments("text is required") }
                 return Call(method: "POST", path: route, rawBody: Data(text.utf8))
@@ -211,7 +219,7 @@ enum MCPTools {
             // Enter, so it is folded into the request rather than sent as a
             // line feed that an interactive program would keep as text.
             let line = text.hasSuffix("\n") ? String(text.dropLast()) : text
-            return Call(method: "POST", path: route + "?enter=1", rawBody: Data(line.utf8))
+            return Call(method: "POST", path: route, rawBody: Data(line.utf8))
 
         case "list_commands":
             return Call(method: "GET", path: "/api/sessions/\(try id(arguments))/commands")
