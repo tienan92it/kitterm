@@ -148,6 +148,17 @@ A foreman runs one loop.
      `claude`. The daemon looks at what is reading the terminal, so one call
      works for both. Set `enter:false` only to send bare keystrokes, such as
      Ctrl-C.
+
+     Send a whole prompt in one call, whatever its size. The daemon types a
+     body into `claude` in pieces of 512 bytes, 50ms apart, then presses
+     Enter, because Claude Code keeps only the last read of a paste that
+     arrives faster than it reads (measured on 2026-09-07: one write of
+     2104 bytes reached 2.1.260 as its last 59, and 8193 bytes reached
+     2.1.263 as its last 16; the same bodies in paced pieces arrived whole).
+     A 64 KiB body, the route's cap, takes about 6.5s to type. Do not split
+     a prompt across calls to work around a loss: the split was the
+     workaround the daemon now does for you, and a split prompt is two
+     pastes.
    - `note` — a crew agent reported progress ("plan ready for review"). Relay
      it.
    - `completed` — verify the work, then move the session to review or end it.

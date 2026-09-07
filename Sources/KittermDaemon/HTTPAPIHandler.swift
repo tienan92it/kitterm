@@ -2275,6 +2275,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// newline to submit a command, send `\x03` for Ctrl-C, etc. Capped at
     /// `maxInputBytes`.
     ///
+    /// A program that took the foreground gets the body in paced pieces
+    /// (`PtySession.typeText`), because Claude Code drops the head of a paste
+    /// that arrives faster than it reads; the shell gets it in one write.
+    ///
     /// `?enter=1` presses Enter after the body, as whoever reads the terminal
     /// expects it: a line feed for the shell, a settled carriage return for a
     /// program that took the foreground (`PtySession.typeLine`). A caller
@@ -2344,7 +2348,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             do {
                 if pressEnter { return .ok(try await session.typeLine(body)) }
                 session.noteSubmittedCommand(body)
-                try session.write(body)
+                try await session.typeText(body)
                 return .ok(body.count)
             } catch {
                 return .closed
