@@ -15,6 +15,7 @@ final class HookStatusRouteTests: XCTestCase {
     private var channel: Channel!
     private var registry: SessionRegistry!
     private var approvals: ApprovalStore!
+    private var eventLog: EventLog!
     private var session: PtySession!
     private var port: Int!
 
@@ -28,7 +29,8 @@ final class HookStatusRouteTests: XCTestCase {
 
     override func setUpWithError() throws {
         group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        registry = SessionRegistry()
+        eventLog = EventLog()
+        registry = SessionRegistry(eventLog: eventLog)
         approvals = ApprovalStore()
     }
 
@@ -41,6 +43,7 @@ final class HookStatusRouteTests: XCTestCase {
     private func makeServer(policy: AccessPolicy) throws -> Channel {
         let registry = self.registry!
         let approvals = self.approvals!
+        let eventLog = self.eventLog!
         return try ServerBootstrap(group: group)
             .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             .childChannelInitializer { channel in
@@ -51,6 +54,7 @@ final class HookStatusRouteTests: XCTestCase {
                             policy: policy,
                             agentControl: true,
                             approvals: approvals,
+                            eventLog: eventLog,
                             staticRoot: nil
                         )
                     )
@@ -84,6 +88,81 @@ final class HookStatusRouteTests: XCTestCase {
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         let sessions = try XCTUnwrap(json["sessions"] as? [[String: Any]])
         return try XCTUnwrap(sessions.first { ($0["id"] as? String) == id.uuidString })
+    }
+
+    private func hook(_ id: UUID, _ body: String) async throws {
+        let response = try await post("/api/hooks", body, headers: ["X-Kitterm-Session": id.uuidString])
+        XCTAssertEqual(response.status, 200, response.body)
+    }
+
+    /// The `agent.status` payloads on the feed for one session, in order.
+    private func statusEvents(_ id: UUID) -> [[String: String]] {
+        eventLog.snapshot(since: 0, session: id).events
+            .filter { $0.type == "agent.status" }
+            .map(\.data)
+    }
+
+    // MARK: - one event per transition
+
+    /// `PreToolUse` fires once per tool call, dozens a minute for a busy
+    /// agent. Every one is recorded on the session, but the feed hears one
+    /// `working` — a foreman parked on `wait_for_events` wakes once, not once
+    /// per call.
+    func testTenPreToolUseHooksProduceOneWorkingEvent() async throws {
+        channel = try makeServer(policy: .loopbackOnly)
+        port = channel.localAddress?.port
+        let id = try await registerSession()
+
+        for _ in 0..<10 {
+            try await hook(id, #"{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{}}"#)
+        }
+
+        XCTAssertEqual(statusEvents(id), [["status": "working"]])
+        let row = try await sessionRow(id)
+        XCTAssertEqual(row["mergedState"] as? String, "working", "every hook still records on the session")
+    }
+
+    /// Each change of status is its own event: working, needs-input, working
+    /// again is three, and the repeats between them are silent.
+    func testEachStatusTransitionProducesOneEvent() async throws {
+        channel = try makeServer(policy: .loopbackOnly)
+        port = channel.localAddress?.port
+        let id = try await registerSession()
+
+        try await hook(id, #"{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{}}"#)
+        try await hook(id, #"{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{}}"#)
+        try await hook(id, #"{"hook_event_name":"Notification","message":"Claude is waiting for your input"}"#)
+        try await hook(id, #"{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{}}"#)
+        try await hook(id, #"{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{}}"#)
+
+        XCTAssertEqual(
+            statusEvents(id),
+            [
+                ["status": "working"],
+                ["status": "needs-input", "message": "Claude is waiting for your input"],
+                ["status": "working"],
+            ]
+        )
+    }
+
+    /// A repeated `needs-input` is silent while its message stays the same,
+    /// and a new message is a new event — the text is what the human reads.
+    func testRepeatedNeedsInputWithANewMessageIsANewEvent() async throws {
+        channel = try makeServer(policy: .loopbackOnly)
+        port = channel.localAddress?.port
+        let id = try await registerSession()
+
+        try await hook(id, #"{"hook_event_name":"Notification","message":"Claude needs your permission to use Bash"}"#)
+        try await hook(id, #"{"hook_event_name":"Notification","message":"Claude needs your permission to use Bash"}"#)
+        try await hook(id, #"{"hook_event_name":"Notification","message":"Claude is waiting for your input"}"#)
+
+        XCTAssertEqual(
+            statusEvents(id),
+            [
+                ["status": "needs-input", "message": "Claude needs your permission to use Bash"],
+                ["status": "needs-input", "message": "Claude is waiting for your input"],
+            ]
+        )
     }
 
     /// A `Notification` marks the session `needs-input` and carries its message

@@ -2000,9 +2000,12 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         writeJSON(status: .ok, body: body, context: context, version: version, keepAlive: keepAlive)
     }
 
-    /// Publish a hook-driven status change to the event feed, so a foreman
+    /// Publish a hook-driven status transition to the event feed, so a foreman
     /// parked on `/api/events` wakes the moment a crew agent needs it or
-    /// finishes — not on the next 2s poll.
+    /// finishes — not on the next 2s poll. Called only when the session says
+    /// the report changed (`recordAgentStatus` returns true): a foreman that
+    /// blocks on the feed reads one event per transition, never one per tool
+    /// call.
     private func emitAgentStatus(_ sessionID: UUID, report: AgentReport, message: String?) {
         var data = ["status": report.rawValue]
         if let message { data["message"] = message }
@@ -2173,19 +2176,27 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             // one. `Notification` means the agent wants the human; `Stop`
             // means its turn finished. Anything else is noted by neither — an
             // unknown event degrades to "no opinion", as it always did.
+            //
+            // Every hook is recorded on the session (fresh evidence for the
+            // merge rule), but the feed hears only a transition: a `working`
+            // after a `working` is silent, so the per-tool-call `PreToolUse`
+            // stream does not wake a foreman once per call.
             if let sessionID, let session {
                 switch name {
                 case "PreToolUse":
-                    session.recordAgentStatus(.working, message: nil)
-                    emitAgentStatus(sessionID, report: .working, message: nil)
+                    if session.recordAgentStatus(.working, message: nil) {
+                        emitAgentStatus(sessionID, report: .working, message: nil)
+                    }
                 case "Notification":
                     let message = (event?["message"] as? String)
                         .map { String($0.prefix(KittermConstants.maxSessionNoteLength)) }
-                    session.recordAgentStatus(.needsInput, message: message)
-                    emitAgentStatus(sessionID, report: .needsInput, message: message)
+                    if session.recordAgentStatus(.needsInput, message: message) {
+                        emitAgentStatus(sessionID, report: .needsInput, message: message)
+                    }
                 case "Stop":
-                    session.recordAgentStatus(.completed, message: nil)
-                    emitAgentStatus(sessionID, report: .completed, message: nil)
+                    if session.recordAgentStatus(.completed, message: nil) {
+                        emitAgentStatus(sessionID, report: .completed, message: nil)
+                    }
                 default:
                     break
                 }
