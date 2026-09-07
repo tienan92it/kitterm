@@ -6,10 +6,28 @@ import Foundation
 final class SessionRecorder: @unchecked Sendable {
     private let queue = DispatchQueue(label: "kitterm.recorder", qos: .utility)
     private let handle: FileHandle
-    private let startedAt = Date()
+    /// When the cast began; every event's timestamp is relative to it.
+    let startedAt: Date
     private var closed = false
 
     public let fileURL: URL
+
+    /// Continue a cast another process began (live upgrade): append to the
+    /// same file with the same origin, so the timestamps keep their base.
+    init?(reopening url: URL, startedAt: Date) {
+        guard let handle = try? FileHandle(forWritingTo: url) else { return nil }
+        _ = try? handle.seekToEnd()
+        self.handle = handle
+        self.startedAt = startedAt
+        self.fileURL = url
+    }
+
+    /// Block until every write queued so far has reached the file. Only the
+    /// takeover path calls this, from off the event loop, before `exec`
+    /// destroys the queue's thread.
+    func drain() {
+        queue.sync {}
+    }
 
     init?(directory: URL, cols: UInt16, rows: UInt16, shell: String) {
         let stamp = ISO8601DateFormatter().string(from: Date())
@@ -27,6 +45,7 @@ final class SessionRecorder: @unchecked Sendable {
             return nil
         }
         self.fileURL = url
+        self.startedAt = Date()
 
         let header: [String: Any] = [
             "version": 2,

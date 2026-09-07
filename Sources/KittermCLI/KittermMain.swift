@@ -42,7 +42,10 @@ enum KittermMain {
             case "service":
                 try service(args.dropFirst())
             case "upgrade", "update":
-                try upgrade(restartAfter: args.dropFirst().contains("--restart"))
+                try upgrade(
+                    restartAfter: args.dropFirst().contains("--restart"),
+                    live: args.dropFirst().contains("--live")
+                )
             case "integrate":
                 // Snippet only, nothing else on stdout — it is made for piping:
                 //   kitterm integrate >> ~/.zshrc
@@ -168,8 +171,10 @@ enum KittermMain {
               kitterm service install [same flags as start]
               kitterm service uninstall | status
               kitterm service sync    # rewrite the plist from this build, no restart
-              kitterm upgrade [--restart]  # install the latest release; --restart
-                                      # takes over now (drops panes; safe from a pane)
+              kitterm upgrade [--live | --restart]
+                                      # install the latest release; --live takes
+                                      # over in place (panes keep running),
+                                      # --restart restarts the daemon (drops panes)
               kitterm integrate [zsh|bash]
               kitterm hooks           # Claude Code hook config for approvals  # print the OSC 133/633 snippet
               kitterm mcp             # stdio MCP server: the foreman toolset
@@ -321,7 +326,16 @@ enum KittermMain {
         try "\(pid)".write(to: DaemonPaths.pidFile, atomically: true, encoding: .utf8)
         try "\(port)".write(to: DaemonPaths.portFile, atomically: true, encoding: .utf8)
 
-        try runDaemon(config: flags.daemonConfig(port: port))
+        // `--takeover <dir>` is how a daemon that exec'd this one hands its
+        // sessions over (`docs/live-upgrade.md`). The argv after `serve`
+        // is what this process gives its own successor, less that pair.
+        let arguments = Array(CommandLine.arguments.dropFirst())
+        let takeover = TakeoverOptions(
+            adoptFrom: parseOption("--takeover", arguments).map { URL(fileURLWithPath: $0, isDirectory: true) },
+            stateDirectory: DaemonPaths.takeoverDirectory,
+            relaunchArguments: arguments
+        )
+        try runDaemon(config: flags.daemonConfig(port: port), takeover: takeover)
     }
 
     /// Both listeners, labelled, after a successful start.
@@ -914,7 +928,7 @@ enum KittermMain {
     /// used to be something you could only do from outside kitterm. The new
     /// build is staged on disk and takes over at the next daemon start —
     /// automatic at the next login when the service is installed.
-    private static func upgrade(restartAfter: Bool = false) throws {
+    private static func upgrade(restartAfter: Bool = false, live: Bool = false) throws {
         guard let prefix = installedPrefix() else {
             throw CLIError.upgradeUnavailable(
                 detail: "kitterm is not running from an installed location "
@@ -985,16 +999,110 @@ enum KittermMain {
             return
         }
 
+        if live {
+            try takeOverLive(staged: staged, port: port)
+            return
+        }
         if restartAfter {
             try takeOverNow(staged: staged)
             return
         }
         print("kitterm \(staged) staged. The daemon is still \(runningBefore) and your panes are untouched.")
         if loginAgentInstalled() {
-            print("it takes over at your next login, or now with `kitterm upgrade --restart` (drops live panes)")
+            print("it takes over now with `kitterm upgrade --live` (panes keep running),")
+            print("at your next login, or with `kitterm upgrade --restart` (drops live panes)")
         } else {
             print("it takes over on the next `kitterm restart` (drops live panes)")
         }
+    }
+
+    /**
+     Replace the running daemon with the staged build in place, keeping every
+     pane (`docs/live-upgrade.md`).
+
+     The daemon execs the new binary: same pid, same launchd job, same shells.
+     Only its sockets die, and every client reconnects. The launchd agent is
+     required because it is the recovery net: if the new binary crashes after
+     the exec, `KeepAlive` restarts it clean, which is today's `--restart`
+     outcome; without the agent that crash would strand the daemon down. Linux
+     has no such supervisor here, so the flag refuses there.
+     */
+    private static func takeOverLive(staged: String, port: Int) throws {
+        #if os(Linux)
+        throw CLIError.upgradeFailed(
+            detail: "kitterm \(staged) is staged, but --live needs a supervisor to restart the daemon "
+                + "if the new build crashes after the exec, and kitterm has none on Linux yet. "
+                + "Run `kitterm restart` (drops live panes)."
+        )
+        #else
+        guard loginAgentInstalled(), serviceLoaded() else {
+            throw CLIError.upgradeFailed(
+                detail: "kitterm \(staged) is staged, but --live needs the launchd service "
+                    + "(`kitterm service install`): it is what restarts the daemon if the new "
+                    + "build crashes after the exec. Without it, `kitterm upgrade --restart` "
+                    + "from outside kitterm."
+            )
+        }
+        print("kitterm \(staged) staged; the daemon is taking it over in place.")
+        print("panes stay open and reconnect; nothing running in them is touched.")
+        switch requestTakeover(port: port) {
+        case .refused(let detail):
+            throw CLIError.upgradeFailed(detail: detail)
+        case .accepted(let pid):
+            let deadline = Date().addingTimeInterval(10)
+            while Date() < deadline {
+                if let running = daemonVersion(port: port), running == staged {
+                    print("kitterm \(staged) is running (pid \(pid), port \(port)); the panes were kept")
+                    return
+                }
+                Thread.sleep(forTimeInterval: 0.1)
+            }
+            let running = daemonVersion(port: port) ?? "not answering"
+            throw CLIError.upgradeFailed(
+                detail: "the daemon did not come back as \(staged) (it is \(running)); see ~/.kitterm/server.log"
+            )
+        }
+        #endif
+    }
+
+    private enum TakeoverAnswer {
+        case accepted(pid: Int)
+        case refused(String)
+    }
+
+    /// `POST /api/upgrade/takeover`: the daemon's pid on acceptance, or the
+    /// reason it refused.
+    private static func requestTakeover(port: Int) -> TakeoverAnswer {
+        guard let url = URL(string: "http://127.0.0.1:\(port)/api/upgrade/takeover") else {
+            return .refused("bad port \(port)")
+        }
+        var request = URLRequest(url: url, timeoutInterval: 15)
+        request.httpMethod = "POST"
+        request.setValue("127.0.0.1:\(port)", forHTTPHeaderField: "Host")
+        let sem = DispatchSemaphore(value: 0)
+        // The semaphore below is the happens-before; the compiler cannot see it.
+        nonisolated(unsafe) var outcome: TakeoverAnswer = .refused("no answer from the daemon on port \(port)")
+        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+            defer { sem.signal() }
+            if let error {
+                outcome = .refused(error.localizedDescription)
+                return
+            }
+            guard let http = response as? HTTPURLResponse, let data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else {
+                outcome = .refused("malformed answer from the daemon")
+                return
+            }
+            if http.statusCode == 200, let pid = json["pid"] as? Int {
+                outcome = .accepted(pid: pid)
+            } else {
+                outcome = .refused(json["error"] as? String ?? "daemon answered \(http.statusCode)")
+            }
+        }
+        task.resume()
+        _ = sem.wait(timeout: .now() + 16)
+        return outcome
     }
 
     /**

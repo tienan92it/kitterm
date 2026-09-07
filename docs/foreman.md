@@ -249,6 +249,22 @@ Do this before every `send_input` into a pane that runs an interactive agent.
    still sits in the box, press Enter alone (`send_input text=""`) and read
    once more.
 
+## When the daemon upgrades in place
+
+`kitterm upgrade --live` replaces the daemon process with the new build and
+keeps every shell. Your session ids stay valid, the agents in them keep
+running, and the event feed keeps its `epoch`. What you see:
+
+- A `wait_for_events` or `wait_for_command` call that is in flight fails once
+  with a connection error. Call it again with the same `since` and `epoch`.
+  The answer is not `pruned`.
+- The first new event is `daemon.started` with `takeover` set to `"true"` and
+  the same `epoch`. Its `version` is the new build.
+- A `send_input` call that was in flight may have been cut. Run "Read before
+  you type" and send the text again if the screen does not show it.
+
+Do not re-list or respawn anything. Continue the loop with the `next` cursor.
+
 ## When the daemon restarts
 
 A daemon restart (`kitterm restart`, `kitterm upgrade --restart`, a crash)
@@ -277,8 +293,8 @@ When the epoch changes, do this:
    `pruned` result.
 
 Note the limit: a respawned shell keeps its name, labels, and cwd, not its
-process. Until #47 (live upgrade) lands, an upgrade costs every crew agent its
-run.
+process. A restart costs every crew agent its run; an in-place upgrade
+(`kitterm upgrade --live`) does not.
 
 ## Crew conventions
 

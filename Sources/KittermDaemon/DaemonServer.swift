@@ -1,5 +1,6 @@
 import Foundation
 import KittermProtocol
+import NIOConcurrencyHelpers
 import NIOCore
 import NIOHTTP1
 import NIOPosix
@@ -68,6 +69,24 @@ public final class DaemonServer: @unchecked Sendable {
     private let eventLog: EventLog
     /// The plain listener, always present; the TLS listener when configured.
     private var channels: [Channel] = []
+    /// Every accepted connection, so a takeover can flush and close them
+    /// all: NIO keeps no such list, and closing a listener leaves its
+    /// children open. Loop-confined.
+    private let connections = ConnectionTracker()
+    /// Sessions handed over by the previous process, adopted in `start()`
+    /// once there is a loop to read them on.
+    private var adopted: [(session: PtySession, state: TakeoverState.SessionState)] = []
+    /// The takeover request an API call recorded, read by `waitUntilClosed`.
+    private let takeoverLock = NIOLock()
+    private var takeoverRequest: TakeoverRequest?
+
+    /// The sessions and the feed of a quiesced server, so the same process
+    /// can serve again from them when its `exec` returned
+    /// (`docs/live-upgrade.md`, rung 2).
+    public struct Carried: Sendable {
+        let registry: SessionRegistry
+        let eventLog: EventLog
+    }
 
     public init(config: DaemonConfig = DaemonConfig()) {
         self.config = config
@@ -84,8 +103,61 @@ public final class DaemonServer: @unchecked Sendable {
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
     }
 
+    /// A server that continues the sessions and the feed of the process that
+    /// wrote `state` (`serve --takeover`). The sessions are rebuilt around
+    /// their inherited masters here and read from `start()`; `daemon.started`
+    /// lands inside the carried epoch with `takeover` true.
+    public init(config: DaemonConfig, adopting state: TakeoverState, from directory: URL) {
+        self.config = config
+        let eventLog = EventLog(restoring: state.eventLog)
+        eventLog.markStarted(version: BuildVersion.running, pid: getpid(), takeover: true)
+        self.eventLog = eventLog
+        self.registry = SessionRegistry(
+            orchestratedLingerSeconds: config.orchestratedLingerSeconds,
+            eventLog: eventLog,
+            respawnHints: RespawnHintStore(file: DaemonPaths.respawnHintsFile)
+        )
+        self.group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        for sessionState in state.sessions {
+            let ring = (try? Data(contentsOf: state.ringFile(for: sessionState, in: directory))) ?? Data()
+            let session = PtySession(adopting: sessionState, ring: ring)
+            session.reattachFiles(from: sessionState)
+            adopted.append((session, sessionState))
+        }
+    }
+
+    /// A server over the sessions and the feed of one that was quiesced for
+    /// an `exec` that returned. Nothing is rebuilt: the sessions get a new
+    /// reader in `start()`, their clocks restart, and the feed records
+    /// another `daemon.started` in the same epoch.
+    public init(config: DaemonConfig, carrying carried: Carried) {
+        self.config = config
+        self.eventLog = carried.eventLog
+        self.registry = carried.registry
+        self.group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        carried.eventLog.markStarted(version: BuildVersion.running, pid: getpid(), takeover: true)
+    }
+
     public var boundPort: Int? {
         channels.first?.localAddress?.port
+    }
+
+    /// The daemon's own processes, for the rung-2 restart.
+    public var carried: Carried {
+        Carried(registry: registry, eventLog: eventLog)
+    }
+
+    /// A takeover an API call accepted: what to become.
+    public struct TakeoverRequest: Sendable, Equatable {
+        public let executable: String
+    }
+
+    /// How `waitUntilClosed` returned.
+    public enum Exit: Sendable, Equatable {
+        /// The listener closed; the daemon is stopping.
+        case closed
+        /// An accepted takeover; the caller quiesces and execs.
+        case takeover(TakeoverRequest)
     }
 
     public func start() throws {
@@ -104,6 +176,15 @@ public final class DaemonServer: @unchecked Sendable {
             recordSessions: config.recordSessions,
             retainLogs: config.retainLogs
         )
+        // The route validates the staged binary and, once its answer has
+        // gone out, records the request and closes the listeners, which is
+        // what wakes `waitUntilClosed` to do the rest.
+        let takeover = TakeoverController(executable: TakeoverHandoff.targetExecutable()) { [weak self] request in
+            guard let self else { return }
+            self.takeoverLock.withLock { self.takeoverRequest = request }
+            for channel in self.channels { channel.close(promise: nil) }
+        }
+        let connections = self.connections
         // Anything reachable from off-machine — an external bind, or a proxy
         // presenting a public name — needs the token pair.
         let policy: AccessPolicy
@@ -224,8 +305,10 @@ public final class DaemonServer: @unchecked Sendable {
                         eventLog: eventLog,
                         connectionIsTLS: sslContext != nil,
                         tlsPort: config.tls?.port,
-                        webSocketUpgrader: upgrader
+                        webSocketUpgrader: upgrader,
+                        takeover: takeover
                     )
+                    connections.track(channel)
                     let upgradeConfig = NIOHTTPServerUpgradeConfiguration(
                         upgraders: [upgrader as any HTTPServerProtocolUpgrader],
                         completionHandler: { context in
@@ -269,6 +352,10 @@ public final class DaemonServer: @unchecked Sendable {
         // should fail the launch, not the first connection.
         let sslContext = try config.tls?.makeSSLContext()
 
+        // Sessions from the previous process get their readers before the
+        // port opens, so the first client to reconnect finds them whole.
+        try attachCarriedSessions()
+
         let plain: Channel
         do {
             plain = try makeBootstrap(sslContext: nil).bind(host: plainHost, port: config.port).wait()
@@ -306,8 +393,95 @@ public final class DaemonServer: @unchecked Sendable {
         }
     }
 
-    public func waitUntilClosed() throws {
+    /// Block until the listener closes: a stop, or an accepted takeover.
+    public func waitUntilClosed() throws -> Exit {
         try channels.first?.closeFuture.wait()
+        if let request = takeoverLock.withLock({ takeoverRequest }) {
+            return .takeover(request)
+        }
+        return .closed
+    }
+
+    /// Give every carried session a reader on the loop, and every adopted
+    /// one its place in the registry, detached, with exit reporting wired
+    /// as for an API-spawned session (nothing else will hear its shell go).
+    private func attachCarriedSessions() throws {
+        let loop = group.next()
+        let registry = self.registry
+        let adopted = self.adopted
+        self.adopted = []
+        for (session, state) in adopted {
+            let heldSince = state.heldSince.map { Date(timeIntervalSince1970: Double($0) / 1000) }
+            let done = loop.makePromise(of: Bool.self)
+            done.completeWithTask { await registry.adopt(session, heldSince: heldSince) }
+            guard try done.futureResult.wait() else {
+                // Above the cap this build allows: the shell is on its own.
+                session.terminate()
+                continue
+            }
+            let id = session.sessionID
+            session.detach(onExitWhileDetached: { [weak session] _ in
+                session?.terminate()
+                Task { await registry.sessionDidExit(id) }
+            })
+        }
+        // Every session in the registry, adopted or carried in-process,
+        // reads through a fresh channel. A terminated one declines.
+        let detach = loop.makePromise(of: [PtySession].self)
+        detach.completeWithTask {
+            await registry.detachAll()
+            return await registry.handoffSessions().map(\.session)
+        }
+        for session in try detach.futureResult.wait() {
+            try session.makeReader(group: loop, eventLoop: loop).wait()
+        }
+    }
+
+    /// Quiesce and write the takeover state (`docs/live-upgrade.md`): flush
+    /// and close every connection, close each session's reader, drain the
+    /// file queues, write `state.json` and the rings under `directory`, and
+    /// shut the loop down. On return this process holds every master and
+    /// nothing else that matters; `TakeoverHandoff.exec` is the next step,
+    /// and `Carried` the way back if it returns. Off the event loop.
+    public func prepareHandoff(into directory: URL) throws -> TakeoverState {
+        let loop = group.next()
+        // Listeners first, so nothing new arrives while the rest drains.
+        for channel in channels { try? channel.close().wait() }
+        channels.removeAll()
+        try loop.flatSubmit { self.connections.closeAll(on: loop) }.wait()
+
+        let listed = loop.makePromise(of: [(session: PtySession, heldSince: Date?)].self)
+        listed.completeWithTask { await self.registry.handoffSessions() }
+        let sessions = try listed.futureResult.wait()
+        for entry in sessions {
+            try entry.session.releaseReader()?.wait()
+        }
+
+        try? FileManager.default.removeItem(at: directory)
+        try FileManager.default.createDirectory(
+            at: TakeoverState.ringsDirectory(in: directory),
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        var states: [TakeoverState.SessionState] = []
+        for entry in sessions {
+            let ringFile = "\(entry.session.sessionID.uuidString).bin"
+            let handoff = entry.session.handoffState(ringFile: ringFile, heldSince: entry.heldSince)
+            try handoff.ring.write(
+                to: TakeoverState.ringsDirectory(in: directory).appendingPathComponent(ringFile),
+                options: .atomic
+            )
+            states.append(handoff.state)
+        }
+        let state = TakeoverState(
+            writtenBy: BuildVersion.running,
+            fds: states.compactMap(\.fd),
+            eventLog: eventLog.handoffState(),
+            sessions: states
+        )
+        try state.write(to: directory)
+        try group.syncShutdownGracefully()
+        return state
     }
 
     /// Extracts `?session=<uuid>` from the WS request URI (reattach request).
@@ -374,8 +548,18 @@ public enum DaemonError: Error, LocalizedError {
     }
 }
 
-/// Run the daemon in-process (used by `kitterm serve`).
-public func runDaemon(config: DaemonConfig) throws {
+/// Run the daemon in-process (used by `kitterm serve`). `takeover` says
+/// where a predecessor left its state and where to leave one for a
+/// successor; the default leaves live upgrade wired to the state directory
+/// with no argv to relaunch with, which a takeover then reports as a failed
+/// `exec` and serves on (rung 2).
+public func runDaemon(
+    config: DaemonConfig,
+    takeover: TakeoverOptions = TakeoverOptions(
+        stateDirectory: DaemonPaths.takeoverDirectory,
+        relaunchArguments: Array(CommandLine.arguments.dropFirst())
+    )
+) throws {
     signal(SIGPIPE, SIG_IGN)
     signal(SIGHUP, SIG_IGN)
 
@@ -397,8 +581,8 @@ public func runDaemon(config: DaemonConfig) throws {
         try? root.path.write(to: DaemonPaths.webRootFile, atomically: true, encoding: .utf8)
     }
 
-    let server = DaemonServer(config: config)
-    try server.start()
+    let current = ServerBox(makeServer(config: config, takeover: takeover))
+    try current.server.start()
 
     // Not the main queue: this thread parks in `waitUntilClosed()` and never
     // drains it, so a `.main` source would never fire — the daemon would
@@ -412,7 +596,7 @@ public func runDaemon(config: DaemonConfig) throws {
     for signalNumber in [SIGTERM, SIGINT] {
         let source = DispatchSource.makeSignalSource(signal: signalNumber, queue: signalQueue)
         source.setEventHandler {
-            try? server.stop()
+            try? current.server.stop()
             exit(0)
         }
         source.resume()
@@ -422,6 +606,171 @@ public func runDaemon(config: DaemonConfig) throws {
     }
     // The sources must outlive this call — a released source stops delivering.
     try withExtendedLifetime(sources) {
-        try server.waitUntilClosed()
+        while true {
+            switch try current.server.waitUntilClosed() {
+            case .closed:
+                return
+            case .takeover(let request):
+                // Quiesce, write the state, and become the staged binary.
+                // `exec` keeps the pid and the children; only this code and
+                // the sockets go. Returning from it is rung 2 of the failure
+                // ladder: this process still holds every master, so it
+                // serves again from what it just wrote.
+                let directory = takeover.stateDirectory
+                let state = try current.server.prepareHandoff(into: directory)
+                let arguments = TakeoverHandoff.successorArguments(
+                    from: takeover.relaunchArguments,
+                    directory: directory
+                )
+                FileHandle.standardError.write(
+                    Data("kitterm: takeover: exec \(request.executable) \(arguments.joined(separator: " "))\n".utf8)
+                )
+                TakeoverHandoff.prepareDescriptors(carrying: state.fds)
+                let failure = TakeoverHandoff.exec(executable: request.executable, arguments: arguments)
+                TakeoverHandoff.restoreDescriptors(carried: state.fds)
+                FileHandle.standardError.write(
+                    Data("kitterm: takeover: exec failed (\(String(cString: strerror(failure)))); serving on from this process\n".utf8)
+                )
+                try? FileManager.default.removeItem(at: directory)
+                let carried = current.server.carried
+                current.server = DaemonServer(config: config, carrying: carried)
+                try current.server.start()
+            }
+        }
+    }
+}
+
+/// How `serve` is wired for a live upgrade: where a predecessor's state is,
+/// where to write one for a successor, and the argv the successor gets.
+public struct TakeoverOptions: Sendable {
+    /// A directory the previous process wrote; adopt it before serving.
+    public var adoptFrom: URL?
+    /// Where this process writes its own state when it hands over.
+    public var stateDirectory: URL
+    /// This process's argv after argv[0]; the successor gets it back.
+    public var relaunchArguments: [String]
+
+    public init(adoptFrom: URL? = nil, stateDirectory: URL, relaunchArguments: [String]) {
+        self.adoptFrom = adoptFrom
+        self.stateDirectory = stateDirectory
+        self.relaunchArguments = relaunchArguments
+    }
+}
+
+/// The server currently answering, shared by the main loop and the signal
+/// handlers, which must stop whichever one is live.
+private final class ServerBox: @unchecked Sendable {
+    var server: DaemonServer
+    init(_ server: DaemonServer) { self.server = server }
+}
+
+/// A server that adopts the predecessor's state when there is one it can
+/// read. The failure ladder's rung 3: a layout this build does not know, or
+/// a file it cannot read, boots clean — the carried masters are closed so
+/// the shells hang up rather than block forever on a buffer nobody drains,
+/// and the outcome equals `upgrade --restart`.
+private func makeServer(config: DaemonConfig, takeover: TakeoverOptions) -> DaemonServer {
+    guard let directory = takeover.adoptFrom else {
+        return DaemonServer(config: config)
+    }
+    defer { try? FileManager.default.removeItem(at: directory) }
+    do {
+        let state = try TakeoverState.load(from: directory)
+        FileHandle.standardError.write(
+            Data("kitterm: takeover: adopting \(state.sessions.count) session(s) from \(state.writtenBy)\n".utf8)
+        )
+        return DaemonServer(config: config, adopting: state, from: directory)
+    } catch TakeoverState.LoadError.unsupportedFormat(let found, let fds) {
+        FileHandle.standardError.write(
+            Data("kitterm: takeover: state is format \(found), this build reads \(TakeoverState.currentFormatVersion); starting clean\n".utf8)
+        )
+        for fd in fds { _ = close(fd) }
+    } catch {
+        FileHandle.standardError.write(
+            Data("kitterm: takeover: \(error.localizedDescription); starting clean\n".utf8)
+        )
+    }
+    return DaemonServer(config: config)
+}
+
+/// Accepted connections, so a takeover can close them all. Loop-confined:
+/// `track` runs in the child initializer and `closeAll` is submitted to
+/// the loop.
+final class ConnectionTracker: @unchecked Sendable {
+    private var channels: [ObjectIdentifier: Channel] = [:]
+
+    func track(_ channel: Channel) {
+        let key = ObjectIdentifier(channel)
+        channels[key] = channel
+        channel.closeFuture.whenComplete { [weak self] _ in
+            self?.channels.removeValue(forKey: key)
+        }
+    }
+
+    /// Flush what each WebSocket holds, then close every connection, and
+    /// complete when they are all gone. Every close runs on the one loop,
+    /// so no handler races the flush.
+    func closeAll(on loop: EventLoop) -> EventLoopFuture<Void> {
+        let open = Array(channels.values)
+        for channel in open {
+            if let handler = try? channel.pipeline.syncOperations.handler(type: WebSocketSessionHandler.self) {
+                handler.flushOutput()
+            }
+            channel.close(promise: nil)
+        }
+        return EventLoopFuture.andAllComplete(open.map(\.closeFuture), on: loop)
+    }
+}
+
+/// The route's side of a takeover: validates the binary, admits one request
+/// at a time, and hands the accepted one to the server once the answer has
+/// gone out. Shared by every connection's handler.
+public final class TakeoverController: @unchecked Sendable {
+    public let executable: String
+    private let lock = NIOLock()
+    private var accepted = false
+    private let commit: @Sendable (DaemonServer.TakeoverRequest) -> Void
+
+    init(executable: String, commit: @escaping @Sendable (DaemonServer.TakeoverRequest) -> Void) {
+        self.executable = executable
+        self.commit = commit
+    }
+
+    public enum Admission: Equatable, Sendable {
+        case accepted(DaemonServer.TakeoverRequest)
+        /// Another request already won; the daemon is on its way out.
+        case inProgress
+        /// The binary did not run; nothing changed.
+        case invalidBinary(String)
+    }
+
+    /// Check the binary off the loop and claim the takeover. The claim comes
+    /// after the check, so two callers cannot both pass, and a caller whose
+    /// binary fails leaves the daemon exactly as it was.
+    func admit(on loop: EventLoop) -> EventLoopFuture<Admission> {
+        let promise = loop.makePromise(of: Admission.self)
+        guard !lock.withLock({ accepted }) else {
+            promise.succeed(.inProgress)
+            return promise.futureResult
+        }
+        let executable = self.executable
+        DispatchQueue.global(qos: .userInitiated).async {
+            if let reason = TakeoverHandoff.validate(executable: executable) {
+                promise.succeed(.invalidBinary(reason))
+                return
+            }
+            let won: Bool = self.lock.withLock {
+                guard !self.accepted else { return false }
+                self.accepted = true
+                return true
+            }
+            promise.succeed(won ? .accepted(DaemonServer.TakeoverRequest(executable: executable)) : .inProgress)
+        }
+        return promise.futureResult
+    }
+
+    /// The answer is on the wire; start the handoff.
+    func begin(_ request: DaemonServer.TakeoverRequest) {
+        commit(request)
     }
 }

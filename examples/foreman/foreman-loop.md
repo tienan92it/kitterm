@@ -75,10 +75,13 @@ Do this before every `send_input` into a pane that runs an interactive agent.
      `read_screen`. If the work is right, tell the user it is ready. If not,
      run "Read before you type" and send a correction with `send_input`.
    - `session.exited` with a non-zero code: the session failed. Report it.
-   - `daemon.started`, or a result whose `epoch` changed: the daemon
-     restarted and every session id you hold is gone. Call `list_sessions`,
-     match respawned panes by labels and cwd, spawn again what is missing, and
-     send each fresh shell its task again after "Read before you type".
+   - `daemon.started` with `takeover` set to `"true"` and the same `epoch`:
+     the daemon upgraded in place. Every session id you hold is still good.
+     Continue.
+   - A result whose `epoch` changed: the daemon restarted and every session
+     id you hold is gone. Call `list_sessions`, match respawned panes by
+     labels and cwd, spawn again what is missing, and send each fresh shell
+     its task again after "Read before you type".
 
 4. When the user says a task is merged, `kill_session` for it.
 

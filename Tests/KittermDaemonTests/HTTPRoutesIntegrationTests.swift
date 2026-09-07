@@ -107,6 +107,19 @@ final class HTTPRoutesIntegrationTests: XCTestCase {
         )
     }
 
+    // MARK: - takeover
+
+    /// A handler with no server behind it cannot exec anything; the route
+    /// says so rather than pretending.
+    func testTakeoverRouteWithoutAServerAnswers503() async throws {
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port!)/api/upgrade/takeover")!)
+        request.httpMethod = "POST"
+        let (data, response) = try await URLSession.shared.data(for: request)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 503)
+        let body = try json(String(decoding: data, as: UTF8.self))
+        XCTAssertEqual(body["ok"] as? Bool, false)
+    }
+
     // MARK: - version
 
     /// The settings footer needs the build that is *answering*, not the one on

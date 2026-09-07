@@ -101,6 +101,13 @@ public enum DaemonPaths: Sendable {
         stateDirectory.appendingPathComponent("respawn.json")
     }
 
+    /// Where a daemon writes its state for the process that replaces it in
+    /// place (`POST /api/upgrade/takeover`, `serve --takeover`). Deleted by
+    /// the successor once it has adopted everything.
+    public static var takeoverDirectory: URL {
+        stateDirectory.appendingPathComponent("takeover", isDirectory: true)
+    }
+
     /// The web bundle the running daemon pinned at start-up. Written for the
     /// installer, which stages each release's bundle in its own directory and
     /// must not delete the one a live daemon is still serving.

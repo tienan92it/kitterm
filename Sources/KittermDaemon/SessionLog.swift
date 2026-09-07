@@ -42,6 +42,22 @@ public struct SessionLog {
         self.storage = [UInt8](repeating: 0, count: capacity)
     }
 
+    /// Rebuild a ring from the bytes another process retained (live
+    /// upgrade): `retained` is `[head - retained.count, head)`, oldest first,
+    /// as `retainedBytes()` produced it. Offsets continue from `head`, so a
+    /// client's `?since=` from before the handoff still names the same byte.
+    public init(restoring retained: Data, head: UInt64, capacity: Int = KittermConstants.sessionLogBytes) {
+        self.init(capacity: capacity)
+        self.head = head &- UInt64(retained.count)
+        append(retained)
+        self.head = head
+    }
+
+    /// Every retained byte, oldest first: `[base, head)`.
+    public func retainedBytes() -> Data {
+        readRange(from: base)
+    }
+
     public mutating func append(_ data: Data) {
         guard !data.isEmpty else { return }
         head &+= UInt64(data.count)

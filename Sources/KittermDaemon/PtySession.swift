@@ -213,6 +213,159 @@ public final class PtySession: @unchecked Sendable {
         terminate()
     }
 
+    /// Rebuild a session around a PTY master another process opened (live
+    /// upgrade, `docs/live-upgrade.md`). No `openpty`, no spawn: the shell is
+    /// already running and is still this process's child, because `exec`
+    /// kept the pid. A session whose shell had already exited arrives with
+    /// no fd and stays readable for its records, as it was.
+    ///
+    /// The master carries `FD_CLOEXEC` again from here, the same as a
+    /// spawned one, so a later session's helper cannot inherit it.
+    init(adopting state: TakeoverState.SessionState, ring: Data) {
+        self.sessionID = state.sessionID
+        self.pid = state.pid
+        self.shellPath = state.shellPath
+        self.initialCwd = state.initialCwd
+        self.profileName = state.profileName
+        self.labelsStorage = SessionLabels(state.labels)
+        self.nameStorage = state.name
+        self.noteStorage = state.note
+        self.spawnedByAPI = state.spawnedByAPI
+        self.cols = state.cols
+        self.rows = state.rows
+        self.lastPolledCwd = state.lastPolledCwd
+        self.submittedCommand = state.submittedCommand
+        self.shellExitCode = state.shellExitCode
+        self.exitNotified = state.exitNotified
+        self.detachOffset = state.detachOffset
+        self.log = SessionLog(restoring: ring, head: state.logHead)
+        self.markStore = SessionMarkStore(
+            restoring: state.marks.compactMap(\.mark),
+            droppedCommands: state.droppedCommands
+        )
+        self.lastOutputAtStorage = state.lastOutputAt.map { Date(timeIntervalSince1970: Double($0) / 1000) }
+        self.agentStatusStorage = state.agentStatus?.status
+        // A shell the old process had already seen exit is a record, not a
+        // terminal: no fd to read, no child to wait for.
+        if let fd = state.fd, !state.terminated, !state.exitNotified {
+            self.masterFD = fd
+            _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
+            self.terminated = false
+            startExitWatcher()
+        } else {
+            if let fd = state.fd { _ = close(fd) }
+            self.masterFD = -1
+            self.terminated = true
+        }
+    }
+
+    /// Close the reader channel and wait for it: no more `handleRead`, so the
+    /// ring and the marks are final, and NIO's `dup` of the master is closed
+    /// before `exec` could leak it. The master itself stays open. Bytes the
+    /// shell writes from here on wait in the kernel's PTY buffer for the
+    /// successor's reader. Called from off the event loop by the takeover
+    /// path only; the session is otherwise untouched and can take a new
+    /// reader (`makeReader`) later.
+    func releaseReader() -> EventLoopFuture<Void>? {
+        let channel: Channel? = stateLock.withLock {
+            let channel = readChannel
+            readChannel = nil
+            return channel
+        }
+        guard let channel else { return nil }
+        channel.close(promise: nil)
+        return channel.closeFuture
+    }
+
+    /// Everything the successor needs to rebuild this session, plus the ring
+    /// bytes to write beside it. Call after `releaseReader` completed, so
+    /// nothing appends while the snapshot is taken; the recorder and the log
+    /// store are drained here so no queued write is lost to `exec`.
+    func handoffState(ringFile: String, heldSince: Date?) -> (state: TakeoverState.SessionState, ring: Data) {
+        let snapshot = stateLock.withLock {
+            (
+                state: TakeoverState.SessionState(
+                    fd: terminated ? nil : masterFD,
+                    sessionID: sessionID,
+                    pid: pid,
+                    shellPath: shellPath,
+                    initialCwd: initialCwd,
+                    profileName: profileName,
+                    labels: labelsStorage.values,
+                    name: nameStorage,
+                    note: noteStorage,
+                    spawnedByAPI: spawnedByAPI,
+                    cols: cols,
+                    rows: rows,
+                    lastPolledCwd: lastPolledCwd,
+                    submittedCommand: submittedCommand,
+                    terminated: terminated,
+                    shellExitCode: shellExitCode,
+                    exitNotified: exitNotified,
+                    detachOffset: detachOffset,
+                    logHead: log.head,
+                    ringFile: ringFile,
+                    marks: markStore.marks.map(TakeoverState.MarkRecord.init),
+                    droppedCommands: markStore.firstRetainedIndex - 1,
+                    lastOutputAt: lastOutputAtStorage.map { Int64($0.timeIntervalSince1970 * 1000) },
+                    agentStatus: agentStatusStorage.map(TakeoverState.AgentStatusRecord.init),
+                    recorder: nil,
+                    logStore: nil,
+                    heldSince: heldSince.map { Int64($0.timeIntervalSince1970 * 1000) }
+                ),
+                ring: log.retainedBytes(),
+                recorder: recorder,
+                logStore: logStore
+            )
+        }
+        var state = snapshot.state
+        // Outside the lock: each drain blocks on its own queue.
+        if let recorder = snapshot.recorder {
+            recorder.drain()
+            state.recorder = TakeoverState.RecorderState(
+                path: recorder.fileURL.path,
+                startedAt: Int64(recorder.startedAt.timeIntervalSince1970 * 1000)
+            )
+        }
+        if let store = snapshot.logStore {
+            state.logStore = store.handoffState()
+        }
+        return (state, snapshot.ring)
+    }
+
+    /// Wire the files a predecessor kept for this session (live upgrade):
+    /// the cast continues with its original time base, the retained log
+    /// with its recorded offsets. A file that cannot be reopened is dropped
+    /// with a log line; the session itself is unaffected.
+    func reattachFiles(from state: TakeoverState.SessionState) {
+        if let cast = state.recorder {
+            if let recorder = SessionRecorder(
+                reopening: URL(fileURLWithPath: cast.path),
+                startedAt: Date(timeIntervalSince1970: Double(cast.startedAt) / 1000)
+            ) {
+                attachRecorder(recorder)
+            } else {
+                FileHandle.standardError.write(
+                    Data("kitterm: takeover: cannot reopen recording \(cast.path)\n".utf8)
+                )
+            }
+        }
+        if let retained = state.logStore {
+            if let store = SessionLogStore(
+                reopening: URL(fileURLWithPath: retained.path),
+                maxBytes: KittermConstants.retainedLogBytes,
+                fileBase: retained.fileBase,
+                streamEnd: retained.streamEnd
+            ) {
+                stateLock.withLock { logStore = store }
+            } else {
+                FileHandle.standardError.write(
+                    Data("kitterm: takeover: cannot reopen retained log \(retained.path)\n".utf8)
+                )
+            }
+        }
+    }
+
     public static func spawn(
         cols: UInt16 = KittermConstants.defaultCols,
         rows: UInt16 = KittermConstants.defaultRows,
