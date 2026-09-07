@@ -73,7 +73,16 @@ final class InputEnterKeyTests: XCTestCase {
         try XCTUnwrap(JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any])
     }
 
-    /// Spawn a shell through the API and return its session.
+    /// Spawn a shell through the API and return its session once the shell
+    /// reads the terminal.
+    ///
+    /// The route answers as soon as the helper is spawned. The helper then
+    /// claims the tty and execs the shell, and a read in that window sees
+    /// no foreground group, or the helper's own name. `foregroundIsShell`
+    /// reads both as the shell, so it cannot serve as the wait: the wait is
+    /// on the leader itself, the spawned pid under a shell's name. `/bin/sh`
+    /// re-executes itself as `bash`, which is why the name is not compared
+    /// with the shell path.
     private func spawn() async throws -> (id: String, session: PtySession) {
         let response = try await request(
             "POST", "/api/sessions",
@@ -82,7 +91,14 @@ final class InputEnterKeyTests: XCTestCase {
         XCTAssertEqual(response.status, 201, response.body)
         let id = try XCTUnwrap(json(response.body)["id"] as? String)
         let registered = await registry.session(try XCTUnwrap(UUID(uuidString: id)))
-        return (id, try XCTUnwrap(registered))
+        let session = try XCTUnwrap(registered)
+        try await wait("the shell to take the terminal") {
+            guard let leader = session.foregroundLeader, leader.group == session.pid,
+                  let name = leader.name
+            else { return false }
+            return name != SpawnHelperPath.name
+        }
+        return (id, session)
     }
 
     private func output(of session: PtySession) -> String {
@@ -107,6 +123,7 @@ final class InputEnterKeyTests: XCTestCase {
     func testEnterOnAShellIsALineFeedThatRunsTheCommand() async throws {
         let (id, session) = try await spawn()
         XCTAssertTrue(session.foregroundIsShell)
+        XCTAssertNil(session.foregroundProgram)
 
         let marker = "kitterm-enter-\(UInt32.random(in: 0..<UInt32.max))"
         let response = try await request(
