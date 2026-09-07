@@ -2279,6 +2279,13 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// (`PtySession.typeText`), because Claude Code drops the head of a paste
     /// that arrives faster than it reads; the shell gets it in one write.
     ///
+    /// A body over `PtySession.canonicalLineBytes` is refused with 409 while
+    /// the terminal is in canonical mode (ADR 0003): the kernel cuts a cooked
+    /// line there, so a `sleep`, a program still starting, or a shell in a
+    /// here-doc would take the head and lose the rest, and nothing the daemon
+    /// writes can change that. The JSON names the reason and the program.
+    /// `?force=1` types it anyway, for a caller that knows its reader.
+    ///
     /// `?enter=1` presses Enter after the body, as whoever reads the terminal
     /// expects it: a line feed for the shell, a settled carriage return for a
     /// program that took the foreground (`PtySession.typeLine`). A caller
@@ -2330,8 +2337,12 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             )
             return
         }
-        let pressEnter = DaemonServer.queryValue("enter", fromRequestURI: head.uri)
-            .map { $0 == "1" || $0 == "true" } ?? false
+        func flag(_ name: String) -> Bool {
+            DaemonServer.queryValue(name, fromRequestURI: head.uri)
+                .map { $0 == "1" || $0 == "true" } ?? false
+        }
+        let pressEnter = flag("enter")
+        let force = flag("force")
         guard !body.isEmpty || pressEnter else {
             writeJSON(
                 status: .badRequest,
@@ -2341,10 +2352,13 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             return
         }
 
-        enum Outcome { case ok(Int); case noSession; case closed }
+        enum Outcome { case ok(Int); case noSession; case closed; case cooked(program: String?) }
         let promise = context.eventLoop.makePromise(of: Outcome.self)
         promise.completeWithTask {
             guard let session = await self.registry.session(id) else { return .noSession }
+            if !force, body.count > PtySession.canonicalLineBytes, session.inputIsCanonical == true {
+                return .cooked(program: session.foregroundProgram)
+            }
             do {
                 if pressEnter { return .ok(try await session.typeLine(body)) }
                 session.noteSubmittedCommand(body)
@@ -2374,8 +2388,37 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                     body: #"{"ok":false,"error":"session closed"}"#,
                     context: context, version: head.version, keepAlive: false
                 )
+            case .cooked(let program):
+                self.writeJSON(
+                    status: .conflict,
+                    body: Self.cookedReaderBody(program: program, bytes: body.count),
+                    context: context, version: head.version, keepAlive: false
+                )
             }
         }
+    }
+
+    /// The 409 for a body a cooked reader would cut. The text is what a
+    /// foreman reads through `send_input`, so it says what to do; the fields
+    /// say the same for a program.
+    static func cookedReaderBody(program: String?, bytes: Int) -> String {
+        let limit = PtySession.canonicalLineBytes
+        let reader = program.map { "`\($0)`" } ?? "the shell"
+        let error =
+            "cooked reader: \(reader) holds the terminal in canonical mode, which keeps \(limit) bytes "
+            + "of a line and drops the rest, so a \(bytes)-byte body would not arrive whole. "
+            + "Read the screen and wait for the program to take raw mode (an interactive claude does), "
+            + "or type it anyway with ?force=1 (send_input force:true)."
+        var fields: [String: Any] = [
+            "ok": false,
+            "error": error,
+            "reason": "cooked",
+            "limit": limit,
+            "bytes": bytes,
+        ]
+        fields["foregroundProgram"] = program ?? NSNull()
+        let data = (try? JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys])) ?? Data()
+        return String(decoding: data, as: UTF8.self)
     }
 
     /// Shared 404 JSON.

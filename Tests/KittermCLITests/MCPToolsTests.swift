@@ -111,6 +111,26 @@ final class MCPToolsTests: XCTestCase {
         XCTAssertThrowsError(try call("send_input", ["session": deadbeef, "text": "", "enter": false]))
     }
 
+    /// `force:true` is the override for the daemon's cooked-reader guard
+    /// (ADR 0003): it travels as `?force=1`, with or without Enter, and the
+    /// tool's description tells a foreman what the 409 means and what to do.
+    func testSendInputForceOverridesTheCookedReaderGuard() throws {
+        let forced = try call("send_input", ["session": deadbeef, "text": "a long prompt", "force": true])
+        XCTAssertEqual(forced.path, "/api/sessions/\(deadbeef)/input?enter=1&force=1")
+        let keys = try call("send_input", ["session": deadbeef, "text": "x", "enter": false, "force": true])
+        XCTAssertEqual(keys.path, "/api/sessions/\(deadbeef)/input?force=1")
+        let plain = try call("send_input", ["session": deadbeef, "text": "x", "force": false])
+        XCTAssertEqual(plain.path, "/api/sessions/\(deadbeef)/input?enter=1")
+
+        let schema = try XCTUnwrap(MCPTools.schemas().first { $0["name"] as? String == "send_input" })
+        let description = try XCTUnwrap(schema["description"] as? String)
+        XCTAssertTrue(description.contains("cooked reader"))
+        XCTAssertTrue(description.contains("foregroundProgram"))
+        XCTAssertTrue(description.contains("force:true"))
+        let properties = try XCTUnwrap((schema["inputSchema"] as? [String: Any])?["properties"] as? [String: Any])
+        XCTAssertNotNil(properties["force"])
+    }
+
     func testWaitForCommandCarriesTimeout() throws {
         let c = try call("wait_for_command", ["session": deadbeef, "command": 3, "timeout": 60])
         XCTAssertEqual(c.path, "/api/sessions/\(deadbeef)/commands/3/wait?timeout=60")

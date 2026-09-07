@@ -64,7 +64,7 @@ The bridge gives the foreman these tools.
 | `get_session` | One session's full status row. |
 | `spawn_session` | Start a crew session. Name it; optionally set cwd, profile, labels, and an initial input line. |
 | `rename_session` | Set a session's name, note, or labels. |
-| `send_input` | Type into a session and press Enter — a message to its agent, an answer, or a command. |
+| `send_input` | Type into a session and press Enter — a message to its agent, an answer, or a command. Refuses a text over 1 KiB while a cooked reader holds the terminal; `force:true` overrides. |
 | `list_commands` | The commands a session ran, with exit codes. |
 | `wait_for_command` | Block until a command finishes, then read its exit code. |
 | `read_output` | Read a command's captured output. |
@@ -159,6 +159,17 @@ A foreman runs one loop.
      a prompt across calls to work around a loss: the split was the
      workaround the daemon now does for you, and a split prompt is two
      pastes.
+
+     A text over 1 KiB is refused with a `cooked reader` error while the
+     terminal is in cooked mode: a `sleep`, a program that has not yet
+     taken raw mode (`claude` takes about a second after it starts), or a
+     shell in a here-doc. The kernel keeps 1024 bytes of a cooked line and
+     drops the rest, so the text could not arrive whole, and the daemon
+     types nothing. The error names what holds the terminal
+     (`foregroundProgram`). Run "Read before you type" again: when the
+     prompt is at the cursor, `claude` reads raw keys and the same call
+     goes through. Set `force:true` only when you know the reader takes
+     lines under 1 KiB as they come, such as a shell fed a script.
    - `note` — a crew agent reported progress ("plan ready for review"). Relay
      it.
    - `completed` — verify the work, then move the session to review or end it.
@@ -229,6 +240,10 @@ Do this before every `send_input` into a pane that runs an interactive agent.
      or `needs-input`, then read the screen again.
 4. Send the message with `send_input`. Send one dialog keystroke per call,
    and read the screen between keystrokes.
+   A `cooked reader` error means the program in the pane has not taken raw mode
+   yet (the error names it in `foregroundProgram`), a text over 1 KiB could not
+   arrive whole, and nothing was typed. Go back to step 1. Set `force:true`
+   only for a shell that reads lines under 1 KiB as they come.
 5. Call `read_screen` again. Confirm the text you typed now appears above the
    input box as `❯ <your text>` and the box is empty again. When the text
    still sits in the box, press Enter alone (`send_input text=""`) and read

@@ -116,7 +116,9 @@ The contract has three routes.
 
 - **Write.** `POST /api/sessions/<id>/input` types raw bytes into the shell. The caller
   includes its own `\n`, and sends `\x03` for `Ctrl-C`. This route needs
-  `--agent-control`. It is capped at 64 KiB (`maxInputBytes`).
+  `--agent-control`. It is capped at 64 KiB (`maxInputBytes`). A body over 1 KiB is
+  refused with 409 while a cooked reader holds the terminal, because the kernel cuts a
+  canonical-mode line there; `?force=1` overrides (ADR 0003).
 - **Wait.** `GET /api/sessions/<id>/commands/<n>/wait` holds the response until command
   `n` finishes (default 30 s, max 300 s, `commandWaitMaxSeconds`). It is read-only. A
   timeout is not an error; it answers `{running: true, timedOut: true}`, and the caller

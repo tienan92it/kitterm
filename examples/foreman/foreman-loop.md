@@ -44,6 +44,10 @@ Do this before every `send_input` into a pane that runs an interactive agent.
      `needs-input`, then read the screen again.
 4. Send the message with `send_input`. Send one dialog keystroke per call, and
    read the screen between keystrokes.
+   A `cooked reader` error means the program in the pane has not taken raw mode
+   yet (the error names it in `foregroundProgram`), a text over 1 KiB could not
+   arrive whole, and nothing was typed. Go back to step 1. Set `force:true`
+   only for a shell that reads lines under 1 KiB as they come.
 5. Call `read_screen` again. Confirm the text you typed now appears above the
    input box as `❯ <your text>` and the box is empty again. When the text
    still sits in the box, press Enter alone (`send_input text=""`) and read
