@@ -136,6 +136,7 @@ export class SettingsPanel {
         <p class="settings-note">Opens the focused pane read-only for whoever you send it to.</p>
       </div>
       <div class="settings-share">
+        <a class="settings-link" href="/sessions" target="_blank" rel="noopener" title="Every session, grouped by project, with what needs you first">▤ All sessions</a>
         <button type="button" id="settings-help">? Shortcuts &amp; gestures</button>
       </div>
       <div class="settings-about" id="settings-about" hidden>
