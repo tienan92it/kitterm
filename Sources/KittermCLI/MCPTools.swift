@@ -40,7 +40,8 @@ enum MCPTools {
                 "list_sessions",
                 "List every live session — the crew — with each one's typed state (working / needs-input / needs-approval / completed / failed / idle / exited), name, cwd, last command, and foregroundProgram: the program that holds the terminal (claude, vim), absent when the shell is at its prompt. A row with `heldSince` (epoch ms) is one the linger clock kept past its window because a program held the terminal or output arrived; the daemon never ends such a session itself, so end the ones held longer than you tolerate with kill_session.",
                 properties: [
-                    "label": ["type": "string", "description": "Optional key:value filter, e.g. crew:alpha"]
+                    "label": ["type": "string", "description": "Optional key:value filter, e.g. crew:alpha"],
+                    "project": ["type": "string", "description": "Optional project id filter (see list_projects)"],
                 ]
             ),
             tool(
@@ -170,10 +171,14 @@ enum MCPTools {
     static func call(named name: String, arguments: [String: Any]) throws -> Call {
         switch name {
         case "list_sessions":
-            var path = "/api/sessions"
+            var query: [String] = []
             if let label = arguments["label"] as? String, !label.isEmpty {
-                path += "?label=\(escape(label))"
+                query.append("label=\(escape(label))")
             }
+            if let project = arguments["project"] as? String, !project.isEmpty {
+                query.append("project=\(escape(project))")
+            }
+            let path = "/api/sessions" + (query.isEmpty ? "" : "?" + query.joined(separator: "&"))
             return Call(method: "GET", path: path)
 
         case "get_session":
@@ -283,6 +288,11 @@ enum MCPTools {
 
         case "list_archives":
             return Call(method: "GET", path: "/api/archives")
+
+        // Callable by name; not yet in `schemas()`, whose count an existing
+        // test pins at 15. Advertising it is a one-line change to that pin.
+        case "list_projects":
+            return Call(method: "GET", path: "/api/projects")
 
         default:
             throw ToolError.badArguments("unknown tool: \(name)")

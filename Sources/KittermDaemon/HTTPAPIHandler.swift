@@ -37,6 +37,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// in a handler built without a server behind it, where the route
     /// answers 503.
     private let takeover: TakeoverController?
+    /// Registered projects and the cwd resolution behind the `project` row
+    /// field, `GET /api/projects`, and the `?project=` filters.
+    private let projects: ProjectStore
     private var pendingHead: HTTPRequestHead?
     /// Accumulated request body, capped at `maxInputBytes`; only the input
     /// route reads it. `bodyOverflow` trips once the cap is exceeded so a large
@@ -59,9 +62,11 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         tlsPort: Int? = nil,
         staticRoot: URL? = StaticFileServer.cachedRoot,
         webSocketUpgrader: (any HTTPServerProtocolUpgrader)? = nil,
-        takeover: TakeoverController? = nil
+        takeover: TakeoverController? = nil,
+        projects: ProjectStore = .shared
     ) {
         self.registry = registry
+        self.projects = projects
         self.policy = policy
         self.port = port
         self.agentControl = agentControl
@@ -313,6 +318,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             )
         case (.GET, "/api/sessions"):
             serveSessions(head: head, context: context)
+        case (.GET, "/api/projects"):
+            serveProjects(head: head, context: context)
         case (.POST, "/api/sessions"):
             serveSpawn(
                 body: body,
@@ -575,6 +582,13 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             )
             return
         }
+        // `?project=<id>` narrows it to one project. An unknown id answers
+        // an empty list; a malformed one is a 400 for the same reason.
+        let projectFilter = DaemonServer.queryValue("project", fromRequestURI: head.uri)
+        if let projectFilter, !ProjectStore.isValidID(projectFilter) {
+            badRequest("project filter must be a project id", head: head, context: context)
+            return
+        }
         let promise = context.eventLoop.makePromise(of: [SessionRegistry.SessionSummary].self)
         promise.completeWithTask {
             await self.registry.summaries()
@@ -584,10 +598,17 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             if let filter {
                 summaries = summaries.filter { SessionLabels($0.labels).matches(filter: filter) }
             }
+            if let projectFilter {
+                summaries = summaries.filter { self.project(of: $0)?.id == projectFilter }
+            }
             // The approval store is loop-confined; this whenComplete runs on the loop.
             let approvalSessions = Set(self.approvals.snapshot().compactMap(\.sessionID))
             let items: [[String: Any]] = summaries.map { summary in
-                Self.sessionItem(summary, pendingApproval: approvalSessions.contains(summary.id))
+                Self.sessionItem(
+                    summary,
+                    pendingApproval: approvalSessions.contains(summary.id),
+                    project: self.project(of: summary)
+                )
             }
             let body: String
             if let data = try? JSONSerialization.data(withJSONObject: ["ok": true, "sessions": items]),
@@ -606,6 +627,12 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         }
     }
 
+    /// The project a session row reports: its `project:` label first, then
+    /// the cwd resolution the registry made.
+    private func project(of summary: SessionRegistry.SessionSummary) -> ResolvedProject? {
+        projects.project(labels: summary.labels, resolved: summary.project)
+    }
+
     /// One session's listing row. Shared by the list and the single-session
     /// route so the two can never drift apart. `pendingApproval` (whether a
     /// tool call is blocked on a human) is joined here, beside the session's
@@ -613,7 +640,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// correlating three endpoints itself.
     private static func sessionItem(
         _ summary: SessionRegistry.SessionSummary,
-        pendingApproval: Bool
+        pendingApproval: Bool,
+        project: ResolvedProject?
     ) -> [String: Any] {
         let agent = summary.agentStatus
         let derived = DerivedSessionState.derive(from: summary.marks)
@@ -637,7 +665,13 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             "marks": summary.marks.count,
             "cols": Int(summary.cols),
             "rows": Int(summary.rows),
+            // A program made this session: labels or `POST /api/sessions`.
+            // The fleet view groups crews under their project by it.
+            "orchestrated": summary.orchestrated,
         ]
+        // The project the cwd resolved to, or the one a `project:` label
+        // named. Absent outside every project.
+        if let project { item["project"] = project.rowJSON }
         if let command = derived.lastCommand { item["lastCommand"] = command }
         if let exit = derived.lastExit { item["lastExit"] = exit }
         if let profile = summary.profile { item["profile"] = profile }
@@ -703,7 +737,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 return
             }
             let pendingApproval = self.approvals.snapshot().contains { $0.sessionID == summary.id }
-            var payload = Self.sessionItem(summary, pendingApproval: pendingApproval)
+            var payload = Self.sessionItem(
+                summary, pendingApproval: pendingApproval, project: self.project(of: summary)
+            )
             payload["ok"] = true
             let body: String
             if let data = try? JSONSerialization.data(withJSONObject: payload),
@@ -1215,16 +1251,141 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     private func serveArchiveList(head: HTTPRequestHead, context: ChannelHandlerContext) {
         // Directory scan + a file read per archive: off the loop, like every
         // other file I/O, then hop back with the encoded bytes.
+        // `?project=<id>`: the same rule as the session list — an unknown
+        // id is an empty list, a malformed one a 400.
+        let projectFilter = DaemonServer.queryValue("project", fromRequestURI: head.uri)
+        if let projectFilter, !ProjectStore.isValidID(projectFilter) {
+            badRequest("project filter must be a project id", head: head, context: context)
+            return
+        }
         let loop = context.eventLoop
         let bound = NIOLoopBound(context, eventLoop: loop)
         let promise = loop.makePromise(of: Data.self)
-        SessionArchive.list { promise.succeed($0) }
+        let projects = self.projects
+        // Each record gets its `project` (label, then the archived cwd) on
+        // the archive queue, where the `.git` walk belongs with the file reads.
+        SessionArchive.list(
+            transform: { record in
+                let project = projects.project(forArchive: record)
+                if let projectFilter, project?.id != projectFilter { return nil }
+                var record = record
+                if let project { record["project"] = project.rowJSON }
+                return record
+            },
+            completion: { promise.succeed($0) }
+        )
         promise.futureResult.whenSuccess { data in
             self.writeJSON(
                 status: .ok, body: String(decoding: data, as: UTF8.self),
                 context: bound.value, version: head.version, keepAlive: head.isKeepAlive
             )
         }
+    }
+
+    /// `GET /api/projects` — every project the daemon has seen: the
+    /// registered ones (`~/.kitterm/projects.json`, with no session too) and
+    /// the ones discovered from a live session's or an archive's cwd. Each
+    /// carries its live session counts by `mergedState`, its pending
+    /// approvals, its newest `lastOutputAt`, and its archive count. The
+    /// fleet view builds its project cards from this one call. Read-only,
+    /// any grade.
+    private func serveProjects(head: HTTPRequestHead, context: ChannelHandlerContext) {
+        let loop = context.eventLoop
+        let bound = NIOLoopBound(context, eventLoop: loop)
+        let projects = self.projects
+        let summariesPromise = loop.makePromise(of: [SessionRegistry.SessionSummary].self)
+        summariesPromise.completeWithTask {
+            await self.registry.summaries()
+        }
+        summariesPromise.futureResult.whenComplete { result in
+            let summaries = (try? result.get()) ?? []
+            // The archive counts come from the archive queue; the join
+            // happens back on the loop, where the approval store lives.
+            let countsPromise = loop.makePromise(of: [String: Int].self)
+            SessionArchive.counts(by: { projects.project(forArchive: $0)?.id }) { countsPromise.succeed($0) }
+            countsPromise.futureResult.whenSuccess { archiveCounts in
+                let context = bound.value
+                let approvalSessions = Set(self.approvals.snapshot().compactMap(\.sessionID))
+                let body = Self.projectsBody(
+                    registered: projects.registered(),
+                    summaries: summaries.map { ($0, self.project(of: $0)) },
+                    approvalSessions: approvalSessions,
+                    archiveCounts: archiveCounts
+                )
+                self.writeJSON(
+                    status: .ok, body: body,
+                    context: context, version: head.version, keepAlive: head.isKeepAlive
+                )
+            }
+        }
+    }
+
+    /// One aggregate per project id, sorted by name then id.
+    private static func projectsBody(
+        registered: [Project],
+        summaries: [(SessionRegistry.SessionSummary, ResolvedProject?)],
+        approvalSessions: Set<UUID>,
+        archiveCounts: [String: Int]
+    ) -> String {
+        struct Aggregate {
+            var project: ResolvedProject
+            var states: [MergedSessionState: Int] = [:]
+            var total = 0
+            var pendingApprovals = 0
+            var lastOutputAt: Date?
+            var archives = 0
+        }
+        var aggregates: [String: Aggregate] = [:]
+        for project in registered {
+            aggregates[project.id] = Aggregate(project: ResolvedProject(project))
+        }
+        for (summary, project) in summaries {
+            guard let project else { continue }
+            var aggregate = aggregates[project.id] ?? Aggregate(project: project)
+            let pendingApproval = approvalSessions.contains(summary.id)
+            let merged = MergedSessionState.merge(
+                derived: DerivedSessionState.derive(from: summary.marks),
+                agent: summary.agentStatus,
+                pendingApproval: pendingApproval,
+                exited: summary.exited
+            )
+            aggregate.states[merged, default: 0] += 1
+            aggregate.total += 1
+            if pendingApproval { aggregate.pendingApprovals += 1 }
+            if let at = summary.lastOutputAt, at > (aggregate.lastOutputAt ?? .distantPast) {
+                aggregate.lastOutputAt = at
+            }
+            aggregates[project.id] = aggregate
+        }
+        for (id, count) in archiveCounts {
+            // An archive of a project no live session is in still names it;
+            // the record's own project is the best the listing can say.
+            var aggregate = aggregates[id] ?? Aggregate(project: ResolvedProject(
+                id: id, name: id, root: nil, registered: false, knowledge: ProjectStore.defaultKnowledge
+            ))
+            aggregate.archives += count
+            aggregates[id] = aggregate
+        }
+        let items: [[String: Any]] = aggregates.values
+            .sorted { ($0.project.name.lowercased(), $0.project.id) < ($1.project.name.lowercased(), $1.project.id) }
+            .map { aggregate in
+                var sessions: [String: Any] = ["total": aggregate.total]
+                for state in [MergedSessionState.working, .needsApproval, .needsInput, .completed, .failed, .idle, .exited, .unknown] {
+                    sessions[state.rawValue] = aggregate.states[state] ?? 0
+                }
+                var item = aggregate.project.rowJSON
+                item["knowledge"] = aggregate.project.knowledge
+                item["sessions"] = sessions
+                item["pendingApprovals"] = aggregate.pendingApprovals
+                item["archives"] = aggregate.archives
+                if let at = aggregate.lastOutputAt {
+                    item["lastOutputAt"] = Int(at.timeIntervalSince1970 * 1000)
+                }
+                return item
+            }
+        return (try? JSONSerialization.data(withJSONObject: ["ok": true, "projects": items]))
+            .flatMap { String(data: $0, encoding: .utf8) }
+            ?? #"{"ok":false,"error":"encoding failed"}"#
     }
 
     /// `GET /api/archives/<uuid>` — one archive's full metadata.

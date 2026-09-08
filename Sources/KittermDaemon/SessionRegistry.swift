@@ -195,6 +195,12 @@ public actor SessionRegistry {
         /// the tty. Read from the kernel when the row is built, never tracked
         /// on the output path.
         public let foregroundProgram: String?
+        /// The project the cwd resolved to (`ProjectStore`), before any
+        /// `project:` label is applied. Nil outside every project.
+        public let project: ResolvedProject?
+        /// A program created this session (labels or `POST /api/sessions`),
+        /// so the registry holds it for the orchestrated linger window.
+        public let orchestrated: Bool
     }
 
     /// Every live session, for `/api/sessions`. Ordered by id for stability.
@@ -211,10 +217,11 @@ public actor SessionRegistry {
 
     private func makeSummary(id: UUID, session: PtySession) -> SessionSummary {
         let size = session.paneSize
+        let cwd = session.liveCwd
         return SessionSummary(
             id: id,
             shell: session.shellPath,
-            cwd: session.liveCwd,
+            cwd: cwd,
             pid: session.pid,
             attached: attachedIDs.contains(id),
             observerCount: session.observerCount,
@@ -230,7 +237,9 @@ public actor SessionRegistry {
             cols: size.cols,
             rows: size.rows,
             heldSince: heldSince[id],
-            foregroundProgram: session.foregroundProgram
+            foregroundProgram: session.foregroundProgram,
+            project: session.project(forCwd: cwd),
+            orchestrated: session.isOrchestrated
         )
     }
 

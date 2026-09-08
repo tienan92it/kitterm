@@ -142,6 +142,12 @@ public final class PtySession: @unchecked Sendable {
     private var onCwd: ((String) -> Void)?
     private var lastPolledCwd: String?
     private var cwdTask: RepeatedTask?
+    /// The project the cwd resolved to (`ProjectStore.resolve`), with the
+    /// cwd and the store generation it was resolved under. Resolved again
+    /// only when either moves (`project(forCwd:)`), never on the byte path.
+    private var projectStorage: ResolvedProject?
+    private var projectCwd: String?
+    private var projectGeneration = -1
 
     public struct ObserverHandlers {
         let onOutput: (Data) -> Void
@@ -1343,7 +1349,44 @@ public final class PtySession: @unchecked Sendable {
             lastPolledCwd = path
             return onCwd
         }
-        callback?(path)
+        guard let callback else { return }
+        // The cwd moved, so the project may have: resolve it here, on the
+        // poll, with the lock released.
+        _ = project(forCwd: path)
+        callback(path)
+    }
+
+    // MARK: - Project
+
+    /// The project last resolved for this session, or nil before the first
+    /// resolution and outside every project. The cached fact; readers on
+    /// other threads take it without a resolution.
+    public var project: ResolvedProject? {
+        stateLock.withLock { projectStorage }
+    }
+
+    /// The project for `cwd`, resolved through `ProjectStore.shared` only
+    /// when `cwd` differs from the one the cached project was resolved for
+    /// or the projects file changed since. The cwd poll calls this on a
+    /// change while a controller is attached; the listing row calls it with
+    /// the kernel's cwd, which covers a detached session the poll does not
+    /// run for. A resolution is a bounded run of `stat` calls, never on the
+    /// output path.
+    public func project(forCwd cwd: String) -> ResolvedProject? {
+        let store = ProjectStore.shared
+        let generation = store.generation
+        let cached: ResolvedProject?? = stateLock.withLock {
+            guard projectCwd == cwd, projectGeneration == generation else { return nil }
+            return .some(projectStorage)
+        }
+        if let cached { return cached }
+        let resolved = store.resolve(cwd: cwd)
+        stateLock.withLock {
+            projectStorage = resolved
+            projectCwd = cwd
+            projectGeneration = generation
+        }
+        return resolved
     }
 
     public func pauseReading() {

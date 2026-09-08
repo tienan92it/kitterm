@@ -65,6 +65,8 @@ enum KittermMain {
                 print(AgentHooks.settingsJSON(port: readPort() ?? KittermConstants.defaultPort))
             case "token":
                 try tokenCommand(args.dropFirst())
+            case "project":
+                try ProjectCommand.run(args.dropFirst())
             case "identity":
                 try SigningIdentity.command(args.dropFirst())
             case "version", "--version", "-v":
@@ -179,6 +181,7 @@ enum KittermMain {
               kitterm hooks           # Claude Code hook config for approvals  # print the OSC 133/633 snippet
               kitterm mcp             # stdio MCP server: the foreman toolset
               kitterm token create <name> [--watch] | list | revoke <name>
+              kitterm project add <path> [--name NAME] [--knowledge DIR] | list | remove <id>
               kitterm identity [status|setup|sign]
               kitterm version
 
@@ -227,6 +230,14 @@ enum KittermMain {
             send input, wait on the event feed, post notes. It needs
             --agent-control on the daemon for the tools that drive shells.
             Register it once: claude mcp add kitterm -- kitterm mcp
+
+            project registers a directory in ~/.kitterm/projects.json. The
+            daemon reports each session's project from its cwd: a registered
+            root first, else the nearest .git (a worktree counts as its main
+            checkout). The id is a slug of the folder name; --knowledge names
+            the goal package directory (default docs/goals). /sessions and
+            GET /api/projects group sessions by it; a running daemon picks
+            up the file without a restart.
 
             Session profiles (~/.kitterm/profiles.json) name connect commands
             run at session start — open /?profile=<name> or use /sessions:
