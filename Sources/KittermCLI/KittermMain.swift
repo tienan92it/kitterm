@@ -67,6 +67,8 @@ enum KittermMain {
                 try tokenCommand(args.dropFirst())
             case "project":
                 try ProjectCommand.run(args.dropFirst())
+            case "skills":
+                try SkillsCommand.run(args.dropFirst())
             case "identity":
                 try SigningIdentity.command(args.dropFirst())
             case "version", "--version", "-v":
@@ -184,6 +186,8 @@ enum KittermMain {
               kitterm project add <path> [--name NAME] [--knowledge DIR] | list | remove <id>
               kitterm project init <path> [--name NAME] [--knowledge DIR]
                                       # write the goal package templates, then add
+              kitterm skills install [--dir DIR] | list
+                                      # write the foreman skills into ~/.claude/skills
               kitterm identity [status|setup|sign]
               kitterm version
 
@@ -244,6 +248,12 @@ enum KittermMain {
             rounds/, the templates under examples/goals/) into the knowledge
             directory, refuses to overwrite a file that exists, then
             registers the project the way add does.
+
+            skills install writes the reference foreman skills under
+            examples/foreman/ (foreman-loop, review-crew, triage) to
+            <dir>/<name>/SKILL.md, default ~/.claude/skills, and prints one
+            line per file: wrote, updated, or unchanged. skills list prints
+            each skill's name and description.
 
             Session profiles (~/.kitterm/profiles.json) name connect commands
             run at session start — open /?profile=<name> or use /sessions:
