@@ -265,6 +265,25 @@ export function tally(rows: ModelRow[]): Partial<Record<MergedState, number>> {
   return counts;
 }
 
+/** The accessible name of one row action, so a button list does not read
+ * "Kill, Kill, Kill": the verb and the row's headline. */
+export function actionName(action: "Rename" | "Name" | "Archive" | "Kill" | "Actions for", headline: string): string {
+  return `${action} ${headline}`;
+}
+
+/** The accessible name of one approval answer: the verb, the tool, and the
+ * session it runs in, so two Allow buttons read apart. */
+export function approvalName(decision: "Allow" | "Deny", tool: string, who: string): string {
+  return who ? `${decision} ${tool} in ${who}` : `${decision} ${tool}`;
+}
+
+/** What the polite live region says when the count of items that need the
+ * human changes. */
+export function needsYouMessage(count: number): string {
+  if (count === 0) return "Nothing needs you";
+  return count === 1 ? "1 item needs you" : `${count} items need you`;
+}
+
 /** The distinct crew label values across the rows, in name order. */
 export function crews(rows: ModelRow[]): string[] {
   const set = new Set<string>();

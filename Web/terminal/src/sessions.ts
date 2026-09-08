@@ -3,10 +3,13 @@ import "./sessions.css";
 import { resolveFontFamily } from "./fonts";
 import { summarize, waitedLabel } from "./approval-format";
 import {
+  actionName,
+  approvalName,
   attention,
   crews as crewsOf,
   filter as applyFilter,
   group,
+  needsYouMessage,
   NO_PROJECT,
   pickForeman,
   stateOf,
@@ -248,6 +251,15 @@ filters.append(search, chips);
 const noticeLine = document.createElement("p");
 noticeLine.className = "notice";
 noticeLine.hidden = true;
+// A failed action is announced at once; the line is built once, so the
+// role is set once.
+noticeLine.setAttribute("role", "alert");
+/** A visually hidden polite announcement of how many items need the human.
+ * The strip itself repaints too often to be a live region. */
+const announce = document.createElement("p");
+announce.className = "sr-only";
+announce.setAttribute("aria-live", "polite");
+let announcedCount = -1;
 const cards = document.createElement("div");
 cards.className = "cards";
 let skeletonMounted = false;
@@ -255,7 +267,7 @@ let skeletonMounted = false;
 function mountSkeleton(): void {
   if (!root || skeletonMounted) return;
   skeletonMounted = true;
-  root.replaceChildren(header(), strip, pinned, filters, noticeLine, cards);
+  root.replaceChildren(header(), announce, strip, pinned, filters, noticeLine, cards);
 }
 
 function render(): void {
@@ -302,6 +314,10 @@ function paint(): void {
   // or home-screen label says "come back" without a push notification.
   const count = items.filter((item) => item.kind !== "failed").length;
   document.title = count > 0 ? `(${count}) kitterm — sessions` : "kitterm — sessions";
+  if (count !== announcedCount) {
+    announcedCount = count;
+    announce.textContent = needsYouMessage(count);
+  }
   root.querySelector(".count")!.textContent = String(sessions.length);
 
   strip.replaceChildren(...stripContent(items, foreman !== null));
@@ -451,6 +467,8 @@ function approvalContent(approval: Approval, row: SessionRow | null): DocumentFr
     const allow = button("Allow", "approval-allow", () => void decide(approval.id, "allow"));
     deny.dataset.focus = `approval:${approval.id}:deny`;
     allow.dataset.focus = `approval:${approval.id}:allow`;
+    deny.setAttribute("aria-label", approvalName("Deny", approval.tool, who.textContent ?? ""));
+    allow.setAttribute("aria-label", approvalName("Allow", approval.tool, who.textContent ?? ""));
     actions.append(deny, allow);
     fragment.append(actions);
   }
@@ -918,7 +936,7 @@ function rowActions(s: SessionRow): HTMLElement {
     openMenu = open ? s.id : null;
   };
   const more = button("⋯", "more", () => setOpen(!menu.classList.contains("open")));
-  more.setAttribute("aria-label", "Session actions");
+  more.setAttribute("aria-label", actionName("Actions for", headlineOf(s)));
   more.setAttribute("aria-haspopup", "true");
   more.setAttribute("aria-controls", menu.id);
   more.setAttribute("aria-expanded", isOpen ? "true" : "false");
@@ -927,7 +945,12 @@ function rowActions(s: SessionRow): HTMLElement {
   // before the item's own dialog opens, so the poll that follows the dialog
   // finds ⋯ by its key. On a wide screen there is no menu to close and the
   // item keeps focus itself.
-  const item = (label: string, className: string, key: string, action: () => void): HTMLButtonElement => {
+  const item = (
+    label: "Rename" | "Name" | "Archive" | "Kill",
+    className: string,
+    key: string,
+    action: () => void,
+  ): HTMLButtonElement => {
     const b = button(label, className, () => {
       if (menu.classList.contains("open")) {
         setOpen(false);
@@ -936,6 +959,7 @@ function rowActions(s: SessionRow): HTMLElement {
       action();
     });
     b.dataset.focus = `${s.id}:${key}`;
+    b.setAttribute("aria-label", actionName(label, headlineOf(s)));
     return b;
   };
   menu.append(
