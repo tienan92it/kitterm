@@ -32,6 +32,14 @@ final class ProjectStoreTests: XCTestCase {
         return url.path
     }
 
+    /// A checkout at `path` whose `.git` is a file naming `gitdir`, as
+    /// `git worktree add` and a submodule checkout write it.
+    private func worktree(_ path: String, gitdir: String) throws -> String {
+        let checkout = try dir(path)
+        try "gitdir: \(gitdir)\n".write(toFile: checkout + "/.git", atomically: true, encoding: .utf8)
+        return checkout
+    }
+
     private func register(_ projects: [Project]) throws {
         try ProjectStore.save(projects, to: file)
     }
@@ -84,10 +92,7 @@ final class ProjectStoreTests: XCTestCase {
     func testWorktreeResolvesToTheMainCheckout() throws {
         let main = try dir("main")
         _ = try dir("main/.git/worktrees/feature")
-        let worktree = try dir("elsewhere/feature")
-        try "gitdir: \(main)/.git/worktrees/feature\n".write(
-            toFile: worktree + "/.git", atomically: true, encoding: .utf8
-        )
+        let worktree = try worktree("elsewhere/feature", gitdir: "\(main)/.git/worktrees/feature")
 
         let resolved = store.resolve(cwd: worktree + "/Sources")
         XCTAssertEqual(resolved?.root, main)
@@ -99,10 +104,7 @@ final class ProjectStoreTests: XCTestCase {
     func testRelativeGitdirResolvesAgainstTheWorktree() throws {
         let main = try dir("host")
         _ = try dir("host/.git/modules/lib")
-        let module = try dir("host-modules/lib")
-        try "gitdir: ../../host/.git/modules/lib".write(
-            toFile: module + "/.git", atomically: true, encoding: .utf8
-        )
+        let module = try worktree("host-modules/lib", gitdir: "../../host/.git/modules/lib")
         XCTAssertEqual(store.resolve(cwd: module)?.root, main)
     }
 
@@ -110,10 +112,7 @@ final class ProjectStoreTests: XCTestCase {
     func testWorktreeOfARegisteredProjectIsRegistered() throws {
         let main = try dir("kitterm")
         _ = try dir("kitterm/.git/worktrees/wt")
-        let worktree = try dir("wt")
-        try "gitdir: \(main)/.git/worktrees/wt\n".write(
-            toFile: worktree + "/.git", atomically: true, encoding: .utf8
-        )
+        let worktree = try worktree("wt", gitdir: "\(main)/.git/worktrees/wt")
         try register([Project(id: "kitterm", name: "kitterm", root: main)])
 
         let resolved = store.resolve(cwd: worktree)
