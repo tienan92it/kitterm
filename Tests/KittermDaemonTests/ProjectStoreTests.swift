@@ -146,6 +146,36 @@ final class ProjectStoreTests: XCTestCase {
         XCTAssertEqual(store.resolve(cwd: first)?.id, "app", "a root keeps its id")
     }
 
+    // MARK: - cache
+
+    /// A cwd resolved once answers from the cache, nil included, until the
+    /// file changes; the reload clears it, so a new registration is seen.
+    func testRepeatedCwdAnswersFromTheCache() throws {
+        let repo = try dir("repo")
+        _ = try dir("repo/.git")
+        let inside = try dir("repo/src")
+        let plain = try dir("plain")
+        XCTAssertEqual(store.cacheHits, 0)
+
+        XCTAssertEqual(store.resolve(cwd: inside)?.id, "repo")
+        XCTAssertEqual(store.cacheHits, 0, "the first resolution walks")
+        XCTAssertEqual(store.resolve(cwd: inside)?.id, "repo")
+        XCTAssertEqual(store.resolve(cwd: inside + "/")?.id, "repo", "a trailing slash is the same cwd")
+        XCTAssertEqual(store.cacheHits, 2)
+
+        XCTAssertNil(store.resolve(cwd: plain))
+        XCTAssertNil(store.resolve(cwd: plain))
+        XCTAssertEqual(store.cacheHits, 3, "a miss is cached too")
+
+        // Registering the repository changes the answer, so the reload
+        // must drop the cached one.
+        try register([Project(id: "reg", name: "Reg", root: repo)])
+        XCTAssertEqual(store.resolve(cwd: inside)?.id, "reg")
+        XCTAssertEqual(store.cacheHits, 3, "the reload cleared the cache")
+        XCTAssertEqual(store.resolve(cwd: inside)?.id, "reg")
+        XCTAssertEqual(store.cacheHits, 4)
+    }
+
     // MARK: - label override
 
     func testProjectLabelOverridesTheResolution() throws {

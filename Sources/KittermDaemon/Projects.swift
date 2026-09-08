@@ -86,6 +86,11 @@ public final class ProjectStore: @unchecked Sendable {
     /// Distinct discovered roots the store remembers, so their ids stay
     /// unique within one daemon run.
     static let maxDiscovered = 512
+    /// Resolutions the store remembers by cwd. The archive list resolves
+    /// every record's cwd on every dashboard tick; with the cache a repeated
+    /// cwd costs one dictionary read instead of a `.git` walk. Past the
+    /// bound the cache starts over.
+    static let maxCached = 1024
 
     private let lock = NIOLock()
     private let fixedURL: URL?
@@ -95,8 +100,12 @@ public final class ProjectStore: @unchecked Sendable {
     /// Discovered roots and the id each was given, so two repositories with
     /// the same folder name do not share an id within a run.
     private var discovered: [String: String] = [:]
+    /// Resolutions by normalized cwd, nil included, for the generation the
+    /// file is at. Cleared with `discovered` on a reload.
+    private var resolved: [String: ResolvedProject?] = [:]
     private var generationStorage = 0
     private var eventLoopCallsStorage = 0
+    private var cacheHitsStorage = 0
 
     /// `url` nil reads `DaemonPaths.projectsFile` at each check, so the
     /// shared store follows `KITTERM_STATE_DIR`.
@@ -110,6 +119,11 @@ public final class ProjectStore: @unchecked Sendable {
     /// the type comment.
     public var eventLoopCalls: Int {
         lock.withLock { eventLoopCallsStorage }
+    }
+
+    /// Resolutions answered from the cache, for a test.
+    public var cacheHits: Int {
+        lock.withLock { cacheHitsStorage }
     }
 
     /// Every lock take goes through here, so a take on an event loop is
@@ -144,11 +158,32 @@ public final class ProjectStore: @unchecked Sendable {
     }
 
     /// The project for a working directory. See the type comment for the
-    /// order. The `.git` walk is a bounded run of `stat` calls plus one
-    /// small file read for a worktree; it runs with the lock released.
+    /// order. A cwd resolved before under the same generation of the file
+    /// answers from the cache under one lock take. Otherwise the `.git`
+    /// walk, a bounded run of `stat` calls plus one small file read for a
+    /// worktree, runs with the lock released, and the result is cached
+    /// unless the file changed meanwhile.
     public func resolve(cwd: String) -> ResolvedProject? {
         let cwd = Self.normalize(cwd)
-        let projects = registered()
+        let (registered, generation, cached): ([Project], Int, ResolvedProject??) = withStore {
+            reloadIfChangedLocked()
+            if let hit = resolved[cwd] {
+                cacheHitsStorage += 1
+                return (projects, generationStorage, .some(hit))
+            }
+            return (projects, generationStorage, nil)
+        }
+        if let cached { return cached }
+        let result = resolveUncached(cwd: cwd, projects: registered)
+        withStore {
+            guard generationStorage == generation else { return }
+            if resolved.count >= Self.maxCached { resolved = [:] }
+            resolved[cwd] = result
+        }
+        return result
+    }
+
+    private func resolveUncached(cwd: String, projects: [Project]) -> ResolvedProject? {
         if let best = projects.filter({ Self.isPrefix($0.root, of: cwd) }).max(by: { $0.root.count < $1.root.count }) {
             return ResolvedProject(best)
         }
@@ -194,6 +229,7 @@ public final class ProjectStore: @unchecked Sendable {
         loadedURL = url
         projects = mtime == nil ? [] : Self.load(from: url)
         discovered = [:]
+        resolved = [:]
         generationStorage += 1
     }
 
