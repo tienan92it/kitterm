@@ -951,11 +951,22 @@ body.pane-dragging .pane-inner {
   border-top: 1px solid var(--ui-surface-2);
 }
 
-.settings-share button + button {
+.settings-share button + button,
+.settings-share a + button {
   margin-top: 6px;
 }
 
-.settings-share button {
+/* The fleet view is a page, so its entry is a link that looks like the
+   buttons beside it. */
+.settings-share a {
+  display: block;
+  box-sizing: border-box;
+  text-align: center;
+  text-decoration: none;
+}
+
+.settings-share button,
+.settings-share a {
   width: 100%;
   padding: 7px 10px;
   border: 1px solid var(--ui-border);
@@ -966,7 +977,8 @@ body.pane-dragging .pane-inner {
   cursor: pointer;
 }
 
-.settings-share button:hover {
+.settings-share button:hover,
+.settings-share a:hover {
   background: var(--ui-surface-2);
   border-color: var(--ui-accent);
 }
