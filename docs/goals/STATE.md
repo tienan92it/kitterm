@@ -1,16 +1,14 @@
 # STATE: projects-and-knowledge
 
-- Status: active
-- Round: 2 of 3 in this budget (second budget; rounds 4 and 5 done; round 6 open)
-- Rounds total: 5
-- Last floor: green (2026-09-08, round 5 after)
+- Status: waiting
+- Round: 3 of 3 in this budget (second budget spent: rounds 4, 5, 6)
+- Rounds total: 6
+- Last floor: green (2026-09-08, round 6 after)
 - Updated: 2026-09-08, after the v0.23.0 release
 
 ## Queue
 
-1. `knowledge-on-dashboard` (capability 5): round 6, running, branch
-   `goals/knowledge-on-dashboard` off `main`
-2. `dogfood` (capability 6)
+1. `dogfood` (capability 6)
 
 ## Failures
 
@@ -68,6 +66,11 @@ read-only. Reports under the job's `review/` directory.
   run a review gate on the stack before a push. See `rounds/005.md`.
 - `tokens.css`: raise the `--ui-text-muted` mix; under 4.5:1 on 10 of 16
   themes. Outside this goal's diff.
+- `LOOP.md` Round record and state shape: the `- Status:` and `- Round: N
+  of M` lines and the `## Next action` heading of `STATE.md` are an
+  interface since round 6; the summary route parses them. See
+  `rounds/006.md`.
+- Prune the decided items from this list; the card counts every bullet.
 - Decided 2026-09-08 by "continue" with the plan's recommendation: the
   knowledge route answers at watch grade, the same class as a cwd and as
   `GET /api/projects`. Record the choice in AGENTS.md "Security".
@@ -84,6 +87,9 @@ read-only. Reports under the job's `review/` directory.
   `97fa22e`. See `rounds/004.md`.
 - `review-fixes`: round 5, `goals/review-fixes` at `f772b56`. See
   `rounds/005.md`.
+- `knowledge-on-dashboard` (capability 5): round 6,
+  `goals/knowledge-on-dashboard` at `61a7c45`, not pushed. See
+  `rounds/006.md`.
 
 ## Merged and released (2026-09-08)
 
@@ -97,6 +103,9 @@ branch removed.
 
 ## Next action
 
-Round 6: `knowledge-on-dashboard` on branch `goals/knowledge-on-dashboard`
-(exists, off `main`). Send the capability 5 row from `plan.md` with corpus
-request `02-project-card-state` and the watch-grade decision above.
+Direction decision by the human: continue, redirect, or stop. Before any
+push of `goals/knowledge-on-dashboard`: the review gate (security on the
+knowledge route, daemon, dashboard accessibility), then a fix round if it
+finds should-fix items, then push and one PR to `main`. On "continue"
+after that: `dogfood` (capability 6), the last item, which proves
+completion condition 4 with a second registered project.
