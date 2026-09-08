@@ -5,6 +5,7 @@ import Glibc
 #endif
 import Foundation
 import NIOConcurrencyHelpers
+import NIOPosix
 
 /// A project the user registered in `~/.kitterm/projects.json`.
 public struct Project: Sendable, Equatable {
@@ -68,8 +69,12 @@ public struct ResolvedProject: Sendable, Equatable {
 ///
 /// The file is reloaded when its mtime changes, like `tokens.json`, so
 /// `kitterm project add` reaches a running daemon. Lock-guarded, because
-/// the cwd poll of every session and the API handler call `resolve` from
-/// their own event loops.
+/// the registry actor, the project queue, and the archive queue call it
+/// from their own threads. The lock holds a `stat`, and a reload holds a
+/// file read and one `realpath` per root, so nothing on a NIO event loop
+/// takes it: the loop reads the project on the session row and the
+/// registered list the actor hop delivered. `eventLoopCalls` counts the
+/// violations; a test holds it at zero.
 public final class ProjectStore: @unchecked Sendable {
     public static let shared = ProjectStore()
     public static let formatVersion = 1
@@ -81,6 +86,11 @@ public final class ProjectStore: @unchecked Sendable {
     /// Distinct discovered roots the store remembers, so their ids stay
     /// unique within one daemon run.
     static let maxDiscovered = 512
+    /// Resolutions the store remembers by cwd. The archive list resolves
+    /// every record's cwd on every dashboard tick; with the cache a repeated
+    /// cwd costs one dictionary read instead of a `.git` walk. Past the
+    /// bound the cache starts over.
+    static let maxCached = 1024
 
     private let lock = NIOLock()
     private let fixedURL: URL?
@@ -90,7 +100,12 @@ public final class ProjectStore: @unchecked Sendable {
     /// Discovered roots and the id each was given, so two repositories with
     /// the same folder name do not share an id within a run.
     private var discovered: [String: String] = [:]
+    /// Resolutions by normalized cwd, nil included, for the generation the
+    /// file is at. Cleared with `discovered` on a reload.
+    private var resolved: [String: ResolvedProject?] = [:]
     private var generationStorage = 0
+    private var eventLoopCallsStorage = 0
+    private var cacheHitsStorage = 0
 
     /// `url` nil reads `DaemonPaths.projectsFile` at each check, so the
     /// shared store follows `KITTERM_STATE_DIR`.
@@ -100,11 +115,31 @@ public final class ProjectStore: @unchecked Sendable {
 
     private var url: URL { fixedURL ?? DaemonPaths.projectsFile }
 
+    /// Lock takes made from a NIO event-loop thread. The rule is zero; see
+    /// the type comment.
+    public var eventLoopCalls: Int {
+        lock.withLock { eventLoopCallsStorage }
+    }
+
+    /// Resolutions answered from the cache, for a test.
+    public var cacheHits: Int {
+        lock.withLock { cacheHitsStorage }
+    }
+
+    /// Every lock take goes through here, so a take on an event loop is
+    /// counted where it happens.
+    private func withStore<T>(_ body: () -> T) -> T {
+        lock.withLock {
+            if MultiThreadedEventLoopGroup.currentEventLoop != nil { eventLoopCallsStorage += 1 }
+            return body()
+        }
+    }
+
     /// Counts the reloads that changed the registered set. A session caches
     /// its project with the generation it was resolved under and resolves
     /// again when either the cwd or the generation moved.
     public var generation: Int {
-        lock.withLock {
+        withStore {
             reloadIfChangedLocked()
             return generationStorage
         }
@@ -112,7 +147,7 @@ public final class ProjectStore: @unchecked Sendable {
 
     /// The registered projects, in file order.
     public func registered() -> [Project] {
-        lock.withLock {
+        withStore {
             reloadIfChangedLocked()
             return projects
         }
@@ -123,11 +158,32 @@ public final class ProjectStore: @unchecked Sendable {
     }
 
     /// The project for a working directory. See the type comment for the
-    /// order. The `.git` walk is a bounded run of `stat` calls plus one
-    /// small file read for a worktree; it runs with the lock released.
+    /// order. A cwd resolved before under the same generation of the file
+    /// answers from the cache under one lock take. Otherwise the `.git`
+    /// walk, a bounded run of `stat` calls plus one small file read for a
+    /// worktree, runs with the lock released, and the result is cached
+    /// unless the file changed meanwhile.
     public func resolve(cwd: String) -> ResolvedProject? {
         let cwd = Self.normalize(cwd)
-        let projects = registered()
+        let (registered, generation, cached): ([Project], Int, ResolvedProject??) = withStore {
+            reloadIfChangedLocked()
+            if let hit = resolved[cwd] {
+                cacheHitsStorage += 1
+                return (projects, generationStorage, .some(hit))
+            }
+            return (projects, generationStorage, nil)
+        }
+        if let cached { return cached }
+        let result = resolveUncached(cwd: cwd, projects: registered)
+        withStore {
+            guard generationStorage == generation else { return }
+            if resolved.count >= Self.maxCached { resolved = [:] }
+            resolved[cwd] = result
+        }
+        return result
+    }
+
+    private func resolveUncached(cwd: String, projects: [Project]) -> ResolvedProject? {
         if let best = projects.filter({ Self.isPrefix($0.root, of: cwd) }).max(by: { $0.root.count < $1.root.count }) {
             return ResolvedProject(best)
         }
@@ -137,7 +193,7 @@ public final class ProjectStore: @unchecked Sendable {
             return ResolvedProject(project)
         }
         let name = URL(fileURLWithPath: root).lastPathComponent
-        let id: String = lock.withLock {
+        let id: String = withStore {
             if let known = discovered[root] { return known }
             let taken = Set(projects.map(\.id)).union(discovered.values)
             let id = Self.uniqueID(for: name, taken: taken)
@@ -173,6 +229,7 @@ public final class ProjectStore: @unchecked Sendable {
         loadedURL = url
         projects = mtime == nil ? [] : Self.load(from: url)
         discovered = [:]
+        resolved = [:]
         generationStorage += 1
     }
 
@@ -248,16 +305,20 @@ public final class ProjectStore: @unchecked Sendable {
     /// The nearest ancestor of `cwd` (itself included) that holds `.git`,
     /// bounded at `maxWalkDepth` levels. A `.git` file with a `gitdir:` line
     /// is followed one level: `<main>/.git/worktrees/<name>` resolves to
-    /// `<main>`. Nil outside every repository.
+    /// `<main>`, but only when that target exists and `<main>/.git` is a
+    /// directory; a `.git` file that names any other path (a checked-in one
+    /// could name `~/.ssh/.git/worktrees/x`, and the card would spawn
+    /// shells there) resolves to the directory that holds it. Nil outside
+    /// every repository.
     static func gitRoot(from cwd: String) -> String? {
         var dir = normalize(cwd)
         for _ in 0..<maxWalkDepth {
             let dotGit = (dir == "/" ? "" : dir) + "/.git"
-            var isDirectory: ObjCBool = false
-            if FileManager.default.fileExists(atPath: dotGit, isDirectory: &isDirectory) {
-                if isDirectory.boolValue { return dir }
+            if let isDirectory = isDirectory(dotGit) {
+                if isDirectory { return dir }
                 if let target = gitdirTarget(file: dotGit, relativeTo: dir),
-                   let main = mainCheckout(ofGitDir: target) {
+                   let main = mainCheckout(ofGitDir: target),
+                   self.isDirectory(target) == true, self.isDirectory(main + "/.git") == true {
                     return main
                 }
                 return dir
@@ -267,6 +328,14 @@ public final class ProjectStore: @unchecked Sendable {
             dir = normalize(dir)
         }
         return nil
+    }
+
+    /// True for a directory, false for another kind of file, nil when
+    /// nothing is at `path`.
+    private static func isDirectory(_ path: String) -> Bool? {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else { return nil }
+        return isDirectory.boolValue
     }
 
     /// The path after `gitdir:` in a `.git` file, made absolute against the
@@ -355,6 +424,10 @@ public final class ProjectStore: @unchecked Sendable {
         )
         try DaemonPaths.ensureStateDirectory()
         try data.write(to: url, options: .atomic)
+        // Registered roots are paths, not secrets, but the file is the
+        // user's own list; owner-only like every other file in the state
+        // directory.
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
     private static func warn(_ message: String) {

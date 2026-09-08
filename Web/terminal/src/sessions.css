@@ -1,5 +1,8 @@
 /* Fleet view. Colours and type come from the shared token layer, so the page
-   follows the terminal theme like the rest of the chrome.
+   follows the terminal theme like the rest of the chrome. Text at 11 to
+   12.5 px is --ui-text or --ui-text-muted; --ui-text-faint is for the
+   placeholder and a dot, never for a line someone reads
+   (theme-contrast.test.ts pins the ratios per bundled theme).
 
    Structure carries the information: the attention strip is the one tinted
    region on the page; a project is one bordered group; rows inside it are
@@ -26,32 +29,40 @@ h1 { font-size: 20px; margin: 0; font-weight: 600; }
 .launch:hover { border-color: var(--ui-accent); }
 
 button { font: inherit; }
+/* Read by a screen reader, drawn nowhere. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible {
   outline: 2px solid var(--ui-accent); outline-offset: 2px;
 }
 .quiet {
   color: var(--ui-text-muted); background: none; border: none; cursor: pointer;
-  font-size: 12px; padding: 4px 8px; border-radius: var(--radius-1); min-height: var(--tap-min, 24px);
+  font-size: 12px; padding: 4px 8px; border-radius: var(--radius-1); min-height: var(--tap-min);
 }
 .quiet:hover { color: var(--ui-text); background: var(--ui-surface-2); }
 .quiet.danger:hover { color: var(--ui-danger); }
 
 /* --- the attention strip -------------------------------------------------
    Sticky, so the answer buttons stay under the thumb while the list scrolls.
-   The only tinted region on the page. */
+   Capped at half the viewport and scrolls inside, so three approvals with
+   their argument blocks cannot push the cards off a phone for good. The
+   only tinted region on the page. */
 .strip {
   position: sticky; top: 0; z-index: 2;
   background: var(--ui-bg); padding: 4px 0 8px; margin: 0 0 8px;
+  max-height: 50vh; overflow: auto;
 }
 .strip-quiet, .strip-foreman {
   margin: 0; padding: 6px 12px; font-size: 12.5px; color: var(--ui-text-muted);
   border-left: 3px solid var(--ui-border);
 }
-.strip-foreman { color: var(--ui-text-faint); padding-top: 2px; padding-bottom: 2px; }
+.strip-foreman { padding-top: 2px; padding-bottom: 2px; }
 .strip-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .strip-item {
-  border-left: 3px solid var(--ui-warning, var(--ui-danger));
-  background: color-mix(in srgb, var(--ui-warning, var(--ui-danger)) 10%, var(--ui-surface));
+  border-left: 3px solid var(--ui-warning);
+  background: color-mix(in srgb, var(--ui-warning) 10%, var(--ui-surface));
   padding: 8px 12px 10px; border-radius: 0 var(--radius-2) var(--radius-2) 0;
 }
 .strip-item.failed {
@@ -63,17 +74,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   background: var(--ui-accent-soft);
 }
 .strip-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
-.strip-what { font-weight: 600; font-size: 13.5px; }
-.strip-item.failed .strip-what { color: var(--ui-danger); }
-.strip-who { font-weight: 600; font-size: 13.5px; }
+.strip-what, .strip-who { font-weight: 600; font-size: 13.5px; }
 .strip-where { color: var(--ui-text-muted); font-size: 12px; }
-.strip-waited { color: var(--ui-text-faint); font-size: 11.5px; font-variant-numeric: tabular-nums; margin-left: auto; }
+.strip-waited { color: var(--ui-text-muted); font-size: 11.5px; font-variant-numeric: tabular-nums; margin-left: auto; }
 .strip-detail {
   color: var(--ui-text-muted); font-family: var(--font-mono); font-size: 12.5px; margin-top: 3px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .strip-open {
-  display: inline-block; margin-top: 6px; font-size: 12px;
+  display: inline-flex; align-items: center; min-height: var(--tap-min); margin-top: 2px; font-size: 12px;
   color: var(--ui-text-muted); text-decoration: none; border-bottom: 1px solid var(--ui-border);
 }
 .strip-open:hover { color: var(--ui-text); border-bottom-color: var(--ui-accent); }
@@ -101,7 +110,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
    One pinned row above the cards, marked by its rule rather than a box. */
 .pinned:empty { display: none; }
 .foreman { margin: 0 0 14px; border-left: 3px solid var(--ui-accent); padding-left: 10px; }
-.foreman-label { font-size: 12px; color: var(--ui-text-muted); padding: 2px 0; }
+.foreman-label { font-size: 12px; font-weight: 400; color: var(--ui-text-muted); padding: 2px 0; margin: 0; }
 .foreman .rows { border: none; }
 .foreman .row { border-top: none; padding-left: 0; padding-right: 0; }
 
@@ -115,14 +124,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .search::placeholder { color: var(--ui-text-faint); }
 .chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
 .chip-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-.chip-label { color: var(--ui-text-faint); font-size: 11.5px; margin-right: 2px; }
+.chip-label { color: var(--ui-text-muted); font-size: 11.5px; margin-right: 2px; }
 .chip {
-  background: none; color: var(--ui-text-muted); border: 1px solid var(--ui-border);
+  background: none; color: var(--ui-text); border: 1px solid var(--ui-border);
   border-radius: var(--radius-round); padding: 1px 9px; font-size: 11.5px; cursor: pointer;
-  min-height: var(--tap-min, 24px); transition: border-color .12s, color .12s;
+  min-height: var(--tap-min); transition: border-color .12s, color .12s;
 }
-.chip:hover { color: var(--ui-text); }
-.chip.on { color: var(--ui-text); border-color: var(--ui-accent); background: var(--ui-accent-soft); }
+.chip:hover { border-color: var(--ui-text-muted); }
+.chip.on { border-color: var(--ui-accent); background: var(--ui-accent-soft); }
 .notice[hidden] { display: none; }
 .notice {
   display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 6px 10px;
@@ -132,35 +141,40 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 /* --- project cards -------------------------------------------------------- */
 .cards { display: flex; flex-direction: column; gap: 14px; }
-.card { border: 1px solid var(--ui-border); border-radius: var(--radius-2); background: var(--ui-surface); overflow: hidden; }
+/* No `overflow: hidden` here: it clipped the open row menu and the focus
+   outline of the last row at 390 px. The head rounds its own corners. */
+.card { border: 1px solid var(--ui-border); border-radius: var(--radius-2); background: var(--ui-surface); }
 .card-head {
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
   padding: 10px 14px; background: var(--ui-surface-2);
+  border-radius: calc(var(--radius-2) - 1px) calc(var(--radius-2) - 1px) 0 0;
 }
+.card-head:last-child { border-radius: calc(var(--radius-2) - 1px); }
 .card-title { display: flex; flex-direction: column; min-width: 0; flex: 1 1 200px; }
 .card-title h2 { font-size: 15px; font-weight: 600; margin: 0; }
 .card-root {
-  color: var(--ui-text-faint); font-family: var(--font-mono); font-size: 11px;
+  color: var(--ui-text-muted); font-family: var(--font-mono); font-size: 11px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.tallies { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ui-text-muted); }
+.tallies { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ui-text); }
 .tally { display: inline-flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tally .dot { margin: 0; width: 7px; height: 7px; box-shadow: none; }
-.tally.quiet { color: var(--ui-text-faint); }
+.tally.quiet { color: var(--ui-text-muted); }
 .spawn { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .spawn-profile {
   font: inherit; font-size: 12px; color: var(--ui-text); background: var(--ui-surface);
   border: 1px solid var(--ui-border); border-radius: var(--radius-1); padding: 3px 6px; max-width: 140px;
+  min-height: var(--tap-min);
 }
 .spawn-button {
   font-size: 12.5px; color: var(--ui-text); background: var(--ui-surface); cursor: pointer;
   border: 1px solid var(--ui-border); border-radius: var(--radius-round); padding: 3px 12px;
-  min-height: var(--tap-min, 24px); transition: border-color .12s;
+  min-height: var(--tap-min); transition: border-color .12s;
 }
 .spawn-button:hover { border-color: var(--ui-accent); }
 .spawn-button:disabled { opacity: .5; cursor: progress; }
 .crew-head {
-  font-size: 11.5px; color: var(--ui-text-muted); padding: 8px 14px 0;
+  font-size: 11.5px; font-weight: 400; color: var(--ui-text-muted); padding: 8px 14px 0; margin: 0;
   display: flex; align-items: center; gap: 8px;
 }
 .crew-head::after { content: ""; flex: 1; border-top: 1px solid var(--ui-border); }
@@ -177,22 +191,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .open:hover .folder { color: var(--ui-accent); }
 .dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 6px; flex: none; }
 .dot.running { background: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-accent-soft); }
-.dot.idle { background: var(--ui-success); }
+.dot.idle, .dot.done { background: var(--ui-success); }
 .dot.failed { background: var(--ui-danger); }
 .dot.unknown { background: var(--ui-text-faint); }
 /* Wants the human: the loudest dot after a real failure. */
-.dot.attention { background: var(--ui-warning, var(--ui-danger)); box-shadow: 0 0 0 3px var(--ui-accent-soft); }
-.dot.done { background: var(--ui-success); }
+.dot.attention { background: var(--ui-warning); box-shadow: 0 0 0 3px var(--ui-accent-soft); }
 .main { min-width: 0; flex: 1; }
 .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; }
 .folder { font-weight: 600; font-size: 14.5px; overflow-wrap: anywhere; }
-.state { font-size: 11.5px; white-space: nowrap; }
-.state.running { color: var(--ui-accent); }
-.state.idle { color: var(--ui-success); }
-.state.failed { color: var(--ui-danger); }
-.state.unknown { color: var(--ui-text-faint); }
-.state.attention { color: var(--ui-warning, var(--ui-danger)); font-weight: 600; }
-.state.done { color: var(--ui-success); }
+/* The family colour is on the dot; the label prints in the text colour,
+   because an ANSI red at 11.5 px sits under 3:1 on half the themes. */
+.state { font-size: 11.5px; white-space: nowrap; color: var(--ui-text); }
+.state.attention { font-weight: 600; }
 .tag {
   background: var(--ui-surface-2); color: var(--ui-text-muted); border-radius: var(--radius-round);
   padding: 0 8px; font-size: 11px; white-space: nowrap;
@@ -203,7 +213,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   font-size: 12.5px; margin-top: 3px; white-space: nowrap; overflow: hidden;
   text-overflow: ellipsis;
 }
-.meta { color: var(--ui-text-faint); font-size: 11.5px; margin-top: 4px; }
+.meta { color: var(--ui-text-muted); font-size: 11.5px; margin-top: 4px; }
 .note {
   color: var(--ui-text-muted); font-size: 12.5px; margin-top: 3px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -234,6 +244,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .spawn-button { margin-left: auto; }
   .row { padding-left: 12px; padding-right: 4px; }
   .crew-head { padding-left: 12px; }
+  /* Thumb targets: 32 px chips with 8 px between them. */
+  .chip-group { gap: 8px; }
+  .chip { min-height: 32px; padding: 3px 12px; }
 }
 
 /* Archived sessions: collapsed evidence of finished work, at the foot of its
@@ -241,7 +254,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .archived { color: var(--ui-text-muted); border-top: 1px solid var(--ui-border); }
 .archived > summary {
   cursor: pointer; font-size: 12.5px; color: var(--ui-text-muted);
-  padding: 8px 14px; user-select: none; min-height: var(--tap-min, 24px);
+  padding: 8px 14px; user-select: none; min-height: var(--tap-min);
 }
 .archived > summary:hover { color: var(--ui-text); }
 .archived-list { list-style: none; margin: 0; padding: 0 14px 10px; display: flex; flex-direction: column; gap: 4px; }
@@ -250,7 +263,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   font-size: 12px; padding: 4px 0; min-width: 0;
 }
 .archived-name { color: var(--ui-text); overflow-wrap: anywhere; }
-.archived-meta { color: var(--ui-text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.archived-meta { color: var(--ui-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cards > .archived { border: 1px solid var(--ui-border); border-radius: var(--radius-2); background: var(--ui-surface); }
 
 @media (prefers-reduced-motion: reduce) {

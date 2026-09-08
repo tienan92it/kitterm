@@ -75,7 +75,7 @@ The bridge gives the foreman these tools.
 | `kill_session` | End a session and its shell. |
 | `archive_session` | Save a finished session's commands, exit codes, and output to `~/.kitterm/archive/<id>/`, then end it. |
 | `list_archives` | Every archived session: finished work whose evidence was kept. |
-| `list_projects` | Every project the daemon has seen, registered or discovered from a cwd, with its knowledge directory, session counts by state, pending approvals, and archive count. |
+| `list_projects` | The identity of every project the daemon has seen, registered or discovered from a cwd, with its knowledge directory. |
 
 There is no approve or deny tool on purpose. Deciding a permission prompt is
 your privilege, not the foreman's. The foreman surfaces an approval; you answer
@@ -371,10 +371,9 @@ Use labels so a fleet of sessions stays attributable.
 
 Filter the fleet by any label: `list_sessions label="crew:alpha"`.
 
-Three keys are reserved for the goal loop in `docs/goals/LOOP.md`: `project`
-(a project id, which overrides the project the daemon resolves from the cwd),
-`goal` (a goal slug), and `round` (a round number). The foreman sets them on
-every crew session it spawns for a round. The foreman's own pane carries
+The goal loop reserves keys of its own; the Labels table in
+`docs/goals/LOOP.md` is the one list of them. The foreman sets them on every
+crew session it spawns for a round. The foreman's own pane carries
 `crew:foreman`; the fleet view pins that session above the project cards and
 reads "no foreman running" when none exists.
 

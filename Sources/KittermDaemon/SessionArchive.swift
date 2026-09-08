@@ -127,7 +127,7 @@ public enum SessionArchive {
     /// arrays are stripped: it returns the record to list, or nil to leave
     /// it out (`GET /api/archives?project=<id>`).
     public static func list(
-        transform: @escaping @Sendable ([String: Any]) -> [String: Any]? = { $0 },
+        transform: @escaping @Sendable ([String: Any]) -> [String: Any]?,
         completion: @escaping @Sendable (Data) -> Void
     ) {
         queue.async {
@@ -137,23 +137,6 @@ public enum SessionArchive {
             let encoded = (try? JSONSerialization.data(withJSONObject: ["ok": true, "archives": records]))
                 ?? Data(#"{"ok":true,"archives":[]}"#.utf8)
             completion(encoded)
-        }
-    }
-
-    /// How many archives each key holds, for `GET /api/projects`. `key`
-    /// runs on the archive queue for each record and returns the key to
-    /// count under, or nil to skip the record. `completion` fires there with
-    /// the counts, which cross back to the loop as a `Sendable` value.
-    public static func counts(
-        by key: @escaping @Sendable ([String: Any]) -> String?,
-        completion: @escaping @Sendable ([String: Int]) -> Void
-    ) {
-        queue.async {
-            var counts: [String: Int] = [:]
-            for record in readRecords() {
-                if let key = key(record) { counts[key, default: 0] += 1 }
-            }
-            completion(counts)
         }
     }
 

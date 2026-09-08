@@ -239,23 +239,18 @@ final class ProjectRouteTests: XCTestCase {
         XCTAssertEqual(status, 400)
     }
 
-    // MARK: - aggregate
+    // MARK: - the project list
 
+    /// Identity only: the page counts what it shows from the rows. The
+    /// pinned fields are `id`, `name`, `root`, `registered`, `knowledge`.
     func testProjectsAggregate() async throws {
         _ = try await spawnDirect(cwd: alpha)
-        let second = try await spawnOverAPI(cwd: alpha)
+        _ = try await spawnOverAPI(cwd: alpha)
         _ = try await spawnDirect(cwd: repo)
         _ = try await spawnDirect(cwd: plain)
         let archived = try await spawnDirect(cwd: alpha)
         let (archiveStatus, _) = try await request("POST", "/api/sessions/\(archived.uuidString)/archive")
         XCTAssertEqual(archiveStatus, 200)
-        // Output on one alpha session, so the aggregate has a newest time.
-        let secondSession = await registry.session(second)
-        let alphaSession = try XCTUnwrap(secondSession)
-        var buffer = ByteBufferAllocator().buffer(capacity: 8)
-        buffer.writeString("hello")
-        alphaSession.handleRead(&buffer)
-        let alphaOutputAt = try XCTUnwrap(alphaSession.lastOutputAt)
 
         let projects = try await rows("/api/projects", key: "projects")
         XCTAssertEqual(projects.compactMap { $0["id"] as? String }, ["alpha", "repo"], "sorted by name; no card for the plain directory")
@@ -265,24 +260,11 @@ final class ProjectRouteTests: XCTestCase {
         XCTAssertEqual(alphaCard["root"] as? String, alpha)
         XCTAssertEqual(alphaCard["registered"] as? Bool, true)
         XCTAssertEqual(alphaCard["knowledge"] as? String, "docs/goals")
-        let alphaSessions = try XCTUnwrap(alphaCard["sessions"] as? [String: Int])
-        XCTAssertEqual(alphaSessions["total"], 2, "the archived one left the live count")
-        XCTAssertEqual(
-            alphaSessions.filter { $0.key != "total" }.values.reduce(0, +), 2,
-            "the state counts add up to the total"
-        )
-        XCTAssertEqual(Set(alphaSessions.keys), [
-            "total", "working", "needs-approval", "needs-input", "completed", "failed", "idle", "exited", "unknown",
-        ])
-        XCTAssertEqual(alphaCard["pendingApprovals"] as? Int, 0)
-        XCTAssertEqual(alphaCard["archives"] as? Int, 1)
-        XCTAssertEqual(alphaCard["lastOutputAt"] as? Int, Int(alphaOutputAt.timeIntervalSince1970 * 1000))
+        XCTAssertEqual(Set(alphaCard.keys), ["id", "name", "root", "registered", "knowledge"], "identity only")
 
         let repoCard = try XCTUnwrap(projects.first { ($0["id"] as? String) == "repo" })
         XCTAssertEqual(repoCard["registered"] as? Bool, false)
-        XCTAssertEqual((repoCard["sessions"] as? [String: Int])?["total"], 1)
-        XCTAssertEqual(repoCard["archives"] as? Int, 0)
-        XCTAssertNil(repoCard["lastOutputAt"])
+        XCTAssertEqual(repoCard["root"] as? String, repo)
     }
 
     /// A registered project with nothing running still has a card.
@@ -290,7 +272,37 @@ final class ProjectRouteTests: XCTestCase {
         let projects = try await rows("/api/projects", key: "projects")
         XCTAssertEqual(projects.count, 1)
         XCTAssertEqual(projects.first?["id"] as? String, "alpha")
-        XCTAssertEqual((projects.first?["sessions"] as? [String: Int])?["total"], 0)
+    }
+
+    // MARK: - the event loop
+
+    /// No route and no poll takes the store's lock on an event loop: the
+    /// rows carry their project from the actor, the registered list rides
+    /// the actor hop, the archive walk runs on the archive queue, and the
+    /// poll's resolution runs on the project queue. The store counts every
+    /// lock take made on a NIO loop thread; the count must not move.
+    func testTheEventLoopNeverCallsIntoTheProjectStore() async throws {
+        let before = ProjectStore.shared.eventLoopCalls
+        let labelled = try await spawnDirect(cwd: repo, labels: ["project": "alpha"])
+        let moving = try await spawnOverAPI(cwd: plain)
+        let live = await registry.session(moving)
+        let session = try XCTUnwrap(live)
+        session.attach(onOutput: { _ in }, onExit: { _ in }, onCwd: { _ in })
+        try session.write(Data("cd \(alpha!)\n".utf8))
+        try await wait("the poll to resolve the project") { session.project?.id == "alpha" }
+
+        _ = try await rows("/api/sessions", key: "sessions")
+        _ = try await rows("/api/sessions?project=alpha", key: "sessions")
+        let (status, _) = try await request("GET", "/api/sessions/\(labelled.uuidString)")
+        XCTAssertEqual(status, 200)
+        _ = try await rows("/api/projects", key: "projects")
+        let (archiveStatus, _) = try await request("POST", "/api/sessions/\(labelled.uuidString)/archive")
+        XCTAssertEqual(archiveStatus, 200)
+        _ = try await rows("/api/archives", key: "archives")
+        _ = try await rows("/api/archives?project=alpha", key: "archives")
+        _ = try await rows("/api/projects", key: "projects")
+
+        XCTAssertEqual(ProjectStore.shared.eventLoopCalls, before, "a ProjectStore lock take ran on an event loop")
     }
 
     // MARK: - the cwd poll

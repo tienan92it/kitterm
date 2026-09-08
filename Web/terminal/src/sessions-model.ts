@@ -1,6 +1,6 @@
 /**
  * The fleet view's model: pure functions over the rows of `GET /api/sessions`
- * and the aggregates of `GET /api/projects`. No DOM, so every function has a
+ * and the projects of `GET /api/projects`. No DOM, so every function has a
  * test. `sessions.ts` composes them and paints the result.
  */
 
@@ -22,13 +22,10 @@ export type ProjectRef = {
   registered: boolean;
 };
 
-/** One entry of `GET /api/projects`. The counts are the daemon's; the page
- * recomputes them from the rows it shows, so only the identity is required. */
+/** One entry of `GET /api/projects`: the identity plus the knowledge
+ * directory. The page counts what it shows from the rows. */
 export type ProjectSummary = ProjectRef & {
-  sessions?: Partial<Record<MergedState | "total", number>>;
-  pendingApprovals?: number;
-  archives?: number;
-  lastOutputAt?: number;
+  knowledge?: string;
 };
 
 /** The subset of a session row the model reads. The page's row type extends it. */
@@ -266,6 +263,25 @@ export function tally(rows: ModelRow[]): Partial<Record<MergedState, number>> {
     counts[state] = (counts[state] ?? 0) + 1;
   }
   return counts;
+}
+
+/** The accessible name of one row action, so a button list does not read
+ * "Kill, Kill, Kill": the verb and the row's headline. */
+export function actionName(action: "Rename" | "Name" | "Archive" | "Kill" | "Actions for", headline: string): string {
+  return `${action} ${headline}`;
+}
+
+/** The accessible name of one approval answer: the verb, the tool, and the
+ * session it runs in, so two Allow buttons read apart. */
+export function approvalName(decision: "Allow" | "Deny", tool: string, who: string): string {
+  return who ? `${decision} ${tool} in ${who}` : `${decision} ${tool}`;
+}
+
+/** What the polite live region says when the count of items that need the
+ * human changes. */
+export function needsYouMessage(count: number): string {
+  if (count === 0) return "Nothing needs you";
+  return count === 1 ? "1 item needs you" : `${count} items need you`;
 }
 
 /** The distinct crew label values across the rows, in name order. */

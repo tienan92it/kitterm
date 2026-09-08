@@ -237,17 +237,11 @@ enum KittermMain {
             --agent-control on the daemon for the tools that drive shells.
             Register it once: claude mcp add kitterm -- kitterm mcp
 
-            project registers a directory in ~/.kitterm/projects.json. The
-            daemon reports each session's project from its cwd: a registered
-            root first, else the nearest .git (a worktree counts as its main
-            checkout). The id is a slug of the folder name; --knowledge names
-            the goal package directory (default docs/goals). /sessions and
-            GET /api/projects group sessions by it; a running daemon picks
-            up the file without a restart. project init writes the goal
-            package (goal.md, facts.md, plan.md, LOOP.md, STATE.md, corpus/,
-            rounds/, the templates under examples/goals/) into the knowledge
-            directory, refuses to overwrite a file that exists, then
-            registers the project the way add does.
+            project registers a directory in ~/.kitterm/projects.json, so
+            /sessions groups its shells under one card (a registered root,
+            else the nearest .git; see AGENTS.md "Projects"). project init
+            also writes the goal package templates (examples/goals/) into
+            --knowledge, default docs/goals, and never overwrites a file.
 
             skills install writes the reference foreman skills under
             examples/foreman/ (foreman-loop, review-crew, triage) to

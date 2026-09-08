@@ -58,7 +58,9 @@
   --ui-accent: var(--term-accent, var(--term-blue, #58a6ff));
   --ui-accent-hover: color-mix(in oklab, var(--ui-accent) 88%, var(--ui-lift));
   --ui-accent-soft: color-mix(in srgb, var(--ui-accent) 18%, transparent);
-  --ui-accent-on: #fff;
+  /* Black or white by the accent's luminance, published by JS: white sits
+     under 4.5:1 on every bundled accent, black passes on all of them. */
+  --ui-accent-on: var(--term-accent-on, #fff);
 
   /* --- status --------------------------------------------------------- */
   --ui-danger: var(--term-red, #f85149);
@@ -101,8 +103,8 @@
 }
 
 /* Text on a solid accent fill. `contrast-color()` reached Baseline only in
-   2026, so it is an enhancement over the white default. The test must use a
-   literal — `@supports` cannot see inside a custom property. */
+   2026, so it is an enhancement over the JS-published pole. The test must
+   use a literal — `@supports` cannot see inside a custom property. */
 @supports (color: contrast-color(white)) {
   :root {
     --ui-accent-on: contrast-color(var(--ui-accent));

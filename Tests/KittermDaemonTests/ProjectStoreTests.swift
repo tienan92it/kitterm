@@ -32,6 +32,14 @@ final class ProjectStoreTests: XCTestCase {
         return url.path
     }
 
+    /// A checkout at `path` whose `.git` is a file naming `gitdir`, as
+    /// `git worktree add` and a submodule checkout write it.
+    private func worktree(_ path: String, gitdir: String) throws -> String {
+        let checkout = try dir(path)
+        try "gitdir: \(gitdir)\n".write(toFile: checkout + "/.git", atomically: true, encoding: .utf8)
+        return checkout
+    }
+
     private func register(_ projects: [Project]) throws {
         try ProjectStore.save(projects, to: file)
     }
@@ -84,10 +92,7 @@ final class ProjectStoreTests: XCTestCase {
     func testWorktreeResolvesToTheMainCheckout() throws {
         let main = try dir("main")
         _ = try dir("main/.git/worktrees/feature")
-        let worktree = try dir("elsewhere/feature")
-        try "gitdir: \(main)/.git/worktrees/feature\n".write(
-            toFile: worktree + "/.git", atomically: true, encoding: .utf8
-        )
+        let worktree = try worktree("elsewhere/feature", gitdir: "\(main)/.git/worktrees/feature")
 
         let resolved = store.resolve(cwd: worktree + "/Sources")
         XCTAssertEqual(resolved?.root, main)
@@ -99,10 +104,7 @@ final class ProjectStoreTests: XCTestCase {
     func testRelativeGitdirResolvesAgainstTheWorktree() throws {
         let main = try dir("host")
         _ = try dir("host/.git/modules/lib")
-        let module = try dir("host-modules/lib")
-        try "gitdir: ../../host/.git/modules/lib".write(
-            toFile: module + "/.git", atomically: true, encoding: .utf8
-        )
+        let module = try worktree("host-modules/lib", gitdir: "../../host/.git/modules/lib")
         XCTAssertEqual(store.resolve(cwd: module)?.root, main)
     }
 
@@ -110,15 +112,31 @@ final class ProjectStoreTests: XCTestCase {
     func testWorktreeOfARegisteredProjectIsRegistered() throws {
         let main = try dir("kitterm")
         _ = try dir("kitterm/.git/worktrees/wt")
-        let worktree = try dir("wt")
-        try "gitdir: \(main)/.git/worktrees/wt\n".write(
-            toFile: worktree + "/.git", atomically: true, encoding: .utf8
-        )
+        let worktree = try worktree("wt", gitdir: "\(main)/.git/worktrees/wt")
         try register([Project(id: "kitterm", name: "kitterm", root: main)])
 
         let resolved = store.resolve(cwd: worktree)
         XCTAssertEqual(resolved?.id, "kitterm")
         XCTAssertEqual(resolved?.registered, true)
+    }
+
+    /// A `.git` file that names a path outside any checkout's `.git`
+    /// directory, or one that does not exist, is not followed: the
+    /// directory that holds the file is the project, so a checked-in file
+    /// cannot point the card at another directory.
+    func testAGitdirThatIsNotAWorktreeIsNotFollowed() throws {
+        let missing = try worktree("stray", gitdir: root.path + "/nowhere/.git/worktrees/x")
+        XCTAssertEqual(store.resolve(cwd: missing)?.root, missing)
+        XCTAssertEqual(store.resolve(cwd: missing)?.id, "stray")
+
+        // The target exists, but no `.git` component is on its path.
+        let planted = try worktree("planted", gitdir: try dir("secrets/keys"))
+        XCTAssertEqual(store.resolve(cwd: planted)?.root, planted, "no .git component on the target path")
+
+        // A real worktree still follows.
+        _ = try dir("main/.git/worktrees/wt")
+        let wt = try worktree("wt", gitdir: root.path + "/main/.git/worktrees/wt")
+        XCTAssertEqual(store.resolve(cwd: wt)?.root, root.path + "/main")
     }
 
     func testNoProjectOutsideEveryRepository() throws {
@@ -144,6 +162,36 @@ final class ProjectStoreTests: XCTestCase {
         XCTAssertEqual(store.resolve(cwd: first)?.id, "app")
         XCTAssertEqual(store.resolve(cwd: second)?.id, "app-2")
         XCTAssertEqual(store.resolve(cwd: first)?.id, "app", "a root keeps its id")
+    }
+
+    // MARK: - cache
+
+    /// A cwd resolved once answers from the cache, nil included, until the
+    /// file changes; the reload clears it, so a new registration is seen.
+    func testRepeatedCwdAnswersFromTheCache() throws {
+        let repo = try dir("repo")
+        _ = try dir("repo/.git")
+        let inside = try dir("repo/src")
+        let plain = try dir("plain")
+        XCTAssertEqual(store.cacheHits, 0)
+
+        XCTAssertEqual(store.resolve(cwd: inside)?.id, "repo")
+        XCTAssertEqual(store.cacheHits, 0, "the first resolution walks")
+        XCTAssertEqual(store.resolve(cwd: inside)?.id, "repo")
+        XCTAssertEqual(store.resolve(cwd: inside + "/")?.id, "repo", "a trailing slash is the same cwd")
+        XCTAssertEqual(store.cacheHits, 2)
+
+        XCTAssertNil(store.resolve(cwd: plain))
+        XCTAssertNil(store.resolve(cwd: plain))
+        XCTAssertEqual(store.cacheHits, 3, "a miss is cached too")
+
+        // Registering the repository changes the answer, so the reload
+        // must drop the cached one.
+        try register([Project(id: "reg", name: "Reg", root: repo)])
+        XCTAssertEqual(store.resolve(cwd: inside)?.id, "reg")
+        XCTAssertEqual(store.cacheHits, 3, "the reload cleared the cache")
+        XCTAssertEqual(store.resolve(cwd: inside)?.id, "reg")
+        XCTAssertEqual(store.cacheHits, 4)
     }
 
     // MARK: - label override

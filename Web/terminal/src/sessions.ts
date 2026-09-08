@@ -3,10 +3,13 @@ import "./sessions.css";
 import { resolveFontFamily } from "./fonts";
 import { summarize, waitedLabel } from "./approval-format";
 import {
+  actionName,
+  approvalName,
   attention,
   crews as crewsOf,
   filter as applyFilter,
   group,
+  needsYouMessage,
   NO_PROJECT,
   pickForeman,
   stateOf,
@@ -120,6 +123,9 @@ let archives: ArchivedRow[] = [];
 /** One request at a time: a response slower than the poll interval must not
  * overlap the next tick, or an older snapshot could repaint over a newer one. */
 let inFlight = false;
+/** Polls that failed in a row. One is a blip and keeps the last snapshot on
+ * the page; the second replaces the page with the error. */
+let failedPolls = 0;
 /** Named session profiles (~/.kitterm/profiles.json), fetched once. */
 let profiles: Profile[] = [];
 /** This client's token is watch-only (the daemon 403s the profiles route for
@@ -135,6 +141,9 @@ let notice: string | null = null;
 /** The row whose action menu is open on a phone. Kept across repaints, so a
  * poll between the two taps does not close the menu under the thumb. */
 let openMenu: string | null = null;
+/** The profile picked in each card's spawn select, by project id. A repaint
+ * rebuilds the select, so the choice lives here, not in the DOM. */
+const spawnProfile = new Map<string, string>();
 let choice: Choice = loadChoice();
 
 function loadChoice(): Choice {
@@ -206,9 +215,11 @@ async function poll(): Promise<void> {
       ? (((await archivesRes.json()) as { archives?: ArchivedRow[] }).archives ?? [])
       : [];
     sessions = data.sessions ?? [];
+    failedPolls = 0;
     render();
   } catch {
-    renderError();
+    failedPolls += 1;
+    if (failedPolls >= 2 || !skeletonMounted) renderError();
   } finally {
     inFlight = false;
   }
@@ -245,6 +256,15 @@ filters.append(search, chips);
 const noticeLine = document.createElement("p");
 noticeLine.className = "notice";
 noticeLine.hidden = true;
+// A failed action is announced at once; the line is built once, so the
+// role is set once.
+noticeLine.setAttribute("role", "alert");
+/** A visually hidden polite announcement of how many items need the human.
+ * The strip itself repaints too often to be a live region. */
+const announce = document.createElement("p");
+announce.className = "sr-only";
+announce.setAttribute("aria-live", "polite");
+let announcedCount = -1;
 const cards = document.createElement("div");
 cards.className = "cards";
 let skeletonMounted = false;
@@ -252,7 +272,7 @@ let skeletonMounted = false;
 function mountSkeleton(): void {
   if (!root || skeletonMounted) return;
   skeletonMounted = true;
-  root.replaceChildren(header(), strip, pinned, filters, noticeLine, cards);
+  root.replaceChildren(header(), announce, strip, pinned, filters, noticeLine, cards);
 }
 
 function render(): void {
@@ -281,10 +301,17 @@ function render(): void {
 }
 
 /** Paint from the current snapshot and choice. Called by `render` when the
- * snapshot changed and by the chips when the choice changed. */
+ * snapshot changed and by the chips when the choice changed.
+ *
+ * Every control carries a `data-focus` key (row id and action, chip, spawn
+ * control, approval button), so the control that had focus before the four
+ * regions were rebuilt gets it back by key afterwards. Without this a poll
+ * that repainted while a keyboard user sat on Kill sent focus to `body`. */
 function paint(): void {
   if (!root) return;
   mountSkeleton();
+  const active = document.activeElement;
+  const focusKey = active instanceof HTMLElement ? active.dataset.focus : undefined;
   const { foreman, rest } = pickForeman(sessions);
   const items = attention(sessions, approvals);
 
@@ -292,7 +319,13 @@ function paint(): void {
   // or home-screen label says "come back" without a push notification.
   const count = items.filter((item) => item.kind !== "failed").length;
   document.title = count > 0 ? `(${count}) kitterm — sessions` : "kitterm — sessions";
-  root.querySelector(".count")!.textContent = String(sessions.length);
+  if (count !== announcedCount) {
+    announcedCount = count;
+    announce.textContent = needsYouMessage(count);
+  }
+  const badge = root.querySelector(".count")!;
+  badge.textContent = String(sessions.length);
+  badge.setAttribute("aria-label", `${sessions.length} sessions`);
 
   strip.replaceChildren(...stripContent(items, foreman !== null));
   pinned.replaceChildren(...(foreman ? [foremanRow(foreman)] : []));
@@ -300,6 +333,14 @@ function paint(): void {
   noticeLine.hidden = notice === null;
   noticeLine.replaceChildren(...(notice === null ? [] : [noticeContent(notice)]));
   cards.replaceChildren(...cardList(rest));
+  if (focusKey) restoreFocus(focusKey);
+}
+
+function restoreFocus(key: string): void {
+  const target = root?.querySelector<HTMLElement>(`[data-focus="${CSS.escape(key)}"]`);
+  // The control is gone when its row was ended or its chip left the page;
+  // focus then stays where the browser put it.
+  target?.focus({ preventScroll: true });
 }
 
 function header(): HTMLElement {
@@ -329,6 +370,7 @@ function noticeContent(text: string): DocumentFragment {
   dismiss.type = "button";
   dismiss.className = "quiet";
   dismiss.textContent = "Dismiss";
+  dismiss.dataset.focus = "dismiss";
   dismiss.addEventListener("click", () => {
     notice = null;
     lastSignature = "";
@@ -370,19 +412,7 @@ function stripItem(item: AttentionItem<SessionRow>): HTMLElement {
     return li;
   }
   const row = item.row;
-  const top = document.createElement("div");
-  top.className = "strip-top";
-  const what = document.createElement("span");
-  what.className = "strip-what";
-  what.textContent = item.kind === "needs-input" ? "needs input" : stateLabel(row);
-  const who = document.createElement("span");
-  who.className = "strip-who";
-  who.textContent = headlineOf(row);
-  const where = document.createElement("span");
-  where.className = "strip-where";
-  where.textContent = row.project?.name ?? folderOf(row.cwd);
-  top.append(what, who, where);
-  li.append(top);
+  li.append(stripTop(item.kind === "needs-input" ? "needs input" : stateLabel(row), headlineOf(row), placeOf(row)));
   const detail = row.agent?.message ?? (row.lastCommand ? `$ ${row.lastCommand}` : null);
   if (detail) {
     const line = document.createElement("div");
@@ -399,21 +429,12 @@ function stripItem(item: AttentionItem<SessionRow>): HTMLElement {
  * answered and on a phone only the top of the page gets read. */
 function approvalContent(approval: Approval, row: SessionRow | null): DocumentFragment {
   const fragment = document.createDocumentFragment();
-  const top = document.createElement("div");
-  top.className = "strip-top";
-  const what = document.createElement("span");
-  what.className = "strip-what";
-  what.textContent = `approve ${approval.tool}`;
-  const who = document.createElement("span");
-  who.className = "strip-who";
-  who.textContent = row ? headlineOf(row) : (approval.session?.slice(0, 8) ?? "");
-  const where = document.createElement("span");
-  where.className = "strip-where";
-  where.textContent = row ? (row.project?.name ?? folderOf(row.cwd)) : "";
+  const who = row ? headlineOf(row) : (approval.session?.slice(0, 8) ?? "");
+  const top = stripTop(`approve ${approval.tool}`, who, row ? placeOf(row) : "");
   const waited = document.createElement("span");
   waited.className = "strip-waited";
   waited.textContent = waitedLabel(approval.waitingMs);
-  top.append(what, who, where, waited);
+  top.append(waited);
   fragment.append(top);
 
   // The arguments are what you are approving, so they are the body of the
@@ -430,10 +451,36 @@ function approvalContent(approval: Approval, row: SessionRow | null): DocumentFr
     actions.className = "approval-actions";
     const deny = button("Deny", "approval-deny", () => void decide(approval.id, "deny"));
     const allow = button("Allow", "approval-allow", () => void decide(approval.id, "allow"));
+    deny.dataset.focus = `approval:${approval.id}:deny`;
+    allow.dataset.focus = `approval:${approval.id}:allow`;
+    deny.setAttribute("aria-label", approvalName("Deny", approval.tool, who));
+    allow.setAttribute("aria-label", approvalName("Allow", approval.tool, who));
     actions.append(deny, allow);
     fragment.append(actions);
   }
   return fragment;
+}
+
+/** The first line of a strip item: what, who, where. */
+function stripTop(what: string, who: string, where: string): HTMLElement {
+  const top = document.createElement("div");
+  top.className = "strip-top";
+  for (const [className, text] of [
+    ["strip-what", what],
+    ["strip-who", who],
+    ["strip-where", where],
+  ] as const) {
+    const span = document.createElement("span");
+    span.className = className;
+    span.textContent = text;
+    top.append(span);
+  }
+  return top;
+}
+
+/** The project's name, else the folder: where a row is, in one word. */
+function placeOf(row: SessionRow): string {
+  return row.project?.name ?? folderOf(row.cwd);
 }
 
 /** Post one decision. The agent is unblocked by the daemon's response to its
@@ -465,7 +512,7 @@ async function decide(id: string, decision: "allow" | "deny"): Promise<void> {
 function foremanRow(foreman: SessionRow): HTMLElement {
   const box = document.createElement("div");
   box.className = "foreman";
-  const label = document.createElement("div");
+  const label = document.createElement("h2");
   label.className = "foreman-label";
   label.textContent = "Foreman";
   const list = document.createElement("ul");
@@ -482,7 +529,7 @@ function chipGroups(rows: SessionRow[]): Node[] {
   const present = tally(rows);
   const stateChips = STATE_ORDER.filter((s) => (present[s] ?? 0) > 0 || choice.states.includes(s)).map(
     (state) =>
-      chip(stateName(state), choice.states.includes(state), () => {
+      chip(stateName(state), `state:${state}`, choice.states.includes(state), () => {
         choice = { ...choice, states: toggle(choice.states, state) };
         commitChoice();
       }),
@@ -503,9 +550,13 @@ function chipGroups(rows: SessionRow[]): Node[] {
     }
   }
   if (rows.some((row) => !row.project) || choice.projects.includes(NO_PROJECT)) {
+    knownIds.add(NO_PROJECT);
     projectChips.push(projectChip(NO_PROJECT, "no project"));
   }
-  if (projectChips.length > 1) nodes.push(chipGroup("Project", projectChips));
+  // A chosen id whose project left the page still gets a chip, so the
+  // filter that hides every card is visible and can be turned off.
+  for (const id of choice.projects) if (!knownIds.has(id)) projectChips.push(projectChip(id, id));
+  if (projectChips.length > 1 || choice.projects.length > 0) nodes.push(chipGroup("Project", projectChips));
 
   const crewNames = crewsOf(rows);
   for (const crew of choice.crews) if (!crewNames.includes(crew)) crewNames.push(crew);
@@ -514,7 +565,7 @@ function chipGroups(rows: SessionRow[]): Node[] {
       chipGroup(
         "Crew",
         crewNames.map((crew) =>
-          chip(`crew: ${crew}`, choice.crews.includes(crew), () => {
+          chip(`crew: ${crew}`, `crew:${crew}`, choice.crews.includes(crew), () => {
             choice = { ...choice, crews: toggle(choice.crews, crew) };
             commitChoice();
           }),
@@ -528,7 +579,7 @@ function chipGroups(rows: SessionRow[]): Node[] {
     chipGroup(
       "Made by",
       kinds.map((kind) =>
-        chip(kind === "human" ? "a person" : "a program", choice.kind === kind, () => {
+        chip(kind === "human" ? "a person" : "a program", `kind:${kind}`, choice.kind === kind, () => {
           choice = { ...choice, kind: choice.kind === kind ? null : kind };
           commitChoice();
         }),
@@ -542,13 +593,14 @@ function chipGroups(rows: SessionRow[]): Node[] {
       search.value = "";
       commitChoice();
     });
+    clear.dataset.focus = "clear-filters";
     nodes.push(clear);
   }
   return nodes;
 }
 
 function projectChip(id: string, name: string): HTMLElement {
-  return chip(name, choice.projects.includes(id), () => {
+  return chip(name, `project:${id}`, choice.projects.includes(id), () => {
     choice = { ...choice, projects: toggle(choice.projects, id) };
     commitChoice();
   });
@@ -558,19 +610,24 @@ function chipGroup(label: string, items: HTMLElement[]): HTMLElement {
   const box = document.createElement("div");
   box.className = "chip-group";
   box.setAttribute("role", "group");
-  box.setAttribute("aria-label", label);
   const name = document.createElement("span");
   name.className = "chip-label";
+  name.id = `chips-${label.toLowerCase().replace(/\W+/g, "-")}`;
   name.textContent = label;
+  // Named by the visible word, so a screen reader says it once.
+  box.setAttribute("aria-labelledby", name.id);
   box.append(name, ...items);
   return box;
 }
 
-function chip(label: string, on: boolean, onToggle: () => void): HTMLElement {
+/** One filter chip. `key` names it across repaints, so the chip a keyboard
+ * user toggled keeps focus after the rebuild. */
+function chip(label: string, key: string, on: boolean, onToggle: () => void): HTMLElement {
   const b = document.createElement("button");
   b.type = "button";
   b.className = on ? "chip on" : "chip";
   b.setAttribute("aria-pressed", on ? "true" : "false");
+  b.dataset.focus = `chip:${key}`;
   b.textContent = label;
   b.addEventListener("click", onToggle);
   return b;
@@ -691,7 +748,7 @@ function card(g: Group<SessionRow>, archived: ArchivedRow[]): HTMLElement {
       // A labelled rule above each crew; the rows without a crew label
       // come first and need none.
       if (sec.crew !== null) {
-        const sub = document.createElement("div");
+        const sub = document.createElement("h3");
         sub.className = "crew-head";
         sub.textContent = `crew: ${sec.crew}`;
         section.append(sub);
@@ -715,7 +772,8 @@ function spawnControls(project: ProjectRef): HTMLElement {
   if (profiles.length > 0) {
     select = document.createElement("select");
     select.className = "spawn-profile";
-    select.setAttribute("aria-label", "Profile for the new session");
+    select.setAttribute("aria-label", `Profile for the new session in ${project.name}`);
+    select.dataset.focus = `spawn:${project.id}:profile`;
     const local = document.createElement("option");
     local.value = "";
     local.textContent = "local shell";
@@ -727,12 +785,18 @@ function spawnControls(project: ProjectRef): HTMLElement {
       option.title = p.command;
       select.append(option);
     }
+    // The pick survives the repaint between choosing and tapping New session.
+    select.value = spawnProfile.get(project.id) ?? "";
+    const picked = select;
+    picked.addEventListener("change", () => spawnProfile.set(project.id, picked.value));
     box.append(select);
   }
   const b = button("New session", "spawn-button", () => {
     void spawn(project, select?.value || undefined, b);
   });
+  b.setAttribute("aria-label", `New session in ${project.name}`);
   b.title = `Start a shell in ${project.root ?? project.name}`;
+  b.dataset.focus = `spawn:${project.id}:new`;
   box.append(b);
   return box;
 }
@@ -772,6 +836,7 @@ function archivedFold(key: string, list: ArchivedRow[]): HTMLElement {
   });
   const summary = document.createElement("summary");
   summary.textContent = `Archived (${list.length})`;
+  summary.dataset.focus = `archived:${key}`;
   details.append(summary);
   const ul = document.createElement("ul");
   ul.className = "archived-list";
@@ -802,10 +867,12 @@ function row(s: SessionRow): HTMLElement {
   const link = document.createElement("a");
   link.href = `/?session=${encodeURIComponent(s.id)}`;
   link.className = "open";
+  link.dataset.focus = `${s.id}:open`;
 
+  // The state is the text beside it; the dot is decoration.
   const dot = document.createElement("span");
   dot.className = `dot ${familyOf(stateOf(s))}`;
-  dot.title = stateLabel(s);
+  dot.setAttribute("aria-hidden", "true");
 
   const main = document.createElement("div");
   main.className = "main";
@@ -869,25 +936,65 @@ function row(s: SessionRow): HTMLElement {
 }
 
 /** Name, archive, kill. Inline beside the row on a wide screen; behind one
- * menu button on a phone, where three targets do not fit beside the text. */
+ * menu button on a phone, where three targets do not fit beside the text.
+ * The menu closes on Escape, when focus leaves it, and when an item is
+ * chosen; each of those hands focus back to the ⋯ button. */
 function rowActions(s: SessionRow): HTMLElement {
   const box = document.createElement("div");
   box.className = "actions";
   const isOpen = openMenu === s.id;
-  const more = button("⋯", "more", () => {
-    const open = menu.classList.toggle("open");
+  const menu = document.createElement("div");
+  menu.id = `menu-${s.id}`;
+  menu.className = isOpen ? "menu open" : "menu";
+  const setOpen = (open: boolean): void => {
+    menu.classList.toggle("open", open);
     more.setAttribute("aria-expanded", open ? "true" : "false");
     openMenu = open ? s.id : null;
-  });
-  more.setAttribute("aria-label", "Session actions");
+  };
+  const more = button("⋯", "more", () => setOpen(!menu.classList.contains("open")));
+  more.setAttribute("aria-label", actionName("Actions for", headlineOf(s)));
+  more.setAttribute("aria-haspopup", "true");
+  more.setAttribute("aria-controls", menu.id);
   more.setAttribute("aria-expanded", isOpen ? "true" : "false");
-  const menu = document.createElement("div");
-  menu.className = isOpen ? "menu open" : "menu";
+  more.dataset.focus = `${s.id}:more`;
+  // Choosing an item on the phone closes the menu and returns focus to ⋯
+  // before the item's own dialog opens, so the poll that follows the dialog
+  // finds ⋯ by its key. On a wide screen there is no menu to close and the
+  // item keeps focus itself.
+  const item = (
+    label: "Rename" | "Name" | "Archive" | "Kill",
+    className: string,
+    key: string,
+    action: () => void,
+  ): HTMLButtonElement => {
+    const b = button(label, className, () => {
+      if (menu.classList.contains("open")) {
+        setOpen(false);
+        more.focus();
+      }
+      action();
+    });
+    b.dataset.focus = `${s.id}:${key}`;
+    b.setAttribute("aria-label", actionName(label, headlineOf(s)));
+    return b;
+  };
   menu.append(
-    button(s.name ? "Rename" : "Name", "quiet", () => void renameSession(s)),
-    button("Archive", "quiet", () => void archiveSession(s)),
-    button("Kill", "quiet danger", () => void killSession(s)),
+    item(s.name ? "Rename" : "Name", "quiet", "rename", () => void renameSession(s)),
+    item("Archive", "quiet", "archive", () => void archiveSession(s)),
+    item("Kill", "quiet danger", "kill", () => void killSession(s)),
   );
+  box.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !menu.classList.contains("open")) return;
+    event.preventDefault();
+    setOpen(false);
+    more.focus();
+  });
+  box.addEventListener("focusout", (event) => {
+    if (!menu.classList.contains("open")) return;
+    const to = event.relatedTarget;
+    if (to instanceof Node && box.contains(to)) return;
+    setOpen(false);
+  });
   box.append(more, menu);
   return box;
 }

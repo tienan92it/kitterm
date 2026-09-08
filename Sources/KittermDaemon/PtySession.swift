@@ -1350,11 +1350,19 @@ public final class PtySession: @unchecked Sendable {
             return onCwd
         }
         guard let callback else { return }
-        // The cwd moved, so the project may have: resolve it here, on the
-        // poll, with the lock released.
-        _ = project(forCwd: path)
+        // The cwd moved, so the project may have. The resolution is a run of
+        // `stat` calls that a dead mount can block, so it never runs here on
+        // the event loop: it goes to the project queue and lands in the cache
+        // when it is done. The listing row compares the cached cwd with the
+        // kernel's and resolves again itself when the two differ.
+        Self.projectQueue.async { [weak self] in _ = self?.project(forCwd: path) }
         callback(path)
     }
+
+    /// One serial queue for every session's poll-driven resolution. Serial,
+    /// so a stalled mount delays the other sessions' resolutions and nothing
+    /// else; the loop and the listing never wait on it.
+    private static let projectQueue = DispatchQueue(label: "kitterm.project-resolve", qos: .utility)
 
     // MARK: - Project
 
@@ -1367,11 +1375,11 @@ public final class PtySession: @unchecked Sendable {
 
     /// The project for `cwd`, resolved through `ProjectStore.shared` only
     /// when `cwd` differs from the one the cached project was resolved for
-    /// or the projects file changed since. The cwd poll calls this on a
-    /// change while a controller is attached; the listing row calls it with
-    /// the kernel's cwd, which covers a detached session the poll does not
-    /// run for. A resolution is a bounded run of `stat` calls, never on the
-    /// output path.
+    /// or the projects file changed since. The cwd poll queues this on a
+    /// change while a controller is attached; the listing row calls it on
+    /// the registry actor with the kernel's cwd, which covers a detached
+    /// session the poll does not run for. A resolution is a bounded run of
+    /// `stat` calls, never on the output path and never on an event loop.
     public func project(forCwd cwd: String) -> ResolvedProject? {
         let store = ProjectStore.shared
         let generation = store.generation

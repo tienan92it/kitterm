@@ -121,10 +121,15 @@ public enum DaemonPaths: Sendable {
         stateDirectory.appendingPathComponent("web-root")
     }
 
+    /// Creates the state directory owner-only. It holds tokens and shell
+    /// output, so a directory the umask left world-readable would let
+    /// another local user list what is there. An existing directory keeps
+    /// its mode.
     public static func ensureStateDirectory() throws {
         try FileManager.default.createDirectory(
             at: stateDirectory,
-            withIntermediateDirectories: true
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
         )
     }
 }

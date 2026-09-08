@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  actionName,
+  approvalName,
   attention,
   crews,
+  needsYouMessage,
   filter,
   group,
   pickForeman,
@@ -256,7 +259,25 @@ describe("tally and crews", () => {
   });
 
   it("read an unlisted project list as one group per row project", () => {
-    const projects: ProjectSummary[] = [{ ...kitterm, sessions: { total: 1 }, archives: 2 }];
+    const projects: ProjectSummary[] = [{ ...kitterm, knowledge: "docs/goals" }];
     expect(group([], projects)[0].project).toEqual(kitterm);
+  });
+});
+
+describe("accessible names", () => {
+  it("names a row action after its row", () => {
+    expect(actionName("Kill", "kitterm")).toBe("Kill kitterm");
+    expect(actionName("Actions for", "build 3")).toBe("Actions for build 3");
+  });
+
+  it("names an approval answer after the tool and the session", () => {
+    expect(approvalName("Allow", "Bash", "kitterm")).toBe("Allow Bash in kitterm");
+    expect(approvalName("Deny", "Write", "")).toBe("Deny Write");
+  });
+
+  it("counts the items that need the human in one sentence", () => {
+    expect(needsYouMessage(0)).toBe("Nothing needs you");
+    expect(needsYouMessage(1)).toBe("1 item needs you");
+    expect(needsYouMessage(3)).toBe("3 items need you");
   });
 });

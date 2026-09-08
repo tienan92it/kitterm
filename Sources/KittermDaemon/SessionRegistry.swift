@@ -195,8 +195,10 @@ public actor SessionRegistry {
         /// the tty. Read from the kernel when the row is built, never tracked
         /// on the output path.
         public let foregroundProgram: String?
-        /// The project the cwd resolved to (`ProjectStore`), before any
-        /// `project:` label is applied. Nil outside every project.
+        /// The project the row reports: a `project:<id>` label first, then
+        /// the cwd resolution (`ProjectStore`). Both are made here on the
+        /// actor, so the API handler reads the row and never takes the
+        /// store's lock on its event loop. Nil outside every project.
         public let project: ResolvedProject?
         /// A program created this session (labels or `POST /api/sessions`),
         /// so the registry holds it for the orchestrated linger window.
@@ -238,7 +240,9 @@ public actor SessionRegistry {
             rows: size.rows,
             heldSince: heldSince[id],
             foregroundProgram: session.foregroundProgram,
-            project: session.project(forCwd: cwd),
+            project: ProjectStore.shared.project(
+                labels: session.labels.values, resolved: session.project(forCwd: cwd)
+            ),
             orchestrated: session.isOrchestrated
         )
     }

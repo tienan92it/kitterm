@@ -24,6 +24,16 @@ a fact that becomes a design decision into `docs/adr/`.
 
 ## Approvals and skills (2026-09-08, round 4)
 
+- The foreman must commit to the base branch before it sends a round's
+  prompt. A crew branches off the base's HEAD when it starts; a commit
+  after the prompt lands only if the crew branches later. Round 5 held by
+  luck.
+- A review gate on `main...<top>` found one blocking and twenty-two
+  should-fix items across four dimensions that five green floors did not.
+  Two of the rules are now checks: a per-theme WCAG ratio vitest
+  (`theme-contrast.test.ts`) and a loop-side `ProjectStore` call counter.
+- Four reviewers plus one crew fit the three-session cap two at a time;
+  the whole gate took 30 minutes alongside round 4.
 - A hook can name a session id the daemon no longer has: on 2026-09-08 an
   `AskUserQuestion` approval arrived for session `526DA42F`, which
   `GET /api/sessions/<id>` answered `no such session`. The fleet view then
