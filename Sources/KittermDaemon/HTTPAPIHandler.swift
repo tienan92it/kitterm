@@ -599,16 +599,12 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 summaries = summaries.filter { SessionLabels($0.labels).matches(filter: filter) }
             }
             if let projectFilter {
-                summaries = summaries.filter { self.project(of: $0)?.id == projectFilter }
+                summaries = summaries.filter { $0.project?.id == projectFilter }
             }
             // The approval store is loop-confined; this whenComplete runs on the loop.
             let approvalSessions = Set(self.approvals.snapshot().compactMap(\.sessionID))
             let items: [[String: Any]] = summaries.map { summary in
-                Self.sessionItem(
-                    summary,
-                    pendingApproval: approvalSessions.contains(summary.id),
-                    project: self.project(of: summary)
-                )
+                Self.sessionItem(summary, pendingApproval: approvalSessions.contains(summary.id))
             }
             let body: String
             if let data = try? JSONSerialization.data(withJSONObject: ["ok": true, "sessions": items]),
@@ -627,12 +623,6 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         }
     }
 
-    /// The project a session row reports: its `project:` label first, then
-    /// the cwd resolution the registry made.
-    private func project(of summary: SessionRegistry.SessionSummary) -> ResolvedProject? {
-        projects.project(labels: summary.labels, resolved: summary.project)
-    }
-
     /// One session's listing row. Shared by the list and the single-session
     /// route so the two can never drift apart. `pendingApproval` (whether a
     /// tool call is blocked on a human) is joined here, beside the session's
@@ -640,8 +630,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// correlating three endpoints itself.
     private static func sessionItem(
         _ summary: SessionRegistry.SessionSummary,
-        pendingApproval: Bool,
-        project: ResolvedProject?
+        pendingApproval: Bool
     ) -> [String: Any] {
         let agent = summary.agentStatus
         let derived = DerivedSessionState.derive(from: summary.marks)
@@ -670,8 +659,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             "orchestrated": summary.orchestrated,
         ]
         // The project the cwd resolved to, or the one a `project:` label
-        // named. Absent outside every project.
-        if let project { item["project"] = project.rowJSON }
+        // named; the registry made both. Absent outside every project.
+        if let project = summary.project { item["project"] = project.rowJSON }
         if let command = derived.lastCommand { item["lastCommand"] = command }
         if let exit = derived.lastExit { item["lastExit"] = exit }
         if let profile = summary.profile { item["profile"] = profile }
@@ -737,9 +726,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 return
             }
             let pendingApproval = self.approvals.snapshot().contains { $0.sessionID == summary.id }
-            var payload = Self.sessionItem(
-                summary, pendingApproval: pendingApproval, project: self.project(of: summary)
-            )
+            var payload = Self.sessionItem(summary, pendingApproval: pendingApproval)
             payload["ok"] = true
             let body: String
             if let data = try? JSONSerialization.data(withJSONObject: payload),
@@ -1293,12 +1280,15 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         let loop = context.eventLoop
         let bound = NIOLoopBound(context, eventLoop: loop)
         let projects = self.projects
-        let summariesPromise = loop.makePromise(of: [SessionRegistry.SessionSummary].self)
+        // The registered list is read inside the task, off the loop: the
+        // store's reload takes a lock around file I/O, and the loop reads
+        // only what the hop delivers.
+        let summariesPromise = loop.makePromise(of: ([SessionRegistry.SessionSummary], [Project]).self)
         summariesPromise.completeWithTask {
-            await self.registry.summaries()
+            (await self.registry.summaries(), projects.registered())
         }
         summariesPromise.futureResult.whenComplete { result in
-            let summaries = (try? result.get()) ?? []
+            let (summaries, registered) = (try? result.get()) ?? ([], [])
             // The archive counts come from the archive queue; the join
             // happens back on the loop, where the approval store lives.
             let countsPromise = loop.makePromise(of: [String: Int].self)
@@ -1307,8 +1297,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 let context = bound.value
                 let approvalSessions = Set(self.approvals.snapshot().compactMap(\.sessionID))
                 let body = Self.projectsBody(
-                    registered: projects.registered(),
-                    summaries: summaries.map { ($0, self.project(of: $0)) },
+                    registered: registered,
+                    summaries: summaries.map { ($0, $0.project) },
                     approvalSessions: approvalSessions,
                     archiveCounts: archiveCounts
                 )

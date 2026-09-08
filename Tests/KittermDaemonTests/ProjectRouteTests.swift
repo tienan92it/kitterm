@@ -293,6 +293,37 @@ final class ProjectRouteTests: XCTestCase {
         XCTAssertEqual((projects.first?["sessions"] as? [String: Int])?["total"], 0)
     }
 
+    // MARK: - the event loop
+
+    /// No route and no poll takes the store's lock on an event loop: the
+    /// rows carry their project from the actor, the registered list rides
+    /// the actor hop, the archive walk runs on the archive queue, and the
+    /// poll's resolution runs on the project queue. The store counts every
+    /// lock take made on a NIO loop thread; the count must not move.
+    func testTheEventLoopNeverCallsIntoTheProjectStore() async throws {
+        let before = ProjectStore.shared.eventLoopCalls
+        let labelled = try await spawnDirect(cwd: repo, labels: ["project": "alpha"])
+        let moving = try await spawnOverAPI(cwd: plain)
+        let live = await registry.session(moving)
+        let session = try XCTUnwrap(live)
+        session.attach(onOutput: { _ in }, onExit: { _ in }, onCwd: { _ in })
+        try session.write(Data("cd \(alpha!)\n".utf8))
+        try await wait("the poll to resolve the project") { session.project?.id == "alpha" }
+
+        _ = try await rows("/api/sessions", key: "sessions")
+        _ = try await rows("/api/sessions?project=alpha", key: "sessions")
+        let (status, _) = try await request("GET", "/api/sessions/\(labelled.uuidString)")
+        XCTAssertEqual(status, 200)
+        _ = try await rows("/api/projects", key: "projects")
+        let (archiveStatus, _) = try await request("POST", "/api/sessions/\(labelled.uuidString)/archive")
+        XCTAssertEqual(archiveStatus, 200)
+        _ = try await rows("/api/archives", key: "archives")
+        _ = try await rows("/api/archives?project=alpha", key: "archives")
+        _ = try await rows("/api/projects", key: "projects")
+
+        XCTAssertEqual(ProjectStore.shared.eventLoopCalls, before, "a ProjectStore lock take ran on an event loop")
+    }
+
     // MARK: - the cwd poll
 
     /// A `cd` into a project moves the session's project on the poll's next

@@ -5,6 +5,7 @@ import Glibc
 #endif
 import Foundation
 import NIOConcurrencyHelpers
+import NIOPosix
 
 /// A project the user registered in `~/.kitterm/projects.json`.
 public struct Project: Sendable, Equatable {
@@ -68,8 +69,12 @@ public struct ResolvedProject: Sendable, Equatable {
 ///
 /// The file is reloaded when its mtime changes, like `tokens.json`, so
 /// `kitterm project add` reaches a running daemon. Lock-guarded, because
-/// the cwd poll of every session and the API handler call `resolve` from
-/// their own event loops.
+/// the registry actor, the project queue, and the archive queue call it
+/// from their own threads. The lock holds a `stat`, and a reload holds a
+/// file read and one `realpath` per root, so nothing on a NIO event loop
+/// takes it: the loop reads the project on the session row and the
+/// registered list the actor hop delivered. `eventLoopCalls` counts the
+/// violations; a test holds it at zero.
 public final class ProjectStore: @unchecked Sendable {
     public static let shared = ProjectStore()
     public static let formatVersion = 1
@@ -91,6 +96,7 @@ public final class ProjectStore: @unchecked Sendable {
     /// the same folder name do not share an id within a run.
     private var discovered: [String: String] = [:]
     private var generationStorage = 0
+    private var eventLoopCallsStorage = 0
 
     /// `url` nil reads `DaemonPaths.projectsFile` at each check, so the
     /// shared store follows `KITTERM_STATE_DIR`.
@@ -100,11 +106,26 @@ public final class ProjectStore: @unchecked Sendable {
 
     private var url: URL { fixedURL ?? DaemonPaths.projectsFile }
 
+    /// Lock takes made from a NIO event-loop thread. The rule is zero; see
+    /// the type comment.
+    public var eventLoopCalls: Int {
+        lock.withLock { eventLoopCallsStorage }
+    }
+
+    /// Every lock take goes through here, so a take on an event loop is
+    /// counted where it happens.
+    private func withStore<T>(_ body: () -> T) -> T {
+        lock.withLock {
+            if MultiThreadedEventLoopGroup.currentEventLoop != nil { eventLoopCallsStorage += 1 }
+            return body()
+        }
+    }
+
     /// Counts the reloads that changed the registered set. A session caches
     /// its project with the generation it was resolved under and resolves
     /// again when either the cwd or the generation moved.
     public var generation: Int {
-        lock.withLock {
+        withStore {
             reloadIfChangedLocked()
             return generationStorage
         }
@@ -112,7 +133,7 @@ public final class ProjectStore: @unchecked Sendable {
 
     /// The registered projects, in file order.
     public func registered() -> [Project] {
-        lock.withLock {
+        withStore {
             reloadIfChangedLocked()
             return projects
         }
@@ -137,7 +158,7 @@ public final class ProjectStore: @unchecked Sendable {
             return ResolvedProject(project)
         }
         let name = URL(fileURLWithPath: root).lastPathComponent
-        let id: String = lock.withLock {
+        let id: String = withStore {
             if let known = discovered[root] { return known }
             let taken = Set(projects.map(\.id)).union(discovered.values)
             let id = Self.uniqueID(for: name, taken: taken)
