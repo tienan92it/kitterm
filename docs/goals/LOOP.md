@@ -14,10 +14,13 @@ fact without it.
 - **The human** owns rounds. The human writes `goal.md`, `plan.md`, this
   file, and `corpus/`. After each budget the human picks continue,
   redirect, or stop.
-- **The foreman** owns turns inside a round. The foreman is an agent in a
-  kitterm pane that runs the `goal-loop` skill on the kitterm MCP tools. It
-  writes `STATE.md`, `rounds/`, and appends to `facts.md`. It never answers
-  a permission dialog for a crew agent.
+- **The foreman** owns turns inside a round, for every project at once. One
+  foreman runs per daemon, in a kitterm pane named `foreman` with the label
+  `crew:foreman`, on the `foreman-loop` skill and the kitterm MCP tools. It
+  delegates every round to a crew session, monitors all of them, and reports
+  to the human. It writes `STATE.md`, `rounds/`, and appends to `facts.md`.
+  It never edits product code and never answers a permission dialog for a
+  crew agent.
 - **A crew agent** runs in a session the foreman spawned. It changes the
   product and adds checks. It reports with `post_note`.
 
@@ -83,9 +86,72 @@ whether the product improved.
 8. **Update `STATE.md`.** Queue, failures, next action, round counter,
    budget left.
 
+## One foreman for every project
+
+The foreman keeps no state of its own. The repositories are the control
+plane; the foreman rebuilds its view from them and from the daemon.
+
+1. **Scan.** On start, and after every event batch, list the projects
+   (`list_projects` once capability 1 ships; until then the paths the human
+   gave). For each project read `docs/goals/STATE.md`. A project without the
+   package is reported once as "no goal" and skipped. Match a live session
+   to its goal by the `goal:` and `round:` labels, never by id.
+2. **Schedule.** A goal is runnable when its `Status` is `active`, its
+   budget has rounds left, no round is open, and no proposal blocks the next
+   action. Run at most one round per goal and at most three crew sessions
+   across all projects. Start the runnable goal with the oldest `Updated`
+   date first.
+3. **Delegate.** Run "One round" for that goal. The crew session does the
+   work. The foreman reads, routes, verifies, and records.
+4. **Monitor.** Hold one `wait_for_events` for the whole daemon. On each
+   scan compare `heldSince` with now: archive a crew session that sits at an
+   empty prompt one hour past `completed`. Respawn a crew once after an
+   `epoch` change; record the open round as failed with gap `world` when the
+   respawn does not restore it.
+5. **Report.** See "Reports".
+
+## Reports
+
+The foreman reports in three cases. The shape is the same in each case:
+what needs the human first, then one block per project.
+
+| When | What |
+|---|---|
+| At once | `needs-input`, `needs-approval`, a `propose` decision, a stop rule, a failed round. Name the project, the goal, the round, and link the pane. |
+| After every round | One digest. |
+| When the human asks "status" | One digest. |
+
+Digest shape:
+
+```
+Needs you
+- <project> / <goal> round <n>: <what>, <link>
+
+<project> — <goal title>
+- round <n> of <budget>, status <active|waiting|stopped>
+- last floor: green | red (<check>)
+- next: <next action>
+- proposals: <path>: <what>, or none
+```
+
+Send a push notification for an "at once" item when the human is away from
+the terminal. Do not narrate events; report the ones that need the human.
+
+## Direction
+
+After a goal spends its budget the foreman sets its `Status` to `waiting`,
+reports, and keeps the other goals running. The human answers per goal:
+
+- **continue**: the foreman resets `Round: 0 of 3`, sets `Status: active`,
+  and notes the decision in `STATE.md`.
+- **redirect**: the human edits `goal.md` or `plan.md`, then says continue.
+- **stop**: the foreman sets `Status: stopped`, archives or ends the goal's
+  crew sessions, and moves the package to `docs/goals/done/<slug>/` when the
+  human asks.
+
 ## Stop rules
 
-The foreman stops and tells the human when:
+The foreman stops one goal and tells the human when:
 
 - the budget is spent;
 - a repair needs a change under Frozen;
@@ -93,6 +159,8 @@ The foreman stops and tells the human when:
 - a failure does not reproduce in a fresh session;
 - the crew session reports `exited` with a non-zero code twice;
 - the daemon `epoch` changes and the crew is gone (respawn once, then stop).
+
+A stopped goal does not stop the foreman. The other goals keep running.
 
 ## Round record
 
@@ -133,7 +201,7 @@ done | failed | propose (<path>: <what and why>)
 
 | Key | Value | Set by |
 |---|---|---|
-| `crew` | goal slug | foreman |
+| `crew` | goal slug, or `foreman` for the foreman's own pane | foreman |
 | `goal` | goal slug | foreman |
 | `round` | round number | foreman |
 | `task` | queue item slug | foreman |

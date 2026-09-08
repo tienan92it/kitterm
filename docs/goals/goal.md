@@ -6,8 +6,10 @@ Status: active (opened 2026-09-08).
 
 A human opens `/sessions` on any device and sees the work grouped by
 project: what runs, what needs them, what failed, and what each goal loop
-does next. A foreman reads this directory before every round and writes it
-after every round, so no round rediscovers a fact, a decision, or a plan.
+does next. One foreman serves every project: it reads each project's
+package before a round, delegates the round to a crew session, monitors
+all of them, writes the package after the round, and reports to the human.
+No round rediscovers a fact, a decision, or a plan.
 
 The two parts:
 
@@ -39,9 +41,10 @@ All four hold on a daemon built from `main`:
    budget read from `docs/goals/STATE.md`, and the values match the file.
 3. `kitterm skills install` puts the same skills in `~/.claude/skills/` that
    `examples/foreman/` holds, and a second run reports no change.
-4. One goal ran three rounds through the `goal-loop` skill, and
-   `docs/goals/rounds/` holds the three records with a floor result and a
-   gap class each.
+4. One foreman ran three rounds on this goal while a second registered
+   project held a goal of its own, reported one digest after each round,
+   and `docs/goals/rounds/` holds the three records with a floor result and
+   a gap class each.
 
 The floor (`swift test`, `KittermBench` p95 under 50 ms, `pnpm build` and
 `pnpm test`) is green at every step.

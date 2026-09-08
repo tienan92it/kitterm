@@ -1,5 +1,6 @@
 # STATE: projects-and-knowledge
 
+- Status: active
 - Round: 0 of 3 in this budget
 - Rounds total: 0
 - Last floor: not run in this loop
