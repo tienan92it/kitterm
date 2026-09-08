@@ -582,13 +582,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             )
             return
         }
-        // `?project=<id>` narrows it to one project. An unknown id answers
-        // an empty list; a malformed one is a 400 for the same reason.
-        let projectFilter = DaemonServer.queryValue("project", fromRequestURI: head.uri)
-        if let projectFilter, !ProjectStore.isValidID(projectFilter) {
-            badRequest("project filter must be a project id", head: head, context: context)
-            return
-        }
+        guard let projectFilter = projectFilter(head: head, context: context) else { return }
         let promise = context.eventLoop.makePromise(of: [SessionRegistry.SessionSummary].self)
         promise.completeWithTask {
             await self.registry.summaries()
@@ -621,6 +615,19 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 keepAlive: head.isKeepAlive
             )
         }
+    }
+
+    /// The `?project=<id>` filter of a list route: `.some(nil)` for no
+    /// filter, `.some(id)` for a valid one, and nil after answering 400 for
+    /// a malformed one. An unknown id is the caller's to get an empty list
+    /// for, like `?label=`.
+    private func projectFilter(head: HTTPRequestHead, context: ChannelHandlerContext) -> String?? {
+        let filter = DaemonServer.queryValue("project", fromRequestURI: head.uri)
+        if let filter, !ProjectStore.isValidID(filter) {
+            badRequest("project filter must be a project id", head: head, context: context)
+            return nil
+        }
+        return .some(filter)
     }
 
     /// One session's listing row. Shared by the list and the single-session
@@ -1238,13 +1245,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     private func serveArchiveList(head: HTTPRequestHead, context: ChannelHandlerContext) {
         // Directory scan + a file read per archive: off the loop, like every
         // other file I/O, then hop back with the encoded bytes.
-        // `?project=<id>`: the same rule as the session list — an unknown
-        // id is an empty list, a malformed one a 400.
-        let projectFilter = DaemonServer.queryValue("project", fromRequestURI: head.uri)
-        if let projectFilter, !ProjectStore.isValidID(projectFilter) {
-            badRequest("project filter must be a project id", head: head, context: context)
-            return
-        }
+        guard let projectFilter = projectFilter(head: head, context: context) else { return }
         let loop = context.eventLoop
         let bound = NIOLoopBound(context, eventLoop: loop)
         let promise = loop.makePromise(of: Data.self)

@@ -127,7 +127,7 @@ public enum SessionArchive {
     /// arrays are stripped: it returns the record to list, or nil to leave
     /// it out (`GET /api/archives?project=<id>`).
     public static func list(
-        transform: @escaping @Sendable ([String: Any]) -> [String: Any]? = { $0 },
+        transform: @escaping @Sendable ([String: Any]) -> [String: Any]?,
         completion: @escaping @Sendable (Data) -> Void
     ) {
         queue.async {
