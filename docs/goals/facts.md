@@ -5,6 +5,18 @@ per fact. Newest first. Each entry names its date and its source. A foreman
 appends; a human prunes. Move a fact that becomes a rule into `LOOP.md`. Move
 a fact that becomes a design decision into `docs/adr/`.
 
+## Project resolution (2026-09-08, round 1)
+
+- The kernel reports a shell's cwd as a real path, `/private/var/…` on
+  macOS. Foundation's `resolvingSymlinksInPath()` keeps `/var/…`, so a
+  registered root canonicalized with it never matches. `realpath(3)` gives
+  the kernel's form. `Projects.canonicalRoot` uses it.
+- `PtySession`'s cwd poll runs only while a controller is attached. A
+  detached crew session keeps a stale value from any poll-driven field, so
+  a row-time check against the kernel cwd is needed for a detached session.
+- `Tests/KittermCLITests/MCPToolsTests.swift:18` pins the MCP tool count.
+  Every new tool changes that line.
+
 ## Fleet view and session model (2026-09-08, code survey for this goal)
 
 - `Web/terminal/src/sessions.ts` renders rows in the daemon's order, which is

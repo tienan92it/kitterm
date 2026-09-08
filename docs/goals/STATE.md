@@ -1,33 +1,42 @@
 # STATE: projects-and-knowledge
 
 - Status: active
-- Round: 0 of 3 in this budget
-- Rounds total: 0
-- Last floor: not run in this loop
+- Round: 1 of 3 in this budget (round 1 done)
+- Rounds total: 1
+- Last floor: green (2026-09-08, round 1 after the correction)
 - Updated: 2026-09-08
 
 ## Queue
 
-1. `project-identity` (capability 1)
-2. `dashboard` (capability 2)
-3. `scaffold-and-docs` (capability 3)
-4. `goal-loop-skill` (capability 4)
-5. `knowledge-on-dashboard` (capability 5)
-6. `dogfood` (capability 6)
+1. `dashboard` (capability 2), branch off `goals/project-identity`
+2. `scaffold-and-docs` (capability 3)
+3. `goal-loop-skill` (capability 4)
+4. `knowledge-on-dashboard` (capability 5)
+5. `dogfood` (capability 6)
 
 ## Failures
 
-None.
+None. One pre-existing flake recorded in `rounds/001.md` (runtime
+candidate, `LiveTakeoverTests`).
 
 ## Proposals waiting on the human
 
+- `LOOP.md` Authority: a count pin or a golden list in an existing test is
+  Propose, not Frozen, when the change adds and removes nothing.
 - Watch-grade access to `GET /api/projects/<id>/knowledge/<path>`. The plan
   recommends readable, the same class as a cwd. Decide before round 5.
 
+## Done
+
+- `project-identity` (capability 1): round 1, `goals/project-identity` at
+  `9bb6d8b`, not pushed. See `rounds/001.md`.
+
 ## Next action
 
-Round 1: `project-identity`. Spawn one crew session in the repository root
-with labels `crew:projects-and-knowledge`, `goal:projects-and-knowledge`,
-`round:1`, `task:project-identity`. Run the floor. Send the capability 1 row
-from `plan.md` with the facts under "Fleet view and session model" and
-"Toolchain".
+Round 2: `dashboard`. Spawn one crew session in the repository root with
+labels `crew:projects-and-knowledge`, `goal:projects-and-knowledge`,
+`round:2`, `task:dashboard`. Branch `goals/dashboard` off
+`goals/project-identity`. Run the floor. Send the capability 2 row from
+`plan.md` with the "Fleet view and session model" facts and corpus request
+`01-phone-dashboard`. Ask the crew to run the `frontend-design` skill
+before it rebuilds the rows.

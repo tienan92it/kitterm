@@ -40,7 +40,8 @@ enum MCPTools {
                 "list_sessions",
                 "List every live session — the crew — with each one's typed state (working / needs-input / needs-approval / completed / failed / idle / exited), name, cwd, last command, and foregroundProgram: the program that holds the terminal (claude, vim), absent when the shell is at its prompt. A row with `heldSince` (epoch ms) is one the linger clock kept past its window because a program held the terminal or output arrived; the daemon never ends such a session itself, so end the ones held longer than you tolerate with kill_session.",
                 properties: [
-                    "label": ["type": "string", "description": "Optional key:value filter, e.g. crew:alpha"]
+                    "label": ["type": "string", "description": "Optional key:value filter, e.g. crew:alpha"],
+                    "project": ["type": "string", "description": "Optional project id filter (see list_projects)"],
                 ]
             ),
             tool(
@@ -161,6 +162,11 @@ enum MCPTools {
                 "List archived sessions — finished work whose evidence was kept.",
                 properties: [:]
             ),
+            tool(
+                "list_projects",
+                "List every project the daemon has seen: registered in ~/.kitterm/projects.json (kitterm project add) or discovered from a session's cwd by its .git. Each row carries id, name, root, registered, knowledge (the goal package directory, docs/goals by default), live session counts by state, pending approvals, lastOutputAt, and archive count. A foreman scans this to find each project's docs/goals/STATE.md; filter list_sessions by project with its project argument.",
+                properties: [:]
+            ),
         ]
     }
 
@@ -170,10 +176,14 @@ enum MCPTools {
     static func call(named name: String, arguments: [String: Any]) throws -> Call {
         switch name {
         case "list_sessions":
-            var path = "/api/sessions"
+            var query: [String] = []
             if let label = arguments["label"] as? String, !label.isEmpty {
-                path += "?label=\(escape(label))"
+                query.append("label=\(escape(label))")
             }
+            if let project = arguments["project"] as? String, !project.isEmpty {
+                query.append("project=\(escape(project))")
+            }
+            let path = "/api/sessions" + (query.isEmpty ? "" : "?" + query.joined(separator: "&"))
             return Call(method: "GET", path: path)
 
         case "get_session":
@@ -283,6 +293,9 @@ enum MCPTools {
 
         case "list_archives":
             return Call(method: "GET", path: "/api/archives")
+
+        case "list_projects":
+            return Call(method: "GET", path: "/api/projects")
 
         default:
             throw ToolError.badArguments("unknown tool: \(name)")

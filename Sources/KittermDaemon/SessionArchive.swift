@@ -122,25 +122,55 @@ public enum SessionArchive {
     /// and strips the command/mark arrays — the detail route carries those.
     /// Runs on the archive queue; `completion` fires there with the encoded
     /// listing, so the route hops back to its loop with only `Data`.
-    public static func list(completion: @escaping @Sendable (Data) -> Void) {
+    ///
+    /// `transform` runs on the archive queue for each record, after the
+    /// arrays are stripped: it returns the record to list, or nil to leave
+    /// it out (`GET /api/archives?project=<id>`).
+    public static func list(
+        transform: @escaping @Sendable ([String: Any]) -> [String: Any]? = { $0 },
+        completion: @escaping @Sendable (Data) -> Void
+    ) {
         queue.async {
-            let base = DaemonPaths.archiveDirectory
-            let dirs = (try? FileManager.default.contentsOfDirectory(
-                at: base, includingPropertiesForKeys: nil
-            )) ?? []
-            let records = dirs.compactMap { dir -> [String: Any]? in
-                guard let data = try? Data(contentsOf: dir.appendingPathComponent("archive.json")),
-                      var json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-                else { return nil }
-                json.removeValue(forKey: "commands")
-                json.removeValue(forKey: "marks")
-                return json
-            }.sorted {
+            let records = readRecords().compactMap(transform).sorted {
                 ($0["archivedAt"] as? Int ?? 0) > ($1["archivedAt"] as? Int ?? 0)
             }
             let encoded = (try? JSONSerialization.data(withJSONObject: ["ok": true, "archives": records]))
                 ?? Data(#"{"ok":true,"archives":[]}"#.utf8)
             completion(encoded)
+        }
+    }
+
+    /// How many archives each key holds, for `GET /api/projects`. `key`
+    /// runs on the archive queue for each record and returns the key to
+    /// count under, or nil to skip the record. `completion` fires there with
+    /// the counts, which cross back to the loop as a `Sendable` value.
+    public static func counts(
+        by key: @escaping @Sendable ([String: Any]) -> String?,
+        completion: @escaping @Sendable ([String: Int]) -> Void
+    ) {
+        queue.async {
+            var counts: [String: Int] = [:]
+            for record in readRecords() {
+                if let key = key(record) { counts[key, default: 0] += 1 }
+            }
+            completion(counts)
+        }
+    }
+
+    /// Every `archive.json` without its command and mark arrays. Archive
+    /// queue only.
+    private static func readRecords() -> [[String: Any]] {
+        let base = DaemonPaths.archiveDirectory
+        let dirs = (try? FileManager.default.contentsOfDirectory(
+            at: base, includingPropertiesForKeys: nil
+        )) ?? []
+        return dirs.compactMap { dir -> [String: Any]? in
+            guard let data = try? Data(contentsOf: dir.appendingPathComponent("archive.json")),
+                  var json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            else { return nil }
+            json.removeValue(forKey: "commands")
+            json.removeValue(forKey: "marks")
+            return json
         }
     }
 

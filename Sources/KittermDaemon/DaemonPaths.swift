@@ -79,6 +79,12 @@ public enum DaemonPaths: Sendable {
         stateDirectory.appendingPathComponent("profiles.json")
     }
 
+    /// Registered projects (`kitterm project add|list|remove`), read by the
+    /// daemon to resolve each session's project (`ProjectStore`).
+    public static var projectsFile: URL {
+        stateDirectory.appendingPathComponent("projects.json")
+    }
+
     /// Retained session output (`--retain-logs`), one file per session.
     public static var logsDirectory: URL {
         stateDirectory.appendingPathComponent("logs", isDirectory: true)
