@@ -1,17 +1,16 @@
 # STATE: projects-and-knowledge
 
 - Status: active
-- Round: 1 of 3 in this budget (second budget; round 4 done)
-- Rounds total: 4
-- Last floor: green (2026-09-08, round 4 after)
+- Round: 2 of 3 in this budget (second budget; rounds 4 and 5 done)
+- Rounds total: 5
+- Last floor: green (2026-09-08, round 5 after)
 - Updated: 2026-09-08
 
 ## Queue
 
-1. `review-fixes`: round 5, running, branch `goals/review-fixes` off
-   `goals/goal-loop-skill`.
-2. `knowledge-on-dashboard` (capability 5)
-3. `dogfood` (capability 6)
+1. `knowledge-on-dashboard` (capability 5), branch off
+   `goals/review-fixes`
+2. `dogfood` (capability 6)
 
 ## Failures
 
@@ -63,6 +62,12 @@ read-only. Reports under the job's `review/` directory.
   review 7). Decide with the nearest-`.git` proposal.
 - `plan.md`: add a corpus request for capabilities 3 and 4 before the next
   budget. See `rounds/003.md`.
+- `plan.md` capability 1: the row names counts on `GET /api/projects`; the
+  route returns identity only since round 5.
+- `LOOP.md`: commit to the base branch before sending a round's prompt;
+  run a review gate on the stack before a push. See `rounds/005.md`.
+- `tokens.css`: raise the `--ui-text-muted` mix; under 4.5:1 on 10 of 16
+  themes. Outside this goal's diff.
 - Watch-grade access to `GET /api/projects/<id>/knowledge/<path>`. The plan
   recommends readable, the same class as a cwd. Decide before capability 5.
   The security review notes `GET /api/projects` already answers at watch
@@ -77,14 +82,15 @@ read-only. Reports under the job's `review/` directory.
 - `scaffold-and-docs` (capability 3): round 3, `goals/scaffold-and-docs`
   at `332e096`, not pushed. See `rounds/003.md`.
 - `goal-loop-skill` (capability 4): round 4, `goals/goal-loop-skill` at
-  `97fa22e`, not pushed. See `rounds/004.md`.
+  `97fa22e`. See `rounds/004.md`.
+- `review-fixes`: round 5, `goals/review-fixes` at `f772b56`. See
+  `rounds/005.md`.
 
 ## Next action
 
-Round 5 runs. On `completed`: floor, diff against the tiers, the two
-screenshots, record `rounds/005.md`. The human said "continue with review
-fixes then push" on 2026-09-08, so after round 5: push the six branches
-and open the PRs in order, each based on the previous: `goals/knowledge-base`
-to `main`, then `goals/project-identity`, `goals/dashboard`,
-`goals/scaffold-and-docs`, `goals/goal-loop-skill`, `goals/review-fixes`.
-Merge and release wait for the human.
+Push the six branches and open the PRs in order, each based on the
+previous: `goals/knowledge-base` to `main`, then `goals/project-identity`,
+`goals/dashboard`, `goals/scaffold-and-docs`, `goals/goal-loop-skill`,
+`goals/review-fixes`. Merge and release wait for the human. Then round 6:
+`knowledge-on-dashboard` off `goals/review-fixes`, after the human decides
+watch-grade access to the knowledge route.
