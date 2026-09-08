@@ -1269,13 +1269,12 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         }
     }
 
-    /// `GET /api/projects` — every project the daemon has seen: the
-    /// registered ones (`~/.kitterm/projects.json`, with no session too) and
-    /// the ones discovered from a live session's or an archive's cwd. Each
-    /// carries its live session counts by `mergedState`, its pending
-    /// approvals, its newest `lastOutputAt`, and its archive count. The
-    /// fleet view builds its project cards from this one call. Read-only,
-    /// any grade.
+    /// `GET /api/projects` — the identity of every project the daemon has
+    /// seen: the registered ones (`~/.kitterm/projects.json`, with no
+    /// session too) and the ones a live session's cwd discovered. Identity
+    /// only, `{id, name, root, registered, knowledge}`: the fleet view counts
+    /// what it shows from the session rows, so a count here was a second
+    /// merge per session per poll that nobody read. Read-only, any grade.
     private func serveProjects(head: HTTPRequestHead, context: ChannelHandlerContext) {
         let loop = context.eventLoop
         let bound = NIOLoopBound(context, eventLoop: loop)
@@ -1283,94 +1282,31 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         // The registered list is read inside the task, off the loop: the
         // store's reload takes a lock around file I/O, and the loop reads
         // only what the hop delivers.
-        let summariesPromise = loop.makePromise(of: ([SessionRegistry.SessionSummary], [Project]).self)
-        summariesPromise.completeWithTask {
+        let promise = loop.makePromise(of: ([SessionRegistry.SessionSummary], [Project]).self)
+        promise.completeWithTask {
             (await self.registry.summaries(), projects.registered())
         }
-        summariesPromise.futureResult.whenComplete { result in
+        promise.futureResult.whenComplete { result in
             let (summaries, registered) = (try? result.get()) ?? ([], [])
-            // The archive counts come from the archive queue; the join
-            // happens back on the loop, where the approval store lives.
-            let countsPromise = loop.makePromise(of: [String: Int].self)
-            SessionArchive.counts(by: { projects.project(forArchive: $0)?.id }) { countsPromise.succeed($0) }
-            countsPromise.futureResult.whenSuccess { archiveCounts in
-                let context = bound.value
-                let approvalSessions = Set(self.approvals.snapshot().compactMap(\.sessionID))
-                let body = Self.projectsBody(
-                    registered: registered,
-                    summaries: summaries.map { ($0, $0.project) },
-                    approvalSessions: approvalSessions,
-                    archiveCounts: archiveCounts
-                )
-                self.writeJSON(
-                    status: .ok, body: body,
-                    context: context, version: head.version, keepAlive: head.isKeepAlive
-                )
-            }
+            self.writeJSON(
+                status: .ok,
+                body: Self.projectsBody(registered: registered, seen: summaries.compactMap(\.project)),
+                context: bound.value, version: head.version, keepAlive: head.isKeepAlive
+            )
         }
     }
 
-    /// One aggregate per project id, sorted by name then id.
-    private static func projectsBody(
-        registered: [Project],
-        summaries: [(SessionRegistry.SessionSummary, ResolvedProject?)],
-        approvalSessions: Set<UUID>,
-        archiveCounts: [String: Int]
-    ) -> String {
-        struct Aggregate {
-            var project: ResolvedProject
-            var states: [MergedSessionState: Int] = [:]
-            var total = 0
-            var pendingApprovals = 0
-            var lastOutputAt: Date?
-            var archives = 0
-        }
-        var aggregates: [String: Aggregate] = [:]
-        for project in registered {
-            aggregates[project.id] = Aggregate(project: ResolvedProject(project))
-        }
-        for (summary, project) in summaries {
-            guard let project else { continue }
-            var aggregate = aggregates[project.id] ?? Aggregate(project: project)
-            let pendingApproval = approvalSessions.contains(summary.id)
-            let merged = MergedSessionState.merge(
-                derived: DerivedSessionState.derive(from: summary.marks),
-                agent: summary.agentStatus,
-                pendingApproval: pendingApproval,
-                exited: summary.exited
-            )
-            aggregate.states[merged, default: 0] += 1
-            aggregate.total += 1
-            if pendingApproval { aggregate.pendingApprovals += 1 }
-            if let at = summary.lastOutputAt, at > (aggregate.lastOutputAt ?? .distantPast) {
-                aggregate.lastOutputAt = at
-            }
-            aggregates[project.id] = aggregate
-        }
-        for (id, count) in archiveCounts {
-            // An archive of a project no live session is in still names it;
-            // the record's own project is the best the listing can say.
-            var aggregate = aggregates[id] ?? Aggregate(project: ResolvedProject(
-                id: id, name: id, root: nil, registered: false, knowledge: ProjectStore.defaultKnowledge
-            ))
-            aggregate.archives += count
-            aggregates[id] = aggregate
-        }
-        let items: [[String: Any]] = aggregates.values
-            .sorted { ($0.project.name.lowercased(), $0.project.id) < ($1.project.name.lowercased(), $1.project.id) }
-            .map { aggregate in
-                var sessions: [String: Any] = ["total": aggregate.total]
-                for state in [MergedSessionState.working, .needsApproval, .needsInput, .completed, .failed, .idle, .exited, .unknown] {
-                    sessions[state.rawValue] = aggregate.states[state] ?? 0
-                }
-                var item = aggregate.project.rowJSON
-                item["knowledge"] = aggregate.project.knowledge
-                item["sessions"] = sessions
-                item["pendingApprovals"] = aggregate.pendingApprovals
-                item["archives"] = aggregate.archives
-                if let at = aggregate.lastOutputAt {
-                    item["lastOutputAt"] = Int(at.timeIntervalSince1970 * 1000)
-                }
+    /// One item per project id, sorted by name then id. A registered
+    /// project wins over a row's copy of it; the rows add the discovered ones.
+    private static func projectsBody(registered: [Project], seen: [ResolvedProject]) -> String {
+        var byID: [String: ResolvedProject] = [:]
+        for project in registered { byID[project.id] = ResolvedProject(project) }
+        for project in seen where byID[project.id] == nil { byID[project.id] = project }
+        let items: [[String: Any]] = byID.values
+            .sorted { ($0.name.lowercased(), $0.id) < ($1.name.lowercased(), $1.id) }
+            .map { project in
+                var item = project.rowJSON
+                item["knowledge"] = project.knowledge
                 return item
             }
         return (try? JSONSerialization.data(withJSONObject: ["ok": true, "projects": items]))

@@ -256,7 +256,7 @@ describe("tally and crews", () => {
   });
 
   it("read an unlisted project list as one group per row project", () => {
-    const projects: ProjectSummary[] = [{ ...kitterm, sessions: { total: 1 }, archives: 2 }];
+    const projects: ProjectSummary[] = [{ ...kitterm, knowledge: "docs/goals" }];
     expect(group([], projects)[0].project).toEqual(kitterm);
   });
 });

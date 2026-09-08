@@ -140,23 +140,6 @@ public enum SessionArchive {
         }
     }
 
-    /// How many archives each key holds, for `GET /api/projects`. `key`
-    /// runs on the archive queue for each record and returns the key to
-    /// count under, or nil to skip the record. `completion` fires there with
-    /// the counts, which cross back to the loop as a `Sendable` value.
-    public static func counts(
-        by key: @escaping @Sendable ([String: Any]) -> String?,
-        completion: @escaping @Sendable ([String: Int]) -> Void
-    ) {
-        queue.async {
-            var counts: [String: Int] = [:]
-            for record in readRecords() {
-                if let key = key(record) { counts[key, default: 0] += 1 }
-            }
-            completion(counts)
-        }
-    }
-
     /// Every `archive.json` without its command and mark arrays. Archive
     /// queue only.
     private static func readRecords() -> [[String: Any]] {

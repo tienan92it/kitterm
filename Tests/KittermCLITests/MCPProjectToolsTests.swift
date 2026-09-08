@@ -15,7 +15,7 @@ final class MCPProjectToolsTests: XCTestCase {
     func testListProjectsSchema() throws {
         let schema = try schema("list_projects")
         let description = try XCTUnwrap(schema["description"] as? String)
-        for term in ["projects.json", "kitterm project add", ".git", "registered", "knowledge", "docs/goals", "STATE.md", "archive"] {
+        for term in ["projects.json", "kitterm project add", ".git", "registered", "knowledge", "docs/goals", "STATE.md"] {
             XCTAssertTrue(description.contains(term), "description names \(term)")
         }
         let input = try XCTUnwrap(schema["inputSchema"] as? [String: Any])

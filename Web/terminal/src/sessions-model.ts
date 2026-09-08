@@ -1,6 +1,6 @@
 /**
  * The fleet view's model: pure functions over the rows of `GET /api/sessions`
- * and the aggregates of `GET /api/projects`. No DOM, so every function has a
+ * and the projects of `GET /api/projects`. No DOM, so every function has a
  * test. `sessions.ts` composes them and paints the result.
  */
 
@@ -22,13 +22,10 @@ export type ProjectRef = {
   registered: boolean;
 };
 
-/** One entry of `GET /api/projects`. The counts are the daemon's; the page
- * recomputes them from the rows it shows, so only the identity is required. */
+/** One entry of `GET /api/projects`: the identity plus the knowledge
+ * directory. The page counts what it shows from the rows. */
 export type ProjectSummary = ProjectRef & {
-  sessions?: Partial<Record<MergedState | "total", number>>;
-  pendingApprovals?: number;
-  archives?: number;
-  lastOutputAt?: number;
+  knowledge?: string;
 };
 
 /** The subset of a session row the model reads. The page's row type extends it. */
