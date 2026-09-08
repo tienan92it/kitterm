@@ -182,6 +182,8 @@ enum KittermMain {
               kitterm mcp             # stdio MCP server: the foreman toolset
               kitterm token create <name> [--watch] | list | revoke <name>
               kitterm project add <path> [--name NAME] [--knowledge DIR] | list | remove <id>
+              kitterm project init <path> [--name NAME] [--knowledge DIR]
+                                      # write the goal package templates, then add
               kitterm identity [status|setup|sign]
               kitterm version
 
@@ -237,7 +239,11 @@ enum KittermMain {
             checkout). The id is a slug of the folder name; --knowledge names
             the goal package directory (default docs/goals). /sessions and
             GET /api/projects group sessions by it; a running daemon picks
-            up the file without a restart.
+            up the file without a restart. project init writes the goal
+            package (goal.md, facts.md, plan.md, LOOP.md, STATE.md, corpus/,
+            rounds/, the templates under examples/goals/) into the knowledge
+            directory, refuses to overwrite a file that exists, then
+            registers the project the way add does.
 
             Session profiles (~/.kitterm/profiles.json) name connect commands
             run at session start — open /?profile=<name> or use /sessions:

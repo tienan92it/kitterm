@@ -186,14 +186,23 @@ State lives in `~/.kitterm/`. The default port is 3418.
 ```
 ~/.kitterm/
 ├── pid, port                 daemon identity
+├── server.log
 ├── token, token-watch        ephemeral LAN tokens (persist across restarts)
 ├── tokens.json               named tokens (SHA-256 hashes only)
-├── profiles.json             named connect commands
-├── server.log, lastlogin
 ├── recordings/               asciinema casts (--record)
+├── drops/<session>/<name>    files dropped into a session from the browser
+├── lastlogin                 timestamp of the previous session
+├── profiles.json             named connect commands
+├── projects.json             registered projects (kitterm project add|init)
 ├── logs/<session>.log        retained output (--retain-logs)
-└── history/<key>             per-pane shell history
+├── history/<key>             per-pane shell history
+├── archive/<id>/             archived sessions (archive.json, output.log)
+├── respawn.json              names and labels of live sessions, for a respawn
+├── takeover/                 live-upgrade handoff, between execv and adoption
+└── web-root                  the web bundle the running daemon pinned
 ```
+
+The order is the order `DaemonPaths.swift` declares them.
 
 ## Regenerate the diagrams
 
