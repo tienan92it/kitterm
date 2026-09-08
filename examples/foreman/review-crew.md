@@ -10,32 +10,37 @@ per dimension, each blind to the others, then collect their findings.
 
 ## Read before you type
 
-Do this before every `send_input` into a review session.
+Do this before every `send_input` into a pane that runs an interactive agent.
 
 1. Call `read_screen`. Find the row the cursor is on.
 2. Type only when the prompt is at the cursor and the input box is empty: the
    cursor row reads `❯` and the cursor sits right after it. A `{dim}…{/dim}`
    run at the cursor is a placeholder. Treat it as empty. Never treat it as
    text, and never press Enter on it.
-3. When the screen shows something else, do not type the prompt:
-   - Trust dialog — "Is this a project you created or one you trust?". When
-     the cwd is the repo under review, send one Down arrow
-     (`send_input text="\u001b[B" enter=false`), read the screen to confirm
-     `❯` sits on `Yes, I trust this folder`, then press Enter alone
+3. When the screen shows something else, do not type the message. Act on what
+   the screen shows:
+   - Trust dialog — "Is this a project you created or one you trust?" with
+     the options `No, exit` and `Yes, I trust this folder`. When the cwd is
+     the repo the user named, move the mark to `Yes, I trust this folder`
+     with one Down arrow (`send_input text="\u001b[B" enter=false`), read
+     the screen to confirm `❯` sits on that option, then press Enter alone
      (`send_input text=""`). Any other cwd: stop and tell the user.
-   - Permission dialog — "Do you want to proceed?" with a `Yes` and a `No`.
-     Never answer it. Tell the user and link the pane.
-   - In-progress turn — a spinner line with "esc to interrupt". Wait with
+   - Permission dialog — "Do you want to proceed?" or a numbered choice with
+     a `Yes` and a `No`. Never answer it. Tell the user and link the pane.
+   - In-progress turn — a spinner line with "esc to interrupt", or a `⏺`
+     tool call above an empty prompt that has not returned. Wait. Call
      `wait_for_events` until the session reports `completed` or
      `needs-input`, then read the screen again.
-4. Send the prompt with `send_input`. One dialog keystroke per call.
+4. Send the message with `send_input`. Send one dialog keystroke per call, and
+   read the screen between keystrokes.
    A `cooked reader` error means the program in the pane has not taken raw mode
    yet (the error names it in `foregroundProgram`), a text over 1 KiB could not
    arrive whole, and nothing was typed. Go back to step 1. Set `force:true`
    only for a shell that reads lines under 1 KiB as they come.
-5. Call `read_screen` again. Confirm the prompt appears above the input box as
-   `❯ <your text>` and the box is empty. When the text still sits in the box,
-   press Enter alone (`send_input text=""`) and read once more.
+5. Call `read_screen` again. Confirm the text you typed now appears above the
+   input box as `❯ <your text>` and the box is empty again. When the text
+   still sits in the box, press Enter alone (`send_input text=""`) and read
+   once more.
 
 ## Steps
 
@@ -72,3 +77,8 @@ Do this before every `send_input` into a review session.
 - You collect and dedupe; you do not add your own findings.
 - A finding is blocking only if it breaks correctness, security, or a shipped
   feature. Everything else is a nit or a suggestion.
+- When a review session carries a `goal:` label, the merged findings also go
+  into that round's record, `docs/goals/rounds/NNN.md`, under "Effects" or
+  "Gap". The foreman writes them there; a review session never edits the
+  record. Spawn such a session with the `goal:` and `round:` labels of the
+  round it serves.
