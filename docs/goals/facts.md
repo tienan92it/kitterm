@@ -7,6 +7,11 @@ a fact that becomes a design decision into `docs/adr/`.
 
 ## Project resolution (2026-09-08, round 1)
 
+- A registered root that is a parent of a git checkout swallows that
+  checkout's sessions: a registered prefix beats the git walk. Round 2
+  registered `/Users/antran/Workspace` and lost the kitterm card until
+  kitterm was registered too. A proposal to reverse the order is in
+  `rounds/002.md`.
 - The kernel reports a shell's cwd as a real path, `/private/var/…` on
   macOS. Foundation's `resolvingSymlinksInPath()` keeps `/var/…`, so a
   registered root canonicalized with it never matches. `realpath(3)` gives
