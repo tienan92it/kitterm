@@ -132,11 +132,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 /* --- project cards -------------------------------------------------------- */
 .cards { display: flex; flex-direction: column; gap: 14px; }
-.card { border: 1px solid var(--ui-border); border-radius: var(--radius-2); background: var(--ui-surface); overflow: hidden; }
+/* No `overflow: hidden` here: it clipped the open row menu and the focus
+   outline of the last row at 390 px. The head rounds its own corners. */
+.card { border: 1px solid var(--ui-border); border-radius: var(--radius-2); background: var(--ui-surface); }
 .card-head {
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
   padding: 10px 14px; background: var(--ui-surface-2);
+  border-radius: calc(var(--radius-2) - 1px) calc(var(--radius-2) - 1px) 0 0;
 }
+.card-head:last-child { border-radius: calc(var(--radius-2) - 1px); }
 .card-title { display: flex; flex-direction: column; min-width: 0; flex: 1 1 200px; }
 .card-title h2 { font-size: 15px; font-weight: 600; margin: 0; }
 .card-root {
