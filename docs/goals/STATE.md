@@ -1,15 +1,15 @@
 # STATE: projects-and-knowledge
 
 - Status: active
-- Round: 2 of 3 in this budget (second budget; rounds 4 and 5 done)
+- Round: 2 of 3 in this budget (second budget; rounds 4 and 5 done; round 6 open)
 - Rounds total: 5
 - Last floor: green (2026-09-08, round 5 after)
-- Updated: 2026-09-08
+- Updated: 2026-09-08, after the v0.23.0 release
 
 ## Queue
 
-1. `knowledge-on-dashboard` (capability 5), branch off
-   `goals/review-fixes`
+1. `knowledge-on-dashboard` (capability 5): round 6, running, branch
+   `goals/knowledge-on-dashboard` off `main`
 2. `dogfood` (capability 6)
 
 ## Failures
@@ -68,10 +68,9 @@ read-only. Reports under the job's `review/` directory.
   run a review gate on the stack before a push. See `rounds/005.md`.
 - `tokens.css`: raise the `--ui-text-muted` mix; under 4.5:1 on 10 of 16
   themes. Outside this goal's diff.
-- Watch-grade access to `GET /api/projects/<id>/knowledge/<path>`. The plan
-  recommends readable, the same class as a cwd. Decide before capability 5.
-  The security review notes `GET /api/projects` already answers at watch
-  grade while `/api/profiles` is full-only; record the choice either way.
+- Decided 2026-09-08 by "continue" with the plan's recommendation: the
+  knowledge route answers at watch grade, the same class as a cwd and as
+  `GET /api/projects`. Record the choice in AGENTS.md "Security".
 
 ## Done
 
@@ -86,17 +85,18 @@ read-only. Reports under the job's `review/` directory.
 - `review-fixes`: round 5, `goals/review-fixes` at `f772b56`. See
   `rounds/005.md`.
 
-## Pull requests (2026-09-08, stacked, merge bottom up)
+## Merged and released (2026-09-08)
 
-- #70 `goals/knowledge-base` to `main`: the goals package
-- #71 `goals/project-identity`: project identity on the daemon
-- #72 `goals/dashboard`: the dashboard
-- #73 `goals/scaffold-and-docs`: templates, `project init`, docs
-- #74 `goals/goal-loop-skill`: the standing foreman skill, `skills install`
-- #75 `goals/review-fixes`: the review gate findings
+PRs #70 to #75 squash-merged into `main` bottom up (`b6f8862` to
+`a64908e`). Tag `v0.23.0`, release run green, six assets. The daemon on
+the foreman's machine upgraded in place; the three skills installed from
+the binary; the kitterm project registered with `kitterm project add`.
+Two lessons in `facts.md`: a stacked PR closes when its base branch is
+deleted, and a merge of `main` into a stacked branch can re-add what the
+branch removed.
 
 ## Next action
 
-Merge and release wait for the human. Then round 6:
-`knowledge-on-dashboard` off `goals/review-fixes`, after the human decides
-watch-grade access to the knowledge route.
+Round 6: `knowledge-on-dashboard` on branch `goals/knowledge-on-dashboard`
+(exists, off `main`). Send the capability 5 row from `plan.md` with corpus
+request `02-project-card-state` and the watch-grade decision above.

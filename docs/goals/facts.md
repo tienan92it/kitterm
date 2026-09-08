@@ -22,6 +22,19 @@ a fact that becomes a design decision into `docs/adr/`.
 - `Tests/KittermCLITests/MCPToolsTests.swift:18` pins the MCP tool count.
   Every new tool changes that line.
 
+## Stacked pull requests (2026-09-08, merge of rounds 1 to 5)
+
+- Deleting a stacked PR's base branch closes the PR, and GitHub refuses to
+  reopen it until the branch exists again. Retarget every remaining PR to
+  `main` before the first `--delete-branch`.
+- After `git merge origin/main -X ours` into a stacked branch, check that
+  `git diff <pre-merge> HEAD` is empty. The merge re-adds a file the
+  branch deleted and re-applies a hunk the branch removed, because
+  `main`'s squash commits add them against a base that lacked them. Round
+  5's branch lost R1 and R8 that way until one restore commit.
+- `gh pr edit` fails on this repo with a Projects (classic) GraphQL
+  deprecation; `gh api -X PATCH repos/<r>/pulls/<n> -F body=@file` works.
+
 ## Approvals and skills (2026-09-08, round 4)
 
 - The foreman must commit to the base branch before it sends a round's
