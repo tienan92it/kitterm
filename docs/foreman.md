@@ -209,6 +209,62 @@ A foreman runs one loop.
    `kill_session` it, or `archive_session` it when its output is worth
    keeping. The 64 session ceiling is the only bound the daemon applies.
 
+## One foreman for every project
+
+One foreman runs per daemon and serves every registered project. It keeps no
+state of its own: each project's `docs/goals/` package is the control plane,
+and the foreman rebuilds its view from the packages and from the daemon on
+every scan. `docs/goals/LOOP.md` in this repository is the source of the
+procedure; `examples/foreman/foreman-loop.md` is the same procedure as a
+skill, and `kitterm skills install` puts it in `~/.claude/skills/`. The steps:
+
+1. **Scan.** On start and after every event batch, list the projects with
+   `list_projects` and read each project's `docs/goals/STATE.md`: status,
+   round counter, next action, and the proposals that wait on the human. A
+   project without the package is reported once as "no goal" and skipped.
+   A live session belongs to a goal by its `goal:` and `round:` labels,
+   never by its id.
+2. **Schedule.** A goal is runnable when its status is `active`, its budget
+   has rounds left, no round is open, and no proposal blocks the next action.
+   At most one round runs per goal, and at most three crew sessions run
+   across all projects. The runnable goal with the oldest `Updated` date
+   starts first.
+3. **Delegate.** The foreman runs one round for that goal: it spawns one
+   crew session with the labels `crew:<slug>`, `goal:<slug>`, `round:<n>`,
+   and `task:<item>`, runs the floor in the shell, starts `claude`, sends
+   one prompt that names the package files to read, and waits. The crew
+   session changes the product. The foreman reads, routes, verifies the
+   floor and the diff against the authority tiers, and records.
+4. **Monitor.** One `wait_for_events` watches the whole daemon. On each scan
+   the foreman compares `heldSince` with now and archives a crew session that
+   sits at an empty prompt one hour past `completed`. After an `epoch` change
+   it respawns a crew once, then records the round as failed with gap `world`.
+5. **Report.** In three cases, with one shape: at once for `needs-input`,
+   `needs-approval`, a `propose` decision, a stop rule, or a failed round;
+   one digest after every round; one digest when the human asks "status".
+   The digest puts what needs the human first, then one block per project:
+
+   ```
+   Needs you
+   - <project> / <goal> round <n>: <what>, <link>
+
+   <project> — <goal title>
+   - round <n> of <budget>, status <active|waiting|stopped>
+   - last floor: green | red (<check>)
+   - next: <next action>
+   - proposals: <path>: <what>, or none
+   ```
+
+6. **Direction.** After a goal spends its budget the foreman sets its status
+   to `waiting`, reports, and keeps the other goals running. The human
+   answers per goal: continue resets the round counter, redirect edits
+   `goal.md` or `plan.md` first, stop ends the goal's sessions.
+
+The review crew and the triage skills are procedures the foreman delegates
+inside a round. When such a session carries a `goal:` label, its findings or
+its root cause also go into the round record under `docs/goals/rounds/`, and
+the foreman does the writing.
+
 ## Read before you type
 
 `read_output` returns the raw bytes of one command. For a pane that runs a
@@ -335,9 +391,16 @@ what a session is doing.
 
 `examples/foreman/` holds reference Claude Code skills you copy and tune:
 
-- `foreman-loop.md` — the spawn / wait / route / end loop above, as a prompt.
+- `foreman-loop.md` — the standing foreman: scan, schedule, delegate one
+  round, monitor, report, direction, from `docs/goals/LOOP.md`.
 - `review-crew.md` — spawn a review session per dimension, collect the notes.
 - `triage.md` — reproduce a bug in its own session, confirm the root cause.
+
+`kitterm skills install` writes each of them to `~/.claude/skills/<name>/SKILL.md`
+(`--dir <path>` picks another directory) and prints one line per file:
+`wrote`, `updated`, or `unchanged`. `kitterm skills list` prints the names and
+descriptions. The binary embeds the files, so the installed skills match the
+release that installed them.
 
 These are documentation, not daemon features. The boundary holds: kitterm ships
 the machinery, the skill is the foreman's own prompt.

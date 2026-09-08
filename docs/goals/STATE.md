@@ -1,14 +1,15 @@
 # STATE: projects-and-knowledge
 
 - Status: active
-- Round: 0 of 3 in this budget (second budget)
-- Rounds total: 3
-- Last floor: green (2026-09-08, round 3 after)
+- Round: 1 of 3 in this budget (second budget; round 4 done)
+- Rounds total: 4
+- Last floor: green (2026-09-08, round 4 after)
 - Updated: 2026-09-08
 
 ## Queue
 
-1. `goal-loop-skill` (capability 4), branch off `goals/scaffold-and-docs`
+1. `review-fixes`: round 5, running, branch `goals/review-fixes` off
+   `goals/goal-loop-skill`.
 2. `knowledge-on-dashboard` (capability 5)
 3. `dogfood` (capability 6)
 
@@ -16,6 +17,28 @@
 
 None. One pre-existing flake recorded in `rounds/001.md` (runtime
 candidate, `LiveTakeoverTests`).
+
+## Review gate (2026-09-08, before any push)
+
+Diff `main...goals/scaffold-and-docs`, four dimensions, static and
+read-only. Reports under the job's `review/` directory.
+
+- security: blocking 0, should-fix 1, nit 4. The should-fix is the `.git`
+  walk and the `projects.json` reload on the NIO event loop.
+- daemon performance and correctness: blocking 0, should-fix 4, nit 5. The
+  same event-loop finding, the store lock holding file I/O the loop waits
+  on, the archive list re-walking every record twice per tick, and the
+  dashboard signature repainting every tick while a session prints.
+- reuse and simplicity: blocking 0, should-fix 6, nit 9. Unread
+  aggregates on `GET /api/projects`, two test fixtures repeated, the state
+  tree and the resolution rule stated in several places, `LOOP.md` in
+  three copies.
+- dashboard accessibility: blocking 1, should-fix 11, nit 12. The row menu
+  is clipped at 390 px on the last row of a card; repaints drop focus; no
+  live region; shared button names; faint and state-label text under
+  4.5:1 on most themes; the sticky strip has no height cap.
+- ranked and deduped list: the job's `review/ranked.md`; R0 blocking, R1
+  to R10 required, nits optional, six items left with reasons.
 
 ## Proposals waiting on the human
 
@@ -27,10 +50,23 @@ candidate, `LiveTakeoverTests`).
 - `LOOP.md` Authority: a count pin or a golden list in an existing test is
   Propose, not Frozen, when the change adds and removes nothing. See
   `rounds/001.md`.
+- `LOOP.md` One round step 2: spawn with no input, floor in the shell, then
+  `claude`. See `rounds/004.md`.
+- `LOOP.md` Labels: `resumed-from` is an archive id or the pane's previous
+  id. See `rounds/004.md`.
+- `LOOP.md` exists three times (`docs/goals/`, `examples/goals/`,
+  `GoalsTemplates.swift`) with no test between the instance and the
+  template (reuse review 6). Either the instance keeps only the tiers and
+  points at the template for the procedure, or a test pins the shared
+  lines.
+- The resolution rule folds a submodule into its superproject (daemon
+  review 7). Decide with the nearest-`.git` proposal.
 - `plan.md`: add a corpus request for capabilities 3 and 4 before the next
   budget. See `rounds/003.md`.
 - Watch-grade access to `GET /api/projects/<id>/knowledge/<path>`. The plan
   recommends readable, the same class as a cwd. Decide before capability 5.
+  The security review notes `GET /api/projects` already answers at watch
+  grade while `/api/profiles` is full-only; record the choice either way.
 
 ## Done
 
@@ -40,27 +76,15 @@ candidate, `LiveTakeoverTests`).
   pushed. See `rounds/002.md`.
 - `scaffold-and-docs` (capability 3): round 3, `goals/scaffold-and-docs`
   at `332e096`, not pushed. See `rounds/003.md`.
-
-## Direction
-
-2026-09-08: the human said "continue" after round 3, and set a gate: run
-the review crew on the stacked branches before any push, PR, merge, or
-release. The review runs alongside round 4; its findings decide whether a
-fix round comes before `knowledge-on-dashboard`.
+- `goal-loop-skill` (capability 4): round 4, `goals/goal-loop-skill` at
+  `97fa22e`, not pushed. See `rounds/004.md`.
 
 ## Next action
 
-Round 4: `goal-loop-skill`. Spawn one crew session in the repository root
-with labels `crew:projects-and-knowledge`, `goal:projects-and-knowledge`,
-`round:4`, `task:goal-loop-skill`. Branch `goals/goal-loop-skill` off
-`goals/scaffold-and-docs`. Run the floor. Send the capability 4 row from
-`plan.md` with `LOOP.md` as the source of the skill text.
-
-Review gate: spawn review sessions labelled `crew:review`,
-`goal:projects-and-knowledge`, one per dimension (security, daemon
-performance and correctness, reuse and simplicity, dashboard
-accessibility), two at a time under the three-session cap, on the diff
-`main...goals/scaffold-and-docs`, static and read-only. Collect the notes,
-dedupe, rank, and report. The branches stack: `goals/knowledge-base`,
-`goals/project-identity`, `goals/dashboard`, `goals/scaffold-and-docs`,
-then `goals/goal-loop-skill`.
+Round 5 runs. On `completed`: floor, diff against the tiers, the two
+screenshots, record `rounds/005.md`. The human said "continue with review
+fixes then push" on 2026-09-08, so after round 5: push the six branches
+and open the PRs in order, each based on the previous: `goals/knowledge-base`
+to `main`, then `goals/project-identity`, `goals/dashboard`,
+`goals/scaffold-and-docs`, `goals/goal-loop-skill`, `goals/review-fixes`.
+Merge and release wait for the human.
