@@ -22,10 +22,10 @@ public struct SessionLabels: Sendable, Equatable {
     /// hex fields, which the value charset already permits.
     public static let traceparentKey = "traceparent"
 
-    /// Reserved keys the fleet view reads. `project:<id>` overrides the
-    /// project the daemon resolves from a session's cwd (`ProjectStore`).
-    /// `goal:<slug>` and `round:<n>` attribute a crew session to a goal loop
-    /// (`docs/goals/LOOP.md`); the daemon passes them through.
+    /// The keys the goal loop reserves; the Labels table in
+    /// `docs/goals/LOOP.md` is the one list of them and what each holds.
+    /// `project:<id>` overrides the project the daemon resolves from a
+    /// session's cwd (`ProjectStore`); the daemon passes the others through.
     public static let projectKey = "project"
     public static let goalKey = "goal"
     public static let roundKey = "round"

@@ -371,10 +371,9 @@ Use labels so a fleet of sessions stays attributable.
 
 Filter the fleet by any label: `list_sessions label="crew:alpha"`.
 
-Three keys are reserved for the goal loop in `docs/goals/LOOP.md`: `project`
-(a project id, which overrides the project the daemon resolves from the cwd),
-`goal` (a goal slug), and `round` (a round number). The foreman sets them on
-every crew session it spawns for a round. The foreman's own pane carries
+The goal loop reserves keys of its own; the Labels table in
+`docs/goals/LOOP.md` is the one list of them. The foreman sets them on every
+crew session it spawns for a round. The foreman's own pane carries
 `crew:foreman`; the fleet view pins that session above the project cards and
 reads "no foreman running" when none exists.
 
