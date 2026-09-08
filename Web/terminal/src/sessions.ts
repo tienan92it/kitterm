@@ -135,6 +135,9 @@ let notice: string | null = null;
 /** The row whose action menu is open on a phone. Kept across repaints, so a
  * poll between the two taps does not close the menu under the thumb. */
 let openMenu: string | null = null;
+/** The profile picked in each card's spawn select, by project id. A repaint
+ * rebuilds the select, so the choice lives here, not in the DOM. */
+const spawnProfile = new Map<string, string>();
 let choice: Choice = loadChoice();
 
 function loadChoice(): Choice {
@@ -281,10 +284,17 @@ function render(): void {
 }
 
 /** Paint from the current snapshot and choice. Called by `render` when the
- * snapshot changed and by the chips when the choice changed. */
+ * snapshot changed and by the chips when the choice changed.
+ *
+ * Every control carries a `data-focus` key (row id and action, chip, spawn
+ * control, approval button), so the control that had focus before the four
+ * regions were rebuilt gets it back by key afterwards. Without this a poll
+ * that repainted while a keyboard user sat on Kill sent focus to `body`. */
 function paint(): void {
   if (!root) return;
   mountSkeleton();
+  const active = document.activeElement;
+  const focusKey = active instanceof HTMLElement ? active.dataset.focus : undefined;
   const { foreman, rest } = pickForeman(sessions);
   const items = attention(sessions, approvals);
 
@@ -300,6 +310,14 @@ function paint(): void {
   noticeLine.hidden = notice === null;
   noticeLine.replaceChildren(...(notice === null ? [] : [noticeContent(notice)]));
   cards.replaceChildren(...cardList(rest));
+  if (focusKey) restoreFocus(focusKey);
+}
+
+function restoreFocus(key: string): void {
+  const target = root?.querySelector<HTMLElement>(`[data-focus="${CSS.escape(key)}"]`);
+  // The control is gone when its row was ended or its chip left the page;
+  // focus then stays where the browser put it.
+  target?.focus({ preventScroll: true });
 }
 
 function header(): HTMLElement {
@@ -329,6 +347,7 @@ function noticeContent(text: string): DocumentFragment {
   dismiss.type = "button";
   dismiss.className = "quiet";
   dismiss.textContent = "Dismiss";
+  dismiss.dataset.focus = "dismiss";
   dismiss.addEventListener("click", () => {
     notice = null;
     lastSignature = "";
@@ -430,6 +449,8 @@ function approvalContent(approval: Approval, row: SessionRow | null): DocumentFr
     actions.className = "approval-actions";
     const deny = button("Deny", "approval-deny", () => void decide(approval.id, "deny"));
     const allow = button("Allow", "approval-allow", () => void decide(approval.id, "allow"));
+    deny.dataset.focus = `approval:${approval.id}:deny`;
+    allow.dataset.focus = `approval:${approval.id}:allow`;
     actions.append(deny, allow);
     fragment.append(actions);
   }
@@ -482,7 +503,7 @@ function chipGroups(rows: SessionRow[]): Node[] {
   const present = tally(rows);
   const stateChips = STATE_ORDER.filter((s) => (present[s] ?? 0) > 0 || choice.states.includes(s)).map(
     (state) =>
-      chip(stateName(state), choice.states.includes(state), () => {
+      chip(stateName(state), `state:${state}`, choice.states.includes(state), () => {
         choice = { ...choice, states: toggle(choice.states, state) };
         commitChoice();
       }),
@@ -514,7 +535,7 @@ function chipGroups(rows: SessionRow[]): Node[] {
       chipGroup(
         "Crew",
         crewNames.map((crew) =>
-          chip(`crew: ${crew}`, choice.crews.includes(crew), () => {
+          chip(`crew: ${crew}`, `crew:${crew}`, choice.crews.includes(crew), () => {
             choice = { ...choice, crews: toggle(choice.crews, crew) };
             commitChoice();
           }),
@@ -528,7 +549,7 @@ function chipGroups(rows: SessionRow[]): Node[] {
     chipGroup(
       "Made by",
       kinds.map((kind) =>
-        chip(kind === "human" ? "a person" : "a program", choice.kind === kind, () => {
+        chip(kind === "human" ? "a person" : "a program", `kind:${kind}`, choice.kind === kind, () => {
           choice = { ...choice, kind: choice.kind === kind ? null : kind };
           commitChoice();
         }),
@@ -542,13 +563,14 @@ function chipGroups(rows: SessionRow[]): Node[] {
       search.value = "";
       commitChoice();
     });
+    clear.dataset.focus = "clear-filters";
     nodes.push(clear);
   }
   return nodes;
 }
 
 function projectChip(id: string, name: string): HTMLElement {
-  return chip(name, choice.projects.includes(id), () => {
+  return chip(name, `project:${id}`, choice.projects.includes(id), () => {
     choice = { ...choice, projects: toggle(choice.projects, id) };
     commitChoice();
   });
@@ -566,11 +588,14 @@ function chipGroup(label: string, items: HTMLElement[]): HTMLElement {
   return box;
 }
 
-function chip(label: string, on: boolean, onToggle: () => void): HTMLElement {
+/** One filter chip. `key` names it across repaints, so the chip a keyboard
+ * user toggled keeps focus after the rebuild. */
+function chip(label: string, key: string, on: boolean, onToggle: () => void): HTMLElement {
   const b = document.createElement("button");
   b.type = "button";
   b.className = on ? "chip on" : "chip";
   b.setAttribute("aria-pressed", on ? "true" : "false");
+  b.dataset.focus = `chip:${key}`;
   b.textContent = label;
   b.addEventListener("click", onToggle);
   return b;
@@ -716,6 +741,7 @@ function spawnControls(project: ProjectRef): HTMLElement {
     select = document.createElement("select");
     select.className = "spawn-profile";
     select.setAttribute("aria-label", "Profile for the new session");
+    select.dataset.focus = `spawn:${project.id}:profile`;
     const local = document.createElement("option");
     local.value = "";
     local.textContent = "local shell";
@@ -727,12 +753,17 @@ function spawnControls(project: ProjectRef): HTMLElement {
       option.title = p.command;
       select.append(option);
     }
+    // The pick survives the repaint between choosing and tapping New session.
+    select.value = spawnProfile.get(project.id) ?? "";
+    const picked = select;
+    picked.addEventListener("change", () => spawnProfile.set(project.id, picked.value));
     box.append(select);
   }
   const b = button("New session", "spawn-button", () => {
     void spawn(project, select?.value || undefined, b);
   });
   b.title = `Start a shell in ${project.root ?? project.name}`;
+  b.dataset.focus = `spawn:${project.id}:new`;
   box.append(b);
   return box;
 }
@@ -772,6 +803,7 @@ function archivedFold(key: string, list: ArchivedRow[]): HTMLElement {
   });
   const summary = document.createElement("summary");
   summary.textContent = `Archived (${list.length})`;
+  summary.dataset.focus = `archived:${key}`;
   details.append(summary);
   const ul = document.createElement("ul");
   ul.className = "archived-list";
@@ -802,6 +834,7 @@ function row(s: SessionRow): HTMLElement {
   const link = document.createElement("a");
   link.href = `/?session=${encodeURIComponent(s.id)}`;
   link.className = "open";
+  link.dataset.focus = `${s.id}:open`;
 
   const dot = document.createElement("span");
   dot.className = `dot ${familyOf(stateOf(s))}`;
@@ -869,25 +902,59 @@ function row(s: SessionRow): HTMLElement {
 }
 
 /** Name, archive, kill. Inline beside the row on a wide screen; behind one
- * menu button on a phone, where three targets do not fit beside the text. */
+ * menu button on a phone, where three targets do not fit beside the text.
+ * The menu closes on Escape, when focus leaves it, and when an item is
+ * chosen; each of those hands focus back to the ⋯ button. */
 function rowActions(s: SessionRow): HTMLElement {
   const box = document.createElement("div");
   box.className = "actions";
   const isOpen = openMenu === s.id;
-  const more = button("⋯", "more", () => {
-    const open = menu.classList.toggle("open");
+  const menu = document.createElement("div");
+  menu.id = `menu-${s.id}`;
+  menu.className = isOpen ? "menu open" : "menu";
+  const setOpen = (open: boolean): void => {
+    menu.classList.toggle("open", open);
     more.setAttribute("aria-expanded", open ? "true" : "false");
     openMenu = open ? s.id : null;
-  });
+  };
+  const more = button("⋯", "more", () => setOpen(!menu.classList.contains("open")));
   more.setAttribute("aria-label", "Session actions");
+  more.setAttribute("aria-haspopup", "true");
+  more.setAttribute("aria-controls", menu.id);
   more.setAttribute("aria-expanded", isOpen ? "true" : "false");
-  const menu = document.createElement("div");
-  menu.className = isOpen ? "menu open" : "menu";
+  more.dataset.focus = `${s.id}:more`;
+  // Choosing an item on the phone closes the menu and returns focus to ⋯
+  // before the item's own dialog opens, so the poll that follows the dialog
+  // finds ⋯ by its key. On a wide screen there is no menu to close and the
+  // item keeps focus itself.
+  const item = (label: string, className: string, key: string, action: () => void): HTMLButtonElement => {
+    const b = button(label, className, () => {
+      if (menu.classList.contains("open")) {
+        setOpen(false);
+        more.focus();
+      }
+      action();
+    });
+    b.dataset.focus = `${s.id}:${key}`;
+    return b;
+  };
   menu.append(
-    button(s.name ? "Rename" : "Name", "quiet", () => void renameSession(s)),
-    button("Archive", "quiet", () => void archiveSession(s)),
-    button("Kill", "quiet danger", () => void killSession(s)),
+    item(s.name ? "Rename" : "Name", "quiet", "rename", () => void renameSession(s)),
+    item("Archive", "quiet", "archive", () => void archiveSession(s)),
+    item("Kill", "quiet danger", "kill", () => void killSession(s)),
   );
+  box.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !menu.classList.contains("open")) return;
+    event.preventDefault();
+    setOpen(false);
+    more.focus();
+  });
+  box.addEventListener("focusout", (event) => {
+    if (!menu.classList.contains("open")) return;
+    const to = event.relatedTarget;
+    if (to instanceof Node && box.contains(to)) return;
+    setOpen(false);
+  });
   box.append(more, menu);
   return box;
 }
