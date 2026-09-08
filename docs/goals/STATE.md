@@ -86,11 +86,17 @@ read-only. Reports under the job's `review/` directory.
 - `review-fixes`: round 5, `goals/review-fixes` at `f772b56`. See
   `rounds/005.md`.
 
+## Pull requests (2026-09-08, stacked, merge bottom up)
+
+- #70 `goals/knowledge-base` to `main`: the goals package
+- #71 `goals/project-identity`: project identity on the daemon
+- #72 `goals/dashboard`: the dashboard
+- #73 `goals/scaffold-and-docs`: templates, `project init`, docs
+- #74 `goals/goal-loop-skill`: the standing foreman skill, `skills install`
+- #75 `goals/review-fixes`: the review gate findings
+
 ## Next action
 
-Push the six branches and open the PRs in order, each based on the
-previous: `goals/knowledge-base` to `main`, then `goals/project-identity`,
-`goals/dashboard`, `goals/scaffold-and-docs`, `goals/goal-loop-skill`,
-`goals/review-fixes`. Merge and release wait for the human. Then round 6:
+Merge and release wait for the human. Then round 6:
 `knowledge-on-dashboard` off `goals/review-fixes`, after the human decides
 watch-grade access to the knowledge route.
