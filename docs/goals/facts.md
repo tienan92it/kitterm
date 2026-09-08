@@ -22,6 +22,21 @@ a fact that becomes a design decision into `docs/adr/`.
 - `Tests/KittermCLITests/MCPToolsTests.swift:18` pins the MCP tool count.
   Every new tool changes that line.
 
+## Approvals and skills (2026-09-08, round 4)
+
+- A hook can name a session id the daemon no longer has: on 2026-09-08 an
+  `AskUserQuestion` approval arrived for session `526DA42F`, which
+  `GET /api/sessions/<id>` answered `no such session`. The fleet view then
+  shows an approval with no pane to link. A `claude` started before a
+  daemon restart keeps the old `KITTERM_SESSION_ID` in its environment.
+- The installed skills under `~/.claude/skills/` are copies. Since round 4,
+  `kitterm skills install` writes the three skills from the binary and
+  prints `wrote`, `updated`, or `unchanged` per file; the installed copies
+  differed from the rewritten skills by 347, 44, and 41 lines.
+- A review session that reads only through `git show <branch>:<path>` can
+  share a checkout with a crew session that edits another branch. Four
+  reviewers and one crew ran this way in round 4 with no interference.
+
 ## Fleet view and session model (2026-09-08, code survey for this goal)
 
 - `Web/terminal/src/sessions.ts` renders rows in the daemon's order, which is
