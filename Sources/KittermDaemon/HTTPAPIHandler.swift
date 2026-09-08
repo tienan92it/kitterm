@@ -436,6 +436,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             serveFileStat(grade: grade, head: head, context: context)
         case (.GET, "/api/files/content"):
             serveFileContent(grade: grade, head: head, context: context)
+        case (.GET, _) where path.hasPrefix("/api/projects/"):
+            serveKnowledge(path: path, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/"):
             writeJSON(
                 status: .notFound,
@@ -1313,6 +1315,170 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         return (try? JSONSerialization.data(withJSONObject: ["ok": true, "projects": items]))
             .flatMap { String(data: $0, encoding: .utf8) }
             ?? #"{"ok":false,"error":"encoding failed"}"#
+    }
+
+    /// What the knowledge routes answer, decided off the loop and carried
+    /// back as bytes.
+    private enum KnowledgeAnswer: Sendable {
+        case file(KnowledgeFile.Payload)
+        case summary(Data)
+        case failed(HTTPResponseStatus, String)
+    }
+
+    /// `GET /api/projects/<id>/knowledge` — a summary of the project's
+    /// knowledge package (`KnowledgeSummary`: goal, status, round, budget,
+    /// next action, proposals, last round) with an `ETag`, so the fleet view
+    /// can skip a repaint; `If-None-Match` answers 304.
+    /// `GET /api/projects/<id>/knowledge/<path>` — one file under the
+    /// knowledge directory, read-only, jailed (`KnowledgeFile`): a `..`,
+    /// `.`, empty segment or absolute path is 400, a symlink anywhere in the
+    /// chain or a path that resolves outside is 404, a file over 256 KiB is
+    /// 413. `.md` is `text/markdown`, everything else `text/plain`.
+    ///
+    /// Any grade: the package is the same information class as a session's
+    /// cwd and as `GET /api/projects`, and the daemon never writes it. The
+    /// project is a registered one, else one a live session discovered; a
+    /// project with no knowledge directory is 404. The store lookup and every
+    /// file read run off the loop.
+    private func serveKnowledge(path: String, head: HTTPRequestHead, context: ChannelHandlerContext) {
+        // ["", "api", "projects", "<id>", "knowledge", "<rest>"]
+        let components = path.split(separator: "/", maxSplits: 5, omittingEmptySubsequences: false)
+        guard components.count >= 5, components[4] == "knowledge",
+              ProjectStore.isValidID(String(components[3]))
+        else {
+            notFound(context: context, version: head.version)
+            return
+        }
+        let id = String(components[3])
+        var relative: String?
+        if components.count == 6 {
+            guard let valid = KnowledgeFile.relativePath(String(components[5])) else {
+                writeJSON(
+                    status: .badRequest,
+                    body: #"{"ok":false,"error":"path must be relative, without `..`"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+                return
+            }
+            relative = valid
+        }
+        let loop = context.eventLoop
+        let bound = NIOLoopBound(context, eventLoop: loop)
+        let projects = self.projects
+        let promise = loop.makePromise(of: KnowledgeAnswer.self)
+        promise.completeWithTask {
+            guard let (root, knowledge) = await self.knowledgeLocation(id: id, projects: projects) else {
+                return .failed(.notFound, "no such project")
+            }
+            return await withCheckedContinuation { continuation in
+                KnowledgeFile.queue.async {
+                    continuation.resume(returning: Self.knowledgeAnswer(
+                        id: id, root: root, knowledge: knowledge, path: relative
+                    ))
+                }
+            }
+        }
+        promise.futureResult.whenComplete { result in
+            let context = bound.value
+            switch (try? result.get()) ?? .failed(.internalServerError, "could not read the knowledge directory") {
+            case .failed(let status, let error):
+                self.writeJSON(
+                    status: status, body: #"{"ok":false,"error":"\#(error)"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+            case .summary(let data):
+                let etag = "\"\(Self.fnv1a(data))\""
+                var headers = HTTPHeaders()
+                headers.add(name: "ETag", value: etag)
+                headers.add(name: "Cache-Control", value: "no-cache")
+                if head.headers["if-none-match"].contains(etag) {
+                    self.writeBytes(status: .notModified, headers: headers, data: Data(),
+                                    context: context, version: head.version, keepAlive: head.isKeepAlive)
+                    return
+                }
+                headers.add(name: "Content-Type", value: "application/json")
+                self.writeBytes(status: .ok, headers: headers, data: data,
+                                context: context, version: head.version, keepAlive: head.isKeepAlive)
+            case .file(let payload):
+                var headers = HTTPHeaders()
+                headers.add(name: "Content-Type", value: payload.contentType)
+                // Never guess past the chosen type, never let the response
+                // fetch anything, and never let it be framed (`FilePreview`).
+                headers.add(name: "X-Content-Type-Options", value: "nosniff")
+                headers.add(name: "Content-Security-Policy", value: "default-src 'none'; sandbox")
+                headers.add(name: "Cache-Control", value: "no-store")
+                headers.add(name: "Content-Disposition", value: "inline")
+                self.writeBytes(status: .ok, headers: headers, data: payload.data,
+                                context: context, version: head.version, keepAlive: head.isKeepAlive)
+            }
+        }
+    }
+
+    /// The root and the knowledge directory of a project id: registered
+    /// first, else the project a live session's cwd discovered. Off the loop:
+    /// the store lookup takes its lock.
+    private func knowledgeLocation(id: String, projects: ProjectStore) async -> (String, String)? {
+        if let project = projects.registered(id: id) { return (project.root, project.knowledge) }
+        let seen = await registry.summaries().compactMap(\.project)
+        guard let project = seen.first(where: { $0.id == id }), let root = project.root else { return nil }
+        return (root, project.knowledge)
+    }
+
+    /// The knowledge queue's part: the summary or the file, with the
+    /// failure mapped to its status.
+    private static func knowledgeAnswer(id: String, root: String, knowledge: String, path: String?) -> KnowledgeAnswer {
+        guard let path else {
+            guard let summary = KnowledgeFile.summary(root: root, knowledge: knowledge) else {
+                return .failed(.notFound, "no knowledge directory")
+            }
+            var item = summary.json
+            item["ok"] = true
+            item["project"] = id
+            guard let data = try? JSONSerialization.data(withJSONObject: item, options: [.sortedKeys]) else {
+                return .failed(.internalServerError, "encoding failed")
+            }
+            return .summary(data)
+        }
+        do {
+            return .file(try KnowledgeFile.read(root: root, knowledge: knowledge, path: path))
+        } catch KnowledgeFile.Failure.badPath {
+            return .failed(.badRequest, "path must be relative, without `..`")
+        } catch KnowledgeFile.Failure.tooLarge {
+            return .failed(.payloadTooLarge, "file over \(KnowledgeFile.maxBytes) bytes")
+        } catch KnowledgeFile.Failure.refused {
+            return .failed(.notFound, "symlink refused")
+        } catch {
+            return .failed(.notFound, "not found")
+        }
+    }
+
+    /// FNV-1a 64 over the bytes, as 16 hex digits: a stable `ETag` across
+    /// daemon restarts, unlike `hashValue`.
+    static func fnv1a(_ data: Data) -> String {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in data {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x0000_0100_0000_01b3
+        }
+        return String(hash, radix: 16)
+    }
+
+    /// One response with the given headers and body. `Content-Length` and
+    /// `Connection` are added here.
+    private func writeBytes(
+        status: HTTPResponseStatus, headers: HTTPHeaders, data: Data,
+        context: ChannelHandlerContext, version: HTTPVersion, keepAlive: Bool
+    ) {
+        var headers = headers
+        headers.add(name: "Content-Length", value: "\(data.count)")
+        headers.add(name: "Connection", value: keepAlive ? "keep-alive" : "close")
+        context.write(wrapOutboundOut(.head(HTTPResponseHead(version: version, status: status, headers: headers))), promise: nil)
+        var buffer = context.channel.allocator.buffer(capacity: data.count)
+        buffer.writeBytes(data)
+        context.write(wrapOutboundOut(.body(.byteBuffer(buffer))), promise: nil)
+        context.writeAndFlush(wrapOutboundOut(.end(nil))).whenComplete { _ in
+            if !keepAlive { context.close(promise: nil) }
+        }
     }
 
     /// `GET /api/archives/<uuid>` — one archive's full metadata.
