@@ -130,6 +130,21 @@ that stops or replaces the daemon must account for the agent — including
 build under the same job, and KeepAlive is what restarts it clean if that build
 crashes after the exec.
 
+## Control plane (`docs/goals/`)
+
+- The repository is the control plane for agent work on it. `docs/goals/` holds the
+  small package from "Building autonomous goal loops that deliver" (jx0.ca): `goal.md`
+  (objective, exclusions, completion condition), `facts.md` (what a later round must not
+  rediscover), `plan.md` (the floor and the capability order), `LOOP.md` (procedure,
+  authority tiers, budget, stop rules, round record shape), `STATE.md` (queue, failures,
+  next action), `corpus/` (approved requests), `rounds/` (one record per round)
+- Read `goal.md`, `facts.md`, and `STATE.md` before you start a task here. Append a fact
+  you had to measure to `facts.md`. Respect the authority tiers in `LOOP.md`: `goal.md`,
+  `corpus/`, and an existing check are frozen inside a round; `plan.md`, `LOOP.md`, and
+  `docs/adr/` take a proposal in the round record, not an edit
+- The daemon reads this package for the fleet view and never writes it. The foreman
+  (`docs/foreman.md`) writes `STATE.md`, `rounds/`, and `facts.md`
+
 ## Coding standards
 
 - Single responsibility per file/type
