@@ -162,6 +162,11 @@ enum MCPTools {
                 "List archived sessions — finished work whose evidence was kept.",
                 properties: [:]
             ),
+            tool(
+                "list_projects",
+                "List every project the daemon has seen: registered in ~/.kitterm/projects.json (kitterm project add) or discovered from a session's cwd by its .git. Each row carries id, name, root, registered, knowledge (the goal package directory, docs/goals by default), live session counts by state, pending approvals, lastOutputAt, and archive count. A foreman scans this to find each project's docs/goals/STATE.md; filter list_sessions by project with its project argument.",
+                properties: [:]
+            ),
         ]
     }
 
@@ -289,8 +294,6 @@ enum MCPTools {
         case "list_archives":
             return Call(method: "GET", path: "/api/archives")
 
-        // Callable by name; not yet in `schemas()`, whose count an existing
-        // test pins at 15. Advertising it is a one-line change to that pin.
         case "list_projects":
             return Call(method: "GET", path: "/api/projects")
 

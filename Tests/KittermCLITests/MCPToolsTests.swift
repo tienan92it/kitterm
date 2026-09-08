@@ -15,7 +15,7 @@ final class MCPToolsTests: XCTestCase {
 
     func testEverySchemaHasNameAndInputSchema() {
         let schemas = MCPTools.schemas()
-        XCTAssertEqual(schemas.count, 15)
+        XCTAssertEqual(schemas.count, 16)
         let names = Set(schemas.compactMap { $0["name"] as? String })
         XCTAssertTrue(names.isSuperset(of: [
             "list_sessions", "spawn_session", "send_input", "wait_for_command",

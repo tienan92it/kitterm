@@ -3,11 +3,25 @@ import XCTest
 
 @testable import KittermCLI
 
-/// The project tools of the MCP bridge: the requests the project tools turn
-/// into, and the `list_sessions` schema's project filter.
+/// The project tools of the MCP bridge: the `list_projects` schema as a
+/// client caches it, the requests the project tools turn into, and the
+/// `list_sessions` schema's project filter.
 final class MCPProjectToolsTests: XCTestCase {
     private func schema(_ name: String) throws -> [String: Any] {
         try XCTUnwrap(MCPTools.schemas().first { ($0["name"] as? String) == name })
+    }
+
+    /// The golden: what `tools/list` says about `list_projects`.
+    func testListProjectsSchema() throws {
+        let schema = try schema("list_projects")
+        let description = try XCTUnwrap(schema["description"] as? String)
+        for term in ["projects.json", "kitterm project add", ".git", "registered", "knowledge", "docs/goals", "STATE.md", "archive"] {
+            XCTAssertTrue(description.contains(term), "description names \(term)")
+        }
+        let input = try XCTUnwrap(schema["inputSchema"] as? [String: Any])
+        XCTAssertEqual(input["type"] as? String, "object")
+        XCTAssertEqual((input["properties"] as? [String: Any])?.count, 0, "no arguments")
+        XCTAssertNil(input["required"])
     }
 
     func testListProjectsIsAGet() throws {
