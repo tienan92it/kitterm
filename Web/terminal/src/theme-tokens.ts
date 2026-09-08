@@ -85,15 +85,30 @@ export const pickAccent = (colors: ITheme, explicit?: string): string => {
   );
 };
 
+/**
+ * Text on a solid accent fill: black or white, whichever contrasts more
+ * with the accent. White fails 4.5:1 on every bundled accent and black
+ * passes on all of them; the CSS `contrast-color()` upgrade in
+ * `tokens.css` overrides this where the browser supports it.
+ */
+export const accentOn = (accent: string): "#000" | "#fff" => {
+  const l = luminance(accent);
+  const onBlack = (l + 0.05) / 0.05;
+  const onWhite = 1.05 / (l + 0.05);
+  return onBlack >= onWhite ? "#000" : "#fff";
+};
+
 /** The `--term-*` tier for a theme: raw values, no derivation. */
 export const themeTokens = (
   colors: ITheme,
   options: { accent?: string; fontFamily?: string } = {},
 ): Record<string, string> => {
   const dark = isDarkTheme(colors.background);
+  const accent = pickAccent(colors, options.accent);
   const tokens: Record<string, string> = {
     "--ui-lift": dark ? "#fff" : "#000",
-    "--term-accent": pickAccent(colors, options.accent),
+    "--term-accent": accent,
+    "--term-accent-on": accentOn(accent),
   };
   const raw: Array<[string, string | undefined]> = [
     ["--term-bg", colors.background],

@@ -1,5 +1,8 @@
 /* Fleet view. Colours and type come from the shared token layer, so the page
-   follows the terminal theme like the rest of the chrome.
+   follows the terminal theme like the rest of the chrome. Text at 11 to
+   12.5 px is --ui-text or --ui-text-muted; --ui-text-faint is for the
+   placeholder and a dot, never for a line someone reads
+   (theme-contrast.test.ts pins the ratios per bundled theme).
 
    Structure carries the information: the attention strip is the one tinted
    region on the page; a project is one bordered group; rows inside it are
@@ -52,7 +55,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   margin: 0; padding: 6px 12px; font-size: 12.5px; color: var(--ui-text-muted);
   border-left: 3px solid var(--ui-border);
 }
-.strip-foreman { color: var(--ui-text-faint); padding-top: 2px; padding-bottom: 2px; }
+.strip-foreman { padding-top: 2px; padding-bottom: 2px; }
 .strip-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .strip-item {
   border-left: 3px solid var(--ui-warning, var(--ui-danger));
@@ -68,11 +71,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   background: var(--ui-accent-soft);
 }
 .strip-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
-.strip-what { font-weight: 600; font-size: 13.5px; }
-.strip-item.failed .strip-what { color: var(--ui-danger); }
-.strip-who { font-weight: 600; font-size: 13.5px; }
+.strip-what, .strip-who { font-weight: 600; font-size: 13.5px; }
 .strip-where { color: var(--ui-text-muted); font-size: 12px; }
-.strip-waited { color: var(--ui-text-faint); font-size: 11.5px; font-variant-numeric: tabular-nums; margin-left: auto; }
+.strip-waited { color: var(--ui-text-muted); font-size: 11.5px; font-variant-numeric: tabular-nums; margin-left: auto; }
 .strip-detail {
   color: var(--ui-text-muted); font-family: var(--font-mono); font-size: 12.5px; margin-top: 3px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -120,14 +121,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .search::placeholder { color: var(--ui-text-faint); }
 .chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
 .chip-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-.chip-label { color: var(--ui-text-faint); font-size: 11.5px; margin-right: 2px; }
+.chip-label { color: var(--ui-text-muted); font-size: 11.5px; margin-right: 2px; }
 .chip {
-  background: none; color: var(--ui-text-muted); border: 1px solid var(--ui-border);
+  background: none; color: var(--ui-text); border: 1px solid var(--ui-border);
   border-radius: var(--radius-round); padding: 1px 9px; font-size: 11.5px; cursor: pointer;
   min-height: var(--tap-min, 24px); transition: border-color .12s, color .12s;
 }
-.chip:hover { color: var(--ui-text); }
-.chip.on { color: var(--ui-text); border-color: var(--ui-accent); background: var(--ui-accent-soft); }
+.chip:hover { border-color: var(--ui-text-muted); }
+.chip.on { border-color: var(--ui-accent); background: var(--ui-accent-soft); }
 .notice[hidden] { display: none; }
 .notice {
   display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 6px 10px;
@@ -149,13 +150,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .card-title { display: flex; flex-direction: column; min-width: 0; flex: 1 1 200px; }
 .card-title h2 { font-size: 15px; font-weight: 600; margin: 0; }
 .card-root {
-  color: var(--ui-text-faint); font-family: var(--font-mono); font-size: 11px;
+  color: var(--ui-text-muted); font-family: var(--font-mono); font-size: 11px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.tallies { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ui-text-muted); }
+.tallies { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ui-text); }
 .tally { display: inline-flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tally .dot { margin: 0; width: 7px; height: 7px; box-shadow: none; }
-.tally.quiet { color: var(--ui-text-faint); }
+.tally.quiet { color: var(--ui-text-muted); }
 .spawn { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .spawn-profile {
   font: inherit; font-size: 12px; color: var(--ui-text); background: var(--ui-surface);
@@ -195,13 +196,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .main { min-width: 0; flex: 1; }
 .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; }
 .folder { font-weight: 600; font-size: 14.5px; overflow-wrap: anywhere; }
-.state { font-size: 11.5px; white-space: nowrap; }
-.state.running { color: var(--ui-accent); }
-.state.idle { color: var(--ui-success); }
-.state.failed { color: var(--ui-danger); }
-.state.unknown { color: var(--ui-text-faint); }
-.state.attention { color: var(--ui-warning, var(--ui-danger)); font-weight: 600; }
-.state.done { color: var(--ui-success); }
+/* The family colour is on the dot; the label prints in the text colour,
+   because an ANSI red at 11.5 px sits under 3:1 on half the themes. */
+.state { font-size: 11.5px; white-space: nowrap; color: var(--ui-text); }
+.state.attention { font-weight: 600; }
 .tag {
   background: var(--ui-surface-2); color: var(--ui-text-muted); border-radius: var(--radius-round);
   padding: 0 8px; font-size: 11px; white-space: nowrap;
@@ -212,7 +210,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   font-size: 12.5px; margin-top: 3px; white-space: nowrap; overflow: hidden;
   text-overflow: ellipsis;
 }
-.meta { color: var(--ui-text-faint); font-size: 11.5px; margin-top: 4px; }
+.meta { color: var(--ui-text-muted); font-size: 11.5px; margin-top: 4px; }
 .note {
   color: var(--ui-text-muted); font-size: 12.5px; margin-top: 3px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -259,7 +257,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   font-size: 12px; padding: 4px 0; min-width: 0;
 }
 .archived-name { color: var(--ui-text); overflow-wrap: anywhere; }
-.archived-meta { color: var(--ui-text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.archived-meta { color: var(--ui-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cards > .archived { border: 1px solid var(--ui-border); border-radius: var(--radius-2); background: var(--ui-surface); }
 
 @media (prefers-reduced-motion: reduce) {
