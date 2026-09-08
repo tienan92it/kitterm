@@ -73,6 +73,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   border-left-color: var(--ui-accent);
   background: var(--ui-accent-soft);
 }
+/* A proposal waits on a decision, not on a keystroke: the warning tint with
+   a dashed rule tells it from a pane that needs input. */
+.strip-item.proposed { border-left-style: dashed; }
 .strip-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
 .strip-what, .strip-who { font-weight: 600; font-size: 13.5px; }
 .strip-where { color: var(--ui-text-muted); font-size: 12px; }
@@ -178,6 +181,25 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   display: flex; align-items: center; gap: 8px;
 }
 .crew-head::after { content: ""; flex: 1; border-top: 1px solid var(--ui-border); }
+
+/* The goal block: what the project's knowledge package says, as one full
+   row under the card's title. Titles and links only; no rendered Markdown. */
+.goal {
+  flex: 1 1 100%; min-width: 0; display: flex; flex-direction: column; gap: 2px;
+  padding-top: 6px; border-top: 1px solid var(--ui-border);
+}
+.goal-top { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.goal-title { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.tag.proposals {
+  color: var(--ui-text); border: 1px solid var(--ui-warning);
+  background: color-mix(in srgb, var(--ui-warning) 10%, var(--ui-surface));
+}
+.goal-link { margin-left: auto; margin-top: 0; }
+.goal-meta { font-size: 12px; color: var(--ui-text-muted); overflow-wrap: anywhere; }
+.goal-next {
+  font-size: 12.5px; color: var(--ui-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 
 /* --- rows ----------------------------------------------------------------- */
 .rows { list-style: none; margin: 0; padding: 0; }

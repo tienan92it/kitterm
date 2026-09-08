@@ -6,22 +6,30 @@ import {
   actionName,
   approvalName,
   attention,
+  crewSections,
   crews as crewsOf,
   filter as applyFilter,
+  goalGroups,
   group,
+  knowledgeUrl,
   needsYouMessage,
   NO_PROJECT,
   pickForeman,
+  proposedItems,
+  roundOf,
+  roundPath,
   stateOf,
   tally,
   type Approval,
   type AttentionItem,
   type Filter,
   type Group,
+  type KnowledgeSummary,
   type MergedState,
   type ModelRow,
   type ProjectRef,
   type ProjectSummary,
+  type ProposedItem,
 } from "./sessions-model";
 import { loadSettings } from "./settings-store";
 import { applyThemeTokens } from "./theme-tokens";
@@ -31,7 +39,8 @@ import { findThemeById } from "./themes";
  * The fleet view: every live shell grouped by project, what needs the human
  * first, and the actions a supervisor takes from a phone — answer, spawn,
  * archive, kill. Polls `/api/projects`, `/api/sessions`, `/api/approvals`
- * and `/api/archives`, and links each row back to `/?session=<id>`.
+ * and `/api/archives`, plus `/api/projects/<id>/knowledge` for each
+ * registered project, and links each row back to `/?session=<id>`.
  *
  * Three layers at one URL: the attention strip, one card per project, and
  * the rows inside a card. The pure model (`sessions-model.ts`) decides what
@@ -81,6 +90,16 @@ type ArchivedRow = {
 
 type Kind = "human" | "crew";
 
+/** What the strip lists: the model's attention items plus a proposal that
+ * waits on the human in a project's knowledge package. */
+type StripItem = AttentionItem<SessionRow> | ProposedItem;
+
+/** One project's knowledge summary as last fetched. `summary` is null when
+ * the daemon answered 404 (no knowledge directory); the page asks again
+ * after `KNOWLEDGE_RETRY_POLLS` polls, so a `kitterm project init` shows up
+ * without a reload. */
+type KnowledgeEntry = { etag: string | null; summary: KnowledgeSummary | null; missesLeft: number };
+
 /** The chip and search choice. Kept in `sessionStorage` so a reload on the
  * same tab keeps the view; a new tab starts clean. */
 type Choice = {
@@ -92,6 +111,7 @@ type Choice = {
 };
 
 const POLL_MS = 2000;
+const KNOWLEDGE_RETRY_POLLS = 30;
 const CHOICE_KEY = "kitterm.sessions.filter";
 const STATE_ORDER: MergedState[] = [
   "needs-approval",
@@ -144,6 +164,9 @@ let openMenu: string | null = null;
 /** The profile picked in each card's spawn select, by project id. A repaint
  * rebuilds the select, so the choice lives here, not in the DOM. */
 const spawnProfile = new Map<string, string>();
+/** The knowledge summary of each registered project, by id, with the ETag
+ * the daemon gave it: an unchanged package answers 304 and repaints nothing. */
+const knowledge = new Map<string, KnowledgeEntry>();
 let choice: Choice = loadChoice();
 
 function loadChoice(): Choice {
@@ -215,6 +238,7 @@ async function poll(): Promise<void> {
       ? (((await archivesRes.json()) as { archives?: ArchivedRow[] }).archives ?? [])
       : [];
     sessions = data.sessions ?? [];
+    await fetchKnowledge();
     failedPolls = 0;
     render();
   } catch {
@@ -223,6 +247,50 @@ async function poll(): Promise<void> {
   } finally {
     inFlight = false;
   }
+}
+
+/** One summary request per registered project with a knowledge directory,
+ * conditional on the ETag from the last answer. A project the daemon
+ * answered 404 for is asked again every `KNOWLEDGE_RETRY_POLLS` polls. A
+ * failed request keeps the last summary; the next poll asks again. */
+async function fetchKnowledge(): Promise<void> {
+  const wanted = projects.filter((p) => p.registered && p.knowledge);
+  const ids = new Set(wanted.map((p) => p.id));
+  for (const id of knowledge.keys()) if (!ids.has(id)) knowledge.delete(id);
+  await Promise.all(
+    wanted.map(async (project) => {
+      const entry = knowledge.get(project.id);
+      if (entry && entry.summary === null && entry.missesLeft > 0) {
+        entry.missesLeft -= 1;
+        return;
+      }
+      try {
+        const headers: Record<string, string> = { accept: "application/json" };
+        if (entry?.etag) headers["if-none-match"] = entry.etag;
+        const res = await fetch(`/api/projects/${encodeURIComponent(project.id)}/knowledge`, { headers });
+        if (res.status === 304) return;
+        if (res.status === 404) {
+          knowledge.set(project.id, { etag: null, summary: null, missesLeft: KNOWLEDGE_RETRY_POLLS });
+          return;
+        }
+        if (!res.ok) return;
+        const summary = (await res.json()) as KnowledgeSummary;
+        knowledge.set(project.id, { etag: res.headers.get("etag"), summary, missesLeft: 0 });
+      } catch {
+        // Keep what the card shows; the next poll asks again.
+      }
+    }),
+  );
+}
+
+/** The projects with a summary, for the strip's proposed items. */
+function knowledgeEntries(): { project: ProjectRef; summary: KnowledgeSummary }[] {
+  const entries: { project: ProjectRef; summary: KnowledgeSummary }[] = [];
+  for (const project of projects) {
+    const summary = knowledge.get(project.id)?.summary;
+    if (summary) entries.push({ project, summary });
+  }
+  return entries;
 }
 
 // --- layout skeleton --------------------------------------------------------
@@ -291,6 +359,7 @@ function render(): void {
     projects,
     approvals.map((a) => a.id),
     archives.map((a) => a.id),
+    [...knowledge].map(([id, entry]) => [id, entry.etag, entry.summary === null]),
     watchOnly,
     profiles.map((p) => p.name),
     notice,
@@ -313,7 +382,7 @@ function paint(): void {
   const active = document.activeElement;
   const focusKey = active instanceof HTMLElement ? active.dataset.focus : undefined;
   const { foreman, rest } = pickForeman(sessions);
-  const items = attention(sessions, approvals);
+  const items: StripItem[] = [...attention(sessions, approvals), ...proposedItems(knowledgeEntries())];
 
   // Title badge: how many items want the human right now, so a phone's tab
   // or home-screen label says "come back" without a push notification.
@@ -382,7 +451,7 @@ function noticeContent(text: string): DocumentFragment {
 
 // --- the attention strip ----------------------------------------------------
 
-function stripContent(items: AttentionItem<SessionRow>[], hasForeman: boolean): Node[] {
+function stripContent(items: StripItem[], hasForeman: boolean): Node[] {
   const nodes: Node[] = [];
   if (items.length === 0) {
     const quiet = document.createElement("p");
@@ -404,11 +473,15 @@ function stripContent(items: AttentionItem<SessionRow>[], hasForeman: boolean): 
   return nodes;
 }
 
-function stripItem(item: AttentionItem<SessionRow>): HTMLElement {
+function stripItem(item: StripItem): HTMLElement {
   const li = document.createElement("li");
   li.className = `strip-item ${item.kind}`;
   if (item.kind === "approval") {
     li.append(approvalContent(item.approval, item.row));
+    return li;
+  }
+  if (item.kind === "proposed") {
+    li.append(proposedContent(item));
     return li;
   }
   const row = item.row;
@@ -458,6 +531,22 @@ function approvalContent(approval: Approval, row: SessionRow | null): DocumentFr
     actions.append(deny, allow);
     fragment.append(actions);
   }
+  return fragment;
+}
+
+/** A round record that ends in `propose`: the goal, the project, the
+ * decision line, and the record itself through the knowledge route. */
+function proposedContent(item: ProposedItem): DocumentFragment {
+  const fragment = document.createDocumentFragment();
+  const goal = item.summary.goal ?? item.summary.slug ?? item.project.name;
+  fragment.append(stripTop("proposed", goal, item.project.name));
+  if (item.summary.lastDecision) {
+    const line = document.createElement("div");
+    line.className = "strip-detail";
+    line.textContent = item.summary.lastDecision;
+    fragment.append(line);
+  }
+  fragment.append(knowledgeLink(item.project.id, item.path, `Open round ${String(item.round).padStart(3, "0")}`));
   return fragment;
 }
 
@@ -741,26 +830,97 @@ function card(g: Group<SessionRow>, archived: ArchivedRow[]): HTMLElement {
   }
   head.append(counts);
   if (!watchOnly && g.project?.root) head.append(spawnControls(g.project));
+  const summary = g.project ? (knowledge.get(g.project.id)?.summary ?? null) : null;
+  if (summary && g.project) head.append(goalBlock(g.project, summary));
   section.append(head);
 
   if (g.rows.length > 0) {
-    for (const sec of g.sections) {
-      // A labelled rule above each crew; the rows without a crew label
-      // come first and need none.
-      if (sec.crew !== null) {
-        const sub = document.createElement("h3");
-        sub.className = "crew-head";
-        sub.textContent = `crew: ${sec.crew}`;
-        section.append(sub);
-      }
+    // The rows without a crew label first, then the goal's own crew under
+    // its slug, then the other crews under a labelled rule each.
+    const { goals, rest } = goalGroups(g.rows, summary);
+    const sections = crewSections(rest).filter((sec) => sec.rows.length > 0);
+    const rowList = (rows: SessionRow[]): HTMLElement => {
       const list = document.createElement("ul");
       list.className = "rows";
-      for (const r of sec.rows) list.append(row(r));
-      section.append(list);
+      for (const r of rows) list.append(row(r));
+      return list;
+    };
+    for (const sec of sections) if (sec.crew === null) section.append(rowList(sec.rows));
+    for (const goal of goals) {
+      const sub = document.createElement("h3");
+      sub.className = "crew-head goal-head";
+      sub.textContent = `goal: ${goal.slug}`;
+      section.append(sub, rowList(goal.rows));
+    }
+    for (const sec of sections) {
+      if (sec.crew === null) continue;
+      const sub = document.createElement("h3");
+      sub.className = "crew-head";
+      sub.textContent = `crew: ${sec.crew}`;
+      section.append(sub, rowList(sec.rows));
     }
   }
   if (archived.length > 0) section.append(archivedFold(g.key, archived));
   return section;
+}
+
+/** What the project's knowledge package says: the goal title, the round
+ * counter, the status, the last floor, the next action, the proposals
+ * waiting, and the latest round record through the knowledge route. Every
+ * value comes from `STATE.md` and `goal.md` as the daemon parsed them. */
+function goalBlock(project: ProjectRef, summary: KnowledgeSummary): HTMLElement {
+  const box = document.createElement("div");
+  box.className = "goal";
+  const top = document.createElement("div");
+  top.className = "goal-top";
+  const title = document.createElement("span");
+  title.className = "goal-title";
+  title.textContent = summary.goal ?? summary.slug ?? "goal";
+  top.append(title);
+  if ((summary.proposals ?? 0) > 0) {
+    const chip = tag(`proposals: ${summary.proposals}`);
+    chip.classList.add("proposals");
+    chip.title = "Proposals waiting on the human in STATE.md";
+    top.append(chip);
+  }
+  if (typeof summary.lastRound === "number") {
+    const link = knowledgeLink(project.id, roundPath(summary.lastRound), `round ${String(summary.lastRound).padStart(3, "0")}`);
+    link.classList.add("goal-link");
+    link.title = "Open the latest round record";
+    top.append(link);
+  }
+  box.append(top);
+
+  const meta = document.createElement("div");
+  meta.className = "goal-meta";
+  const bits: string[] = [];
+  if (typeof summary.round === "number") {
+    bits.push(typeof summary.budget === "number" ? `round ${summary.round} of ${summary.budget}` : `round ${summary.round}`);
+  }
+  if (summary.status) bits.push(summary.status);
+  if (summary.lastFloor) bits.push(`floor ${summary.lastFloor}`);
+  meta.textContent = bits.join(" · ");
+  if (bits.length > 0) box.append(meta);
+
+  if (summary.nextAction) {
+    const next = document.createElement("div");
+    next.className = "goal-next";
+    next.textContent = `next: ${summary.nextAction}`;
+    next.title = summary.nextAction;
+    box.append(next);
+  }
+  return box;
+}
+
+/** A link to one file of a project's package, opened in a new tab. */
+function knowledgeLink(projectId: string, path: string, text: string): HTMLAnchorElement {
+  const a = document.createElement("a");
+  a.className = "strip-open";
+  a.href = knowledgeUrl(projectId, path);
+  a.target = "_blank";
+  a.rel = "noopener";
+  a.textContent = text;
+  return a;
 }
 
 /** Spawn a session in this project's root: a plain shell, or one of the
@@ -901,6 +1061,8 @@ function row(s: SessionRow): HTMLElement {
   }
   const task = s.labels?.task;
   if (task) top.append(tag(`task: ${task}`));
+  const round = roundOf(s);
+  if (round !== null) top.append(tag(`round ${round}`));
 
   const sub = document.createElement("div");
   sub.className = "sub";
