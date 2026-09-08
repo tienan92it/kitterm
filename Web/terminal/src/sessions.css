@@ -39,7 +39,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .quiet {
   color: var(--ui-text-muted); background: none; border: none; cursor: pointer;
-  font-size: 12px; padding: 4px 8px; border-radius: var(--radius-1); min-height: var(--tap-min, 24px);
+  font-size: 12px; padding: 4px 8px; border-radius: var(--radius-1); min-height: var(--tap-min);
 }
 .quiet:hover { color: var(--ui-text); background: var(--ui-surface-2); }
 .quiet.danger:hover { color: var(--ui-danger); }
@@ -61,8 +61,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .strip-foreman { padding-top: 2px; padding-bottom: 2px; }
 .strip-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .strip-item {
-  border-left: 3px solid var(--ui-warning, var(--ui-danger));
-  background: color-mix(in srgb, var(--ui-warning, var(--ui-danger)) 10%, var(--ui-surface));
+  border-left: 3px solid var(--ui-warning);
+  background: color-mix(in srgb, var(--ui-warning) 10%, var(--ui-surface));
   padding: 8px 12px 10px; border-radius: 0 var(--radius-2) var(--radius-2) 0;
 }
 .strip-item.failed {
@@ -110,7 +110,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
    One pinned row above the cards, marked by its rule rather than a box. */
 .pinned:empty { display: none; }
 .foreman { margin: 0 0 14px; border-left: 3px solid var(--ui-accent); padding-left: 10px; }
-.foreman-label { font-size: 12px; color: var(--ui-text-muted); padding: 2px 0; }
+.foreman-label { font-size: 12px; font-weight: 400; color: var(--ui-text-muted); padding: 2px 0; margin: 0; }
 .foreman .rows { border: none; }
 .foreman .row { border-top: none; padding-left: 0; padding-right: 0; }
 
@@ -128,7 +128,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .chip {
   background: none; color: var(--ui-text); border: 1px solid var(--ui-border);
   border-radius: var(--radius-round); padding: 1px 9px; font-size: 11.5px; cursor: pointer;
-  min-height: var(--tap-min, 24px); transition: border-color .12s, color .12s;
+  min-height: var(--tap-min); transition: border-color .12s, color .12s;
 }
 .chip:hover { border-color: var(--ui-text-muted); }
 .chip.on { border-color: var(--ui-accent); background: var(--ui-accent-soft); }
@@ -164,16 +164,17 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .spawn-profile {
   font: inherit; font-size: 12px; color: var(--ui-text); background: var(--ui-surface);
   border: 1px solid var(--ui-border); border-radius: var(--radius-1); padding: 3px 6px; max-width: 140px;
+  min-height: var(--tap-min);
 }
 .spawn-button {
   font-size: 12.5px; color: var(--ui-text); background: var(--ui-surface); cursor: pointer;
   border: 1px solid var(--ui-border); border-radius: var(--radius-round); padding: 3px 12px;
-  min-height: var(--tap-min, 24px); transition: border-color .12s;
+  min-height: var(--tap-min); transition: border-color .12s;
 }
 .spawn-button:hover { border-color: var(--ui-accent); }
 .spawn-button:disabled { opacity: .5; cursor: progress; }
 .crew-head {
-  font-size: 11.5px; color: var(--ui-text-muted); padding: 8px 14px 0;
+  font-size: 11.5px; font-weight: 400; color: var(--ui-text-muted); padding: 8px 14px 0; margin: 0;
   display: flex; align-items: center; gap: 8px;
 }
 .crew-head::after { content: ""; flex: 1; border-top: 1px solid var(--ui-border); }
@@ -190,12 +191,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .open:hover .folder { color: var(--ui-accent); }
 .dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 6px; flex: none; }
 .dot.running { background: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-accent-soft); }
-.dot.idle { background: var(--ui-success); }
+.dot.idle, .dot.done { background: var(--ui-success); }
 .dot.failed { background: var(--ui-danger); }
 .dot.unknown { background: var(--ui-text-faint); }
 /* Wants the human: the loudest dot after a real failure. */
-.dot.attention { background: var(--ui-warning, var(--ui-danger)); box-shadow: 0 0 0 3px var(--ui-accent-soft); }
-.dot.done { background: var(--ui-success); }
+.dot.attention { background: var(--ui-warning); box-shadow: 0 0 0 3px var(--ui-accent-soft); }
 .main { min-width: 0; flex: 1; }
 .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; }
 .folder { font-weight: 600; font-size: 14.5px; overflow-wrap: anywhere; }
@@ -244,6 +244,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .spawn-button { margin-left: auto; }
   .row { padding-left: 12px; padding-right: 4px; }
   .crew-head { padding-left: 12px; }
+  /* Thumb targets: 32 px chips with 8 px between them. */
+  .chip-group { gap: 8px; }
+  .chip { min-height: 32px; padding: 3px 12px; }
 }
 
 /* Archived sessions: collapsed evidence of finished work, at the foot of its
@@ -251,7 +254,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .archived { color: var(--ui-text-muted); border-top: 1px solid var(--ui-border); }
 .archived > summary {
   cursor: pointer; font-size: 12.5px; color: var(--ui-text-muted);
-  padding: 8px 14px; user-select: none; min-height: var(--tap-min, 24px);
+  padding: 8px 14px; user-select: none; min-height: var(--tap-min);
 }
 .archived > summary:hover { color: var(--ui-text); }
 .archived-list { list-style: none; margin: 0; padding: 0 14px 10px; display: flex; flex-direction: column; gap: 4px; }
