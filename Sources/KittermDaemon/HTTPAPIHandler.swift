@@ -598,11 +598,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             // The approval store is loop-confined; this whenComplete runs on the loop.
             let approvalSessions = Set(self.approvals.snapshot().compactMap(\.sessionID))
             let items: [[String: Any]] = summaries.map { summary in
-                Self.sessionItem(
-                    summary,
-                    pendingApproval: approvalSessions.contains(summary.id),
-                    project: self.project(of: summary)
-                )
+                Self.sessionItem(summary, pendingApproval: approvalSessions.contains(summary.id))
             }
             let body: String
             if let data = try? JSONSerialization.data(withJSONObject: ["ok": true, "sessions": items]),
@@ -641,8 +637,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// correlating three endpoints itself.
     private static func sessionItem(
         _ summary: SessionRegistry.SessionSummary,
-        pendingApproval: Bool,
-        project: ResolvedProject?
+        pendingApproval: Bool
     ) -> [String: Any] {
         let agent = summary.agentStatus
         let derived = DerivedSessionState.derive(from: summary.marks)
@@ -738,9 +733,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 return
             }
             let pendingApproval = self.approvals.snapshot().contains { $0.sessionID == summary.id }
-            var payload = Self.sessionItem(
-                summary, pendingApproval: pendingApproval, project: self.project(of: summary)
-            )
+            var payload = Self.sessionItem(summary, pendingApproval: pendingApproval)
             payload["ok"] = true
             let body: String
             if let data = try? JSONSerialization.data(withJSONObject: payload),
