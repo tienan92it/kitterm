@@ -108,6 +108,9 @@ enum ProjectCommand {
     /// `init`: write the goal package templates into the knowledge directory,
     /// then register the project. Every refusal happens before the first
     /// write, so a refused command leaves the project and the file untouched.
+    /// A symlink anywhere on a template's path under the root is refused
+    /// too: a checked-in `docs/goals -> /elsewhere` would otherwise take the
+    /// seven files outside the repository.
     private static func initialize(_ args: [String], out: (String) -> Void) throws {
         let target = try target(args)
         let knowledgeURL = URL(fileURLWithPath: target.root, isDirectory: true)
@@ -118,6 +121,18 @@ enum ProjectCommand {
         guard existing.isEmpty else {
             let list = existing.map { "\(target.knowledge)/\($0)" }.joined(separator: ", ")
             throw CLIError.usage("refusing to overwrite: \(list) (nothing written)")
+        }
+        var linked: [String] = []
+        for path in GoalsTemplates.files.map(\.path) {
+            let relative = target.knowledge + "/" + path
+            let components = relative.split(separator: "/").map(String.init)
+            for depth in 1...components.count {
+                let candidate = components[0..<depth].joined(separator: "/")
+                if !linked.contains(candidate), isSymlink(target.root + "/" + candidate) { linked.append(candidate) }
+            }
+        }
+        guard linked.isEmpty else {
+            throw CLIError.usage("refusing to overwrite: \(linked.joined(separator: ", ")) is a symlink (nothing written)")
         }
         if let registered = ProjectStore.load().first(where: { $0.root == target.root }) {
             throw CLIError.usage("\(target.root) is already registered as \"\(registered.id)\" (nothing written)")
@@ -131,6 +146,12 @@ enum ProjectCommand {
             out("wrote \(target.knowledge)/\(path)")
         }
         try register(target, out: out)
+    }
+
+    /// `lstat`, not `stat`: a dangling link reads as a link, not as absent.
+    private static func isSymlink(_ path: String) -> Bool {
+        let type = (try? FileManager.default.attributesOfItem(atPath: path))?[.type] as? FileAttributeType
+        return type == .typeSymbolicLink
     }
 
     private static func list(out: (String) -> Void) {

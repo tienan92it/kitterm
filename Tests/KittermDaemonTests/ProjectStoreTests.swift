@@ -120,6 +120,25 @@ final class ProjectStoreTests: XCTestCase {
         XCTAssertEqual(resolved?.registered, true)
     }
 
+    /// A `.git` file that names a path outside any checkout's `.git`
+    /// directory, or one that does not exist, is not followed: the
+    /// directory that holds the file is the project, so a checked-in file
+    /// cannot point the card at another directory.
+    func testAGitdirThatIsNotAWorktreeIsNotFollowed() throws {
+        let missing = try worktree("stray", gitdir: root.path + "/nowhere/.git/worktrees/x")
+        XCTAssertEqual(store.resolve(cwd: missing)?.root, missing)
+        XCTAssertEqual(store.resolve(cwd: missing)?.id, "stray")
+
+        // The target exists, but no `.git` component is on its path.
+        let planted = try worktree("planted", gitdir: try dir("secrets/keys"))
+        XCTAssertEqual(store.resolve(cwd: planted)?.root, planted, "no .git component on the target path")
+
+        // A real worktree still follows.
+        _ = try dir("main/.git/worktrees/wt")
+        let wt = try worktree("wt", gitdir: root.path + "/main/.git/worktrees/wt")
+        XCTAssertEqual(store.resolve(cwd: wt)?.root, root.path + "/main")
+    }
+
     func testNoProjectOutsideEveryRepository() throws {
         let plain = try dir("plain/dir")
         XCTAssertNil(store.resolve(cwd: plain))

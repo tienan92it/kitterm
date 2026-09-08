@@ -305,16 +305,20 @@ public final class ProjectStore: @unchecked Sendable {
     /// The nearest ancestor of `cwd` (itself included) that holds `.git`,
     /// bounded at `maxWalkDepth` levels. A `.git` file with a `gitdir:` line
     /// is followed one level: `<main>/.git/worktrees/<name>` resolves to
-    /// `<main>`. Nil outside every repository.
+    /// `<main>`, but only when that target exists and `<main>/.git` is a
+    /// directory; a `.git` file that names any other path (a checked-in one
+    /// could name `~/.ssh/.git/worktrees/x`, and the card would spawn
+    /// shells there) resolves to the directory that holds it. Nil outside
+    /// every repository.
     static func gitRoot(from cwd: String) -> String? {
         var dir = normalize(cwd)
         for _ in 0..<maxWalkDepth {
             let dotGit = (dir == "/" ? "" : dir) + "/.git"
-            var isDirectory: ObjCBool = false
-            if FileManager.default.fileExists(atPath: dotGit, isDirectory: &isDirectory) {
-                if isDirectory.boolValue { return dir }
+            if let isDirectory = isDirectory(dotGit) {
+                if isDirectory { return dir }
                 if let target = gitdirTarget(file: dotGit, relativeTo: dir),
-                   let main = mainCheckout(ofGitDir: target) {
+                   let main = mainCheckout(ofGitDir: target),
+                   self.isDirectory(target) == true, self.isDirectory(main + "/.git") == true {
                     return main
                 }
                 return dir
@@ -324,6 +328,14 @@ public final class ProjectStore: @unchecked Sendable {
             dir = normalize(dir)
         }
         return nil
+    }
+
+    /// True for a directory, false for another kind of file, nil when
+    /// nothing is at `path`.
+    private static func isDirectory(_ path: String) -> Bool? {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else { return nil }
+        return isDirectory.boolValue
     }
 
     /// The path after `gitdir:` in a `.git` file, made absolute against the
@@ -412,6 +424,10 @@ public final class ProjectStore: @unchecked Sendable {
         )
         try DaemonPaths.ensureStateDirectory()
         try data.write(to: url, options: .atomic)
+        // Registered roots are paths, not secrets, but the file is the
+        // user's own list; owner-only like every other file in the state
+        // directory.
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
     private static func warn(_ message: String) {

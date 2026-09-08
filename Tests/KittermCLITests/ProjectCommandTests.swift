@@ -108,6 +108,19 @@ final class ProjectCommandTests: XCTestCase {
         XCTAssertEqual(ProjectStore.load().map(\.id), ["repo"], "a refused command changes nothing")
     }
 
+    /// The file and a fresh state directory are owner-only, like the tokens
+    /// beside them.
+    func testProjectsFileAndFreshStateDirectoryAreOwnerOnly() throws {
+        let fresh = stateDir.appendingPathComponent("fresh")
+        setenv("KITTERM_STATE_DIR", fresh.path, 1)
+        try run(["add", try dir("repo")])
+        func mode(_ path: String) throws -> Int {
+            try XCTUnwrap(FileManager.default.attributesOfItem(atPath: path)[.posixPermissions] as? Int)
+        }
+        XCTAssertEqual(try mode(fresh.path), 0o700)
+        XCTAssertEqual(try mode(DaemonPaths.projectsFile.path), 0o600)
+    }
+
     /// A relative path resolves against the working directory.
     func testRelativePathResolvesAgainstCwd() throws {
         let path = try dir("rel")
@@ -186,6 +199,33 @@ final class ProjectCommandTests: XCTestCase {
         XCTAssertThrowsError(try run(["init", project]))
         XCTAssertFalse(FileManager.default.fileExists(atPath: project + "/docs"))
         XCTAssertEqual(ProjectStore.load().count, 1)
+    }
+
+    /// A symlink at the knowledge directory, at a parent of it, or at a
+    /// template path is refused before anything is written, so a checked-in
+    /// link cannot take the package outside the repository.
+    func testInitRefusesASymlinkOnTheTemplatePath() throws {
+        let outside = try dir("outside")
+        let project = try dir("linked")
+        try FileManager.default.createDirectory(atPath: project + "/docs", withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: project + "/docs/goals", withDestinationPath: outside)
+        XCTAssertThrowsError(try run(["init", project])) { error in
+            let message = String(describing: (error as? CLIError)?.errorDescription ?? "")
+            XCTAssertTrue(message.contains("docs/goals is a symlink"), message)
+        }
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: outside), [], "nothing crossed the link")
+
+        // A dangling link at one template path: `stat` says absent, `lstat`
+        // says link, and the link wins.
+        let dangling = try dir("dangling")
+        try FileManager.default.createDirectory(atPath: dangling + "/docs/goals", withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            atPath: dangling + "/docs/goals/goal.md", withDestinationPath: outside + "/goal.md"
+        )
+        XCTAssertThrowsError(try run(["init", dangling]))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: outside + "/goal.md"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dangling + "/docs/goals/STATE.md"), "nothing written")
+        XCTAssertEqual(ProjectStore.load(), [])
     }
 
     func testInitUsageRefusals() throws {
