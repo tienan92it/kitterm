@@ -8,8 +8,8 @@
 
 ## Queue
 
-1. `review-fixes`: the should-fix findings of the review gate, on a branch
-   off `goals/goal-loop-skill`. Starts when all four reviews are in.
+1. `review-fixes`: round 5, running, branch `goals/review-fixes` off
+   `goals/goal-loop-skill`.
 2. `knowledge-on-dashboard` (capability 5)
 3. `dogfood` (capability 6)
 
@@ -29,8 +29,16 @@ read-only. Reports under the job's `review/` directory.
   same event-loop finding, the store lock holding file I/O the loop waits
   on, the archive list re-walking every record twice per tick, and the
   dashboard signature repainting every tick while a session prints.
-- reuse and simplicity: running.
-- dashboard accessibility: running.
+- reuse and simplicity: blocking 0, should-fix 6, nit 9. Unread
+  aggregates on `GET /api/projects`, two test fixtures repeated, the state
+  tree and the resolution rule stated in several places, `LOOP.md` in
+  three copies.
+- dashboard accessibility: blocking 1, should-fix 11, nit 12. The row menu
+  is clipped at 390 px on the last row of a card; repaints drop focus; no
+  live region; shared button names; faint and state-label text under
+  4.5:1 on most themes; the sticky strip has no height cap.
+- ranked and deduped list: the job's `review/ranked.md`; R0 blocking, R1
+  to R10 required, nits optional, six items left with reasons.
 
 ## Proposals waiting on the human
 
@@ -46,6 +54,13 @@ read-only. Reports under the job's `review/` directory.
   `claude`. See `rounds/004.md`.
 - `LOOP.md` Labels: `resumed-from` is an archive id or the pane's previous
   id. See `rounds/004.md`.
+- `LOOP.md` exists three times (`docs/goals/`, `examples/goals/`,
+  `GoalsTemplates.swift`) with no test between the instance and the
+  template (reuse review 6). Either the instance keeps only the tiers and
+  points at the template for the procedure, or a test pins the shared
+  lines.
+- The resolution rule folds a submodule into its superproject (daemon
+  review 7). Decide with the nearest-`.git` proposal.
 - `plan.md`: add a corpus request for capabilities 3 and 4 before the next
   budget. See `rounds/003.md`.
 - Watch-grade access to `GET /api/projects/<id>/knowledge/<path>`. The plan
@@ -66,10 +81,10 @@ read-only. Reports under the job's `review/` directory.
 
 ## Next action
 
-Wait for the reuse and accessibility reviews. Collect the four reports,
-dedupe, rank. Then round 5: `review-fixes` in one crew session on branch
-`goals/review-fixes` off `goals/goal-loop-skill`, with the ranked
-should-fix list as the prompt and each fix proven by a test. After round
-5 the stack is ready for push and PRs in order: `goals/knowledge-base`,
-`goals/project-identity`, `goals/dashboard`, `goals/scaffold-and-docs`,
-`goals/goal-loop-skill`, `goals/review-fixes`.
+Round 5 runs. On `completed`: floor, diff against the tiers, the two
+screenshots, record `rounds/005.md`. The human said "continue with review
+fixes then push" on 2026-09-08, so after round 5: push the six branches
+and open the PRs in order, each based on the previous: `goals/knowledge-base`
+to `main`, then `goals/project-identity`, `goals/dashboard`,
+`goals/scaffold-and-docs`, `goals/goal-loop-skill`, `goals/review-fixes`.
+Merge and release wait for the human.
