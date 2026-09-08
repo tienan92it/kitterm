@@ -93,6 +93,10 @@ a fact that becomes a design decision into `docs/adr/`.
 
 ## Toolchain (2026-09-04, foreman plan)
 
+- A live check of the CLI must run `.build/debug/kitterm` (fresh after
+  `swift test`), because `swift run` needs `Package.swift` in the cwd and
+  a temp project directory has none. `KITTERM_STATE_DIR` isolates the
+  state; `project init` needs no spawn helper.
 - The web package manager is pnpm (`pnpm-lock.yaml`). `npx pnpm@10`
   re-downloads and hangs in the foreman environment; run the binaries in
   `Web/terminal/node_modules/.bin` instead.
