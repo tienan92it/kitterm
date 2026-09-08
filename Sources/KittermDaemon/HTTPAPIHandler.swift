@@ -1350,17 +1350,14 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             return
         }
         let id = String(components[3])
-        var relative: String?
-        if components.count == 6 {
-            guard let valid = KnowledgeFile.relativePath(String(components[5])) else {
-                writeJSON(
-                    status: .badRequest,
-                    body: #"{"ok":false,"error":"path must be relative, without `..`"}"#,
-                    context: context, version: head.version, keepAlive: false
-                )
-                return
-            }
-            relative = valid
+        let relative: String? = components.count == 6 ? KnowledgeFile.relativePath(String(components[5])) : nil
+        if components.count == 6, relative == nil {
+            writeJSON(
+                status: .badRequest,
+                body: #"{"ok":false,"error":"path must be relative, without `..`"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
         }
         let loop = context.eventLoop
         let bound = NIOLoopBound(context, eventLoop: loop)
