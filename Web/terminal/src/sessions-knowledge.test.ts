@@ -5,6 +5,7 @@ import {
   goalOf,
   knowledgeUrl,
   proposedItems,
+  recordPath,
   roundOf,
   roundPath,
   type KnowledgeSummary,
@@ -88,6 +89,14 @@ describe("roundPath and knowledgeUrl", () => {
   });
 });
 
+describe("recordPath", () => {
+  it("is the name the daemon read, else the three-digit name, else null", () => {
+    expect(recordPath({ project: "p", lastRound: 7, lastRecord: "rounds/7.md" })).toBe("rounds/7.md");
+    expect(recordPath({ project: "p", lastRound: 7 })).toBe("rounds/007.md");
+    expect(recordPath({ project: "p" })).toBeNull();
+  });
+});
+
 describe("proposedItems", () => {
   it("lists a project whose latest round record proposes", () => {
     const proposing: KnowledgeSummary = { ...summary, lastRound: 3, lastDecision: "propose (`plan.md`: x)" };
@@ -96,6 +105,11 @@ describe("proposedItems", () => {
       { project: other, summary: proposing },
     ]);
     expect(items).toEqual([{ kind: "proposed", project: other, summary: proposing, round: 3, path: "rounds/003.md" }]);
+  });
+
+  it("links the record by the name the daemon read, rounds/7.md included", () => {
+    const seven: KnowledgeSummary = { ...summary, lastRound: 7, lastRecord: "rounds/7.md", lastDecision: "propose (x)" };
+    expect(proposedItems([{ project: other, summary: seven }])[0].path).toBe("rounds/7.md");
   });
 
   it("matches the decision word alone, in any case, after blanks", () => {

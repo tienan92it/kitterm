@@ -16,8 +16,8 @@ import {
   NO_PROJECT,
   pickForeman,
   proposedItems,
+  recordPath,
   roundOf,
-  roundPath,
   stateOf,
   tally,
   type Approval,
@@ -902,8 +902,9 @@ function goalBlock(project: ProjectRef, summary: KnowledgeSummary): HTMLElement 
     chip.title = "Proposals waiting on the human in STATE.md";
     top.append(chip);
   }
-  if (typeof summary.lastRound === "number") {
-    const link = knowledgeLink(project.id, roundPath(summary.lastRound), `round ${String(summary.lastRound).padStart(3, "0")}`);
+  const record = recordPath(summary);
+  if (record !== null && typeof summary.lastRound === "number") {
+    const link = knowledgeLink(project.id, record, `round ${String(summary.lastRound).padStart(3, "0")}`);
     link.classList.add("goal-link");
     link.title = "Open the latest round record";
     top.append(link);

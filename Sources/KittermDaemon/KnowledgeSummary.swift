@@ -26,8 +26,12 @@ public struct KnowledgeSummary: Equatable, Sendable {
     public var nextAction: String?
     /// Top-level bullets under `## Proposals waiting on the human`.
     public var proposals: Int?
-    /// The highest `rounds/NNN.md` number.
+    /// The number of the highest-numbered `rounds/<N>.md`.
     public var lastRound: Int?
+    /// That record's path under the knowledge directory, by its real file
+    /// name (`rounds/7.md` stays `rounds/7.md`), so a link opens the file
+    /// that was read.
+    public var lastRecord: String?
     /// The first line of the latest round record's `## Decision` section.
     public var lastDecision: String?
 
@@ -38,9 +42,27 @@ public struct KnowledgeSummary: Equatable, Sendable {
 
     /// Parse the package's texts. Each argument is nil when its file is
     /// missing or unreadable. `roundNames` holds the file names under
-    /// `rounds/`; every name that is not `NNN.md` is ignored.
+    /// `rounds/`; every name that is not `<digits>.md` is ignored, and
+    /// `latestRound` is the text of the highest-numbered one.
     public static func parse(
         state: String?, goal: String?, roundNames: [String], latestRound: String?
+    ) -> KnowledgeSummary {
+        parse(state: state, goal: goal, latestRecord: latestRecordName(roundNames), latestRound: latestRound)
+    }
+
+    /// The file name under `rounds/` with the highest number, nil when no
+    /// name is `<digits>.md`. The caller reads that name, so the record the
+    /// summary describes is the file the link opens.
+    public static func latestRecordName(_ roundNames: [String]) -> String? {
+        roundNames.compactMap { name in roundNumber(name).map { ($0, name) } }
+            .max { $0.0 < $1.0 }?.1
+    }
+
+    /// Parse with the latest record named: `latestRecord` is its file name
+    /// under `rounds/` and `latestRound` its text. The round number comes
+    /// from the name, computed once here.
+    public static func parse(
+        state: String?, goal: String?, latestRecord: String?, latestRound: String?
     ) -> KnowledgeSummary {
         var summary = KnowledgeSummary()
         if let goal {
@@ -61,7 +83,10 @@ public struct KnowledgeSummary: Equatable, Sendable {
                 summary.proposals = topLevelBullets(proposals)
             }
         }
-        summary.lastRound = roundNames.compactMap(roundNumber).max()
+        if let latestRecord, let number = roundNumber(latestRecord) {
+            summary.lastRound = number
+            summary.lastRecord = "rounds/" + latestRecord
+        }
         if let latestRound, let decision = section(latestRound, heading: "Decision") {
             summary.lastDecision = firstLine(decision).map { cap($0, bytes: lineCap) }
         }
@@ -80,6 +105,7 @@ public struct KnowledgeSummary: Equatable, Sendable {
         if let nextAction { item["nextAction"] = nextAction }
         if let proposals { item["proposals"] = proposals }
         if let lastRound { item["lastRound"] = lastRound }
+        if let lastRecord { item["lastRecord"] = lastRecord }
         if let lastDecision { item["lastDecision"] = lastDecision }
         return item
     }
@@ -140,11 +166,19 @@ public struct KnowledgeSummary: Equatable, Sendable {
     }
 
     /// `N of M …` → (N, M). Either is nil when the text does not hold it.
+    /// Each number is the leading digits of its word, so `3 of 3, budget
+    /// spent` keeps the budget.
     static func roundCounter(_ value: String) -> (Int?, Int?) {
         let words = value.split(separator: " ")
-        let n = words.first.flatMap { Int($0) }
+        let n = words.first.flatMap(leadingNumber)
         guard words.count >= 3, words[1] == "of" else { return (n, nil) }
-        return (n, Int(words[2]))
+        return (n, leadingNumber(words[2]))
+    }
+
+    /// The number the word starts with, nil when it starts with no digit.
+    private static func leadingNumber(_ word: Substring) -> Int? {
+        let digits = word.prefix { $0.isASCII && $0.isNumber }
+        return digits.isEmpty ? nil : Int(digits)
     }
 
     /// The lines under `## <heading>` up to the next `## ` or `# ` heading.

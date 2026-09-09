@@ -64,6 +64,27 @@ final class KnowledgeSummaryTests: XCTestCase {
         XCTAssertEqual(summary.lastDecision, "propose (`plan.md` capability 1: decide the resolution rule.)")
     }
 
+    func testLatestRecordKeepsItsRealName() {
+        XCTAssertEqual(KnowledgeSummary.latestRecordName(["001.md", "7.md", "0006.md", "README.md"]), "7.md")
+        XCTAssertEqual(KnowledgeSummary.latestRecordName(["notes.md"]), nil)
+        let summary = KnowledgeSummary.parse(
+            state: nil, goal: nil, roundNames: ["005.md", "7.md"], latestRound: "## Decision\n\npropose (x)\n"
+        )
+        XCTAssertEqual(summary.lastRound, 7)
+        XCTAssertEqual(summary.lastRecord, "rounds/7.md", "the link opens the file that was read")
+        XCTAssertEqual(summary.lastDecision, "propose (x)")
+        XCTAssertEqual(summary.json["lastRecord"] as? String, "rounds/7.md")
+        XCTAssertNil(KnowledgeSummary.parse(state: nil, goal: nil, latestRecord: nil, latestRound: "## Decision\n\nx").lastRecord)
+    }
+
+    func testRoundCounterKeepsTheBudgetAfterAComma() {
+        XCTAssertEqual(KnowledgeSummary.roundCounter("3 of 3, budget spent").1, 3)
+        XCTAssertEqual(KnowledgeSummary.roundCounter("3 of 3 (budget spent)").1, 3)
+        XCTAssertEqual(KnowledgeSummary.roundCounter("2 of 3 in this budget").0, 2)
+        XCTAssertNil(KnowledgeSummary.roundCounter("of 3").0)
+        XCTAssertNil(KnowledgeSummary.roundCounter("3 of x").1)
+    }
+
     func testEveryFieldIsAbsentWithoutTheFiles() {
         let summary = KnowledgeSummary.parse(state: nil, goal: nil, roundNames: [], latestRound: nil)
         XCTAssertEqual(summary, KnowledgeSummary())

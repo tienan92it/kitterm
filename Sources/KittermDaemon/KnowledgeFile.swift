@@ -115,12 +115,14 @@ enum KnowledgeFile {
         if (try? refuseSymlink(directory + "/rounds")) != nil {
             roundNames = (try? FileManager.default.contentsOfDirectory(atPath: directory + "/rounds")) ?? []
         }
-        let latest = roundNames.compactMap(KnowledgeSummary.roundNumber).max()
+        // The record is read by the name the listing gave, so `rounds/7.md`
+        // is the file the summary describes and the file the card links to.
+        let record = KnowledgeSummary.latestRecordName(roundNames)
         return KnowledgeSummary.parse(
             state: text("STATE.md"),
             goal: text("goal.md"),
-            roundNames: roundNames,
-            latestRound: latest.map { text("rounds/" + KnowledgeSummary.roundFileName($0)) } ?? nil
+            latestRecord: record,
+            latestRound: record.flatMap { text("rounds/" + $0) }
         )
     }
 

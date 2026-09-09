@@ -70,6 +70,11 @@ final class KnowledgeRouteTests: XCTestCase {
         XCTAssertEqual(mkfifo(alpha + "/docs/goals/pipe.md", 0o600), 0, "mkfifo: errno \(errno)")
         try write("outside/rounds/009.md", "# Round 009: elsewhere\n\n## Decision\n\npropose (x)\n")
         try write("outside/docs/goals/STATE.md", "# STATE: outside-goal\n")
+        // zeta: the latest record is `7.md`, not `007.md`.
+        let zeta = try dir("zeta")
+        try write("zeta/docs/goals/STATE.md", "# STATE: zeta-goal\n\n- Round: 3 of 3, budget spent\n")
+        try write("zeta/docs/goals/rounds/006.md", "# Round 006\n\n## Decision\n\ndone.\n")
+        try write("zeta/docs/goals/rounds/7.md", "# Round 7\n\n## Decision\n\npropose (seven)\n")
         let delta = try dir("delta/docs/goals")
         try write("delta/docs/goals/STATE.md", "# STATE: delta-goal\n")
         try link("delta/docs/goals/rounds", to: outside + "/rounds")
@@ -77,6 +82,7 @@ final class KnowledgeRouteTests: XCTestCase {
             Project(id: "alpha", name: "Alpha", root: alpha),
             Project(id: "beta", name: "Beta", root: URL(fileURLWithPath: beta).deletingLastPathComponent().path),
             Project(id: "gamma", name: "Gamma", root: gamma),
+            Project(id: "zeta", name: "Zeta", root: zeta),
             Project(id: "delta", name: "Delta", root: URL(fileURLWithPath: delta).deletingLastPathComponent().deletingLastPathComponent().path),
             Project(id: "epsilon", name: "Epsilon", root: stateDir.appendingPathComponent("epsilon").path),
         ])
@@ -365,6 +371,18 @@ final class KnowledgeRouteTests: XCTestCase {
         let changed = try raw("/api/projects/alpha/knowledge", extra: ["If-None-Match: \(etag)"])
         XCTAssertEqual(changed.status, 200, "a changed file has a new tag")
         XCTAssertNotEqual(changed.header("etag"), etag)
+    }
+
+    func testLatestRecordIsReadByItsRealName() async throws {
+        let answer = try await get("/api/projects/zeta/knowledge")
+        XCTAssertEqual(answer.status, 200, answer.text)
+        let body = try json(answer)
+        XCTAssertEqual(body["lastRound"] as? Int, 7)
+        XCTAssertEqual(body["lastRecord"] as? String, "rounds/7.md")
+        XCTAssertEqual(body["lastDecision"] as? String, "propose (seven)")
+        XCTAssertEqual(body["budget"] as? Int, 3, "the comma after the budget")
+        let record = try await status("/api/projects/zeta/knowledge/rounds/7.md")
+        XCTAssertEqual(record, 200)
     }
 
     /// A discovered project is not served: the fleet view asks only for

@@ -94,6 +94,9 @@ export type KnowledgeSummary = {
   nextAction?: string;
   proposals?: number;
   lastRound?: number;
+  /** The latest record's path under the knowledge directory by its real
+   * file name, `rounds/7.md` included. Absent from a daemon before v0.24. */
+  lastRecord?: string;
   /** The first line of the latest round record's `## Decision` section. */
   lastDecision?: string;
 };
@@ -108,7 +111,7 @@ export type ProposedItem = {
   project: ProjectRef;
   summary: KnowledgeSummary;
   round: number;
-  /** The record's path under the knowledge directory, `rounds/NNN.md`. */
+  /** The record's path under the knowledge directory, `recordPath`. */
   path: string;
 };
 
@@ -364,6 +367,14 @@ export function roundPath(n: number): string {
   return `rounds/${String(n).padStart(3, "0")}.md`;
 }
 
+/** The path of the latest round record: the name the daemon read, else the
+ * three-digit name for the round number from a daemon that sends only the
+ * number; null without a record. */
+export function recordPath(summary: KnowledgeSummary): string | null {
+  if (summary.lastRecord) return summary.lastRecord;
+  return typeof summary.lastRound === "number" ? roundPath(summary.lastRound) : null;
+}
+
 /** The knowledge route for one file of a project's package. */
 export function knowledgeUrl(projectId: string, path: string): string {
   const encoded = path.split("/").map(encodeURIComponent).join("/");
@@ -379,9 +390,10 @@ export function proposedItems(entries: { project: ProjectRef; summary: Knowledge
   const items: ProposedItem[] = [];
   for (const { project, summary } of entries) {
     const round = summary.lastRound;
-    if (typeof round !== "number") continue;
+    const path = recordPath(summary);
+    if (typeof round !== "number" || path === null) continue;
     if (!(summary.lastDecision ?? "").trim().toLowerCase().startsWith("propose")) continue;
-    items.push({ kind: "proposed", project, summary, round, path: roundPath(round) });
+    items.push({ kind: "proposed", project, summary, round, path });
   }
   return items;
 }
