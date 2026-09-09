@@ -44,7 +44,7 @@ final class KnowledgeRouteTests: XCTestCase {
         // alpha: a registered project with a package; outside: what the
         // symlinks point at; beta: its knowledge directory is a symlink;
         // gamma: registered, no knowledge directory; repo: a git checkout
-        // with a package, discovered by a session's cwd.
+        // with a package, discovered by a session's cwd and not served.
         alpha = try dir("alpha")
         outside = try dir("outside")
         try write("outside/secret.md", "# secret\n")
@@ -367,7 +367,10 @@ final class KnowledgeRouteTests: XCTestCase {
         XCTAssertNotEqual(changed.header("etag"), etag)
     }
 
-    func testDiscoveredProjectWithAPackageAnswers() async throws {
+    /// A discovered project is not served: the fleet view asks only for
+    /// registered ids, and a watch token must not read the package of every
+    /// repository a pane visits.
+    func testDiscoveredProjectIs404OnBothRoutes() async throws {
         let repo = stateDir.appendingPathComponent("repo").path
         let session = try PtySession.spawn(cwd: repo, labels: SessionLabels([:]))
         sessions.append(session)
@@ -377,11 +380,13 @@ final class KnowledgeRouteTests: XCTestCase {
                leader.name != SpawnHelperPath.name, session.liveCwd == repo { break }
             try await Task.sleep(nanoseconds: 50_000_000)
         }
+        let listed = try await get("/api/projects")
+        let ids = ((try json(listed))["projects"] as? [[String: Any]])?.compactMap { $0["id"] as? String } ?? []
+        XCTAssertTrue(ids.contains("repo"), "the session discovered the project: \(ids)")
         let summary = try await get("/api/projects/repo/knowledge")
-        XCTAssertEqual(summary.status, 200, summary.text)
-        XCTAssertEqual(try json(summary)["slug"] as? String, "repo-goal")
+        XCTAssertEqual(summary.status, 404, summary.text)
         let file = try await status("/api/projects/repo/knowledge/STATE.md")
-        XCTAssertEqual(file, 200)
+        XCTAssertEqual(file, 404)
     }
 
     // MARK: - grade and the loop

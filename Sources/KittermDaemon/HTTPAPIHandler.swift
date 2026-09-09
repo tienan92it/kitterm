@@ -1337,9 +1337,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     ///
     /// Any grade: the package is the same information class as a session's
     /// cwd and as `GET /api/projects`, and the daemon never writes it. The
-    /// project is a registered one, else one a live session discovered; a
-    /// project with no knowledge directory is 404. The store lookup and every
-    /// file read run off the loop.
+    /// project must be a registered one (404 otherwise, a discovered project
+    /// included); a project with no knowledge directory is 404. The store
+    /// lookup and every file read run off the loop.
     private func serveKnowledge(path: String, head: HTTPRequestHead, context: ChannelHandlerContext) {
         // ["", "api", "projects", "<id>", "knowledge", "<rest>"]
         let components = path.split(separator: "/", maxSplits: 5, omittingEmptySubsequences: false)
@@ -1364,7 +1364,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         let projects = self.projects
         let promise = loop.makePromise(of: KnowledgeAnswer.self)
         promise.completeWithTask {
-            guard let (root, knowledge) = await self.knowledgeLocation(id: id, projects: projects) else {
+            guard let (root, knowledge) = self.knowledgeLocation(id: id, projects: projects) else {
                 return .failed(.notFound, "no such project")
             }
             return await withCheckedContinuation { continuation in
@@ -1411,14 +1411,14 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         }
     }
 
-    /// The root and the knowledge directory of a project id: registered
-    /// first, else the project a live session's cwd discovered. Off the loop:
-    /// the store lookup takes its lock.
-    private func knowledgeLocation(id: String, projects: ProjectStore) async -> (String, String)? {
-        if let project = projects.registered(id: id) { return (project.root, project.knowledge) }
-        let seen = await registry.summaries().compactMap(\.project)
-        guard let project = seen.first(where: { $0.id == id }), let root = project.root else { return nil }
-        return (root, project.knowledge)
+    /// The root and the knowledge directory of a registered project id, nil
+    /// for any other id: a project a session's cwd discovered is not served,
+    /// because the fleet view never asks for one and a watch token would
+    /// otherwise read the package of every repository a pane visits. Off
+    /// the loop: the store lookup takes its lock.
+    private func knowledgeLocation(id: String, projects: ProjectStore) -> (String, String)? {
+        guard let project = projects.registered(id: id) else { return nil }
+        return (project.root, project.knowledge)
     }
 
     /// The knowledge queue's part: the summary or the file, with the
