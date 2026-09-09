@@ -1,15 +1,16 @@
 # STATE: goal-folders
 
 - Status: active
-- Round: 1 of 3 in this budget (second budget; round 4 done)
+- Round: 2 of 3 in this budget (second budget; round 4 done, round 5 open)
 - Rounds total: 4
 - Last floor: green (2026-09-09, round 4 after)
 - Updated: 2026-09-09
 
 ## Queue
 
-1. `review-fixes`: the should-fix findings of the review gate on
-   `main...goals/goal-folders`, if any.
+1. `review-fixes`: round 5, running. Review gate 3: security 0/3/1,
+   daemon 0/6/6, accessibility 0/5/9 (blocking/should-fix/nit); ranked
+   list G1 to G10 in the job's `review3/ranked.md`.
 
 ## Failures
 
@@ -29,6 +30,5 @@ None.
 
 ## Next action
 
-Review gate on `main...goals/goal-folders`: security, daemon and reuse,
-dashboard accessibility. Then round 5 `review-fixes` if needed, push,
-one PR to `main`, and `Status: done` on merge.
+Round 5 `review-fixes` on the branch. Then push, one PR to `main`, and
+`Status: done` on merge.

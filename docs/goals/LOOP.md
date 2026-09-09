@@ -66,9 +66,10 @@ whether the product improved.
    budget is spent.
 2. **Verify the world.** Spawn one crew session in the repository root with
    labels `crew:<goal>`, `goal:<slug>`, `round:<n>`, `task:<queue-item>`,
-   and `input:"claude\n"`. Read the screen. Run the floor from `plan.md`. A
-   red floor makes the regression this round's job and pushes the queue item
-   back.
+   and no input. Run the floor from `plan.md` in the shell with
+   `send_input` and `wait_for_command`. A red floor makes the regression
+   this round's job and pushes the queue item back. Then send `claude` and
+   read the screen.
 3. **Send one request.** Type the round prompt in one `send_input`: the
    queue item, its proof from `plan.md`, the facts that apply, the frozen
    and propose paths, the corpus request it serves, and the rule to add a
