@@ -177,7 +177,10 @@ final class GoalCommandTests: XCTestCase {
         XCTAssertThrowsError(try run(["list", project, "--knowledge", "/abs"]))
     }
 
-    /// This repository's own package: one done goal and the open ones.
+    /// This repository's own package: `goal-folders` before
+    /// `projects-and-knowledge` (done), every `done` goal after every
+    /// `active` one. Containment and order only, so a new goal folder
+    /// keeps the floor green.
     func testListThisRepository() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -185,8 +188,16 @@ final class GoalCommandTests: XCTestCase {
             throw XCTSkip("docs/goals/projects-and-knowledge is not beside the test source")
         }
         let lines = try run(["list", root.path])
-        XCTAssertTrue(lines.contains("projects-and-knowledge\tdone"), lines.joined(separator: "\n"))
-        XCTAssertEqual(lines.last, "projects-and-knowledge\tdone", "done sorts after every open goal")
+        let joined = lines.joined(separator: "\n")
+        XCTAssertTrue(lines.contains("projects-and-knowledge\tdone"), joined)
+        let slugs = lines.map { $0.split(separator: "\t", omittingEmptySubsequences: false).first.map(String.init) }
+        let statuses = lines.map { $0.split(separator: "\t", omittingEmptySubsequences: false).last.map(String.init) }
+        let folders = try XCTUnwrap(slugs.firstIndex(of: "goal-folders"), joined)
+        let done = try XCTUnwrap(slugs.firstIndex(of: "projects-and-knowledge"), joined)
+        XCTAssertLessThan(folders, done, "goal-folders before projects-and-knowledge")
+        if let lastActive = statuses.lastIndex(of: "active"), let firstDone = statuses.firstIndex(of: "done") {
+            XCTAssertLessThan(lastActive, firstDone, "every done goal after every active one")
+        }
         for line in lines {
             let parts = line.split(separator: "\t", omittingEmptySubsequences: false)
             XCTAssertEqual(parts.count, 2, line)

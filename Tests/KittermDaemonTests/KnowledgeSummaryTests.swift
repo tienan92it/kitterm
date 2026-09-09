@@ -258,21 +258,30 @@ final class KnowledgeSummaryTests: XCTestCase {
         XCTAssertEqual(KnowledgeSummary.statusRank("unknown"), 4, "the CLI's word for a missing line ranks the same")
     }
 
-    /// This repository's own package as the second fixture: two goals,
-    /// `goal-folders` (active) before `projects-and-knowledge` (done).
+    /// This repository's own package as the second fixture: `goal-folders`
+    /// before `projects-and-knowledge` (done), every `done` goal after every
+    /// `active` one. Containment and order only, so a new goal folder or an
+    /// edited `goal.md` title keeps the floor green.
     func testSummariesOfThisRepositoryOwnPackage() throws {
         let root = Self.repositoryRoot
         guard FileManager.default.fileExists(atPath: root.appendingPathComponent("docs/goals/goal-folders/STATE.md").path),
               FileManager.default.fileExists(atPath: root.appendingPathComponent("docs/goals/projects-and-knowledge/STATE.md").path)
         else { throw XCTSkip("docs/goals is not beside the test source") }
         let goals = try XCTUnwrap(KnowledgeFile.summaries(root: root.path, knowledge: "docs/goals"))
-        XCTAssertEqual(goals.map(\.slug), ["goal-folders", "projects-and-knowledge"])
-        XCTAssertEqual(goals[1].status, "done")
-        XCTAssertEqual(goals[1].goal, "projects on the fleet view, and a knowledge base per project")
-        XCTAssertGreaterThanOrEqual(try XCTUnwrap(goals[1].lastRound), 8)
-        XCTAssertTrue(try XCTUnwrap(goals[1].lastRecord).hasPrefix("projects-and-knowledge/rounds/"))
-        XCTAssertNotNil(goals[0].status)
-        XCTAssertNotNil(goals[0].nextAction)
-        XCTAssertEqual(goals[0].goal, "one folder per goal under docs/goals")
+        let slugs = goals.map(\.slug)
+        let folders = try XCTUnwrap(slugs.firstIndex(of: "goal-folders"))
+        let done = try XCTUnwrap(slugs.firstIndex(of: "projects-and-knowledge"))
+        XCTAssertLessThan(folders, done, "goal-folders before projects-and-knowledge")
+        let statuses = goals.map(\.status)
+        if let lastActive = statuses.lastIndex(of: "active"), let firstDone = statuses.firstIndex(of: "done") {
+            XCTAssertLessThan(lastActive, firstDone, "every done goal after every active one")
+        }
+        XCTAssertEqual(goals[done].status, "done")
+        XCTAssertNotNil(goals[done].goal, "goal.md has a title")
+        XCTAssertGreaterThanOrEqual(try XCTUnwrap(goals[done].lastRound), 8)
+        XCTAssertTrue(try XCTUnwrap(goals[done].lastRecord).hasPrefix("projects-and-knowledge/rounds/"))
+        XCTAssertNotNil(goals[folders].status)
+        XCTAssertNotNil(goals[folders].nextAction)
+        XCTAssertNotNil(goals[folders].goal, "goal.md has a title")
     }
 }

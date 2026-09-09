@@ -483,17 +483,26 @@ final class KnowledgeRouteTests: XCTestCase {
                        "`done` sorts before a goal with no status line")
     }
 
-    /// This repository's own package: two goals, `goal-folders` (active)
-    /// before `projects-and-knowledge` (done), and the done goal's latest
-    /// record served at `<slug>/rounds/NNN.md`.
+    /// This repository's own package: `goal-folders` is listed before
+    /// `projects-and-knowledge` (done), every `done` goal after every
+    /// `active` one, and the done goal's latest record is served at
+    /// `<slug>/rounds/NNN.md`. Containment and order only, so a new goal
+    /// folder or an edited title keeps the floor green.
     func testThisRepositoryAnswersTwoGoalsAndServesARecord() async throws {
         guard Self.repositoryHasPackage else { throw XCTSkip("docs/goals is not beside the test source") }
         let answer = try await get("/api/projects/self/knowledge")
         XCTAssertEqual(answer.status, 200, answer.text)
         let list = try goals(answer)
-        XCTAssertEqual(list.map { $0["slug"] as? String }, ["goal-folders", "projects-and-knowledge"])
-        XCTAssertEqual(list[1]["status"] as? String, "done")
-        let record = try XCTUnwrap(list[1]["lastRecord"] as? String)
+        let slugs = list.map { $0["slug"] as? String }
+        let statuses = list.map { $0["status"] as? String }
+        let folders = try XCTUnwrap(slugs.firstIndex(of: "goal-folders"), answer.text)
+        let done = try XCTUnwrap(slugs.firstIndex(of: "projects-and-knowledge"), answer.text)
+        XCTAssertLessThan(folders, done, "goal-folders before projects-and-knowledge")
+        XCTAssertEqual(statuses[done], "done")
+        if let lastActive = statuses.lastIndex(of: "active"), let firstDone = statuses.firstIndex(of: "done") {
+            XCTAssertLessThan(lastActive, firstDone, "every done goal after every active one")
+        }
+        let record = try XCTUnwrap(list[done]["lastRecord"] as? String)
         XCTAssertTrue(record.hasPrefix("projects-and-knowledge/rounds/"), record)
         let served = try await get("/api/projects/self/knowledge/projects-and-knowledge/rounds/008.md")
         XCTAssertEqual(served.status, 200, served.text)
