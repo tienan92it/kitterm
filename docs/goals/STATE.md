@@ -1,10 +1,10 @@
 # STATE: projects-and-knowledge
 
-- Status: waiting
-- Round: 3 of 3 in this budget (second budget spent: rounds 4, 5, 6)
+- Status: active
+- Round: 0 of 3 in this budget (third budget)
 - Rounds total: 6
 - Last floor: green (2026-09-08, round 6 after)
-- Updated: 2026-09-08, after the v0.23.0 release
+- Updated: 2026-09-09
 
 ## Queue
 
@@ -101,11 +101,19 @@ Two lessons in `facts.md`: a stacked PR closes when its base branch is
 deleted, and a merge of `main` into a stacked branch can re-add what the
 branch removed.
 
+## Direction
+
+2026-09-09: the human said "continue" and "review and push" after round
+6. Third budget opens. The review gate runs on
+`main...goals/knowledge-on-dashboard` first (security, daemon, dashboard
+accessibility); a fix round follows if it finds should-fix items; then
+push and one PR to `main`. `dogfood` starts after the push.
+
 ## Next action
 
-Direction decision by the human: continue, redirect, or stop. Before any
-push of `goals/knowledge-on-dashboard`: the review gate (security on the
-knowledge route, daemon, dashboard accessibility), then a fix round if it
-finds should-fix items, then push and one PR to `main`. On "continue"
-after that: `dogfood` (capability 6), the last item, which proves
-completion condition 4 with a second registered project.
+Review gate on `goals/knowledge-on-dashboard`: three review sessions
+labelled `crew:review`, static and read-only through git. Collect, dedupe,
+rank. Then round 7 `review-fixes-2` if needed, then push and PR. Then
+`dogfood` (capability 6): a standing foreman in its own pane on the
+installed `foreman-loop` skill, two registered projects, corpus request
+03.
