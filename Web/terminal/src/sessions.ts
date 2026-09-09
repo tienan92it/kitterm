@@ -918,9 +918,16 @@ function card(g: Group<SessionRow>, archived: ArchivedRow[]): HTMLElement {
   head.append(counts);
   if (!watchOnly && g.project?.root) head.append(spawnControls(g.project));
   const entry = g.project ? knowledge.get(g.project.id) : undefined;
-  // One block per goal of the package, in the route's order; nothing for
-  // a package with no goal folder.
+  // One block per goal of the package, in the route's order. A package
+  // with no goal folder (an empty `goals`, not the null of a 404) says so,
+  // since the foreman skips such a project and the card must show why.
   if (g.project) for (const block of goalBlocks(entry?.goals)) head.append(goalSection(g.project, block));
+  if (g.project && entry?.goals?.length === 0) {
+    const none = document.createElement("span");
+    none.className = "tally quiet goal-none";
+    none.textContent = "no goal folder";
+    head.append(none);
+  }
   section.append(head);
 
   if (g.rows.length > 0) {
