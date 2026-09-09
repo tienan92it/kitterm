@@ -64,7 +64,7 @@ The bridge gives the foreman these tools.
 | `get_session` | One session's full status row. |
 | `spawn_session` | Start a crew session. Name it; optionally set cwd, profile, labels, and an initial input line. |
 | `rename_session` | Set a session's name, note, or labels. |
-| `send_input` | Type into a session and press Enter — a message to its agent, an answer, or a command. Refuses a text over 1 KiB while a cooked reader holds the terminal; `force:true` overrides. |
+| `send_input` | Type into a session and press Enter — a message to its agent, an answer, or a command. Refuses a text over 1 KiB while a cooked reader holds the terminal; `force:true` overrides. An arrow key does not pass: the bridge drops the escape byte. Send a keystroke as raw bytes to `POST /api/sessions/<id>/input` instead. |
 | `list_commands` | The commands a session ran, with exit codes. |
 | `wait_for_command` | Block until a command finishes, then read its exit code. |
 | `read_output` | Read a command's captured output. |
@@ -216,25 +216,40 @@ state of its own: each project's `docs/goals/` package is the control plane,
 and the foreman rebuilds its view from the packages and from the daemon on
 every scan. `docs/goals/LOOP.md` in this repository is the source of the
 procedure; `examples/foreman/foreman-loop.md` is the same procedure as a
-skill, and `kitterm skills install` puts it in `~/.claude/skills/`. The steps:
+skill, and `kitterm skills install` puts it in `~/.claude/skills/`.
+
+The package has two files for the project and one folder per goal. `LOOP.md`
+holds the procedure and the authority tiers; `facts.md` holds repository
+facts by topic, each dated with its source. Each goal is `docs/goals/<slug>/`
+with `goal.md`, `plan.md`, `STATE.md`, `corpus/`, and `rounds/`; the folder
+name is the slug, and a goal never moves. Two files, two scopes: only a
+repository fact is appended to `facts.md`, and a goal-local finding stays in
+the round record; `STATE.md` holds the status, the round counter, the queue,
+the failures, the proposals, the done items, and the next action, and
+nothing else. `kitterm goal new <path> <slug>` writes a goal folder from the
+template and refuses an existing one; `kitterm goal list <path>` prints every
+goal folder with its status. The steps:
 
 1. **Scan.** On start and after every event batch, list the projects with
-   `list_projects` and read each project's `docs/goals/STATE.md`: status,
-   round counter, next action, and the proposals that wait on the human. A
-   project without the package is reported once as "no goal" and skipped.
-   A live session belongs to a goal by its `goal:` and `round:` labels,
-   never by its id.
-2. **Schedule.** A goal is runnable when its status is `active`, its budget
-   has rounds left, no round is open, and no proposal blocks the next action.
-   At most one round runs per goal, and at most three crew sessions run
-   across all projects. The runnable goal with the oldest `Updated` date
-   starts first.
+   `list_projects`, read each project's `docs/goals/LOOP.md` and `facts.md`,
+   then read every `docs/goals/<slug>/STATE.md`: status, round counter, next
+   action, and the proposals that wait on the human. A project without a
+   goal folder is reported once as "no goal" and skipped. A live session
+   belongs to a goal by its `goal:` and `round:` labels, never by its id.
+2. **Schedule.** A goal's status is `active`, `waiting`, `stopped`, or
+   `done`; only `active` runs. A goal is runnable when its status is
+   `active`, its budget has rounds left, no round is open, and no proposal
+   blocks the next action. At most one round runs per goal, and at most
+   three crew sessions run across all projects. The runnable goal with the
+   oldest `Updated` date starts first.
 3. **Delegate.** The foreman runs one round for that goal: it spawns one
    crew session with the labels `crew:<slug>`, `goal:<slug>`, `round:<n>`,
    and `task:<item>`, runs the floor in the shell, starts `claude`, sends
-   one prompt that names the package files to read, and waits. The crew
-   session changes the product. The foreman reads, routes, verifies the
-   floor and the diff against the authority tiers, and records.
+   one prompt that names the goal's files by their folder path, and waits.
+   The crew session changes the product. The foreman reads, routes, verifies
+   the floor and the diff against the authority tiers, writes
+   `docs/goals/<slug>/rounds/NNN.md` and the goal's `STATE.md`, and commits
+   the package on the goal's branch before it reports.
 4. **Monitor.** One `wait_for_events` watches the whole daemon. On each scan
    the foreman compares `heldSince` with now and archives a crew session that
    sits at an empty prompt one hour past `completed`. After an `epoch` change
@@ -249,21 +264,29 @@ skill, and `kitterm skills install` puts it in `~/.claude/skills/`. The steps:
    - <project> / <goal> round <n>: <what>, <link>
 
    <project> — <goal title>
-   - round <n> of <budget>, status <active|waiting|stopped>
+   - round <n> of <budget>, status <active|waiting|stopped|done>
    - last floor: green | red (<check>)
    - next: <next action>
    - proposals: <path>: <what>, or none
    ```
 
+   The foreman posts each digest with `post_note` and prints it in its pane.
+   The event feed and the archive keep the note; a `claude` pane's raw
+   output is not searchable.
+
 6. **Direction.** After a goal spends its budget the foreman sets its status
-   to `waiting`, reports, and keeps the other goals running. The human
-   answers per goal: continue resets the round counter, redirect edits
-   `goal.md` or `plan.md` first, stop ends the goal's sessions.
+   to `waiting`, reports, and keeps the other goals running. The human prunes
+   `facts.md` and the goal's proposals, then answers per goal: continue
+   resets the round counter, redirect edits `goal.md` or `plan.md` first,
+   stop sets `stopped` and ends the goal's sessions, done sets `done` with
+   the date and stops the scheduling, new goal makes the foreman run
+   `kitterm goal new` and the human fills `goal.md`, `plan.md`, and
+   `corpus/` before the first round. The folder stays in every case.
 
 The review crew and the triage skills are procedures the foreman delegates
 inside a round. When such a session carries a `goal:` label, its findings or
-its root cause also go into the round record under `docs/goals/rounds/`, and
-the foreman does the writing.
+its root cause also go into the round record under
+`docs/goals/<slug>/rounds/`, and the foreman does the writing.
 
 ## Read before you type
 
@@ -289,12 +312,15 @@ Do this before every `send_input` into a pane that runs an interactive agent.
      trust?" with the options `No, exit` and `Yes, I trust this folder`, and
      `❯` marks `No, exit`. This is not a permission dialog: it asks about the
      folder the foreman chose. When the cwd is the repo the user named, send
-     one Down arrow (`send_input text="\u001b[B" enter=false`), read the
-     screen to confirm `❯` now marks `Yes, I trust this folder`, then press
-     Enter alone (`send_input text=""`). Any other cwd: stop and tell the
-     user. Send the arrow and the Enter in two calls: a keystroke and a
-     carriage return in one write can confirm the option that was marked
-     before the keystroke arrived.
+     one Down arrow, read the screen to confirm `❯` now marks `Yes, I trust
+     this folder`, then press Enter alone (`send_input text=""`). Any other
+     cwd: stop and tell the user. The arrow does not pass through
+     `send_input`: the bridge drops the escape byte and the pane receives
+     `[B` as text. Send it as raw bytes through the input route:
+     `printf '\033[B' | curl -s --data-binary @-
+     http://127.0.0.1:3418/api/sessions/<id>/input`. Send the arrow and the
+     Enter in two calls: a keystroke and a carriage return in one write can
+     confirm the option that was marked before the keystroke arrived.
    - Permission dialog. The pane reads "Do you want to proceed?" or a
      numbered choice with a `Yes` and a `No`. Never answer it. Tell the user
      and link the pane; the fleet view holds the same dialog.
@@ -384,16 +410,20 @@ its typed state, its name, and its last command. It repaints the instant a
 session changes — it holds an event long-poll, not only a timer. A blocked
 approval sits at the top of the page, so you answer it from a phone. This is
 the same truth the foreman reads, so you and the foreman never disagree about
-what a session is doing. A registered project's card also shows what its
-`docs/goals/` says: the goal title, `round N of M`, the next action, the
-proposals waiting on you, and a link to the latest round record.
+what a session is doing. A registered project's card also shows every goal
+folder under its `docs/goals/`: an `active` or `waiting` goal expanded with
+its title, `round N of M`, its status, the next action, a link to the
+proposals waiting on you, and a link to the latest round record; a `stopped`
+or `done` goal as one line with its status and its latest record. A session
+with a `goal:` label sits under that goal's sub-header with its round.
 
 ## Example skills
 
 `examples/foreman/` holds reference Claude Code skills you copy and tune:
 
-- `foreman-loop.md` — the standing foreman: scan, schedule, delegate one
-  round, monitor, report, direction, from `docs/goals/LOOP.md`.
+- `foreman-loop.md` — the standing foreman: scan every goal folder, schedule
+  the active ones, delegate one round, monitor, record and commit, report,
+  direction, from `docs/goals/LOOP.md`.
 - `review-crew.md` — spawn a review session per dimension, collect the notes.
 - `triage.md` — reproduce a bug in its own session, confirm the root cause.
 

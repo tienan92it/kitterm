@@ -142,17 +142,25 @@ crashes after the exec.
   belong to the project: `LOOP.md` (procedure, authority tiers, budget, stop rules,
   round record shape) and `facts.md` (what a later round must not rediscover). Each
   goal is one folder, `docs/goals/<slug>/`: `goal.md` (objective, exclusions,
-  completion condition), `plan.md` (the floor and the capability order), `STATE.md`
-  (status, queue, failures, next action), `corpus/` (approved requests), `rounds/` (one
-  record per round). A goal's status is the `- Status:` line of its `STATE.md`
-  (`active`, `waiting`, `stopped`, `done`); a goal never moves and there is no done
-  folder
+  completion condition), `plan.md` (the floor and the capability order), `STATE.md`,
+  `corpus/` (approved requests), `rounds/` (one record per round). A goal's status is
+  the `- Status:` line of its `STATE.md` (`active`, `waiting`, `stopped`, `done`); a
+  goal never moves and there is no done folder
+- Two files, two scopes. `facts.md` holds repository facts by topic, one dated bullet
+  per fact with its source; only a repository fact goes there, and a goal-local finding
+  stays in its round record; the human prunes it at every direction check. `STATE.md`
+  is short: the `- Status:`, `- Round: N of M`, `- Rounds total:`, `- Last floor:`, and
+  `- Updated:` lines, then `## Queue`, `## Failures`, `## Proposals waiting on the
+  human`, `## Done`, and `## Next action`, and nothing else; narrative goes to
+  `rounds/`. The card parses the status, round, and next-action lines, so their shape
+  is an interface (`KnowledgeSummary`)
 - Read `LOOP.md`, `facts.md`, and the goal's `goal.md` and `STATE.md` before you start a
   task here. Append a fact you had to measure to `facts.md`. Respect the authority tiers
   in `LOOP.md`: `goal.md`, `corpus/`, and an existing check are frozen inside a round;
   `plan.md`, `LOOP.md`, and `docs/adr/` take a proposal in the round record, not an edit
 - The daemon reads this package for the fleet view and never writes it. The foreman
-  (`docs/foreman.md`) writes `STATE.md`, `rounds/`, and `facts.md`
+  (`docs/foreman.md`) writes each goal's `STATE.md` and `rounds/NNN.md`, appends to
+  `facts.md`, and commits the package on the goal's branch after every round
 - `examples/goals/` holds the generic templates: `LOOP.md` and `facts.md` for the
   project, and `examples/goals/goal/` for one goal folder. `kitterm project init <path>`
   writes the two project files into a project's knowledge directory and registers the
@@ -160,7 +168,10 @@ crashes after the exec.
   template with the slug in `STATE.md` and refuses an existing folder; `kitterm goal
   list <path>` prints each goal folder's slug and status. `GoalsTemplates.swift` embeds
   both sets and `GoalsTemplatesTests` pins the two equal, so edit the file under
-  `examples/goals/` and paste it into the constant
+  `examples/goals/` and paste it into the constant. `GoalsLayoutDocsTests` greps
+  `AGENTS.md`, `docs/foreman.md`, `docs/architecture.md`, `examples/`, and the embedded
+  strings for a path of the old flat layout (a goal file or `rounds/` directly under
+  `docs/goals/`, or a `done/` folder) and fails on any
 
 ## Coding standards
 
