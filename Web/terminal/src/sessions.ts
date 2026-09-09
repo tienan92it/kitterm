@@ -8,6 +8,8 @@ import {
   attention,
   crewSections,
   crews as crewsOf,
+  dismissKey,
+  dismissName,
   filter as applyFilter,
   focusKey,
   goalGroups,
@@ -21,6 +23,7 @@ import {
   roundOf,
   stateOf,
   tally,
+  withProposed,
   type Approval,
   type AttentionItem,
   type Filter,
@@ -114,6 +117,10 @@ type Choice = {
 const POLL_MS = 2000;
 const KNOWLEDGE_RETRY_POLLS = 30;
 const CHOICE_KEY = "kitterm.sessions.filter";
+/** The proposals the human dismissed, `dismissKey`s in `localStorage`, so
+ * a read proposal stays out of the strip and the title count across reloads
+ * until the project's next round. */
+const DISMISSED_KEY = "kitterm.sessions.dismissed";
 const STATE_ORDER: MergedState[] = [
   "needs-approval",
   "needs-input",
@@ -188,6 +195,27 @@ function loadChoice(): Choice {
   } catch {
     return empty;
   }
+}
+
+let dismissed: Set<string> = loadDismissed();
+
+function loadDismissed(): Set<string> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(DISMISSED_KEY) ?? "[]") as unknown;
+    return new Set(Array.isArray(parsed) ? parsed.filter((k): k is string => typeof k === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function dismissProposal(key: string): void {
+  dismissed.add(key);
+  try {
+    localStorage.setItem(DISMISSED_KEY, JSON.stringify([...dismissed]));
+  } catch {
+    // Storage blocked: the dismissal holds for this page life.
+  }
+  render();
 }
 
 function saveChoice(): void {
@@ -380,6 +408,7 @@ function render(): void {
     approvals.map((a) => a.id),
     archives.map((a) => a.id),
     [...knowledge].map(([id, entry]) => [id, entry.etag, entry.summary === null]),
+    [...dismissed],
     watchOnly,
     profiles.map((p) => p.name),
     notice,
@@ -402,7 +431,7 @@ function paint(): void {
   const active = document.activeElement;
   const focusKey = active instanceof HTMLElement ? active.dataset.focus : undefined;
   const { foreman, rest } = pickForeman(sessions);
-  const items: StripItem[] = [...attention(sessions, approvals), ...proposedItems(knowledgeEntries())];
+  const items: StripItem[] = withProposed(attention(sessions, approvals), proposedItems(knowledgeEntries(), dismissed));
 
   // Title badge: how many items want the human right now, so a phone's tab
   // or home-screen label says "come back" without a push notification.
@@ -566,7 +595,17 @@ function proposedContent(item: ProposedItem): DocumentFragment {
     line.textContent = item.summary.lastDecision;
     fragment.append(line);
   }
-  fragment.append(knowledgeLink(item.project.id, item.path, `Open round ${String(item.round).padStart(3, "0")}`));
+  const actions = document.createElement("div");
+  actions.className = "proposed-actions";
+  actions.append(knowledgeLink(item.project.id, item.path, `Open round ${String(item.round).padStart(3, "0")}`));
+  // Read it, decided in STATE.md: the item leaves the strip and the count
+  // until the project's next round.
+  const key = dismissKey(item.project.id, item.round);
+  const dismiss = button("Dismiss", "quiet", () => dismissProposal(key));
+  dismiss.dataset.focus = focusKey("dismiss", key);
+  dismiss.setAttribute("aria-label", dismissName(item.round, item.project.name));
+  actions.append(dismiss);
+  fragment.append(actions);
   return fragment;
 }
 

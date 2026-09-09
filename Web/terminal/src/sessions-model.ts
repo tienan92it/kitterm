@@ -313,6 +313,12 @@ export function approvalName(decision: "Allow" | "Deny", tool: string, who: stri
   return who ? `${decision} ${tool} in ${who}` : `${decision} ${tool}`;
 }
 
+/** The accessible name of a proposal's Dismiss button: which round of
+ * which project, so two Dismiss buttons read apart. */
+export function dismissName(round: number, project: string): string {
+  return `Dismiss the proposal of round ${round} of ${project}`;
+}
+
 /** The `data-focus` key of a control, so `paint` can give focus back to it
  * after a repaint: the kind, then what it acts on, joined with `:`. Every
  * link and button the page builds carries one. */
@@ -388,19 +394,44 @@ export function knowledgeUrl(projectId: string, path: string): string {
   return `/api/projects/${encodeURIComponent(projectId)}/knowledge/${encoded}`;
 }
 
+/** What Dismiss stores for one proposal: the project and the round, so the
+ * next round's proposal from the same project shows again. */
+export function dismissKey(projectId: string, round: number): string {
+  return `${projectId}:${round}`;
+}
+
 /**
  * One attention item per project whose latest round record's decision
- * starts with `propose`, in the order given. A summary with no round record
- * or a decision of `done` or `failed` yields nothing.
+ * starts with `propose`, in the order given, less the ones in `dismissed`
+ * (keys from `dismissKey`). A summary with no round record or a decision of
+ * `done` or `failed` yields nothing.
  */
-export function proposedItems(entries: { project: ProjectRef; summary: KnowledgeSummary }[]): ProposedItem[] {
+export function proposedItems(
+  entries: { project: ProjectRef; summary: KnowledgeSummary }[],
+  dismissed: ReadonlySet<string> = new Set(),
+): ProposedItem[] {
   const items: ProposedItem[] = [];
   for (const { project, summary } of entries) {
     const round = summary.lastRound;
     const path = recordPath(summary);
     if (typeof round !== "number" || path === null) continue;
     if (!(summary.lastDecision ?? "").trim().toLowerCase().startsWith("propose")) continue;
+    if (dismissed.has(dismissKey(project.id, round))) continue;
     items.push({ kind: "proposed", project, summary, round, path });
   }
   return items;
+}
+
+/**
+ * The strip's order: the attention items with the proposed ones inserted
+ * before the first failed row. A proposal counts as "needs you" and a
+ * failed row does not, so the order agrees with the count.
+ */
+export function withProposed<R extends ModelRow>(
+  items: AttentionItem<R>[],
+  proposed: ProposedItem[],
+): (AttentionItem<R> | ProposedItem)[] {
+  const at = items.findIndex((item) => item.kind === "failed");
+  if (at < 0) return [...items, ...proposed];
+  return [...items.slice(0, at), ...proposed, ...items.slice(at)];
 }

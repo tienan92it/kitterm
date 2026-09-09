@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  attention,
+  dismissKey,
+  dismissName,
   focusKey,
   goalGroups,
   goalOf,
@@ -9,6 +12,7 @@ import {
   recordPath,
   roundOf,
   roundPath,
+  withProposed,
   type KnowledgeSummary,
   type ModelRow,
 } from "./sessions-model";
@@ -128,9 +132,42 @@ describe("proposedItems", () => {
     expect(proposedItems([{ project: kitterm, summary: done }])).toEqual([]);
   });
 
+  it("leaves out a dismissed round and keeps the project's next one", () => {
+    const proposing: KnowledgeSummary = { ...summary, lastRound: 3, lastDecision: "propose (x)" };
+    const dismissed = new Set([dismissKey("kitterm", 3)]);
+    expect(dismissKey("kitterm", 3)).toBe("kitterm:3");
+    expect(proposedItems([{ project: kitterm, summary: proposing }], dismissed)).toEqual([]);
+    const next: KnowledgeSummary = { ...proposing, lastRound: 4 };
+    expect(proposedItems([{ project: kitterm, summary: next }], dismissed)).toHaveLength(1);
+    expect(proposedItems([{ project: other, summary: proposing }], dismissed)).toHaveLength(1);
+  });
+
   it("yields nothing without a round record or a decision", () => {
     expect(proposedItems([{ project: kitterm, summary: { project: "kitterm", lastDecision: "propose" } }])).toEqual([]);
     expect(proposedItems([{ project: kitterm, summary: { project: "kitterm", lastRound: 1 } }])).toEqual([]);
     expect(proposedItems([])).toEqual([]);
+  });
+});
+
+describe("withProposed", () => {
+  const proposing: KnowledgeSummary = { ...summary, lastRound: 3, lastDecision: "propose (x)" };
+  const proposed = proposedItems([{ project: kitterm, summary: proposing }]);
+
+  it("puts a proposal after the approvals and needs-input rows and before the failed ones", () => {
+    const asks = row("asks", undefined, { mergedState: "needs-input" });
+    const broke = row("broke", undefined, { mergedState: "failed", lastExit: 1 });
+    const items = withProposed(attention([broke, asks], []), proposed);
+    expect(items.map((item) => item.kind)).toEqual(["needs-input", "proposed", "failed"]);
+  });
+
+  it("appends the proposals when nothing failed", () => {
+    expect(withProposed(attention([], []), proposed).map((item) => item.kind)).toEqual(["proposed"]);
+    expect(withProposed(attention([], []), [])).toEqual([]);
+  });
+});
+
+describe("dismissName", () => {
+  it("names the round and the project", () => {
+    expect(dismissName(5, "kitterm")).toBe("Dismiss the proposal of round 5 of kitterm");
   });
 });
