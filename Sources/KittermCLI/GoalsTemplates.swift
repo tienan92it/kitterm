@@ -1,102 +1,33 @@
-/// The goal package `kitterm project init` writes into a project's
-/// knowledge directory. Each constant is byte for byte the file of the same
-/// name under `examples/goals/`; `GoalsTemplatesTests` pins that, so the
-/// installed binary carries the templates with no resource bundle.
+/// The templates `kitterm project init` and `kitterm goal new` write. Each
+/// constant is byte for byte the file of the same path under
+/// `examples/goals/`; `GoalsTemplatesTests` pins that, so the installed
+/// binary carries the templates with no resource bundle.
 enum GoalsTemplates {
-    /// One entry per file, in write order. A `.gitkeep` is empty.
-    static let files: [(path: String, contents: String)] = [
-        ("goal.md", goal),
-        ("facts.md", facts),
-        ("plan.md", plan),
+    /// The project files, written once into the knowledge directory by
+    /// `kitterm project init`. Paths are relative to that directory.
+    static let project: [(path: String, contents: String)] = [
         ("LOOP.md", loop),
+        ("facts.md", facts),
+    ]
+
+    /// The goal folder, written by `kitterm goal new` as
+    /// `<knowledge>/<slug>/`. Paths are relative to the goal folder. A
+    /// `.gitkeep` is empty.
+    static let goal: [(path: String, contents: String)] = [
+        ("goal.md", goalFile),
+        ("plan.md", plan),
         ("STATE.md", state),
         ("corpus/.gitkeep", ""),
         ("rounds/.gitkeep", ""),
     ]
 
-    static let goal = #"""
-        # Goal: <one line that names the outcome>
+    /// Every embedded file with its path under `examples/goals/`: the
+    /// project files, then the goal folder under `goal/`.
+    static let files: [(path: String, contents: String)] =
+        project + goal.map { (path: "goal/" + $0.path, contents: $0.contents) }
 
-        Status: active (opened <ISO date>).
-
-        ## Objective
-
-        <What a human sees when the goal is done. Two to six sentences. Name the
-        actor, the surface, and the result. Do not list the steps; `plan.md` holds
-        them.>
-
-        ## Exclusions
-
-        - <One thing this goal does not do.>
-        - <One thing this goal does not do.>
-
-        ## Completion condition
-
-        All <n> hold on a build from `<main branch>`:
-
-        1. <An observable check: the surface, the action, and the value it shows.>
-        2. <An observable check.>
-
-        The floor (<the floor checks from `plan.md`, in one line>) is green at
-        every step.
-
-        """#
-
-    static let facts = #"""
-        # Facts
-
-        Decisions and measurements that a later round must not rediscover. One entry
-        per fact. Newest first. Each entry names its date and its source. A foreman
-        appends; a human prunes. Move a fact that becomes a rule into `LOOP.md`. Move
-        a fact that becomes a design decision into `<decision records directory>`.
-
-        ## <Topic> (<ISO date>, <source: round n, code survey, or session>)
-
-        - <One fact: what is true, where it is measured or decided, what it costs.>
-        - <One fact.>
-
-        ## Toolchain (<ISO date>, <source>)
-
-        - <The package manager, the lockfile, and the command that must not run.>
-        - <The test command and the platform it runs on.>
-        - <A flaky check and how to tell a flake from a regression.>
-
-        """#
-
-    static let plan = #"""
-        # Plan
-
-        The initial floor and the expected capability order for the goal in
-        `goal.md`. A human owns this file. A foreman proposes a change to it in a
-        round record; it does not edit it.
-
-        ## The floor
-
-        The floor holds earned behaviour. It starts green and must stay green. A red
-        floor makes the regression the next round's job.
-
-        | Check | Command | Pass condition |
-        |---|---|---|
-        | <Unit tests> | `<test command>` | exit 0 |
-        | <Build> | `<build command>` | exit 0 |
-        | <Performance check> | `<bench command>` | <metric> under <limit> |
-
-        Each round adds at least one deterministic check for the behaviour it
-        closes. A check that exists is frozen (see `LOOP.md`).
-
-        ## Capability order
-
-        <n> capabilities. Each ships as one PR. Each names the check that proves it.
-
-        | # | Capability | Proof |
-        |---|---|---|
-        | 1 | **<Name>.** <What ships: the files, the routes, the commands.> | <The test or the corpus request that proves it.> |
-        | 2 | **<Name>.** <What ships.> | <Proof.> |
-
-        <The dependencies between capabilities. Name the independent ones too:
-        "Capability 2 depends on 1. Capabilities 1 and 3 are independent.">
-
-        """#
+    /// The placeholder `kitterm goal new` replaces in `STATE.md`.
+    static let slugPlaceholder = "<slug>"
 
     static let loop = #"""
         # LOOP
@@ -105,10 +36,13 @@ enum GoalsTemplates {
         loop in this repository. This file changes when the process changes.
         `STATE.md` changes after every round.
 
-        The repository is the control plane. This package is small on purpose:
-        `goal.md`, `facts.md`, `plan.md`, `LOOP.md`, `STATE.md`, `corpus/`,
-        `rounds/`. Add a file only when a round proves the package cannot hold a
-        fact without it.
+        The repository is the control plane. The package is small on purpose.
+        Two files belong to the project: this file and `facts.md`. Each goal is
+        one folder under `<knowledge directory>/<slug>/` with `goal.md`, `plan.md`,
+        `STATE.md`, `corpus/`, and `rounds/`. A new goal is a new folder; a goal
+        that ends stays where it is with its status in `STATE.md`. There is no
+        done folder. Add a file only when a round proves the package cannot hold
+        a fact without it.
 
         ## Roles
 
@@ -192,13 +126,16 @@ enum GoalsTemplates {
         plane; the foreman rebuilds its view from them and from the daemon.
 
         1. **Scan.** On start, and after every event batch, list the projects with
-           `list_projects`. For each project read `STATE.md` in its knowledge
-           directory. A project without the package is reported once as "no goal"
-           and skipped. Match a live session to its goal by the `goal:` and
-           `round:` labels, never by id.
+           `list_projects`. For each project read every
+           `<knowledge directory>/<slug>/STATE.md`. A project with no goal folder
+           is reported once as "no goal" and skipped.
+           The folder name is the goal's slug; the `goal:` label carries it. Match
+           a live session to its goal by the `goal:` and `round:` labels, never by
+           id.
         2. **Schedule.** A goal is runnable when its `Status` is `active`, its
            budget has rounds left, no round is open, and no proposal blocks the next
-           action. Run at most one round per goal and at most three crew sessions
+           action. `Status` is one of `active`, `waiting`, `stopped`, `done`; only
+           `active` runs. Run at most one round per goal and at most three crew sessions
            across all projects. Start the runnable goal with the oldest `Updated`
            date first.
         3. **Delegate.** Run "One round" for that goal. The crew session does the
@@ -228,7 +165,7 @@ enum GoalsTemplates {
         - <project> / <goal> round <n>: <what>, <link>
 
         <project> — <goal title>
-        - round <n> of <budget>, status <active|waiting|stopped>
+        - round <n> of <budget>, status <active|waiting|stopped|done>
         - last floor: green | red (<check>)
         - next: <next action>
         - proposals: <path>: <what>, or none
@@ -245,9 +182,16 @@ enum GoalsTemplates {
         - **continue**: the foreman resets `Round: 0 of 3`, sets `Status: active`,
           and notes the decision in `STATE.md`.
         - **redirect**: the human edits `goal.md` or `plan.md`, then says continue.
-        - **stop**: the foreman sets `Status: stopped`, archives or ends the goal's
-          crew sessions, and moves the package to `<knowledge directory>/done/<slug>/`
-          when the human asks.
+        - **stop**: the foreman sets `Status: stopped` and archives or ends the
+          goal's crew sessions. The folder stays where it is.
+        - **done**: when the completion condition in `goal.md` holds, the foreman
+          sets `Status: done`, notes the date, and stops scheduling the goal. The
+          folder stays; the human can reopen it with `Status: active` and a new
+          queue at any time.
+        - **new goal**: the human names a slug. The foreman creates
+          `<knowledge directory>/<slug>/` from the template
+          (`kitterm goal new <path> <slug>`), and the human writes `goal.md`,
+          `plan.md`, and the corpus before the first round.
 
         ## Stop rules
 
@@ -264,7 +208,7 @@ enum GoalsTemplates {
 
         ## Round record
 
-        Write `rounds/NNN.md` with this shape. Three-digit number, one file per
+        Write `<slug>/rounds/NNN.md` with this shape. Three-digit number, one file per
         round, never rewritten after the round ends.
 
         ```markdown
@@ -309,8 +253,90 @@ enum GoalsTemplates {
 
         """#
 
+    static let facts = #"""
+        # Facts
+
+        Decisions and measurements that a later round must not rediscover. One entry
+        per fact. Newest first. Each entry names its date and its source. A foreman
+        appends; a human prunes. Move a fact that becomes a rule into `LOOP.md`. Move
+        a fact that becomes a design decision into `<decision records directory>`.
+
+        ## <Topic> (<ISO date>, <source: round n, code survey, or session>)
+
+        - <One fact: what is true, where it is measured or decided, what it costs.>
+        - <One fact.>
+
+        ## Toolchain (<ISO date>, <source>)
+
+        - <The package manager, the lockfile, and the command that must not run.>
+        - <The test command and the platform it runs on.>
+        - <A flaky check and how to tell a flake from a regression.>
+
+        """#
+
+    static let goalFile = #"""
+        # Goal: <one line that names the outcome>
+
+        ## Objective
+
+        <What a human sees when the goal is done. Two to six sentences. Name the
+        actor, the surface, and the result. Do not list the steps; `plan.md` holds
+        them.>
+
+        ## Exclusions
+
+        - <One thing this goal does not do.>
+        - <One thing this goal does not do.>
+
+        ## Completion condition
+
+        All <n> hold on a build from `<main branch>`:
+
+        1. <An observable check: the surface, the action, and the value it shows.>
+        2. <An observable check.>
+
+        The floor (<the floor checks from `plan.md`, in one line>) is green at
+        every step.
+
+        """#
+
+    static let plan = #"""
+        # Plan
+
+        The initial floor and the expected capability order for the goal in
+        `goal.md`. A human owns this file. A foreman proposes a change to it in a
+        round record; it does not edit it.
+
+        ## The floor
+
+        The floor holds earned behaviour. It starts green and must stay green. A red
+        floor makes the regression the next round's job.
+
+        | Check | Command | Pass condition |
+        |---|---|---|
+        | <Unit tests> | `<test command>` | exit 0 |
+        | <Build> | `<build command>` | exit 0 |
+        | <Performance check> | `<bench command>` | <metric> under <limit> |
+
+        Each round adds at least one deterministic check for the behaviour it
+        closes. A check that exists is frozen (see `LOOP.md`).
+
+        ## Capability order
+
+        <n> capabilities. Each ships as one PR. Each names the check that proves it.
+
+        | # | Capability | Proof |
+        |---|---|---|
+        | 1 | **<Name>.** <What ships: the files, the routes, the commands.> | <The test or the corpus request that proves it.> |
+        | 2 | **<Name>.** <What ships.> | <Proof.> |
+
+        <The dependencies between capabilities. Name the independent ones too:
+        "Capability 2 depends on 1. Capabilities 1 and 3 are independent.">
+
+        """#
+
     static let state = #"""
-        # STATE: <goal slug>
+        # STATE: <slug>
 
         - Status: active
         - Round: 0 of 3 in this budget
@@ -331,14 +357,15 @@ enum GoalsTemplates {
 
         None.
 
-        ## Done
+        ## Direction
 
-        None.
+        <ISO date>: the human opened this goal. <The direction in one or two
+        sentences.>
 
         ## Next action
 
         Round 1: `<capability slug>`. Spawn one crew session in the repository root
-        with labels `crew:<goal slug>`, `goal:<goal slug>`, `round:1`,
+        with labels `crew:<slug>`, `goal:<slug>`, `round:1`,
         `task:<capability slug>`. Run the floor. Send the capability 1 row from
         `plan.md`.
 

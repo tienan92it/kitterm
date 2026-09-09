@@ -70,6 +70,18 @@ enum ProjectCommand {
         }
         guard let path else { throw CLIError.usage(usage) }
 
+        let root = try canonicalRoot(path)
+        let folder = URL(fileURLWithPath: root).lastPathComponent
+        let name = nameOption ?? folder
+        guard !name.isEmpty, name.count <= ProjectStore.maxNameLength else {
+            throw CLIError.usage("name must be 1 to \(ProjectStore.maxNameLength) characters")
+        }
+        return Target(root: root, folder: folder, name: name, knowledge: try knowledge(knowledgeOption))
+    }
+
+    /// The canonical root of an existing directory; a relative path resolves
+    /// against the working directory. Shared with `kitterm goal`.
+    static func canonicalRoot(_ path: String) throws -> String {
         let root = ProjectStore.canonicalRoot(
             path.hasPrefix("/") ? path : FileManager.default.currentDirectoryPath + "/" + path
         )
@@ -77,16 +89,17 @@ enum ProjectCommand {
         guard FileManager.default.fileExists(atPath: root, isDirectory: &isDirectory), isDirectory.boolValue else {
             throw CLIError.usage("no such directory: \(path)")
         }
-        let folder = URL(fileURLWithPath: root).lastPathComponent
-        let name = nameOption ?? folder
-        guard !name.isEmpty, name.count <= ProjectStore.maxNameLength else {
-            throw CLIError.usage("name must be 1 to \(ProjectStore.maxNameLength) characters")
-        }
-        let knowledge = knowledgeOption ?? ProjectStore.defaultKnowledge
+        return root
+    }
+
+    /// The `--knowledge` value, or the default, validated the same way for
+    /// every command that takes it.
+    static func knowledge(_ option: String?) throws -> String {
+        let knowledge = option ?? ProjectStore.defaultKnowledge
         guard ProjectStore.isValidKnowledge(knowledge) else {
             throw CLIError.usage("knowledge must be a relative directory inside the project, without `..`")
         }
-        return Target(root: root, folder: folder, name: name, knowledge: knowledge)
+        return knowledge
     }
 
     private static func add(_ args: [String], out: (String) -> Void) throws {
@@ -105,47 +118,58 @@ enum ProjectCommand {
         out("\(id)\t\(target.name)\t\(target.root)\t\(target.knowledge)")
     }
 
-    /// `init`: write the goal package templates into the knowledge directory,
-    /// then register the project. Every refusal happens before the first
+    /// `init`: write the project files (`LOOP.md`, `facts.md`) into the
+    /// knowledge directory, then register the project. Goal folders come
+    /// from `kitterm goal new`. Every refusal happens before the first
     /// write, so a refused command leaves the project and the file untouched.
-    /// A symlink anywhere on a template's path under the root is refused
-    /// too: a checked-in `docs/goals -> /elsewhere` would otherwise take the
-    /// seven files outside the repository.
     private static func initialize(_ args: [String], out: (String) -> Void) throws {
         let target = try target(args)
-        let knowledgeURL = URL(fileURLWithPath: target.root, isDirectory: true)
-            .appendingPathComponent(target.knowledge, isDirectory: true)
-        let existing = GoalsTemplates.files
-            .map(\.path)
-            .filter { FileManager.default.fileExists(atPath: knowledgeURL.appendingPathComponent($0).path) }
+        try refuseExisting(GoalsTemplates.project.map(\.path), under: target.knowledge, root: target.root)
+        if let registered = ProjectStore.load().first(where: { $0.root == target.root }) {
+            throw CLIError.usage("\(target.root) is already registered as \"\(registered.id)\" (nothing written)")
+        }
+        try writeTemplates(GoalsTemplates.project, under: target.knowledge, root: target.root, out: out)
+        try register(target, out: out)
+    }
+
+    /// Refuse when any of `paths` exists under `<root>/<directory>`, and
+    /// refuse a symlink anywhere on a path under the root: a checked-in
+    /// `docs/goals -> /elsewhere` would otherwise take the files outside
+    /// the repository.
+    static func refuseExisting(_ paths: [String], under directory: String, root: String) throws {
+        let existing = paths.filter { FileManager.default.fileExists(atPath: root + "/" + directory + "/" + $0) }
         guard existing.isEmpty else {
-            let list = existing.map { "\(target.knowledge)/\($0)" }.joined(separator: ", ")
+            let list = existing.map { "\(directory)/\($0)" }.joined(separator: ", ")
             throw CLIError.usage("refusing to overwrite: \(list) (nothing written)")
         }
         var linked: [String] = []
-        for path in GoalsTemplates.files.map(\.path) {
-            let relative = target.knowledge + "/" + path
-            let components = relative.split(separator: "/").map(String.init)
+        for path in paths {
+            let components = (directory + "/" + path).split(separator: "/").map(String.init)
             for depth in 1...components.count {
                 let candidate = components[0..<depth].joined(separator: "/")
-                if !linked.contains(candidate), isSymlink(target.root + "/" + candidate) { linked.append(candidate) }
+                if !linked.contains(candidate), isSymlink(root + "/" + candidate) { linked.append(candidate) }
             }
         }
         guard linked.isEmpty else {
             throw CLIError.usage("refusing to overwrite: \(linked.joined(separator: ", ")) is a symlink (nothing written)")
         }
-        if let registered = ProjectStore.load().first(where: { $0.root == target.root }) {
-            throw CLIError.usage("\(target.root) is already registered as \"\(registered.id)\" (nothing written)")
-        }
-        for (path, contents) in GoalsTemplates.files {
-            let file = knowledgeURL.appendingPathComponent(path)
+    }
+
+    /// Write each template to `<root>/<directory>/<path>`, never over a
+    /// file, and print one `wrote` line per file.
+    static func writeTemplates(
+        _ templates: [(path: String, contents: String)], under directory: String, root: String,
+        out: (String) -> Void
+    ) throws {
+        let base = URL(fileURLWithPath: root, isDirectory: true).appendingPathComponent(directory, isDirectory: true)
+        for (path, contents) in templates {
+            let file = base.appendingPathComponent(path)
             try FileManager.default.createDirectory(
                 at: file.deletingLastPathComponent(), withIntermediateDirectories: true
             )
             try Data(contents.utf8).write(to: file, options: .withoutOverwriting)
-            out("wrote \(target.knowledge)/\(path)")
+            out("wrote \(directory)/\(path)")
         }
-        try register(target, out: out)
     }
 
     /// `lstat`, not `stat`: a dangling link reads as a link, not as absent.

@@ -1,7 +1,5 @@
 # Goal: <one line that names the outcome>
 
-Status: active (opened <ISO date>).
-
 ## Objective
 
 <What a human sees when the goal is done. Two to six sentences. Name the

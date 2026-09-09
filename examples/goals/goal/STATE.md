@@ -1,4 +1,4 @@
-# STATE: <goal slug>
+# STATE: <slug>
 
 - Status: active
 - Round: 0 of 3 in this budget
@@ -19,13 +19,14 @@ None.
 
 None.
 
-## Done
+## Direction
 
-None.
+<ISO date>: the human opened this goal. <The direction in one or two
+sentences.>
 
 ## Next action
 
 Round 1: `<capability slug>`. Spawn one crew session in the repository root
-with labels `crew:<goal slug>`, `goal:<goal slug>`, `round:1`,
+with labels `crew:<slug>`, `goal:<slug>`, `round:1`,
 `task:<capability slug>`. Run the floor. Send the capability 1 row from
 `plan.md`.
