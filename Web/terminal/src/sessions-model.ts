@@ -79,6 +79,42 @@ export type AttentionItem<R extends ModelRow> =
   | { kind: "needs-input"; row: R }
   | { kind: "failed"; row: R };
 
+/** The summary of a project's knowledge package,
+ * `GET /api/projects/<id>/knowledge`. Every field but `project` is absent
+ * when the file or the line behind it is missing. */
+export type KnowledgeSummary = {
+  project: string;
+  /** The suffix of the `# STATE: <slug>` heading; what a `goal:` label names. */
+  slug?: string;
+  goal?: string;
+  status?: string;
+  round?: number;
+  budget?: number;
+  lastFloor?: string;
+  nextAction?: string;
+  proposals?: number;
+  lastRound?: number;
+  /** The latest record's path under the knowledge directory by its real
+   * file name, `rounds/7.md` included. Absent from a daemon before v0.24. */
+  lastRecord?: string;
+  /** The first line of the latest round record's `## Decision` section. */
+  lastDecision?: string;
+};
+
+/** Rows whose `goal:` label names the project's own goal slug. */
+export type GoalGroup<R extends ModelRow> = { slug: string; rows: R[] };
+
+/** A round record whose decision is `propose`: the human has to decide
+ * before the goal's next round. */
+export type ProposedItem = {
+  kind: "proposed";
+  project: ProjectRef;
+  summary: KnowledgeSummary;
+  round: number;
+  /** The record's path under the knowledge directory, `recordPath`. */
+  path: string;
+};
+
 /** The key of the group for rows outside every project. */
 export const NO_PROJECT = "";
 
@@ -145,7 +181,7 @@ function compareProjects(a: ProjectRef, b: ProjectRef): number {
 /** Crew sections inside one project: the rows without a `crew:` label first,
  * then one section per crew value in name order. One section, with `crew`
  * null, when every row carries the same label or none does. */
-function sections<R extends ModelRow>(rows: R[]): CrewSection<R>[] {
+export function crewSections<R extends ModelRow>(rows: R[]): CrewSection<R>[] {
   const byCrew = new Map<string | null, R[]>();
   for (const row of rows) {
     const crew = crewOf(row);
@@ -194,14 +230,14 @@ export function group<R extends ModelRow>(rows: R[], projects: ProjectSummary[])
   }
   const groups: Group<R>[] = [...known.values()].sort(compareProjects).map((project) => {
     const list = members.get(project.id) ?? [];
-    return { key: project.id, project, rows: sortInGroup(list), sections: sections(list) };
+    return { key: project.id, project, rows: sortInGroup(list), sections: crewSections(list) };
   });
   if (loose.length > 0) {
     groups.push({
       key: NO_PROJECT,
       project: null,
       rows: sortInGroup(loose),
-      sections: sections(loose),
+      sections: crewSections(loose),
     });
   }
   return groups;
@@ -277,6 +313,37 @@ export function approvalName(decision: "Allow" | "Deny", tool: string, who: stri
   return who ? `${decision} ${tool} in ${who}` : `${decision} ${tool}`;
 }
 
+/** What a record link shows: the record's file name without `rounds/` and
+ * `.md`, so `rounds/005.md` reads `005` and `rounds/7.md` reads `7`. The
+ * word "record" tells it from the `round N of M` counter beside it. */
+export function recordLabel(path: string): string {
+  return path.replace(/^rounds\//, "").replace(/\.md$/, "");
+}
+
+/** The accessible name of a record link: what it opens and whose. */
+export function recordName(path: string, project: string): string {
+  return `Open round record ${recordLabel(path)} of ${project}`;
+}
+
+/** The accessible name of the proposals chip, a link to `STATE.md`. */
+export function proposalsName(count: number, project: string): string {
+  const noun = count === 1 ? "proposal" : "proposals";
+  return `${count} ${noun} waiting on the human in STATE.md of ${project}`;
+}
+
+/** The accessible name of a proposal's Dismiss button: which round of
+ * which project, so two Dismiss buttons read apart. */
+export function dismissName(round: number, project: string): string {
+  return `Dismiss the proposal of round ${round} of ${project}`;
+}
+
+/** The `data-focus` key of a control, so `paint` can give focus back to it
+ * after a repaint: the kind, then what it acts on, joined with `:`. Every
+ * link and button the page builds carries one. */
+export function focusKey(kind: string, ...parts: string[]): string {
+  return [kind, ...parts].join(":");
+}
+
 /** What the polite live region says when the count of items that need the
  * human changes. */
 export function needsYouMessage(count: number): string {
@@ -292,4 +359,109 @@ export function crews(rows: ModelRow[]): string[] {
     if (crew !== null) set.add(crew);
   }
   return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+export function goalOf(row: ModelRow): string | null {
+  const goal = row.labels?.goal;
+  return goal ? goal : null;
+}
+
+/** The `round:` label as a whole number, or null when absent or not one. */
+export function roundOf(row: ModelRow): number | null {
+  const raw = row.labels?.round;
+  if (!raw || !/^\d+$/.test(raw)) return null;
+  return Number(raw);
+}
+
+/**
+ * Split a card's rows into the goal's own crew and the rest: a row whose
+ * `goal:` label equals the package's slug goes under that slug; every other
+ * row, and every row when the package has no slug, stays in `rest` for the
+ * crew sections. Both keep `sortInGroup`'s order.
+ */
+export function goalGroups<R extends ModelRow>(
+  rows: R[],
+  summary: KnowledgeSummary | null | undefined,
+): { goals: GoalGroup<R>[]; rest: R[] } {
+  const slug = summary?.slug;
+  if (!slug) return { goals: [], rest: sortInGroup(rows) };
+  const own = rows.filter((row) => goalOf(row) === slug);
+  const rest = rows.filter((row) => goalOf(row) !== slug);
+  return {
+    goals: own.length > 0 ? [{ slug, rows: sortInGroup(own) }] : [],
+    rest: sortInGroup(rest),
+  };
+}
+
+/** `rounds/NNN.md` for round `n`: three digits, more when needed. */
+export function roundPath(n: number): string {
+  return `rounds/${String(n).padStart(3, "0")}.md`;
+}
+
+/** Does the summary carry anything the card can show? False for a package
+ * whose files the daemon found but could not read a field from, so the
+ * card skips the block instead of printing the word "goal" alone. */
+export function hasKnowledge(summary: KnowledgeSummary): boolean {
+  // The known fields, not every key: the wire object carries `ok` too.
+  const fields: (keyof KnowledgeSummary)[] = [
+    "slug", "goal", "status", "round", "budget", "lastFloor",
+    "nextAction", "proposals", "lastRound", "lastRecord", "lastDecision",
+  ];
+  return fields.some((field) => summary[field] !== undefined);
+}
+
+/** The path of the latest round record: the name the daemon read, else the
+ * three-digit name for the round number from a daemon that sends only the
+ * number; null without a record. */
+export function recordPath(summary: KnowledgeSummary): string | null {
+  if (summary.lastRecord) return summary.lastRecord;
+  return typeof summary.lastRound === "number" ? roundPath(summary.lastRound) : null;
+}
+
+/** The knowledge route for one file of a project's package. */
+export function knowledgeUrl(projectId: string, path: string): string {
+  const encoded = path.split("/").map(encodeURIComponent).join("/");
+  return `/api/projects/${encodeURIComponent(projectId)}/knowledge/${encoded}`;
+}
+
+/** What Dismiss stores for one proposal: the project and the round, so the
+ * next round's proposal from the same project shows again. */
+export function dismissKey(projectId: string, round: number): string {
+  return `${projectId}:${round}`;
+}
+
+/**
+ * One attention item per project whose latest round record's decision
+ * starts with `propose`, in the order given, less the ones in `dismissed`
+ * (keys from `dismissKey`). A summary with no round record or a decision of
+ * `done` or `failed` yields nothing.
+ */
+export function proposedItems(
+  entries: { project: ProjectRef; summary: KnowledgeSummary }[],
+  dismissed: ReadonlySet<string> = new Set(),
+): ProposedItem[] {
+  const items: ProposedItem[] = [];
+  for (const { project, summary } of entries) {
+    const round = summary.lastRound;
+    const path = recordPath(summary);
+    if (typeof round !== "number" || path === null) continue;
+    if (!(summary.lastDecision ?? "").trim().toLowerCase().startsWith("propose")) continue;
+    if (dismissed.has(dismissKey(project.id, round))) continue;
+    items.push({ kind: "proposed", project, summary, round, path });
+  }
+  return items;
+}
+
+/**
+ * The strip's order: the attention items with the proposed ones inserted
+ * before the first failed row. A proposal counts as "needs you" and a
+ * failed row does not, so the order agrees with the count.
+ */
+export function withProposed<R extends ModelRow>(
+  items: AttentionItem<R>[],
+  proposed: ProposedItem[],
+): (AttentionItem<R> | ProposedItem)[] {
+  const at = items.findIndex((item) => item.kind === "failed");
+  if (at < 0) return [...items, ...proposed];
+  return [...items.slice(0, at), ...proposed, ...items.slice(at)];
 }

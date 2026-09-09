@@ -1,16 +1,14 @@
 # STATE: projects-and-knowledge
 
 - Status: active
-- Round: 2 of 3 in this budget (second budget; rounds 4 and 5 done)
-- Rounds total: 5
-- Last floor: green (2026-09-08, round 5 after)
-- Updated: 2026-09-08
+- Round: 1 of 3 in this budget (third budget; round 7 done)
+- Rounds total: 7
+- Last floor: green (2026-09-09, round 7 after)
+- Updated: 2026-09-09
 
 ## Queue
 
-1. `knowledge-on-dashboard` (capability 5), branch off
-   `goals/review-fixes`
-2. `dogfood` (capability 6)
+1. `dogfood` (capability 6)
 
 ## Failures
 
@@ -68,10 +66,18 @@ read-only. Reports under the job's `review/` directory.
   run a review gate on the stack before a push. See `rounds/005.md`.
 - `tokens.css`: raise the `--ui-text-muted` mix; under 4.5:1 on 10 of 16
   themes. Outside this goal's diff.
-- Watch-grade access to `GET /api/projects/<id>/knowledge/<path>`. The plan
-  recommends readable, the same class as a cwd. Decide before capability 5.
-  The security review notes `GET /api/projects` already answers at watch
-  grade while `/api/profiles` is full-only; record the choice either way.
+- `LOOP.md` Round record and state shape: the `- Status:` and `- Round: N
+  of M` lines and the `## Next action` heading of `STATE.md` are an
+  interface since round 6; the summary route parses them. See
+  `rounds/006.md`.
+- Prune the decided items from this list; the card counts every bullet.
+- `LOOP.md`: a new element on the page adds its contrast pair to
+  `theme-contrast.test.ts` in the same round; a link that opens a served
+  file is checked on a browser that does not render the file's type. See
+  `rounds/007.md`.
+- Decided 2026-09-08 by "continue" with the plan's recommendation: the
+  knowledge route answers at watch grade, the same class as a cwd and as
+  `GET /api/projects`. Record the choice in AGENTS.md "Security".
 
 ## Done
 
@@ -85,18 +91,46 @@ read-only. Reports under the job's `review/` directory.
   `97fa22e`. See `rounds/004.md`.
 - `review-fixes`: round 5, `goals/review-fixes` at `f772b56`. See
   `rounds/005.md`.
+- `knowledge-on-dashboard` (capability 5): round 6,
+  `goals/knowledge-on-dashboard` at `61a7c45`. See `rounds/006.md`.
+- `review-fixes-2`: round 7, the same branch at `1e9cee3`. See
+  `rounds/007.md`.
 
-## Pull requests (2026-09-08, stacked, merge bottom up)
+## Merged and released (2026-09-08)
 
-- #70 `goals/knowledge-base` to `main`: the goals package
-- #71 `goals/project-identity`: project identity on the daemon
-- #72 `goals/dashboard`: the dashboard
-- #73 `goals/scaffold-and-docs`: templates, `project init`, docs
-- #74 `goals/goal-loop-skill`: the standing foreman skill, `skills install`
-- #75 `goals/review-fixes`: the review gate findings
+PRs #70 to #75 squash-merged into `main` bottom up (`b6f8862` to
+`a64908e`). Tag `v0.23.0`, release run green, six assets. The daemon on
+the foreman's machine upgraded in place; the three skills installed from
+the binary; the kitterm project registered with `kitterm project add`.
+Two lessons in `facts.md`: a stacked PR closes when its base branch is
+deleted, and a merge of `main` into a stacked branch can re-add what the
+branch removed.
+
+## Direction
+
+2026-09-09: the human said "continue" and "review and push" after round
+6. Third budget opens. The review gate runs on
+`main...goals/knowledge-on-dashboard` first (security, daemon, dashboard
+accessibility); a fix round follows if it finds should-fix items; then
+push and one PR to `main`. `dogfood` starts after the push.
+
+## Review gate 2 (2026-09-09, on round 6's branch)
+
+- security: blocking 0, should-fix 2, nit 4. The read opens the unchecked
+  path after the checks; the discovered-project fallback serves any repo a
+  pane visited.
+- daemon: blocking 0, should-fix 3, nit 7. The poll waits on every summary
+  fetch; the latest record is re-derived from its number; a third copy of
+  the write path.
+- accessibility: blocking 0, should-fix 9, nit 6. The record link
+  downloads on Chrome and Firefox; new links lose focus on repaint; a
+  proposal cannot be dismissed; the next action is cut; two contrast pairs
+  outside the test; two numbers share the word "round".
+- ranked and deduped: the job's `review2/ranked.md`, F1 to F11 required.
 
 ## Next action
 
-Merge and release wait for the human. Then round 6:
-`knowledge-on-dashboard` off `goals/review-fixes`, after the human decides
-watch-grade access to the knowledge route.
+Push `goals/knowledge-on-dashboard` and open one PR to `main`. Then
+`dogfood` (capability 6), round 8: a standing foreman in its own pane on
+the installed `foreman-loop` skill, two registered projects, corpus
+request 03. Merge of the PR waits for the human.

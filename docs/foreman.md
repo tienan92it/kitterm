@@ -384,7 +384,9 @@ its typed state, its name, and its last command. It repaints the instant a
 session changes — it holds an event long-poll, not only a timer. A blocked
 approval sits at the top of the page, so you answer it from a phone. This is
 the same truth the foreman reads, so you and the foreman never disagree about
-what a session is doing.
+what a session is doing. A registered project's card also shows what its
+`docs/goals/` says: the goal title, `round N of M`, the next action, the
+proposals waiting on you, and a link to the latest round record.
 
 ## Example skills
 
