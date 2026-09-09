@@ -1,9 +1,9 @@
 # STATE: projects-and-knowledge
 
 - Status: active
-- Round: 1 of 3 in this budget (third budget; round 7 open)
-- Rounds total: 6
-- Last floor: green (2026-09-08, round 6 after)
+- Round: 1 of 3 in this budget (third budget; round 7 done)
+- Rounds total: 7
+- Last floor: green (2026-09-09, round 7 after)
 - Updated: 2026-09-09
 
 ## Queue
@@ -71,6 +71,10 @@ read-only. Reports under the job's `review/` directory.
   interface since round 6; the summary route parses them. See
   `rounds/006.md`.
 - Prune the decided items from this list; the card counts every bullet.
+- `LOOP.md`: a new element on the page adds its contrast pair to
+  `theme-contrast.test.ts` in the same round; a link that opens a served
+  file is checked on a browser that does not render the file's type. See
+  `rounds/007.md`.
 - Decided 2026-09-08 by "continue" with the plan's recommendation: the
   knowledge route answers at watch grade, the same class as a cwd and as
   `GET /api/projects`. Record the choice in AGENTS.md "Security".
@@ -88,8 +92,9 @@ read-only. Reports under the job's `review/` directory.
 - `review-fixes`: round 5, `goals/review-fixes` at `f772b56`. See
   `rounds/005.md`.
 - `knowledge-on-dashboard` (capability 5): round 6,
-  `goals/knowledge-on-dashboard` at `61a7c45`, not pushed. See
-  `rounds/006.md`.
+  `goals/knowledge-on-dashboard` at `61a7c45`. See `rounds/006.md`.
+- `review-fixes-2`: round 7, the same branch at `1e9cee3`. See
+  `rounds/007.md`.
 
 ## Merged and released (2026-09-08)
 
@@ -125,7 +130,7 @@ push and one PR to `main`. `dogfood` starts after the push.
 
 ## Next action
 
-Round 7 `review-fixes-2` on the same branch, then push and one PR to
-`main`. Then `dogfood` (capability 6): a standing foreman in its own pane
-on the installed `foreman-loop` skill, two registered projects, corpus
-request 03.
+Push `goals/knowledge-on-dashboard` and open one PR to `main`. Then
+`dogfood` (capability 6), round 8: a standing foreman in its own pane on
+the installed `foreman-loop` skill, two registered projects, corpus
+request 03. Merge of the PR waits for the human.
