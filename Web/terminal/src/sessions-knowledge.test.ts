@@ -5,8 +5,10 @@ import {
   dismissKey,
   dismissName,
   focusKey,
+  goalBlocks,
   goalGroups,
   goalOf,
+  goalTitle,
   hasKnowledge,
   knowledgeUrl,
   proposalsName,
@@ -16,6 +18,7 @@ import {
   recordPath,
   roundOf,
   roundPath,
+  statePath,
   withProposed,
   type KnowledgeSummary,
   type ModelRow,
@@ -60,23 +63,45 @@ describe("goalGroups", () => {
   const foreign = row("foreign", { goal: "another-goal", round: "1" });
   const human = row("human");
 
-  it("puts the rows labelled with the package's slug under it and keeps the rest", () => {
-    const { goals, rest } = goalGroups([human, foreign, crew], [summary]);
+  it("puts the rows labelled with a goal's slug under it, a stray label in unmatched, and keeps the rest", () => {
+    const { goals, unmatched, rest } = goalGroups([human, foreign, crew], [summary]);
     expect(goals).toEqual([{ slug: "projects-and-knowledge", rows: [crew] }]);
-    expect(rest.map((r) => r.id)).toEqual(["human", "foreign"]);
+    expect(unmatched).toEqual([{ slug: "another-goal", rows: [foreign] }]);
+    expect(rest.map((r) => r.id)).toEqual(["human"]);
   });
 
   it("has no goal group when no row carries the slug", () => {
-    const { goals, rest } = goalGroups([human, foreign], [summary]);
+    const { goals, unmatched, rest } = goalGroups([human, foreign], [summary]);
     expect(goals).toEqual([]);
-    expect(rest.map((r) => r.id)).toEqual(["human", "foreign"]);
+    expect(unmatched.map((g) => g.slug)).toEqual(["another-goal"]);
+    expect(rest.map((r) => r.id)).toEqual(["human"]);
   });
 
-  it("keeps every row in rest without a summary or a slug", () => {
+  it("puts every labelled row in unmatched without a summary or a slug", () => {
     expect(goalGroups([crew, human], null).goals).toEqual([]);
-    expect(goalGroups([crew, human], undefined).rest.map((r) => r.id)).toEqual(["crew", "human"]);
+    expect(goalGroups([crew, human], undefined).unmatched).toEqual([{ slug: "projects-and-knowledge", rows: [crew] }]);
+    expect(goalGroups([crew, human], undefined).rest.map((r) => r.id)).toEqual(["human"]);
     expect(goalGroups([crew, human], [{ project: "kitterm" }]).goals).toEqual([]);
-    expect(goalGroups([crew, human], []).rest.map((r) => r.id)).toEqual(["crew", "human"]);
+    expect(goalGroups([crew, human], []).unmatched.map((g) => g.slug)).toEqual(["projects-and-knowledge"]);
+    expect(goalGroups([crew, human], []).rest.map((r) => r.id)).toEqual(["human"]);
+  });
+
+  it("has nothing at all for an empty card", () => {
+    expect(goalGroups([], [summary])).toEqual({ goals: [], unmatched: [], rest: [] });
+    expect(goalGroups([], [])).toEqual({ goals: [], unmatched: [], rest: [] });
+  });
+
+  it("lists the unmatched labels in name order, one group each, sorted like a card", () => {
+    const zed = row("zed", { goal: "zed-goal" }, { mergedState: "idle" });
+    const alpha = row("alpha", { goal: "alpha-goal" });
+    const alphaAsks = row("alpha-asks", { goal: "alpha-goal" }, { mergedState: "needs-input" });
+    const { goals, unmatched, rest } = goalGroups([zed, alpha, alphaAsks, crew, human], [summary]);
+    expect(goals.map((g) => g.slug)).toEqual(["projects-and-knowledge"]);
+    expect(unmatched.map((g) => [g.slug, g.rows.map((r) => r.id)])).toEqual([
+      ["alpha-goal", ["alpha-asks", "alpha"]],
+      ["zed-goal", ["zed"]],
+    ]);
+    expect(rest.map((r) => r.id)).toEqual(["human"]);
   });
 
   it("groups under every goal of the answer, in the daemon's order, and keeps the rest", () => {
@@ -88,6 +113,7 @@ describe("goalGroups", () => {
     ]);
     expect(rest.map((r) => r.id)).toEqual(["human"]);
     expect(goalGroups([human, crew], [done, summary]).goals.map((g) => g.slug)).toEqual(["projects-and-knowledge"]);
+    expect(goalGroups([human, foreign, crew], [summary, done]).unmatched).toEqual([]);
   });
 
   it("sorts inside the goal group like a card: attention first", () => {
@@ -95,6 +121,52 @@ describe("goalGroups", () => {
     const asks = row("asks", { goal: "projects-and-knowledge" }, { mergedState: "needs-input" });
     const { goals } = goalGroups([idle, asks], [summary]);
     expect(goals[0].rows.map((r) => r.id)).toEqual(["asks", "idle"]);
+  });
+});
+
+describe("goalBlocks", () => {
+  const active: KnowledgeSummary = { project: "kitterm", slug: "goal-folders", goal: "one folder per goal", status: "active", round: 3, budget: 3 };
+  const waiting: KnowledgeSummary = { project: "kitterm", slug: "later", status: "waiting", round: 3, budget: 3 };
+  const stopped: KnowledgeSummary = { project: "kitterm", slug: "dropped", status: "stopped", lastRound: 2 };
+  const done: KnowledgeSummary = { project: "kitterm", slug: "projects-and-knowledge", status: "done", lastRound: 8 };
+
+  it("expands an active or waiting goal and folds a stopped or done one, in the order given", () => {
+    expect(goalBlocks([active, waiting, stopped, done])).toEqual([
+      { summary: active, expanded: true },
+      { summary: waiting, expanded: true },
+      { summary: stopped, expanded: false },
+      { summary: done, expanded: false },
+    ]);
+  });
+
+  it("reads the status word in any case, after blanks", () => {
+    expect(goalBlocks([{ ...done, status: " Done " }])[0].expanded).toBe(false);
+    expect(goalBlocks([{ ...stopped, status: "STOPPED" }])[0].expanded).toBe(false);
+  });
+
+  it("expands a goal with no status or one the loop does not name", () => {
+    expect(goalBlocks([{ project: "kitterm", slug: "fresh" }])[0].expanded).toBe(true);
+    expect(goalBlocks([{ project: "kitterm", slug: "odd", status: "paused" }])[0].expanded).toBe(true);
+  });
+
+  it("shows nothing for an empty package, no answer, or a summary with no field", () => {
+    expect(goalBlocks([])).toEqual([]);
+    expect(goalBlocks(null)).toEqual([]);
+    expect(goalBlocks(undefined)).toEqual([]);
+    expect(goalBlocks([{ project: "kitterm" }, active])).toEqual([{ summary: active, expanded: true }]);
+  });
+});
+
+describe("goalTitle and statePath", () => {
+  it("name the goal by its title, else its slug, else the word", () => {
+    expect(goalTitle(summary)).toBe("projects on the fleet view");
+    expect(goalTitle({ project: "kitterm", slug: "goal-folders" })).toBe("goal-folders");
+    expect(goalTitle({ project: "kitterm" })).toBe("goal");
+  });
+
+  it("point the proposals chip at the goal's own STATE.md", () => {
+    expect(statePath(summary)).toBe("projects-and-knowledge/STATE.md");
+    expect(statePath({ project: "kitterm" })).toBe("STATE.md");
   });
 });
 
@@ -158,14 +230,33 @@ describe("proposedItems", () => {
     expect(proposedItems([{ project: kitterm, summary: done }])).toEqual([]);
   });
 
-  it("leaves out a dismissed round and keeps the project's next one", () => {
+  it("leaves out a dismissed round and keeps the goal's next one", () => {
     const proposing: KnowledgeSummary = { ...summary, lastRound: 3, lastDecision: "propose (x)" };
-    const dismissed = new Set([dismissKey("kitterm", 3)]);
-    expect(dismissKey("kitterm", 3)).toBe("kitterm:3");
+    const dismissed = new Set([dismissKey("kitterm", "projects-and-knowledge", 3)]);
+    expect(dismissKey("kitterm", "projects-and-knowledge", 3)).toBe("kitterm:projects-and-knowledge:3");
     expect(proposedItems([{ project: kitterm, summary: proposing }], dismissed)).toEqual([]);
     const next: KnowledgeSummary = { ...proposing, lastRound: 4 };
     expect(proposedItems([{ project: kitterm, summary: next }], dismissed)).toHaveLength(1);
     expect(proposedItems([{ project: other, summary: proposing }], dismissed)).toHaveLength(1);
+  });
+
+  it("lists every proposing goal of one project and dismisses them one by one", () => {
+    const first: KnowledgeSummary = { ...summary, lastRound: 3, lastDecision: "propose (x)" };
+    const second: KnowledgeSummary = {
+      project: "kitterm", slug: "goal-folders", status: "waiting", lastRound: 3,
+      lastRecord: "goal-folders/rounds/003.md", lastDecision: "propose (`LOOP.md`: y)",
+    };
+    const quiet: KnowledgeSummary = { project: "kitterm", slug: "done-goal", status: "done", lastRound: 8, lastDecision: "done." };
+    const entries = [first, second, quiet].map((goal) => ({ project: kitterm, summary: goal }));
+    expect(proposedItems(entries).map((item) => [item.summary.slug, item.path])).toEqual([
+      ["projects-and-knowledge", "rounds/003.md"],
+      ["goal-folders", "goal-folders/rounds/003.md"],
+    ]);
+    // The same round number on another goal is another key.
+    const dismissed = new Set([dismissKey("kitterm", "goal-folders", 3)]);
+    expect(proposedItems(entries, dismissed).map((item) => item.summary.slug)).toEqual(["projects-and-knowledge"]);
+    expect(dismissKey("kitterm", "", 3)).toBe("kitterm::3");
+    expect(proposedItems([{ project: kitterm, summary: { ...first, slug: undefined } }], new Set(["kitterm::3"]))).toEqual([]);
   });
 
   it("yields nothing without a round record or a decision", () => {
@@ -193,8 +284,9 @@ describe("withProposed", () => {
 });
 
 describe("dismissName", () => {
-  it("names the round and the project", () => {
+  it("names the round and the project, and the goal when given", () => {
     expect(dismissName(5, "kitterm")).toBe("Dismiss the proposal of round 5 of kitterm");
+    expect(dismissName(3, "kitterm", "one folder per goal")).toBe("Dismiss the proposal of round 3 of one folder per goal in kitterm");
   });
 });
 
@@ -206,8 +298,19 @@ describe("the record and proposals names", () => {
     expect(recordName("rounds/002.md", "kitterm-fixture")).toBe("Open round record 002 of kitterm-fixture");
   });
 
+  it("drop the goal folder from the label and name the goal when given", () => {
+    expect(recordLabel("goal-folders/rounds/003.md")).toBe("003");
+    expect(recordLabel("projects-and-knowledge/rounds/8.md")).toBe("8");
+    expect(recordName("goal-folders/rounds/003.md", "kitterm", "one folder per goal")).toBe(
+      "Open round record 003 of one folder per goal in kitterm",
+    );
+  });
+
   it("say where the proposals wait and whose they are", () => {
     expect(proposalsName(12, "kitterm")).toBe("12 proposals waiting on the human in STATE.md of kitterm");
     expect(proposalsName(1, "other")).toBe("1 proposal waiting on the human in STATE.md of other");
+    expect(proposalsName(1, "kitterm", "one folder per goal")).toBe(
+      "1 proposal waiting on the human in STATE.md of one folder per goal in kitterm",
+    );
   });
 });
