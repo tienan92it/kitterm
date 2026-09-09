@@ -1,16 +1,15 @@
 # STATE: goal-folders
 
 - Status: active
-- Round: 1 of 3 in this budget (round 1 done, round 2 open)
-- Rounds total: 1
-- Last floor: green (2026-09-09, round 1 after)
+- Round: 2 of 3 in this budget (rounds 1 and 2 done, round 3 open)
+- Rounds total: 2
+- Last floor: green (2026-09-09, round 2 after)
 - Updated: 2026-09-09
 
 ## Queue
 
-1. `summary-per-goal` (capability 2): round 2, running
-2. `dashboard-per-goal` (capability 3)
-3. `skill-and-docs` (capability 4)
+1. `dashboard-per-goal` (capability 3): round 3, running
+2. `skill-and-docs` (capability 4)
 
 ## Failures
 
@@ -25,6 +24,8 @@ None.
 
 - `templates-and-cli` (capability 1): round 1, `8d59e4b`. See
   `rounds/001.md`.
+- `summary-per-goal` (capability 2): round 2, `0227aa5`. See
+  `rounds/002.md`.
 
 ## Direction
 
@@ -37,7 +38,7 @@ foreman moved the finished package into its folder and rewrote
 
 ## Next action
 
-Round 2: `summary-per-goal`. Send the capability 2 row from `plan.md`
-with corpus request `04-goal-folders`; the summary route returns one
-entry per goal folder, this repository's package is the fixture with one
-done and one active goal.
+Round 3: `dashboard-per-goal`, the last of this budget. Send the
+capability 3 row from `plan.md` with corpus request `04-goal-folders`.
+After it, set `Status: waiting` and report; `skill-and-docs` needs a
+"continue".
