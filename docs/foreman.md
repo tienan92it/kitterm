@@ -411,11 +411,13 @@ session changes — it holds an event long-poll, not only a timer. A blocked
 approval sits at the top of the page, so you answer it from a phone. This is
 the same truth the foreman reads, so you and the foreman never disagree about
 what a session is doing. A registered project's card also shows every goal
-folder under its `docs/goals/`: an `active` or `waiting` goal expanded with
-its title, `round N of M`, its status, the next action, a link to the
-proposals waiting on you, and a link to the latest round record; a `stopped`
-or `done` goal as one line with its status and its latest record. A session
-with a `goal:` label sits under that goal's sub-header with its round.
+folder under its `docs/goals/`: an `active` goal expanded with its title and
+slug, `round N of M`, its status, the next action, a link to the proposals
+waiting on you, and a link to the latest round record; a `waiting`,
+`stopped`, or `done` goal as one line with its status and its latest record,
+plus the proposals link while it waits. A session with a `goal:` label sits
+under that goal's sub-header with its round; a label no folder carries reads
+`(no folder)`.
 
 ## Example skills
 

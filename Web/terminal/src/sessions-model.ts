@@ -438,19 +438,34 @@ export function goalGroups<R extends ModelRow>(
 }
 
 /** Which goals a card shows and how: every summary that carries a field,
- * in the route's order (`active`, `waiting`, `stopped`, `done`). An
- * `active` or `waiting` goal is expanded; a `stopped` or `done` one is one
- * line. A goal with no status, or a status the loop does not name, is
- * expanded, so nothing the human should read is folded away. */
+ * in the route's order (`active`, `waiting`, `stopped`, `done`). Only an
+ * `active` goal is expanded; a `waiting`, `stopped`, or `done` one is one
+ * line, so a project with several goals that wait on the human keeps its
+ * session rows above the fold on a phone. A goal with no status, or a
+ * status the loop does not name, is expanded, so nothing the human should
+ * read is folded away. */
 export function goalBlocks(goals: KnowledgeSummary[] | null | undefined): GoalBlock[] {
   return (goals ?? [])
     .filter(hasKnowledge)
-    .map((summary) => ({ summary, expanded: !isClosed(summary.status) }));
+    .map((summary) => ({ summary, expanded: !isOneLine(summary.status) }));
 }
 
-function isClosed(status: string | undefined): boolean {
-  const word = (status ?? "").trim().toLowerCase();
-  return word === "stopped" || word === "done";
+function statusWord(status: string | undefined): string {
+  return (status ?? "").trim().toLowerCase();
+}
+
+function isOneLine(status: string | undefined): boolean {
+  const word = statusWord(status);
+  return word === "waiting" || word === "stopped" || word === "done";
+}
+
+/** Does the goal's line show its `proposals: N` chip? Yes while the goal
+ * is open (`active`, `waiting`, or a status the loop does not name) and
+ * proposals wait; a `stopped` or `done` goal keeps its line to the title,
+ * the status, and the record. */
+export function showsProposals(summary: KnowledgeSummary): boolean {
+  const word = statusWord(summary.status);
+  return (summary.proposals ?? 0) > 0 && word !== "stopped" && word !== "done";
 }
 
 /** What a goal is called on the page and in a name: its title, else its

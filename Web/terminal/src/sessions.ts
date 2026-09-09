@@ -26,6 +26,7 @@ import {
   recordLabel,
   recordName,
   recordPath,
+  showsProposals,
   roundOf,
   stateOf,
   statePath,
@@ -953,14 +954,15 @@ function card(g: Group<SessionRow>, archived: ArchivedRow[]): HTMLElement {
 }
 
 /** One goal of the project's knowledge package: a section under the
- * card's heading, named by the goal's title. Expanded (`active`,
- * `waiting`): the title with the slug beside it, the proposals chip and
- * the latest record on the first line, then a definition list with `Round`
- * (the counter, the status, the last floor) and `Next` (the next action);
- * the terms are visually hidden, so a screen reader gets them and a
- * sighted reader gets the position and the weight. One line (`stopped`, `done`): the title, the
- * status word, and the record. Every value comes from `STATE.md` and
- * `goal.md` as the daemon parsed them. */
+ * card's heading, named by the goal's title. Expanded (`active`): the
+ * title with the slug beside it, the proposals chip and the latest record
+ * on the first line, then a definition list with `Round` (the counter, the
+ * status, the last floor) and `Next` (the next action); the terms are
+ * visually hidden, so a screen reader gets them and a sighted reader gets
+ * the position and the weight. One line (`waiting`, `stopped`, `done`):
+ * the title, the status word, the proposals chip while the goal is open,
+ * and the record. Every value comes from `STATE.md` and `goal.md` as the
+ * daemon parsed them. */
 function goalSection(project: ProjectRef, block: GoalBlock): HTMLElement {
   const { summary, expanded } = block;
   const goal = goalTitle(summary);
@@ -987,7 +989,7 @@ function goalSection(project: ProjectRef, block: GoalBlock): HTMLElement {
     status.textContent = summary.status;
     top.append(status);
   }
-  if (expanded && (summary.proposals ?? 0) > 0) {
+  if (showsProposals(summary)) {
     // A link, so a phone can reach the file the proposals wait in.
     const chip = knowledgeLink(project.id, statePath(summary), `proposals: ${summary.proposals}`, "card-knowledge");
     chip.className = "tag proposals";

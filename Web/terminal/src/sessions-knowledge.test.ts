@@ -19,6 +19,7 @@ import {
   recordPath,
   roundOf,
   roundPath,
+  showsProposals,
   statePath,
   titleSlug,
   withProposed,
@@ -132,10 +133,10 @@ describe("goalBlocks", () => {
   const stopped: KnowledgeSummary = { project: "kitterm", slug: "dropped", status: "stopped", lastRound: 2 };
   const done: KnowledgeSummary = { project: "kitterm", slug: "projects-and-knowledge", status: "done", lastRound: 8 };
 
-  it("expands an active or waiting goal and folds a stopped or done one, in the order given", () => {
+  it("expands an active goal and folds a waiting, stopped, or done one, in the order given", () => {
     expect(goalBlocks([active, waiting, stopped, done])).toEqual([
       { summary: active, expanded: true },
-      { summary: waiting, expanded: true },
+      { summary: waiting, expanded: false },
       { summary: stopped, expanded: false },
       { summary: done, expanded: false },
     ]);
@@ -144,6 +145,17 @@ describe("goalBlocks", () => {
   it("reads the status word in any case, after blanks", () => {
     expect(goalBlocks([{ ...done, status: " Done " }])[0].expanded).toBe(false);
     expect(goalBlocks([{ ...stopped, status: "STOPPED" }])[0].expanded).toBe(false);
+    expect(goalBlocks([{ ...waiting, status: " Waiting" }])[0].expanded).toBe(false);
+  });
+
+  it("keeps the proposals chip on an open goal's line and drops it on a closed one", () => {
+    expect(showsProposals({ ...active, proposals: 2 })).toBe(true);
+    expect(showsProposals({ ...waiting, proposals: 1 })).toBe(true);
+    expect(showsProposals({ project: "kitterm", slug: "odd", status: "paused", proposals: 1 })).toBe(true);
+    expect(showsProposals({ ...stopped, proposals: 1 })).toBe(false);
+    expect(showsProposals({ ...done, proposals: 3 })).toBe(false);
+    expect(showsProposals({ ...waiting, proposals: 0 })).toBe(false);
+    expect(showsProposals(waiting)).toBe(false);
   });
 
   it("expands a goal with no status or one the loop does not name", () => {
