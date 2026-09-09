@@ -193,13 +193,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
    row under the card's title. Titles and links only; no rendered Markdown. */
 .goal {
   flex: 1 1 100%; min-width: 0; display: flex; flex-direction: column; gap: 2px;
-  padding-top: 6px; border-top: 1px solid var(--ui-border);
+  margin: 0; padding-top: 6px; border-top: 1px solid var(--ui-border);
 }
+.goal dd { margin: 0; min-width: 0; }
 .goal-top { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .goal-title { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
 /* The warning colour sits on the border only; the text stays the tested
    pair, --ui-text on --ui-surface-2 (theme-contrast.test.ts). */
-.tag.proposals { color: var(--ui-text); border: 1px solid var(--ui-warning); }
+.tag.proposals { color: var(--ui-text); border: 1px solid var(--ui-warning); text-decoration: none; padding: 2px 8px; }
+.tag.proposals:hover { border-color: var(--ui-accent); }
 .goal-link { margin-left: auto; margin-top: 0; }
 /* On the card head, like .state and .tallies: the muted mix drops under
    4.5:1 on --ui-surface-2 for three more themes. */

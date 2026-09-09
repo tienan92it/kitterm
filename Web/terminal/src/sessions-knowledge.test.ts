@@ -8,7 +8,10 @@ import {
   goalGroups,
   goalOf,
   knowledgeUrl,
+  proposalsName,
   proposedItems,
+  recordLabel,
+  recordName,
   recordPath,
   roundOf,
   roundPath,
@@ -169,5 +172,19 @@ describe("withProposed", () => {
 describe("dismissName", () => {
   it("names the round and the project", () => {
     expect(dismissName(5, "kitterm")).toBe("Dismiss the proposal of round 5 of kitterm");
+  });
+});
+
+describe("the record and proposals names", () => {
+  it("name the record by its file and its project, apart from the round counter", () => {
+    expect(recordLabel("rounds/005.md")).toBe("005");
+    expect(recordLabel("rounds/7.md")).toBe("7");
+    expect(recordName("rounds/005.md", "kitterm")).toBe("Open round record 005 of kitterm");
+    expect(recordName("rounds/002.md", "kitterm-fixture")).toBe("Open round record 002 of kitterm-fixture");
+  });
+
+  it("say where the proposals wait and whose they are", () => {
+    expect(proposalsName(12, "kitterm")).toBe("12 proposals waiting on the human in STATE.md of kitterm");
+    expect(proposalsName(1, "other")).toBe("1 proposal waiting on the human in STATE.md of other");
   });
 });

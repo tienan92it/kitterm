@@ -313,6 +313,24 @@ export function approvalName(decision: "Allow" | "Deny", tool: string, who: stri
   return who ? `${decision} ${tool} in ${who}` : `${decision} ${tool}`;
 }
 
+/** What a record link shows: the record's file name without `rounds/` and
+ * `.md`, so `rounds/005.md` reads `005` and `rounds/7.md` reads `7`. The
+ * word "record" tells it from the `round N of M` counter beside it. */
+export function recordLabel(path: string): string {
+  return path.replace(/^rounds\//, "").replace(/\.md$/, "");
+}
+
+/** The accessible name of a record link: what it opens and whose. */
+export function recordName(path: string, project: string): string {
+  return `Open round record ${recordLabel(path)} of ${project}`;
+}
+
+/** The accessible name of the proposals chip, a link to `STATE.md`. */
+export function proposalsName(count: number, project: string): string {
+  const noun = count === 1 ? "proposal" : "proposals";
+  return `${count} ${noun} waiting on the human in STATE.md of ${project}`;
+}
+
 /** The accessible name of a proposal's Dismiss button: which round of
  * which project, so two Dismiss buttons read apart. */
 export function dismissName(round: number, project: string): string {

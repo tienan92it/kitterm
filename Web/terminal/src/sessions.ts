@@ -18,7 +18,10 @@ import {
   needsYouMessage,
   NO_PROJECT,
   pickForeman,
+  proposalsName,
   proposedItems,
+  recordLabel,
+  recordName,
   recordPath,
   roundOf,
   stateOf,
@@ -597,7 +600,9 @@ function proposedContent(item: ProposedItem): DocumentFragment {
   }
   const actions = document.createElement("div");
   actions.className = "proposed-actions";
-  actions.append(knowledgeLink(item.project.id, item.path, `Open round ${String(item.round).padStart(3, "0")}`));
+  const open = knowledgeLink(item.project.id, item.path, `Open record ${recordLabel(item.path)}`);
+  open.setAttribute("aria-label", recordName(item.path, item.project.name));
+  actions.append(open);
   // Read it, decided in STATE.md: the item leaves the strip and the count
   // until the project's next round.
   const key = dismissKey(item.project.id, item.round);
@@ -923,50 +928,61 @@ function card(g: Group<SessionRow>, archived: ArchivedRow[]): HTMLElement {
   return section;
 }
 
-/** What the project's knowledge package says: the goal title, the round
- * counter, the status, the last floor, the next action, the proposals
- * waiting, and the latest round record through the knowledge route. Every
- * value comes from `STATE.md` and `goal.md` as the daemon parsed them. */
+/** What the project's knowledge package says, as a definition list: `Goal`
+ * (the title, the proposals chip, the latest record), `Round` (the counter,
+ * the status, the last floor) and `Next` (the next action). The terms are
+ * visually hidden; a screen reader gets them and a sighted reader gets the
+ * position and the weight. Every value comes from `STATE.md` and `goal.md`
+ * as the daemon parsed them. */
 function goalBlock(project: ProjectRef, summary: KnowledgeSummary): HTMLElement {
-  const box = document.createElement("div");
+  const box = document.createElement("dl");
   box.className = "goal";
-  const top = document.createElement("div");
+  const term = (name: string): HTMLElement => {
+    const dt = document.createElement("dt");
+    dt.className = "sr-only";
+    dt.textContent = name;
+    return dt;
+  };
+  const top = document.createElement("dd");
   top.className = "goal-top";
   const title = document.createElement("span");
   title.className = "goal-title";
   title.textContent = summary.goal ?? summary.slug ?? "goal";
   top.append(title);
   if ((summary.proposals ?? 0) > 0) {
-    const chip = tag(`proposals: ${summary.proposals}`);
-    chip.classList.add("proposals");
-    chip.title = "Proposals waiting on the human in STATE.md";
+    // A link, so a phone can reach the file the proposals wait in.
+    const chip = knowledgeLink(project.id, "STATE.md", `proposals: ${summary.proposals}`);
+    chip.className = "tag proposals";
+    chip.setAttribute("aria-label", proposalsName(summary.proposals ?? 0, project.name));
     top.append(chip);
   }
   const record = recordPath(summary);
-  if (record !== null && typeof summary.lastRound === "number") {
-    const link = knowledgeLink(project.id, record, `round ${String(summary.lastRound).padStart(3, "0")}`);
+  if (record !== null) {
+    const link = knowledgeLink(project.id, record, `record ${recordLabel(record)}`);
     link.classList.add("goal-link");
-    link.title = "Open the latest round record";
+    link.setAttribute("aria-label", recordName(record, project.name));
     top.append(link);
   }
-  box.append(top);
+  box.append(term("Goal"), top);
 
-  const meta = document.createElement("div");
-  meta.className = "goal-meta";
   const bits: string[] = [];
   if (typeof summary.round === "number") {
     bits.push(typeof summary.budget === "number" ? `round ${summary.round} of ${summary.budget}` : `round ${summary.round}`);
   }
   if (summary.status) bits.push(summary.status);
   if (summary.lastFloor) bits.push(`floor ${summary.lastFloor}`);
-  meta.textContent = bits.join(" · ");
-  if (bits.length > 0) box.append(meta);
+  if (bits.length > 0) {
+    const meta = document.createElement("dd");
+    meta.className = "goal-meta";
+    meta.textContent = bits.join(" · ");
+    box.append(term("Round"), meta);
+  }
 
   if (summary.nextAction) {
-    const next = document.createElement("div");
+    const next = document.createElement("dd");
     next.className = "goal-next";
     next.textContent = `next: ${summary.nextAction}`;
-    box.append(next);
+    box.append(term("Next"), next);
   }
   return box;
 }
