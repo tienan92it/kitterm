@@ -179,9 +179,8 @@ final class KnowledgeRouteTests: XCTestCase {
 
     // MARK: - helpers
 
-    /// The checkout the test source sits in: `Tests/KittermDaemonTests/<file>`.
-    private static let repositoryRoot = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    /// The checkout the test source sits in, resolved once for the target.
+    private static let repositoryRoot = KnowledgeSummaryTests.repositoryRoot
 
     /// True when this repository's own package, with its two goal folders,
     /// is beside the test source.

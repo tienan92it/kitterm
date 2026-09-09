@@ -207,8 +207,7 @@ final class GoalCommandTests: XCTestCase {
     /// `active` one. Containment and order only, so a new goal folder
     /// keeps the floor green.
     func testListThisRepository() throws {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let root = CLIFixture.repositoryRoot
         guard FileManager.default.fileExists(atPath: root.appendingPathComponent("docs/goals/projects-and-knowledge/STATE.md").path) else {
             throw XCTSkip("docs/goals/projects-and-knowledge is not beside the test source")
         }

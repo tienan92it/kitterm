@@ -8,10 +8,7 @@ import XCTest
 /// goal folder under `goal/`. Edit the file, then paste it into
 /// `GoalsTemplates.swift`.
 final class GoalsTemplatesTests: XCTestCase {
-    private static let examples = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()  // KittermCLITests
-        .deletingLastPathComponent()  // Tests
-        .deletingLastPathComponent()  // repo root
+    private static let examples = CLIFixture.repositoryRoot
         .appendingPathComponent("examples/goals", isDirectory: true)
 
     func testEveryTemplateMatchesItsExampleFile() throws {

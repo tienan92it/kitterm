@@ -8,10 +8,7 @@ import XCTest
 /// layout: a goal's files live under `docs/goals/<slug>/`, and there is no
 /// done folder. A path of the old flat layout fails the test.
 final class GoalsLayoutDocsTests: XCTestCase {
-    private static let root = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()  // KittermCLITests
-        .deletingLastPathComponent()  // Tests
-        .deletingLastPathComponent()  // repo root
+    private static let root = CLIFixture.repositoryRoot
 
     /// The paths of the flat layout that `goal.md` of `goal-folders`
     /// replaced. `docs/goals/LOOP.md` and `docs/goals/facts.md` stay.

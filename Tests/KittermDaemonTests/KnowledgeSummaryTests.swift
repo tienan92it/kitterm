@@ -169,8 +169,7 @@ final class KnowledgeSummaryTests: XCTestCase {
     /// when this test was written; they change when the foreman updates
     /// `STATE.md`, so only the shape is pinned, not the round.
     func testParsesThisRepositoryOwnPackage() throws {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let root = Self.repositoryRoot
         let package = root.appendingPathComponent("docs/goals/projects-and-knowledge")
         guard FileManager.default.fileExists(atPath: package.appendingPathComponent("STATE.md").path) else {
             throw XCTSkip("docs/goals/projects-and-knowledge is not beside the test source")
@@ -190,8 +189,12 @@ final class KnowledgeSummaryTests: XCTestCase {
 
     // MARK: - one summary per goal folder
 
-    private static let repositoryRoot = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    /// The checkout the test source sits in: `Tests/KittermDaemonTests/<file>`.
+    /// `KnowledgeRouteTests` reads it too, so a moved test file changes one line.
+    static let repositoryRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()  // KittermDaemonTests
+        .deletingLastPathComponent()  // Tests
+        .deletingLastPathComponent()  // repo root
 
     /// A scratch package: `LOOP.md` and `facts.md` at the top, `zed/`
     /// active with a record, `alpha/` done whose heading names another
