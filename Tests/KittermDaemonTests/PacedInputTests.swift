@@ -122,7 +122,15 @@ final class PacedInputTests: XCTestCase {
             "POST", "/api/sessions/\(id)/input",
             raw: Data("stty raw -echo; sleep 2; exec cat -v\n".utf8)
         )
-        try await wait("the reader to take the foreground") { !session.foregroundIsShell }
+        // Wait for the condition the route checks, not for a proxy. A gate of
+        // "some program other than the shell holds the terminal" opens while
+        // `stty` is still running, or while any cooked program holds the tty,
+        // and the route then refuses the body with 409 (measured on CI,
+        // 2026-09-09: `"foregroundProgram":"stty"`; reproduced here by putting
+        // a `sleep` before `stty`, which fails the old gate every time).
+        try await wait("the reader to put the terminal in raw mode") {
+            session.inputIsCanonical == false
+        }
 
         let body = Self.body(bytes: 8192)
         let before = session.inputWrites

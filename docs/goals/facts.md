@@ -10,6 +10,13 @@ decision moves to `docs/adr/`.
 
 ## Toolchain
 
+- This machine runs near its memory limit: on 2026-09-09 swap was
+  7.66 GB of 8 GB used, with a docker VM the largest consumer. A Swift
+  build spike is then enough for the kernel to kill the kitterm daemon
+  silently, with no crash report, and its launchd `KeepAlive` agent
+  restarts it with a new pid and a fresh epoch. Three restarts happened
+  that afternoon; each one killed every session. Run one heavy build at a
+  time, and commit a crew's work as it lands.
 - A live check of the CLI runs `.build/debug/kitterm` (fresh after `swift
   test`), because `swift run` needs `Package.swift` in the cwd.
   `KITTERM_STATE_DIR` isolates the state. (2026-09-08, round 3)
@@ -90,6 +97,18 @@ decision moves to `docs/adr/`.
 
 ## Foreman
 
+- Never generate machine-wide load on the machine that hosts the crew.
+  On 2026-09-09 a round ran `swift test` twenty times under eight `yes`
+  processes; the load starved the daemon, its launchd `KeepAlive` agent
+  restarted it with a new pid and a fresh epoch, and every crew session
+  and its uncommitted work died. Reproduce a race by widening its window
+  in a scratch copy of the test, which is deterministic, not by loading
+  the machine, which is probabilistic and dangerous.
+- Match a process by its executable, never by a bare string. Cleaning up
+  that load with a `yes` pattern also matched `ssh -F ...` command lines
+  and killed two of the human's `fly ssh console` connections. Use
+  `pkill -x <name>` or match on `$11` of `ps` output, and list what will
+  die before killing it.
 - A foreman that runs as a background job wakes only when a background
   command exits. A one-shot shell loop that polls `GET /api/sessions`
   every 10 s, exits on a state change, and exits on its own after about

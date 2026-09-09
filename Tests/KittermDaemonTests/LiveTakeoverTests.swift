@@ -1,5 +1,6 @@
 import Foundation
 import KittermProtocol
+import NIOPosix
 import XCTest
 
 @testable import KittermDaemon
@@ -152,26 +153,34 @@ final class LiveTakeoverTests: XCTestCase {
         client.close()
     }
 
-    func testSecondTakeoverWhileOneIsPendingIsRefused() async throws {
-        // Without a session the handoff is quick; race two requests.
-        let port = self.port!
-        let statuses = try await withThrowingTaskGroup(of: Int.self) { group in
-            for _ in 0..<2 {
-                group.addTask {
-                    var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/api/upgrade/takeover")!)
-                    request.httpMethod = "POST"
-                    request.timeoutInterval = 20
-                    let (_, response) = try await URLSession.shared.data(for: request)
-                    return (response as? HTTPURLResponse)?.statusCode ?? 0
-                }
-            }
-            var collected: [Int] = []
-            for try await status in group { collected.append(status) }
-            return collected.sorted()
+    /// A takeover that arrives while another is already admitted is refused.
+    ///
+    /// This was two `POST /api/upgrade/takeover` requests raced from a task
+    /// group, asserting the statuses sorted to `[200, 409]`. Two requests
+    /// started together are not two requests in flight together: on a loaded
+    /// runner the first finishes its handoff before the second arrives and
+    /// nothing refuses it, which is why CI saw this fail while a developer
+    /// machine did not. The refusal is a decision `TakeoverController` makes,
+    /// so it is proved here at that level, with no timing at all. The route's
+    /// mapping of `.inProgress` to 409 is a `switch` in `serveTakeover`, and
+    /// the accepted path is covered end to end by the test above.
+    func testSecondTakeoverWhileOneIsAdmittedIsRefused() async throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        let loop = group.next()
+        let controller = TakeoverController(executable: "/bin/echo") { _ in }
+
+        let first = try await controller.admit(on: loop).get()
+        guard case .accepted = first else {
+            return XCTFail("the first takeover should be admitted, got \(first)")
         }
-        XCTAssertEqual(statuses, [200, 409])
-        try waitUntilHealthy()
-        XCTAssertTrue(daemon.isRunning)
+        let second = try await controller.admit(on: loop).get()
+        XCTAssertEqual(second, .inProgress)
+
+        // And every later one, however many arrive.
+        let third = try await controller.admit(on: loop).get()
+        XCTAssertEqual(third, .inProgress)
+
+        try await group.shutdownGracefully()
     }
 
     // MARK: - Helpers
