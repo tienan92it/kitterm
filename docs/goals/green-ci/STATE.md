@@ -1,15 +1,14 @@
 # STATE: green-ci
 
 - Status: active
-- Round: 1 of 3 in this budget (round 1 done)
+- Round: 2 of 3 in this budget (round 2 open)
 - Rounds total: 1
 - Last floor: green (2026-09-09, round 1 after; main green at d5eee71)
 - Updated: 2026-09-09
 
 ## Queue
 
-1. `wait-helper-audit` (capability 3): `SessionRegistryTests` and
-   `InputEnterKeyTests` hold the same "not the shell" gate.
+1. `wait-helper-audit` (capability 3): round 2, running.
 
 ## Failures
 
@@ -37,9 +36,9 @@ machine, which is recorded in `rounds/001.md` and in `facts.md`.
 
 ## Next action
 
-Two things, in either order. The human amends completion condition 2 in
-`goal.md`, or rejects the change and the loop re-measures under load on a
-machine that can take it. Round 2 runs `wait-helper-audit`.
+Round 2 `wait-helper-audit` runs on `goals/wait-helper-audit`. Then the
+human amends completion condition 2 in `goal.md`, or rejects the change
+and the loop re-measures under load on a machine that can take it.
 
 Conditions met so far: 1 (both waits are on real conditions), 3 (the
 `test` job passed on PR #79), 4 (`main`'s run after the merge, `d5eee71`,
