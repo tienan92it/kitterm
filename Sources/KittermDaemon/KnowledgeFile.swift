@@ -24,6 +24,12 @@ import Foundation
 enum KnowledgeFile {
     static let maxBytes = 256 * 1024
     static let maxPathLength = 1024
+    /// Goal folders read per listing, in name order; the rest are skipped.
+    /// A checkout with thousands of child folders would otherwise hold the
+    /// knowledge queue for every other project and answer a body the fleet
+    /// view cannot show. `LOOP.md` keeps a goal's folder forever, so the
+    /// bound is the number of goals a project can have at once.
+    static let maxGoalFolders = 64
     /// One serial queue for every knowledge read, so a burst of dashboard
     /// polls costs one thread and the loop never waits on the disk.
     /// Accepted: a stalled mount under one project's root holds every other
@@ -102,15 +108,19 @@ enum KnowledgeFile {
 
     /// One summary per goal folder under the knowledge directory, in
     /// `KnowledgeSummary.isOrderedBefore` order, or nil when the directory
-    /// is missing or refused. A goal folder is a direct child that is a real
-    /// directory holding a regular `STATE.md`: a child without one is not a
-    /// goal and is skipped; a symlinked child, or a symlinked `STATE.md`, is
-    /// refused like every other component and skipped too. The folder name
-    /// is the slug and prefixes `lastRecord`. A package with no goal folder
-    /// is an empty list.
+    /// is missing or refused. A goal folder is a direct child whose name is
+    /// a slug (`ProjectStore.isValidID`, the rule `kitterm goal new`
+    /// enforces), that is a real directory holding a regular `STATE.md`: a
+    /// child with any other name, or without a `STATE.md`, is not a goal
+    /// and is skipped; a symlinked child, or a symlinked `STATE.md`, is
+    /// refused like every other component and skipped too. The first
+    /// `maxGoalFolders` such names in name order are read; the rest are
+    /// skipped. The folder name is the slug and prefixes `lastRecord`. A
+    /// package with no goal folder is an empty list.
     static func summaries(root: String, knowledge: String) -> [KnowledgeSummary]? {
         guard let directory = try? jailedDirectory(root: root, knowledge: knowledge) else { return nil }
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory)) ?? []
+        let names = ((try? FileManager.default.contentsOfDirectory(atPath: directory)) ?? [])
+            .filter(ProjectStore.isValidID).sorted().prefix(maxGoalFolders)
         var goals: [KnowledgeSummary] = []
         for name in names {
             let folder = directory + "/" + name

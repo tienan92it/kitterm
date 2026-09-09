@@ -237,6 +237,44 @@ final class KnowledgeSummaryTests: XCTestCase {
         XCTAssertEqual(KnowledgeFile.summaries(root: root, knowledge: "docs/goals/notes"), [], "a folder with no goal folder")
     }
 
+    /// A child whose name is not a slug is not a goal: a right-to-left
+    /// override, a space, an upper-case letter, or a trailing hyphen in
+    /// the folder name never reaches `slug`, the sub-header, or the record
+    /// path, whatever its `STATE.md` says.
+    func testSummariesSkipAFolderWhoseNameIsNotASlug() throws {
+        let root = try threeFolders()
+        for name in ["\u{202E}zed", "with space", "Upper", "trailing-", "-leading", "dots.md"] {
+            let folder = root + "/docs/goals/" + name
+            try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+            try "# STATE: \(name)\n\n- Status: active\n".write(toFile: folder + "/STATE.md", atomically: true, encoding: .utf8)
+        }
+        let goals = try XCTUnwrap(KnowledgeFile.summaries(root: root, knowledge: "docs/goals"))
+        XCTAssertEqual(goals.map(\.slug), ["zed", "alpha"])
+        for slug in goals.compactMap(\.slug) {
+            XCTAssertTrue(ProjectStore.isValidID(slug), slug)
+        }
+    }
+
+    /// At most `maxGoalFolders` folders are read, the first in name order;
+    /// the rest are skipped, so a checkout with thousands of folders costs
+    /// one bounded listing.
+    func testSummariesReadAtMostTheCapInNameOrder() throws {
+        let root = try threeFolders()
+        let cap = KnowledgeFile.maxGoalFolders
+        for n in 0..<(cap + 5) {
+            let folder = root + "/docs/goals/g" + String(format: "%03d", n)
+            try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+            try "# STATE: g\(n)\n\n- Status: active\n".write(toFile: folder + "/STATE.md", atomically: true, encoding: .utf8)
+        }
+        let goals = try XCTUnwrap(KnowledgeFile.summaries(root: root, knowledge: "docs/goals"))
+        XCTAssertEqual(goals.count, cap)
+        let slugs = Set(goals.compactMap(\.slug))
+        XCTAssertTrue(slugs.contains("alpha"), "`alpha` sorts first by name")
+        XCTAssertTrue(slugs.contains("g000"))
+        XCTAssertFalse(slugs.contains("zed"), "`zed` sorts after the cap by name")
+        XCTAssertFalse(slugs.contains("g" + String(format: "%03d", cap + 4)))
+    }
+
     /// The order the summary route and `kitterm goal list` share: the same
     /// slugs and statuses `GoalCommandTests.testListOrdersByStatusThenSlug`
     /// pins, in the same order.
