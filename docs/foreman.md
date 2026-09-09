@@ -228,60 +228,30 @@ the round record; `STATE.md` holds the status, the round counter, the queue,
 the failures, the proposals, the done items, and the next action, and
 nothing else. `kitterm goal new <path> <slug>` writes a goal folder from the
 template and refuses an existing one; `kitterm goal list <path>` prints every
-goal folder with its status. The steps:
+goal folder with its status. The steps are `LOOP.md`'s "One foreman for
+every project", in one sentence each:
 
-1. **Scan.** On start and after every event batch, list the projects with
-   `list_projects`, read each project's `docs/goals/LOOP.md` and `facts.md`,
-   then read every `docs/goals/<slug>/STATE.md`: status, round counter, next
-   action, and the proposals that wait on the human. A project without a
-   goal folder is reported once as "no goal" and skipped. A live session
-   belongs to a goal by its `goal:` and `round:` labels, never by its id.
-2. **Schedule.** A goal's status is `active`, `waiting`, `stopped`, or
-   `done`; only `active` runs. A goal is runnable when its status is
-   `active`, its budget has rounds left, no round is open, and no proposal
-   blocks the next action. At most one round runs per goal, and at most
-   three crew sessions run across all projects. The runnable goal with the
-   oldest `Updated` date starts first.
-3. **Delegate.** The foreman runs one round for that goal: it spawns one
-   crew session with the labels `crew:<slug>`, `goal:<slug>`, `round:<n>`,
-   and `task:<item>`, runs the floor in the shell, starts `claude`, sends
-   one prompt that names the goal's files by their folder path, and waits.
-   The crew session changes the product. The foreman reads, routes, verifies
-   the floor and the diff against the authority tiers, writes
-   `docs/goals/<slug>/rounds/NNN.md` and the goal's `STATE.md`, and commits
-   the package on the goal's branch before it reports.
-4. **Monitor.** One `wait_for_events` watches the whole daemon. On each scan
-   the foreman compares `heldSince` with now and archives a crew session that
-   sits at an empty prompt one hour past `completed`. After an `epoch` change
-   it respawns a crew once, then records the round as failed with gap `world`.
-5. **Report.** In three cases, with one shape: at once for `needs-input`,
-   `needs-approval`, a `propose` decision, a stop rule, or a failed round;
-   one digest after every round; one digest when the human asks "status".
-   The digest puts what needs the human first, then one block per project:
-
-   ```
-   Needs you
-   - <project> / <goal> round <n>: <what>, <link>
-
-   <project> — <goal title>
-   - round <n> of <budget>, status <active|waiting|stopped|done>
-   - last floor: green | red (<check>)
-   - next: <next action>
-   - proposals: <path>: <what>, or none
-   ```
-
-   The foreman posts each digest with `post_note` and prints it in its pane.
-   The event feed and the archive keep the note; a `claude` pane's raw
-   output is not searchable.
-
-6. **Direction.** After a goal spends its budget the foreman sets its status
-   to `waiting`, reports, and keeps the other goals running. The human prunes
-   `facts.md` and the goal's proposals, then answers per goal: continue
-   resets the round counter, redirect edits `goal.md` or `plan.md` first,
-   stop sets `stopped` and ends the goal's sessions, done sets `done` with
-   the date and stops the scheduling, new goal makes the foreman run
-   `kitterm goal new` and the human fills `goal.md`, `plan.md`, and
-   `corpus/` before the first round. The folder stays in every case.
+1. **Scan.** The foreman lists the projects with `list_projects` and reads
+   every `docs/goals/<slug>/STATE.md`; a live session belongs to a goal by
+   its `goal:` and `round:` labels, never by its id.
+2. **Schedule.** Only an `active` goal with rounds left, no open round, and
+   no blocking proposal runs, at most one round per goal and three crew
+   sessions across all projects, the oldest `Updated` date first.
+3. **Delegate.** The foreman runs `LOOP.md`'s "One round" in one crew session
+   with the labels `crew:<slug>`, `goal:<slug>`, `round:<n>`, and
+   `task:<item>`, then writes `docs/goals/<slug>/rounds/NNN.md` and the
+   goal's `STATE.md` and commits the package on the goal's branch before it
+   reports.
+4. **Monitor.** One `wait_for_events` watches the whole daemon; an idle crew
+   session is archived one hour past `completed`, and a crew lost to an
+   `epoch` change is respawned once.
+5. **Report.** The foreman reports at once for `needs-input`,
+   `needs-approval`, a `propose` decision, a stop rule, or a failed round,
+   and posts one digest with `post_note` after every round and on "status",
+   in the shape `LOOP.md` gives under "Reports".
+6. **Direction.** After a goal spends its budget the foreman sets it to
+   `waiting` and takes the human's answer per goal: continue, redirect,
+   stop, done, or new goal, as `LOOP.md` gives under "Direction".
 
 The review crew and the triage skills are procedures the foreman delegates
 inside a round. When such a session carries a `goal:` label, its findings or
