@@ -22,6 +22,24 @@ a fact that becomes a design decision into `docs/adr/`.
 - `Tests/KittermCLITests/MCPToolsTests.swift:18` pins the MCP tool count.
   Every new tool changes that line.
 
+## The standing foreman (2026-09-09, round 8 dogfood)
+
+- The MCP bridge's `send_input` drops the escape byte from a text: a
+  `\u001b[B` body arrives as two bytes, `[B`. Send a keystroke through
+  the HTTP input route instead: `printf '\033[B' | curl --data-binary @-
+  http://127.0.0.1:3418/api/sessions/<id>/input`, `enter` off.
+- A `claude` pane's raw output is not a transcript. Claude Code redraws
+  in fragments with cursor moves, so a search of the retained log or the
+  output route for a phrase the pane showed finds nothing. Read a pane
+  with `read_screen`; post what must be found later as a note.
+- The installed `foreman-loop` skill ran three rounds on a fixture goal
+  in 10 minutes 21 seconds with no human input, one crew branch per
+  round, and stopped at the budget with the digest shape from `LOOP.md`.
+  It left the package uncommitted until told to commit.
+- A fresh `claude` in a folder it has not seen shows the trust dialog even
+  when the parent folder is trusted. The foreman answered it once for its
+  own pane and once per crew session.
+
 ## Stacked pull requests (2026-09-08, merge of rounds 1 to 5)
 
 - Deleting a stacked PR's base branch closes the PR, and GitHub refuses to

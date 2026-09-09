@@ -1,14 +1,15 @@
 # STATE: projects-and-knowledge
 
-- Status: active
-- Round: 2 of 3 in this budget (third budget; round 8 open)
-- Rounds total: 7
+- Status: waiting
+- Round: 3 of 3 in this budget (third budget spent: rounds 7 and 8; the review gate took a round)
+- Rounds total: 8
 - Last floor: green (2026-09-09, round 7 after)
 - Updated: 2026-09-09
 
 ## Queue
 
-1. `dogfood` (capability 6): round 8, running
+Empty. Every capability in `plan.md` is done and the four completion
+conditions in `goal.md` hold.
 
 ## Failures
 
@@ -75,6 +76,13 @@ read-only. Reports under the job's `review/` directory.
   `theme-contrast.test.ts` in the same round; a link that opens a served
   file is checked on a browser that does not render the file's type. See
   `rounds/007.md`.
+- `MCPTools.swift` `send_input`: pass control bytes through or add a
+  `keys` argument, with a test that an arrow key reaches the pane. See
+  `rounds/008.md`.
+- `examples/foreman/foreman-loop.md` and `LOOP.md`: post each digest with
+  `post_note`; commit the package after every round. See `rounds/008.md`.
+- `docs/foreman.md`: a `claude` pane's raw output is not searchable;
+  `read_screen` is the way to read it. See `rounds/008.md`.
 - Decided 2026-09-08 by "continue" with the plan's recommendation: the
   knowledge route answers at watch grade, the same class as a cwd and as
   `GET /api/projects`. Record the choice in AGENTS.md "Security".
@@ -95,6 +103,8 @@ read-only. Reports under the job's `review/` directory.
   `goals/knowledge-on-dashboard` at `61a7c45`. See `rounds/006.md`.
 - `review-fixes-2`: round 7, the same branch at `1e9cee3`. See
   `rounds/007.md`.
+- `dogfood` (capability 6): round 8, no product code; the fixture `alpha`
+  ran three rounds under the installed skill. See `rounds/008.md`.
 
 ## Merged and released (2026-09-08)
 
@@ -135,9 +145,9 @@ push and one PR to `main`. `dogfood` starts after the push.
 
 ## Next action
 
-Round 8 `dogfood`, corpus request 03: two fixture projects registered
-(`alpha`, a Python `wc2` goal with three queue items and a green floor;
-`beta`, a package at `Status: waiting`); a standing foreman in its own
-pane labelled `crew:foreman` on the installed `foreman-loop` skill, told
-"Run every active goal until its budget is spent." The record of this
-round goes on branch `goals/dogfood`.
+Direction decision by the human on a complete goal: stop (move this
+package to `docs/goals/done/projects-and-knowledge/` and open the next
+goal), or redirect (a new `goal.md` for the proposals above). Before
+that: merge #76, then push `goals/dogfood` (records only) as one PR on
+top of it. The fixture projects `alpha` and `beta` can be removed with
+`kitterm project remove` when the human is done reading them.
