@@ -1,10 +1,10 @@
 # STATE: goal-folders
 
-- Status: active
+- Status: done
 - Round: 2 of 3 in this budget (second budget; rounds 4 and 5 done)
 - Rounds total: 5
 - Last floor: green (2026-09-09, round 5 after)
-- Updated: 2026-09-09
+- Updated: 2026-09-09, marked done on merge
 
 ## Queue
 
@@ -33,6 +33,6 @@ None.
 
 ## Next action
 
-Push `goals/goal-folders` and open one PR to `main`. On merge: set
-`Status: done`, then `kitterm skills install` so the standing foreman
-reads goal folders.
+None. The goal is done: PR #77 merged as `932f595`. Reopen with
+`Status: active` and a new queue when a proposal above becomes a
+capability.
