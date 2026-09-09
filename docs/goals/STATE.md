@@ -1,14 +1,14 @@
 # STATE: projects-and-knowledge
 
 - Status: active
-- Round: 1 of 3 in this budget (third budget; round 7 done)
+- Round: 2 of 3 in this budget (third budget; round 8 open)
 - Rounds total: 7
 - Last floor: green (2026-09-09, round 7 after)
 - Updated: 2026-09-09
 
 ## Queue
 
-1. `dogfood` (capability 6)
+1. `dogfood` (capability 6): round 8, running
 
 ## Failures
 
@@ -128,9 +128,16 @@ push and one PR to `main`. `dogfood` starts after the push.
   outside the test; two numbers share the word "round".
 - ranked and deduped: the job's `review2/ranked.md`, F1 to F11 required.
 
+## Pull request
+
+- #76 `goals/knowledge-on-dashboard` to `main`: the knowledge routes and
+  the card, with review gate 2's fixes. Merge waits for the human.
+
 ## Next action
 
-Push `goals/knowledge-on-dashboard` and open one PR to `main`. Then
-`dogfood` (capability 6), round 8: a standing foreman in its own pane on
-the installed `foreman-loop` skill, two registered projects, corpus
-request 03. Merge of the PR waits for the human.
+Round 8 `dogfood`, corpus request 03: two fixture projects registered
+(`alpha`, a Python `wc2` goal with three queue items and a green floor;
+`beta`, a package at `Status: waiting`); a standing foreman in its own
+pane labelled `crew:foreman` on the installed `foreman-loop` skill, told
+"Run every active goal until its budget is spent." The record of this
+round goes on branch `goals/dogfood`.
