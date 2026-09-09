@@ -12,6 +12,14 @@ that ends stays where it is with its status in `STATE.md`. There is no
 done folder. Add a file only when a round proves the package cannot hold
 a fact without it.
 
+Two files, two scopes. `facts.md` holds repository facts by topic, each
+dated with its source; only a repository fact goes there, and a
+goal-local finding stays in its round record. `STATE.md` holds status,
+round counter, queue, failures, proposals, done, and next action, and
+nothing else; narrative goes to the records. The card parses the
+`- Status:`, `- Round: N of M`, and `## Next action` lines of `STATE.md`,
+so their shape is an interface.
+
 ## Roles
 
 - **The human** owns rounds. The human writes `goal.md`, `plan.md`, this
@@ -145,7 +153,9 @@ the terminal. Do not narrate events; report the ones that need the human.
 ## Direction
 
 After a goal spends its budget the foreman sets its `Status` to `waiting`,
-reports, and keeps the other goals running. The human answers per goal:
+reports, and keeps the other goals running. At every direction check the
+human prunes `facts.md` and the goal's open proposals. The human answers
+per goal:
 
 - **continue**: the foreman resets `Round: 0 of 3`, sets `Status: active`,
   and notes the decision in `STATE.md`.

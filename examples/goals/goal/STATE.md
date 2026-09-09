@@ -19,10 +19,9 @@ None.
 
 None.
 
-## Direction
+## Done
 
-<ISO date>: the human opened this goal. <The direction in one or two
-sentences.>
+None.
 
 ## Next action
 
