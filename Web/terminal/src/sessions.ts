@@ -622,7 +622,7 @@ function proposedContent(item: ProposedItem): DocumentFragment {
   }
   const actions = document.createElement("div");
   actions.className = "proposed-actions";
-  const open = knowledgeLink(item.project.id, item.path, `Open record ${recordLabel(item.path)}`);
+  const open = knowledgeLink(item.project.id, item.path, `Open record ${recordLabel(item.path)}`, "strip-knowledge");
   open.setAttribute("aria-label", recordName(item.path, item.project.name, goal));
   actions.append(open);
   // Read it, decided in STATE.md: the item leaves the strip and the count
@@ -989,14 +989,14 @@ function goalSection(project: ProjectRef, block: GoalBlock): HTMLElement {
   }
   if (expanded && (summary.proposals ?? 0) > 0) {
     // A link, so a phone can reach the file the proposals wait in.
-    const chip = knowledgeLink(project.id, statePath(summary), `proposals: ${summary.proposals}`);
+    const chip = knowledgeLink(project.id, statePath(summary), `proposals: ${summary.proposals}`, "card-knowledge");
     chip.className = "tag proposals";
     chip.setAttribute("aria-label", proposalsName(summary.proposals ?? 0, project.name, goal));
     top.append(chip);
   }
   const record = recordPath(summary);
   if (record !== null) {
-    const link = knowledgeLink(project.id, record, `record ${recordLabel(record)}`);
+    const link = knowledgeLink(project.id, record, `record ${recordLabel(record)}`, "card-knowledge");
     link.classList.add("goal-link");
     link.setAttribute("aria-label", recordName(record, project.name, goal));
     top.append(link);
@@ -1036,15 +1036,19 @@ function goalSection(project: ProjectRef, block: GoalBlock): HTMLElement {
 
 /** A link to one file of a project's package, opened in a new tab. Keyed
  * for focus like every other control, so a repaint does not drop a keyboard
- * user off it. */
-function knowledgeLink(projectId: string, path: string, text: string): HTMLAnchorElement {
+ * user off it; `region` tells the strip's link to a record from the card's
+ * link to the same record, so the repaint gives focus back to the one the
+ * user was on. */
+function knowledgeLink(
+  projectId: string, path: string, text: string, region: "strip-knowledge" | "card-knowledge",
+): HTMLAnchorElement {
   const a = document.createElement("a");
   a.className = "strip-open";
   a.href = knowledgeUrl(projectId, path);
   a.target = "_blank";
   a.rel = "noopener";
   a.textContent = text;
-  a.dataset.focus = focusKey("knowledge", projectId, path);
+  a.dataset.focus = focusKey(region, projectId, path);
   return a;
 }
 

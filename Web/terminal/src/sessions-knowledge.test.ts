@@ -203,6 +203,12 @@ describe("focusKey", () => {
     expect(focusKey("open", "abc-123")).toBe("open:abc-123");
     expect(focusKey("knowledge", "a", "x")).not.toBe(focusKey("knowledge", "b", "x"));
   });
+
+  it("tells the strip's record link from the card's link to the same record", () => {
+    const path = "goal-folders/rounds/002.md";
+    expect(focusKey("strip-knowledge", "kitterm", path)).not.toBe(focusKey("card-knowledge", "kitterm", path));
+    expect(focusKey("card-knowledge", "kitterm", path)).toBe("card-knowledge:kitterm:goal-folders/rounds/002.md");
+  });
 });
 
 describe("hasKnowledge", () => {
