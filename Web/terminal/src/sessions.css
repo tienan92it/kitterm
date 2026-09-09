@@ -203,6 +203,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .goal-top { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .goal-title { font-size: 13px; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
 .goal.brief .goal-title { font-weight: 400; }
+/* The slug beside an expanded title: the `.tag` pair, --ui-text-muted on
+   --ui-surface-2 (theme-contrast.test.ts, `muted-2`). */
+.goal-slug { font-size: 12px; font-weight: 400; color: var(--ui-text-muted); }
 .goal-status { font-size: 12px; color: var(--ui-text); }
 /* The warning colour sits on the border only; the text stays the tested
    pair, --ui-text on --ui-surface-2 (theme-contrast.test.ts). */

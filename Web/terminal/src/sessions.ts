@@ -14,6 +14,7 @@ import {
   focusKey,
   goalBlocks,
   goalGroups,
+  goalHeading,
   goalTitle,
   group,
   knowledgeUrl,
@@ -28,6 +29,7 @@ import {
   roundOf,
   stateOf,
   statePath,
+  titleSlug,
   tally,
   withProposed,
   type Approval,
@@ -939,12 +941,12 @@ function card(g: Group<SessionRow>, archived: ArchivedRow[]): HTMLElement {
       return sub;
     };
     for (const sec of sections) if (sec.crew === null) section.append(rowList(sec.rows));
-    for (const goal of goals) section.append(subHead(`goal: ${goal.slug}`, "crew-head goal-head"), rowList(goal.rows));
+    for (const goal of goals) section.append(subHead(goalHeading(goal.slug, true), "crew-head goal-head"), rowList(goal.rows));
     for (const sec of sections) {
       if (sec.crew === null) continue;
       section.append(subHead(`crew: ${sec.crew}`, "crew-head"), rowList(sec.rows));
     }
-    for (const goal of unmatched) section.append(subHead(`goal: ${goal.slug}`, "crew-head goal-head"), rowList(goal.rows));
+    for (const goal of unmatched) section.append(subHead(goalHeading(goal.slug, false), "crew-head goal-head"), rowList(goal.rows));
   }
   if (archived.length > 0) section.append(archivedFold(g.key, archived));
   return section;
@@ -952,11 +954,11 @@ function card(g: Group<SessionRow>, archived: ArchivedRow[]): HTMLElement {
 
 /** One goal of the project's knowledge package: a section under the
  * card's heading, named by the goal's title. Expanded (`active`,
- * `waiting`): the title, the proposals chip and the latest record on the
- * first line, then a definition list with `Round` (the counter, the status,
- * the last floor) and `Next` (the next action); the terms are visually
- * hidden, so a screen reader gets them and a sighted reader gets the
- * position and the weight. One line (`stopped`, `done`): the title, the
+ * `waiting`): the title with the slug beside it, the proposals chip and
+ * the latest record on the first line, then a definition list with `Round`
+ * (the counter, the status, the last floor) and `Next` (the next action);
+ * the terms are visually hidden, so a screen reader gets them and a
+ * sighted reader gets the position and the weight. One line (`stopped`, `done`): the title, the
  * status word, and the record. Every value comes from `STATE.md` and
  * `goal.md` as the daemon parsed them. */
 function goalSection(project: ProjectRef, block: GoalBlock): HTMLElement {
@@ -970,6 +972,14 @@ function goalSection(project: ProjectRef, block: GoalBlock): HTMLElement {
   const title = document.createElement("h3");
   title.className = "goal-title";
   title.textContent = goal;
+  const slug = expanded ? titleSlug(summary) : null;
+  if (slug !== null) {
+    // The slug maps the block to its `goal: <slug>` rule and label.
+    const mark = document.createElement("span");
+    mark.className = "goal-slug";
+    mark.textContent = slug;
+    title.append(" ", mark);
+  }
   top.append(title);
   if (!expanded && summary.status) {
     const status = document.createElement("span");

@@ -7,6 +7,7 @@ import {
   focusKey,
   goalBlocks,
   goalGroups,
+  goalHeading,
   goalOf,
   goalTitle,
   hasKnowledge,
@@ -19,6 +20,7 @@ import {
   roundOf,
   roundPath,
   statePath,
+  titleSlug,
   withProposed,
   type KnowledgeSummary,
   type ModelRow,
@@ -154,6 +156,19 @@ describe("goalBlocks", () => {
     expect(goalBlocks(null)).toEqual([]);
     expect(goalBlocks(undefined)).toEqual([]);
     expect(goalBlocks([{ project: "kitterm" }, active])).toEqual([{ summary: active, expanded: true }]);
+  });
+});
+
+describe("goalHeading and titleSlug", () => {
+  it("says when a goal label has no folder", () => {
+    expect(goalHeading("goal-folders", true)).toBe("goal: goal-folders");
+    expect(goalHeading("unknown-goal", false)).toBe("goal: unknown-goal (no folder)");
+  });
+
+  it("shows the slug beside a title, not beside itself", () => {
+    expect(titleSlug({ project: "kitterm", slug: "goal-folders", goal: "one folder per goal" })).toBe("goal-folders");
+    expect(titleSlug({ project: "kitterm", slug: "goal-folders" })).toBeNull();
+    expect(titleSlug({ project: "kitterm", goal: "no slug from an old daemon" })).toBeNull();
   });
 });
 

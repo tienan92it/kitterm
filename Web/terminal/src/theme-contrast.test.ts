@@ -29,8 +29,8 @@ const FLOOR = 4.5;
 /** The lines measured: the state label and the muted line on `--ui-surface`
  * (the card), and the same two colours on `--ui-surface-2` (the card head,
  * where every goal section sits: the title, the round line, the one-line
- * status word, and the proposals chip in `--ui-text`; the record link and
- * every `.tag` in `--ui-text-muted`). */
+ * status word, and the proposals chip in `--ui-text`; the record link,
+ * the slug beside the title, and every `.tag` in `--ui-text-muted`). */
 type Line = "label" | "muted" | "label-2" | "muted-2";
 
 /** Ratios under the floor today, by theme and line (see the file comment). */

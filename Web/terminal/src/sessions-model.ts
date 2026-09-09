@@ -459,6 +459,20 @@ export function goalTitle(summary: KnowledgeSummary): string {
   return summary.goal ?? summary.slug ?? "goal";
 }
 
+/** The text of a `goal:` sub-header above a group of rows: the label, and
+ * `(no folder)` when no goal folder of the project carries it, so the
+ * heading says that the crew runs outside every `STATE.md`. */
+export function goalHeading(slug: string, known: boolean): string {
+  return known ? `goal: ${slug}` : `goal: ${slug} (no folder)`;
+}
+
+/** The slug shown beside an expanded goal's title, so the title maps to
+ * the `goal: <slug>` sub-header and to the `goal:` label; null when the
+ * title is the slug already. */
+export function titleSlug(summary: KnowledgeSummary): string | null {
+  return summary.slug && summary.slug !== goalTitle(summary) ? summary.slug : null;
+}
+
 /** The path of the goal's `STATE.md` under the knowledge directory, where
  * its proposals wait: under the goal's folder, or at the root for a
  * summary from a daemon that sends no slug. */
