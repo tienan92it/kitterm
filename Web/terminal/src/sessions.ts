@@ -14,6 +14,7 @@ import {
   focusKey,
   goalGroups,
   group,
+  hasKnowledge,
   knowledgeUrl,
   needsYouMessage,
   NO_PROJECT,
@@ -895,7 +896,7 @@ function card(g: Group<SessionRow>, archived: ArchivedRow[]): HTMLElement {
   head.append(counts);
   if (!watchOnly && g.project?.root) head.append(spawnControls(g.project));
   const summary = g.project ? (knowledge.get(g.project.id)?.summary ?? null) : null;
-  if (summary && g.project) head.append(goalBlock(g.project, summary));
+  if (summary && g.project && hasKnowledge(summary)) head.append(goalBlock(g.project, summary));
   section.append(head);
 
   if (g.rows.length > 0) {

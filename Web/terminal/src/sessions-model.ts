@@ -398,6 +398,18 @@ export function roundPath(n: number): string {
   return `rounds/${String(n).padStart(3, "0")}.md`;
 }
 
+/** Does the summary carry anything the card can show? False for a package
+ * whose files the daemon found but could not read a field from, so the
+ * card skips the block instead of printing the word "goal" alone. */
+export function hasKnowledge(summary: KnowledgeSummary): boolean {
+  // The known fields, not every key: the wire object carries `ok` too.
+  const fields: (keyof KnowledgeSummary)[] = [
+    "slug", "goal", "status", "round", "budget", "lastFloor",
+    "nextAction", "proposals", "lastRound", "lastRecord", "lastDecision",
+  ];
+  return fields.some((field) => summary[field] !== undefined);
+}
+
 /** The path of the latest round record: the name the daemon read, else the
  * three-digit name for the round number from a daemon that sends only the
  * number; null without a record. */

@@ -7,6 +7,7 @@ import {
   focusKey,
   goalGroups,
   goalOf,
+  hasKnowledge,
   knowledgeUrl,
   proposalsName,
   proposedItems,
@@ -102,6 +103,16 @@ describe("focusKey", () => {
     expect(focusKey("knowledge", "kitterm", "rounds/005.md")).toBe("knowledge:kitterm:rounds/005.md");
     expect(focusKey("open", "abc-123")).toBe("open:abc-123");
     expect(focusKey("knowledge", "a", "x")).not.toBe(focusKey("knowledge", "b", "x"));
+  });
+});
+
+describe("hasKnowledge", () => {
+  it("is false for a summary that carries only the project", () => {
+    expect(hasKnowledge({ project: "kitterm" })).toBe(false);
+    expect(hasKnowledge({ project: "kitterm", slug: undefined })).toBe(false);
+    expect(hasKnowledge({ ok: true, project: "kitterm" } as KnowledgeSummary)).toBe(false);
+    expect(hasKnowledge({ project: "kitterm", proposals: 0 })).toBe(true);
+    expect(hasKnowledge(summary)).toBe(true);
   });
 });
 
