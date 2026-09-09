@@ -255,6 +255,21 @@ final class KnowledgeSummaryTests: XCTestCase {
         }
     }
 
+    /// Every descriptor the listing opens is closed: the knowledge
+    /// directory, each goal folder, each file, and `rounds/`, on the
+    /// skipped folders too.
+    func testSummariesLeaveNoDescriptorOpen() throws {
+        let root = try threeFolders()
+        try FileManager.default.createSymbolicLink(
+            atPath: root + "/docs/goals/linked", withDestinationPath: root + "/docs/goals/zed")
+        let open = { try FileManager.default.contentsOfDirectory(atPath: "/dev/fd").count }
+        let before = try open()
+        for _ in 0..<3 {
+            XCTAssertEqual(KnowledgeFile.summaries(root: root, knowledge: "docs/goals")?.count, 2)
+        }
+        XCTAssertEqual(try open(), before, "no descriptor leaks per listing")
+    }
+
     /// At most `maxGoalFolders` folders are read, the first in name order;
     /// the rest are skipped, so a checkout with thousands of folders costs
     /// one bounded listing.

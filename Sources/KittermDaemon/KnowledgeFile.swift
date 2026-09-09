@@ -14,8 +14,9 @@ import Foundation
 /// every component with `O_NOFOLLOW`, and reads through the descriptor it
 /// `fstat`ed, so the check and the read see one inode and a symlink anywhere
 /// in the chain is refused, the root and the knowledge directory included.
-/// The summary's listing of `rounds/` goes through `lstat` the same way.
-/// Files are capped at `maxBytes`. Every function here touches the disk, so
+/// The summary opens the knowledge directory once and each goal folder
+/// once, and reads every file and lists `rounds/` relative to that
+/// descriptor. Files are capped at `maxBytes`. Every function here touches the disk, so
 /// the routes call them off the loop. `kitterm goal list` calls `summaries`
 /// too, so the CLI and the route list the same folders.
 ///
@@ -79,9 +80,9 @@ public enum KnowledgeFile {
     /// its type refuses it; the size and the type come from `fstat` on the
     /// descriptor the bytes are read from.
     static func read(root: String, knowledge: String, path: String) throws -> Payload {
-        guard ProjectStore.isValidKnowledge(knowledge), isValidRelative(path) else { throw Failure.badPath }
-        let segments = (knowledge.split(separator: "/") + path.split(separator: "/")).map(String.init)
-        var current = try openComponent(at: AT_FDCWD, root, directory: true)
+        guard isValidRelative(path) else { throw Failure.badPath }
+        let segments = path.split(separator: "/").map(String.init)
+        var current = try openDirectory(root: root, knowledge: knowledge)
         defer { close(current) }
         for segment in segments.dropLast() {
             let next = try openComponent(at: current, segment, directory: true)
@@ -90,14 +91,7 @@ public enum KnowledgeFile {
         }
         let file = try openComponent(at: current, segments[segments.count - 1], directory: false)
         defer { close(file) }
-        var info = stat()
-        guard fstat(file, &info) == 0 else { throw Failure.notFound }
-        guard (info.st_mode & S_IFMT) == S_IFREG else { throw Failure.notFound }
-        guard info.st_size <= maxBytes else { throw Failure.tooLarge }
-        let handle = FileHandle(fileDescriptor: file, closeOnDealloc: false)
-        let data = (try? handle.read(upToCount: maxBytes + 1)) ?? Data()
-        guard data.count <= maxBytes else { throw Failure.tooLarge }
-        return Payload(data: data, contentType: contentType)
+        return Payload(data: try contents(of: file), contentType: contentType)
     }
 
     /// Every file is `text/plain`, `.md` included: a link from the fleet
@@ -119,15 +113,15 @@ public enum KnowledgeFile {
     /// skipped. The folder name is the slug and prefixes `lastRecord`. A
     /// package with no goal folder is an empty list.
     public static func summaries(root: String, knowledge: String) -> [KnowledgeSummary]? {
-        guard let directory = try? jailedDirectory(root: root, knowledge: knowledge) else { return nil }
-        let names = ((try? FileManager.default.contentsOfDirectory(atPath: directory)) ?? [])
-            .filter(ProjectStore.isValidID).sorted().prefix(maxGoalFolders)
+        guard let directory = try? openDirectory(root: root, knowledge: knowledge) else { return nil }
+        defer { close(directory) }
+        let names = entries(of: directory).filter(ProjectStore.isValidID).sorted().prefix(maxGoalFolders)
         var goals: [KnowledgeSummary] = []
         for name in names {
-            let folder = directory + "/" + name
-            guard isRegular(folder, type: S_IFDIR), isRegular(folder + "/STATE.md", type: S_IFREG),
-                  var summary = summary(root: root, knowledge: knowledge + "/" + name)
-            else { continue }
+            // A symlinked child fails `O_NOFOLLOW`; a file fails `O_DIRECTORY`.
+            guard let folder = try? openComponent(at: directory, name, directory: true) else { continue }
+            defer { close(folder) }
+            guard var summary = summary(folder: folder) else { continue }
             summary.slug = name
             summary.lastRecord = summary.lastRecord.map { name + "/" + $0 }
             goals.append(summary)
@@ -137,48 +131,61 @@ public enum KnowledgeFile {
     }
 
     /// The summary of one goal folder, `<root>/<knowledge>`, or nil when
-    /// the directory is missing or refused. Every file goes through the
-    /// jailed read, so a symlinked `STATE.md` leaves its fields absent.
+    /// the folder is missing or refused, or holds no regular `STATE.md`.
     static func summary(root: String, knowledge: String) -> KnowledgeSummary? {
-        guard let directory = try? jailedDirectory(root: root, knowledge: knowledge) else { return nil }
-        let text = { (path: String) -> String? in
-            guard let payload = try? read(root: root, knowledge: knowledge, path: path) else { return nil }
-            return String(data: payload.data, encoding: .utf8)
+        guard let folder = try? openDirectory(root: root, knowledge: knowledge) else { return nil }
+        defer { close(folder) }
+        return summary(folder: folder)
+    }
+
+    /// The summary of the goal folder open at `folder`, or nil when
+    /// `STATE.md` is not a regular file there (missing, a symlink, a FIFO),
+    /// so the folder is not a goal. Every file is opened relative to
+    /// `folder`, never by a walk from the root: per goal folder the cost is
+    /// the folder's own open plus at most four `openat` (`STATE.md`,
+    /// `goal.md`, `rounds/`, the latest record), three `fstat`, three reads,
+    /// and one `readdir` of `rounds/`. A `STATE.md` over `maxBytes` is a
+    /// goal with no fields, the same as a record over the cap.
+    private static func summary(folder: Int32) -> KnowledgeSummary? {
+        let state: String?
+        do { state = try text(at: folder, "STATE.md") } catch { return nil }
+        let goal = (try? text(at: folder, "goal.md")) ?? nil
+        // A symlinked `rounds/` fails `O_NOFOLLOW` like every other
+        // component and reads as no records. The record is read by the name
+        // the listing gave, so `rounds/7.md` is the file the summary
+        // describes and the file the card links to.
+        var record: String?
+        var latestRound: String?
+        if let rounds = try? openComponent(at: folder, "rounds", directory: true) {
+            defer { close(rounds) }
+            record = KnowledgeSummary.latestRecordName(entries(of: rounds))
+            latestRound = record.flatMap { (try? text(at: rounds, $0)) ?? nil }
         }
-        // A symlinked `rounds/` would list its target's names; refuse it like
-        // every other component, and treat it as no records.
-        var roundNames: [String] = []
-        if (try? refuseSymlink(directory + "/rounds")) != nil {
-            roundNames = (try? FileManager.default.contentsOfDirectory(atPath: directory + "/rounds")) ?? []
-        }
-        // The record is read by the name the listing gave, so `rounds/7.md`
-        // is the file the summary describes and the file the card links to.
-        let record = KnowledgeSummary.latestRecordName(roundNames)
-        return KnowledgeSummary.parse(
-            state: text("STATE.md"),
-            goal: text("goal.md"),
-            latestRecord: record,
-            latestRound: record.flatMap { text("rounds/" + $0) }
-        )
+        return KnowledgeSummary.parse(state: state, goal: goal, latestRecord: record, latestRound: latestRound)
     }
 
     // MARK: - the jail
 
-    /// `<root>/<knowledge>` when the root and every component under it are
-    /// real directories. A missing directory is `notFound`; a symlink is
-    /// `refused`. The root is checked too: a registered root is a `realpath`
-    /// when it exists at load time, and a symlink put there later must not
-    /// be followed by the listing.
-    static func jailedDirectory(root: String, knowledge: String) throws -> String {
+    /// `<root>/<knowledge>` open as a directory descriptor: the root, then
+    /// every component of `knowledge`, each opened `O_NOFOLLOW` relative to
+    /// the one before, so a symlink anywhere in the chain is `refused`, the
+    /// root included (a registered root is a `realpath` when it exists at
+    /// load time, and a symlink put there later must not be followed). A
+    /// missing directory is `notFound`. The caller closes the descriptor.
+    private static func openDirectory(root: String, knowledge: String) throws -> Int32 {
         guard ProjectStore.isValidKnowledge(knowledge) else { throw Failure.badPath }
-        try refuseSymlink(root)
-        var current = root
+        var current = try openComponent(at: AT_FDCWD, root, directory: true)
         for segment in knowledge.split(separator: "/") {
-            current += "/" + segment
-            try refuseSymlink(current)
+            let next: Int32
+            do {
+                next = try openComponent(at: current, String(segment), directory: true)
+            } catch {
+                close(current)
+                throw error
+            }
+            close(current)
+            current = next
         }
-        var info = stat()
-        guard stat(current, &info) == 0, (info.st_mode & S_IFMT) == S_IFDIR else { throw Failure.notFound }
         return current
     }
 
@@ -198,16 +205,52 @@ public enum KnowledgeFile {
         throw Failure.notFound
     }
 
-    /// True when `lstat` sees `type` at `path`: a symlink is never it.
-    private static func isRegular(_ path: String, type: mode_t) -> Bool {
+    /// The bytes of the regular file open at `file`: `notFound` for any
+    /// other type, `tooLarge` past `maxBytes`. The size and the type come
+    /// from `fstat` on the descriptor the bytes are read from.
+    private static func contents(of file: Int32) throws -> Data {
         var info = stat()
-        return lstat(path, &info) == 0 && (info.st_mode & S_IFMT) == type
+        guard fstat(file, &info) == 0 else { throw Failure.notFound }
+        guard (info.st_mode & S_IFMT) == S_IFREG else { throw Failure.notFound }
+        guard info.st_size <= maxBytes else { throw Failure.tooLarge }
+        let handle = FileHandle(fileDescriptor: file, closeOnDealloc: false)
+        let data = (try? handle.read(upToCount: maxBytes + 1)) ?? Data()
+        guard data.count <= maxBytes else { throw Failure.tooLarge }
+        return data
     }
 
-    /// `refused` for a symlink at `path`; `notFound` when nothing is there.
-    private static func refuseSymlink(_ path: String) throws {
-        var info = stat()
-        guard lstat(path, &info) == 0 else { throw Failure.notFound }
-        if (info.st_mode & S_IFMT) == S_IFLNK { throw Failure.refused }
+    /// The text of the regular file `name` under the descriptor `directory`.
+    /// Throws when nothing regular is there; nil when the file is over
+    /// `maxBytes` or not UTF-8, which leaves the summary's fields absent.
+    private static func text(at directory: Int32, _ name: String) throws -> String? {
+        let file = try openComponent(at: directory, name, directory: false)
+        defer { close(file) }
+        do {
+            return String(data: try contents(of: file), encoding: .utf8)
+        } catch Failure.tooLarge {
+            return nil
+        }
+    }
+
+    /// The names in the directory open at `directory`, `.` and `..` left
+    /// out, in no order. Read through a duplicate of the descriptor, so the
+    /// caller's stays open for the `openat` calls that follow.
+    private static func entries(of directory: Int32) -> [String] {
+        let copy = dup(directory)
+        guard copy >= 0 else { return [] }
+        guard let stream = fdopendir(copy) else {
+            close(copy)
+            return []
+        }
+        defer { closedir(stream) }
+        rewinddir(stream)
+        var names: [String] = []
+        while let entry = readdir(stream) {
+            let name = withUnsafeBytes(of: &entry.pointee.d_name) { raw in
+                String(decoding: raw.prefix { $0 != 0 }, as: UTF8.self)
+            }
+            if name != "." && name != ".." { names.append(name) }
+        }
+        return names
     }
 }
