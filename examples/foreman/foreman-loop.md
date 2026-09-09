@@ -64,7 +64,7 @@ Two files, two scopes:
   # STATE: <slug>
 
   - Status: active | waiting | stopped | done
-  - Round: <n> of <m> in this budget
+  - Round: <n> of <m> in this budget (<ordinal> budget)
   - Rounds total: <n>
   - Last floor: green | red (<check>) (<ISO date>, round <n>)
   - Updated: <ISO date>

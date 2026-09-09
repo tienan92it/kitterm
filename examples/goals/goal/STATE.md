@@ -1,15 +1,15 @@
-# STATE: <slug>
+# STATE: <goal slug>
 
 - Status: active
-- Round: 0 of 3 in this budget
+- Round: 0 of 3 in this budget (first budget)
 - Rounds total: 0
-- Last floor: <green | red (<check>)> (<ISO date>)
+- Last floor: green | red (<check>) (<ISO date>, round <n>)
 - Updated: <ISO date>
 
 ## Queue
 
-1. `<capability slug>` (capability 1)
-2. `<capability slug>` (capability 2)
+1. `<item>` (capability 1)
+2. `<item>` (capability 2)
 
 ## Failures
 
@@ -25,7 +25,7 @@ None.
 
 ## Next action
 
-Round 1: `<capability slug>`. Spawn one crew session in the repository root
-with labels `crew:<slug>`, `goal:<slug>`, `round:1`,
-`task:<capability slug>`. Run the floor. Send the capability 1 row from
-`plan.md`.
+Round 1: `<item>` from `plan.md` row 1; proof: `<test or screenshot>`.
+Spawn one crew session in the repository root with labels
+`crew:<goal slug>`, `goal:<goal slug>`, `round:1`, `task:<item>`, and no
+input. Run the floor in the shell, start `claude`, and send the row.

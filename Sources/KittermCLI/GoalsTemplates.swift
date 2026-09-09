@@ -27,7 +27,7 @@ enum GoalsTemplates {
         project + goal.map { (path: "goal/" + $0.path, contents: $0.contents) }
 
     /// The placeholder `kitterm goal new` replaces in `STATE.md`.
-    static let slugPlaceholder = "<slug>"
+    static let slugPlaceholder = "<goal slug>"
 
     static let loop = #"""
         # LOOP
@@ -97,9 +97,10 @@ enum GoalsTemplates {
            budget is spent.
         2. **Verify the world.** Spawn one crew session in the repository root with
            labels `crew:<goal>`, `goal:<slug>`, `round:<n>`, `task:<queue-item>`,
-           and `input:"claude\n"`. Read the screen. Run the floor from `plan.md`. A
-           red floor makes the regression this round's job and pushes the queue item
-           back.
+           and no input. Run the floor from `plan.md` in the shell with
+           `send_input` and `wait_for_command`. A red floor makes the regression
+           this round's job and pushes the queue item back. Then send `claude` and
+           read the screen.
         3. **Send one request.** Type the round prompt in one `send_input`: the
            queue item, its proof from `plan.md`, the facts that apply, the frozen
            and propose paths, the corpus request it serves, and the rule to add a
@@ -189,8 +190,8 @@ enum GoalsTemplates {
         human prunes `facts.md` and the goal's open proposals. The human answers
         per goal:
 
-        - **continue**: the foreman resets `Round: 0 of 3`, sets `Status: active`,
-          and notes the decision in `STATE.md`.
+        - **continue**: the foreman resets `Round: 0 of 3 in this budget (<ordinal>
+          budget)`, sets `Status: active`, and notes the decision in `STATE.md`.
         - **redirect**: the human edits `goal.md` or `plan.md`, then says continue.
         - **stop**: the foreman sets `Status: stopped` and archives or ends the
           goal's crew sessions. The folder stays where it is.
@@ -351,18 +352,18 @@ enum GoalsTemplates {
         """#
 
     static let state = #"""
-        # STATE: <slug>
+        # STATE: <goal slug>
 
         - Status: active
-        - Round: 0 of 3 in this budget
+        - Round: 0 of 3 in this budget (first budget)
         - Rounds total: 0
-        - Last floor: <green | red (<check>)> (<ISO date>)
+        - Last floor: green | red (<check>) (<ISO date>, round <n>)
         - Updated: <ISO date>
 
         ## Queue
 
-        1. `<capability slug>` (capability 1)
-        2. `<capability slug>` (capability 2)
+        1. `<item>` (capability 1)
+        2. `<item>` (capability 2)
 
         ## Failures
 
@@ -378,10 +379,10 @@ enum GoalsTemplates {
 
         ## Next action
 
-        Round 1: `<capability slug>`. Spawn one crew session in the repository root
-        with labels `crew:<slug>`, `goal:<slug>`, `round:1`,
-        `task:<capability slug>`. Run the floor. Send the capability 1 row from
-        `plan.md`.
+        Round 1: `<item>` from `plan.md` row 1; proof: `<test or screenshot>`.
+        Spawn one crew session in the repository root with labels
+        `crew:<goal slug>`, `goal:<goal slug>`, `round:1`, `task:<item>`, and no
+        input. Run the floor in the shell, start `claude`, and send the row.
 
         """#
 }

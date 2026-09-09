@@ -76,6 +76,45 @@ final class GoalsLayoutDocsTests: XCTestCase {
         XCTAssertFalse(skill.contains("\\u001b[B"), "no arrow key through send_input")
     }
 
+    /// The `- Round:` and `- Last floor:` lines have one shape: the
+    /// template's line is the skill's shape-block line with its
+    /// placeholders filled, and the skill's continue edit writes the same
+    /// shape. The card parses `Round: N of M`, so the shape is an interface.
+    func testStateLineShapesMatchTheSkill() throws {
+        let template = GoalsTemplates.state.split(separator: "\n").map(String.init)
+        let skill = ForemanSkills.foremanLoop.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+        let line = { (lines: [String], key: String) throws -> String in
+            try XCTUnwrap(lines.first { $0.hasPrefix("- \(key):") }, "a `- \(key):` line")
+        }
+        let round = try line(skill, "Round")
+        XCTAssertEqual(round, "- Round: <n> of <m> in this budget (<ordinal> budget)")
+        let filled = round.replacingOccurrences(of: "<n>", with: "0")
+            .replacingOccurrences(of: "<m>", with: "3")
+            .replacingOccurrences(of: "<ordinal>", with: "first")
+        XCTAssertEqual(try line(template, "Round"), filled)
+        XCTAssertEqual(try line(template, "Last floor"), try line(skill, "Last floor"))
+        XCTAssertTrue(
+            ForemanSkills.foremanLoop.contains("set `Round: 0 of 3 in this budget (<ordinal> budget)`"),
+            "the continue edit writes the shape"
+        )
+        XCTAssertTrue(
+            GoalsTemplates.loop.contains("`Round: 0 of 3 in this budget (<ordinal>\n  budget)`"),
+            "LOOP.md names the shape"
+        )
+    }
+
+    /// The template's next action starts with the item and its proof, and
+    /// names the goal placeholder apart from the item placeholder.
+    func testStateTemplateNextActionStartsWithTheItem() throws {
+        let next = try XCTUnwrap(GoalsTemplates.state.components(separatedBy: "## Next action\n\n").last)
+        XCTAssertTrue(next.hasPrefix("Round 1: `<item>` from `plan.md` row 1; proof: `<test or screenshot>`."), next)
+        XCTAssertEqual(GoalsTemplates.slugPlaceholder, "<goal slug>")
+        XCTAssertTrue(next.contains("`goal:<goal slug>`"), next)
+        XCTAssertFalse(GoalsTemplates.state.contains("<slug>"), "one placeholder for the goal")
+        XCTAssertFalse(GoalsTemplates.state.contains("<capability slug>"), "one placeholder for the item")
+        XCTAssertTrue(GoalsTemplates.state.hasPrefix("# STATE: <goal slug>\n"))
+    }
+
     /// The `STATE.md` template is the short shape and nothing else.
     func testStateTemplateIsTheShortShape() {
         let headings = GoalsTemplates.state.split(separator: "\n").filter { $0.hasPrefix("## ") }.map(String.init)

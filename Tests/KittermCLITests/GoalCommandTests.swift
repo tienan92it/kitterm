@@ -58,9 +58,9 @@ final class GoalCommandTests: XCTestCase {
         }
         let state = String(decoding: try XCTUnwrap(written["STATE.md"]), as: UTF8.self)
         XCTAssertTrue(state.hasPrefix("# STATE: demo\n\n- Status: active\n"), state)
-        XCTAssertFalse(state.contains("<slug>"), "every <slug> placeholder is replaced")
+        XCTAssertFalse(state.contains(GoalsTemplates.slugPlaceholder), "every goal slug placeholder is replaced")
         XCTAssertEqual(
-            state, GoalsTemplates.state.replacingOccurrences(of: "<slug>", with: "demo"),
+            state, GoalsTemplates.state.replacingOccurrences(of: GoalsTemplates.slugPlaceholder, with: "demo"),
             "only the slug changes"
         )
         XCTAssertFalse(FileManager.default.fileExists(atPath: project + "/docs/goals/LOOP.md"), "no project file")

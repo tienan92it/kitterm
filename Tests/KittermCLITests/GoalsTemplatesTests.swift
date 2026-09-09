@@ -52,7 +52,7 @@ final class GoalsTemplatesTests: XCTestCase {
     func testStateTemplateHeadingAndStatus() {
         let lines = GoalsTemplates.state.split(separator: "\n").map(String.init)
         XCTAssertEqual(lines.first, "# STATE: \(GoalsTemplates.slugPlaceholder)")
-        XCTAssertEqual(GoalsTemplates.slugPlaceholder, "<slug>")
+        XCTAssertEqual(GoalsTemplates.slugPlaceholder, "<goal slug>", "apart from the `<item>` placeholder")
         XCTAssertTrue(lines.contains("- Status: active"), "the template opens active")
         XCTAssertFalse(GoalsTemplates.goalFile.contains("Status:"), "status lives in STATE.md only")
     }
