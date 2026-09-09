@@ -67,6 +67,8 @@ enum KittermMain {
                 try tokenCommand(args.dropFirst())
             case "project":
                 try ProjectCommand.run(args.dropFirst())
+            case "goal":
+                try GoalCommand.run(args.dropFirst())
             case "skills":
                 try SkillsCommand.run(args.dropFirst())
             case "identity":
@@ -185,7 +187,11 @@ enum KittermMain {
               kitterm token create <name> [--watch] | list | revoke <name>
               kitterm project add <path> [--name NAME] [--knowledge DIR] | list | remove <id>
               kitterm project init <path> [--name NAME] [--knowledge DIR]
-                                      # write the goal package templates, then add
+                                      # write docs/goals/LOOP.md and facts.md, then add
+              kitterm goal new <path> <slug> [--knowledge DIR]
+                                      # write docs/goals/<slug>/ from the template
+              kitterm goal list <path> [--knowledge DIR]
+                                      # one line per goal folder: slug and status
               kitterm skills install [--dir DIR] | list
                                       # write the foreman skills into ~/.claude/skills
               kitterm identity [status|setup|sign]
@@ -240,8 +246,16 @@ enum KittermMain {
             project registers a directory in ~/.kitterm/projects.json, so
             /sessions groups its shells under one card (a registered root,
             else the nearest .git; see AGENTS.md "Projects"). project init
-            also writes the goal package templates (examples/goals/) into
-            --knowledge, default docs/goals, and never overwrites a file.
+            also writes the project files of the goal loop (LOOP.md and
+            facts.md, from examples/goals/) into --knowledge, default
+            docs/goals, and never overwrites a file.
+
+            goal new writes one goal folder, <knowledge>/<slug>/, from the
+            template under examples/goals/goal/ (goal.md, plan.md, STATE.md,
+            corpus/, rounds/) with the slug in STATE.md; it refuses an
+            existing folder. goal list prints each goal folder's slug and
+            the Status line of its STATE.md, active first. Neither needs the
+            project registered.
 
             skills install writes the reference foreman skills under
             examples/foreman/ (foreman-loop, review-crew, triage) to
