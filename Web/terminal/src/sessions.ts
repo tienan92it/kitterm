@@ -9,6 +9,7 @@ import {
   crewSections,
   crews as crewsOf,
   filter as applyFilter,
+  focusKey,
   goalGroups,
   group,
   knowledgeUrl,
@@ -932,7 +933,9 @@ function goalBlock(project: ProjectRef, summary: KnowledgeSummary): HTMLElement 
   return box;
 }
 
-/** A link to one file of a project's package, opened in a new tab. */
+/** A link to one file of a project's package, opened in a new tab. Keyed
+ * for focus like every other control, so a repaint does not drop a keyboard
+ * user off it. */
 function knowledgeLink(projectId: string, path: string, text: string): HTMLAnchorElement {
   const a = document.createElement("a");
   a.className = "strip-open";
@@ -940,6 +943,7 @@ function knowledgeLink(projectId: string, path: string, text: string): HTMLAncho
   a.target = "_blank";
   a.rel = "noopener";
   a.textContent = text;
+  a.dataset.focus = focusKey("knowledge", projectId, path);
   return a;
 }
 
@@ -1263,6 +1267,7 @@ function openLink(id: string, text: string): HTMLAnchorElement {
   a.className = "strip-open";
   a.href = `/?session=${encodeURIComponent(id)}`;
   a.textContent = text;
+  a.dataset.focus = focusKey("open", id);
   return a;
 }
 

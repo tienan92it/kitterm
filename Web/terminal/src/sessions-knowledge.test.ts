@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  focusKey,
   goalGroups,
   goalOf,
   knowledgeUrl,
@@ -86,6 +87,14 @@ describe("roundPath and knowledgeUrl", () => {
   it("builds the knowledge route with each segment encoded", () => {
     expect(knowledgeUrl("kitterm", "rounds/002.md")).toBe("/api/projects/kitterm/knowledge/rounds/002.md");
     expect(knowledgeUrl("a b", "x y/z.md")).toBe("/api/projects/a%20b/knowledge/x%20y/z.md");
+  });
+});
+
+describe("focusKey", () => {
+  it("names a link by its kind and what it opens, so a repaint restores focus to it", () => {
+    expect(focusKey("knowledge", "kitterm", "rounds/005.md")).toBe("knowledge:kitterm:rounds/005.md");
+    expect(focusKey("open", "abc-123")).toBe("open:abc-123");
+    expect(focusKey("knowledge", "a", "x")).not.toBe(focusKey("knowledge", "b", "x"));
   });
 });
 

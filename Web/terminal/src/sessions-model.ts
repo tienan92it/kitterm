@@ -313,6 +313,13 @@ export function approvalName(decision: "Allow" | "Deny", tool: string, who: stri
   return who ? `${decision} ${tool} in ${who}` : `${decision} ${tool}`;
 }
 
+/** The `data-focus` key of a control, so `paint` can give focus back to it
+ * after a repaint: the kind, then what it acts on, joined with `:`. Every
+ * link and button the page builds carries one. */
+export function focusKey(kind: string, ...parts: string[]): string {
+  return [kind, ...parts].join(":");
+}
+
 /** What the polite live region says when the count of items that need the
  * human changes. */
 export function needsYouMessage(count: number): string {
