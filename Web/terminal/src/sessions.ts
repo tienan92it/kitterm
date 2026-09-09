@@ -143,6 +143,8 @@ let archives: ArchivedRow[] = [];
 /** One request at a time: a response slower than the poll interval must not
  * overlap the next tick, or an older snapshot could repaint over a newer one. */
 let inFlight = false;
+/** The summary requests run after the fleet painted; never two batches. */
+let knowledgeInFlight = false;
 /** Polls that failed in a row. One is a blip and keeps the last snapshot on
  * the page; the second replaces the page with the error. */
 let failedPolls = 0;
@@ -238,21 +240,35 @@ async function poll(): Promise<void> {
       ? (((await archivesRes.json()) as { archives?: ArchivedRow[] }).archives ?? [])
       : [];
     sessions = data.sessions ?? [];
-    await fetchKnowledge();
     failedPolls = 0;
     render();
   } catch {
     failedPolls += 1;
     if (failedPolls >= 2 || !skeletonMounted) renderError();
+    return;
   } finally {
     inFlight = false;
+  }
+  // The summaries come after the fleet has painted, bounded by the poll
+  // interval each and outside `inFlight`, so a package on a stalled disk
+  // costs one card and never the sessions or the approvals. Checked by
+  // hand: a registered project on an unreadable root leaves the fleet
+  // painting (rounds/007.md).
+  if (knowledgeInFlight) return;
+  knowledgeInFlight = true;
+  try {
+    await fetchKnowledge();
+    render();
+  } finally {
+    knowledgeInFlight = false;
   }
 }
 
 /** One summary request per registered project with a knowledge directory,
- * conditional on the ETag from the last answer. A project the daemon
- * answered 404 for is asked again every `KNOWLEDGE_RETRY_POLLS` polls. A
- * failed request keeps the last summary; the next poll asks again. */
+ * conditional on the ETag from the last answer and aborted after `POLL_MS`.
+ * A project the daemon answered 404 for is asked again every
+ * `KNOWLEDGE_RETRY_POLLS` polls. A failed or aborted request keeps the last
+ * summary; the next poll asks again. */
 async function fetchKnowledge(): Promise<void> {
   const wanted = projects.filter((p) => p.registered && p.knowledge);
   const ids = new Set(wanted.map((p) => p.id));
@@ -267,7 +283,10 @@ async function fetchKnowledge(): Promise<void> {
       try {
         const headers: Record<string, string> = { accept: "application/json" };
         if (entry?.etag) headers["if-none-match"] = entry.etag;
-        const res = await fetch(`/api/projects/${encodeURIComponent(project.id)}/knowledge`, { headers });
+        const res = await fetch(`/api/projects/${encodeURIComponent(project.id)}/knowledge`, {
+          headers,
+          signal: AbortSignal.timeout(POLL_MS),
+        });
         if (res.status === 304) return;
         if (res.status === 404) {
           knowledge.set(project.id, { etag: null, summary: null, missesLeft: KNOWLEDGE_RETRY_POLLS });
@@ -277,7 +296,7 @@ async function fetchKnowledge(): Promise<void> {
         const summary = (await res.json()) as KnowledgeSummary;
         knowledge.set(project.id, { etag: res.headers.get("etag"), summary, missesLeft: 0 });
       } catch {
-        // Keep what the card shows; the next poll asks again.
+        // Keep what the card shows, on a timeout too; the next poll asks again.
       }
     }),
   );
