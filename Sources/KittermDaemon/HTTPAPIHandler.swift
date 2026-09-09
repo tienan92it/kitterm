@@ -1461,11 +1461,15 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         return String(hash, radix: 16)
     }
 
-    /// One response with the given headers and body. `Content-Length` and
-    /// `Connection` are added here.
+    /// The one write path: one response with the given headers and body.
+    /// `Content-Length` and `Connection` are added here. `flushed` runs once
+    /// the whole response has been written, before a non-keep-alive
+    /// connection is closed. `writeJSON` and `serveFileContent` come
+    /// through here too.
     private func writeBytes(
         status: HTTPResponseStatus, headers: HTTPHeaders, data: Data,
-        context: ChannelHandlerContext, version: HTTPVersion, keepAlive: Bool
+        context: ChannelHandlerContext, version: HTTPVersion, keepAlive: Bool,
+        flushed: (() -> Void)? = nil
     ) {
         var headers = headers
         headers.add(name: "Content-Length", value: "\(data.count)")
@@ -1475,6 +1479,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         buffer.writeBytes(data)
         context.write(wrapOutboundOut(.body(.byteBuffer(buffer))), promise: nil)
         context.writeAndFlush(wrapOutboundOut(.end(nil))).whenComplete { _ in
+            flushed?()
             if !keepAlive { context.close(promise: nil) }
         }
     }
@@ -3116,7 +3121,6 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             }
             var headers = HTTPHeaders()
             headers.add(name: "Content-Type", value: payload.contentType)
-            headers.add(name: "Content-Length", value: String(payload.data.count))
             // Never guess past what we chose, never let the response fetch
             // anything, and never let it be framed.
             headers.add(name: "X-Content-Type-Options", value: "nosniff")
@@ -3131,21 +3135,12 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             headers.add(name: "X-Kitterm-Total-Bytes", value: "\(payload.totalBytes)")
             headers.add(name: "X-Kitterm-Truncated", value: payload.truncated ? "1" : "0")
             headers.add(name: "X-Kitterm-Kind", value: payload.kind)
-
-            context.write(self.wrapOutboundOut(.head(HTTPResponseHead(
-                version: head.version, status: .ok, headers: headers
-            ))), promise: nil)
-            var buffer = context.channel.allocator.buffer(capacity: payload.data.count)
-            buffer.writeBytes(payload.data)
-            context.write(self.wrapOutboundOut(.body(.byteBuffer(buffer))), promise: nil)
-            context.writeAndFlush(self.wrapOutboundOut(.end(nil))).whenComplete { _ in
-                if !head.isKeepAlive { context.close(promise: nil) }
-            }
+            self.writeBytes(status: .ok, headers: headers, data: payload.data,
+                            context: context, version: head.version, keepAlive: head.isKeepAlive)
         }
     }
 
-    /// `flushed` runs once the whole response has been written, before a
-    /// non-keep-alive connection is closed.
+    /// A JSON body: `writeBytes` with the JSON content type.
     private func writeJSON(
         status: HTTPResponseStatus,
         body: String,
@@ -3156,19 +3151,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     ) {
         var headers = HTTPHeaders()
         headers.add(name: "Content-Type", value: "application/json")
-        headers.add(name: "Content-Length", value: "\(body.utf8.count)")
-        headers.add(name: "Connection", value: keepAlive ? "keep-alive" : "close")
-
-        let head = HTTPResponseHead(version: version, status: status, headers: headers)
-        context.write(wrapOutboundOut(.head(head)), promise: nil)
-        var buffer = context.channel.allocator.buffer(capacity: body.utf8.count)
-        buffer.writeString(body)
-        context.write(wrapOutboundOut(.body(.byteBuffer(buffer))), promise: nil)
-        context.writeAndFlush(wrapOutboundOut(.end(nil))).whenComplete { _ in
-            flushed?()
-            if !keepAlive {
-                context.close(promise: nil)
-            }
-        }
+        writeBytes(status: status, headers: headers, data: Data(body.utf8),
+                   context: context, version: version, keepAlive: keepAlive, flushed: flushed)
     }
 }
