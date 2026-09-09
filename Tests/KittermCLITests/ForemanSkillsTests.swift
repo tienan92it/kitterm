@@ -7,10 +7,7 @@ import XCTest
 /// byte, so the two cannot drift. Edit the file, then paste it into
 /// `ForemanSkills.swift`.
 final class ForemanSkillsTests: XCTestCase {
-    private static let examples = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()  // KittermCLITests
-        .deletingLastPathComponent()  // Tests
-        .deletingLastPathComponent()  // repo root
+    private static let examples = CLIFixture.repositoryRoot
         .appendingPathComponent("examples/foreman", isDirectory: true)
 
     func testEverySkillMatchesItsExampleFile() throws {

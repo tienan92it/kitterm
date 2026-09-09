@@ -22,9 +22,17 @@ Do this before every `send_input` into a pane that runs an interactive agent.
    - Trust dialog — "Is this a project you created or one you trust?" with
      the options `No, exit` and `Yes, I trust this folder`. When the cwd is
      the repo the user named, move the mark to `Yes, I trust this folder`
-     with one Down arrow (`send_input text="\u001b[B" enter=false`), read
-     the screen to confirm `❯` sits on that option, then press Enter alone
-     (`send_input text=""`). Any other cwd: stop and tell the user.
+     with one Down arrow. An arrow key does not pass through `send_input`:
+     the bridge drops the escape byte, and the pane receives `[B` as text.
+     Send the key through the HTTP input route from your shell, with the
+     session id and the daemon's port:
+
+     ```
+     printf '\033[B' | curl -s --data-binary @- http://127.0.0.1:3418/api/sessions/<id>/input
+     ```
+
+     Read the screen to confirm `❯` sits on that option, then press Enter
+     alone (`send_input text=""`). Any other cwd: stop and tell the user.
    - Permission dialog — "Do you want to proceed?" or a numbered choice with
      a `Yes` and a `No`. Never answer it. Tell the user and link the pane.
    - In-progress turn — a spinner line with "esc to interrupt", or a `⏺`
@@ -72,7 +80,7 @@ Do this before every `send_input` into a pane that runs an interactive agent.
 - Add a regression test that fails before any fix, when the user asks for the
   fix.
 - When the triage session carries a `goal:` label, the confirmed root cause
-  also goes into that round's record, `docs/goals/rounds/NNN.md`, under
+  also goes into that round's record, `docs/goals/<slug>/rounds/NNN.md`, under
   "Gap" with its evidence. The foreman writes it there; the triage session
   never edits the record. Spawn such a session with the `goal:` and
   `round:` labels of the round it serves.

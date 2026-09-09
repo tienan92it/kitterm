@@ -3,7 +3,8 @@ import XCTest
 
 @testable import KittermDaemon
 
-/// `KnowledgeSummary.parse` on string fixtures and on this repository's own
+/// `KnowledgeSummary.parse` on string fixtures, `KnowledgeFile.summaries`
+/// on a package with three folders, and both on this repository's own
 /// `docs/goals/`, read from the source tree.
 final class KnowledgeSummaryTests: XCTestCase {
     private let state = """
@@ -168,13 +169,12 @@ final class KnowledgeSummaryTests: XCTestCase {
     /// when this test was written; they change when the foreman updates
     /// `STATE.md`, so only the shape is pinned, not the round.
     func testParsesThisRepositoryOwnPackage() throws {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        let package = root.appendingPathComponent("docs/goals")
+        let root = Self.repositoryRoot
+        let package = root.appendingPathComponent("docs/goals/projects-and-knowledge")
         guard FileManager.default.fileExists(atPath: package.appendingPathComponent("STATE.md").path) else {
-            throw XCTSkip("docs/goals is not beside the test source")
+            throw XCTSkip("docs/goals/projects-and-knowledge is not beside the test source")
         }
-        let summary = KnowledgeFile.summary(root: root.path, knowledge: "docs/goals")
+        let summary = KnowledgeFile.summary(root: root.path, knowledge: "docs/goals/projects-and-knowledge")
         let parsed = try XCTUnwrap(summary)
         XCTAssertEqual(parsed.slug, "projects-and-knowledge")
         XCTAssertEqual(parsed.goal, "projects on the fleet view, and a knowledge base per project")
@@ -185,5 +185,159 @@ final class KnowledgeSummaryTests: XCTestCase {
         XCTAssertNotNil(parsed.proposals)
         XCTAssertGreaterThanOrEqual(try XCTUnwrap(parsed.lastRound), 5)
         XCTAssertNotNil(parsed.lastDecision)
+    }
+
+    // MARK: - one summary per goal folder
+
+    /// The checkout the test source sits in: `Tests/KittermDaemonTests/<file>`.
+    /// `KnowledgeRouteTests` reads it too, so a moved test file changes one line.
+    static let repositoryRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()  // KittermDaemonTests
+        .deletingLastPathComponent()  // Tests
+        .deletingLastPathComponent()  // repo root
+
+    /// A scratch package: `LOOP.md` and `facts.md` at the top, `zed/`
+    /// active with a record, `alpha/` done whose heading names another
+    /// slug, and `notes/` with no `STATE.md`.
+    private func threeFolders() throws -> String {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("kitterm-knowledge-summaries-\(UUID().uuidString)")
+        let files: [String: String] = [
+            "docs/goals/LOOP.md": "# LOOP\n",
+            "docs/goals/facts.md": "# Facts\n",
+            "docs/goals/zed/STATE.md": "# STATE: zed\n\n- Status: active\n- Round: 1 of 3\n\n## Next action\n\nRound 2.\n",
+            "docs/goals/zed/goal.md": "# Goal: zed ships\n",
+            "docs/goals/zed/rounds/001.md": "# Round 001\n\n## Decision\n\npropose (x)\n",
+            "docs/goals/alpha/STATE.md": "# STATE: not-alpha\n\n- Status: done\n",
+            "docs/goals/alpha/rounds/003.md": "# Round 003\n\n## Decision\n\ndone.\n",
+            "docs/goals/notes/README.md": "not a goal\n",
+        ]
+        for (path, text) in files {
+            let url = root.appendingPathComponent(path)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try text.write(to: url, atomically: true, encoding: .utf8)
+        }
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        return root.path
+    }
+
+    func testSummariesListEveryGoalFolder() throws {
+        let root = try threeFolders()
+        let goals = try XCTUnwrap(KnowledgeFile.summaries(root: root, knowledge: "docs/goals"))
+        XCTAssertEqual(goals.map(\.slug), ["zed", "alpha"], "active before done; `notes/` has no STATE.md")
+        XCTAssertEqual(goals[0].status, "active")
+        XCTAssertEqual(goals[0].goal, "zed ships")
+        XCTAssertEqual(goals[0].round, 1)
+        XCTAssertEqual(goals[0].nextAction, "Round 2.")
+        XCTAssertEqual(goals[0].lastRound, 1)
+        XCTAssertEqual(goals[0].lastRecord, "zed/rounds/001.md", "the record path carries the folder")
+        XCTAssertEqual(goals[0].lastDecision, "propose (x)")
+        XCTAssertEqual(goals[1].slug, "alpha", "the folder name, not the `# STATE:` heading")
+        XCTAssertEqual(goals[1].status, "done")
+        XCTAssertEqual(goals[1].lastRecord, "alpha/rounds/003.md")
+        XCTAssertNil(goals[1].goal)
+        XCTAssertNil(KnowledgeFile.summaries(root: root, knowledge: "docs/none"), "no knowledge directory")
+        XCTAssertEqual(KnowledgeFile.summaries(root: root, knowledge: "docs/goals/notes"), [], "a folder with no goal folder")
+    }
+
+    /// A child whose name is not a slug is not a goal: a right-to-left
+    /// override, a space, an upper-case letter, or a trailing hyphen in
+    /// the folder name never reaches `slug`, the sub-header, or the record
+    /// path, whatever its `STATE.md` says.
+    func testSummariesSkipAFolderWhoseNameIsNotASlug() throws {
+        let root = try threeFolders()
+        for name in ["\u{202E}zed", "with space", "Upper", "trailing-", "-leading", "dots.md"] {
+            let folder = root + "/docs/goals/" + name
+            try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+            try "# STATE: \(name)\n\n- Status: active\n".write(toFile: folder + "/STATE.md", atomically: true, encoding: .utf8)
+        }
+        let goals = try XCTUnwrap(KnowledgeFile.summaries(root: root, knowledge: "docs/goals"))
+        XCTAssertEqual(goals.map(\.slug), ["zed", "alpha"])
+        for slug in goals.compactMap(\.slug) {
+            XCTAssertTrue(ProjectStore.isValidID(slug), slug)
+        }
+    }
+
+    /// Every descriptor the listing opens is closed: the knowledge
+    /// directory, each goal folder, each file, and `rounds/`, on the
+    /// skipped folders too.
+    func testSummariesLeaveNoDescriptorOpen() throws {
+        let root = try threeFolders()
+        try FileManager.default.createSymbolicLink(
+            atPath: root + "/docs/goals/linked", withDestinationPath: root + "/docs/goals/zed")
+        let open = { try FileManager.default.contentsOfDirectory(atPath: "/dev/fd").count }
+        let before = try open()
+        for _ in 0..<3 {
+            XCTAssertEqual(KnowledgeFile.summaries(root: root, knowledge: "docs/goals")?.count, 2)
+        }
+        XCTAssertEqual(try open(), before, "no descriptor leaks per listing")
+    }
+
+    /// At most `maxGoalFolders` folders are read, the first in name order;
+    /// the rest are skipped, so a checkout with thousands of folders costs
+    /// one bounded listing.
+    func testSummariesReadAtMostTheCapInNameOrder() throws {
+        let root = try threeFolders()
+        let cap = KnowledgeFile.maxGoalFolders
+        for n in 0..<(cap + 5) {
+            let folder = root + "/docs/goals/g" + String(format: "%03d", n)
+            try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+            try "# STATE: g\(n)\n\n- Status: active\n".write(toFile: folder + "/STATE.md", atomically: true, encoding: .utf8)
+        }
+        let goals = try XCTUnwrap(KnowledgeFile.summaries(root: root, knowledge: "docs/goals"))
+        XCTAssertEqual(goals.count, cap)
+        let slugs = Set(goals.compactMap(\.slug))
+        XCTAssertTrue(slugs.contains("alpha"), "`alpha` sorts first by name")
+        XCTAssertTrue(slugs.contains("g000"))
+        XCTAssertFalse(slugs.contains("zed"), "`zed` sorts after the cap by name")
+        XCTAssertFalse(slugs.contains("g" + String(format: "%03d", cap + 4)))
+    }
+
+    /// The order the summary route and `kitterm goal list` share: the same
+    /// slugs and statuses `GoalCommandTests.testListOrdersByStatusThenSlug`
+    /// pins, in the same order.
+    func testListOrderIsTheOneTheCLIPins() {
+        let folders: [(String, String?)] = [
+            ("zed", "active"), ("alpha", "done"), ("beta", "stopped"), ("mid", "waiting"),
+            ("gamma", "active"), ("odd", "paused"), ("bare", nil), ("blank", nil),
+        ]
+        let goals = folders.map { slug, status -> KnowledgeSummary in
+            var goal = KnowledgeSummary()
+            goal.slug = slug
+            goal.status = status
+            return goal
+        }.sorted(by: KnowledgeSummary.isOrderedBefore)
+        XCTAssertEqual(goals.map(\.slug), ["gamma", "zed", "mid", "beta", "alpha", "bare", "blank", "odd"])
+        XCTAssertEqual(KnowledgeSummary.statusOrder, ["active", "waiting", "stopped", "done"])
+        XCTAssertEqual(KnowledgeSummary.statusRank(nil), 4)
+        XCTAssertEqual(KnowledgeSummary.statusRank("paused"), 4)
+        XCTAssertEqual(KnowledgeSummary.statusRank("unknown"), 4, "the CLI's word for a missing line ranks the same")
+    }
+
+    /// This repository's own package as the second fixture: `goal-folders`
+    /// before `projects-and-knowledge` (done), every `done` goal after every
+    /// `active` one. Containment and order only, so a new goal folder or an
+    /// edited `goal.md` title keeps the floor green.
+    func testSummariesOfThisRepositoryOwnPackage() throws {
+        let root = Self.repositoryRoot
+        guard FileManager.default.fileExists(atPath: root.appendingPathComponent("docs/goals/goal-folders/STATE.md").path),
+              FileManager.default.fileExists(atPath: root.appendingPathComponent("docs/goals/projects-and-knowledge/STATE.md").path)
+        else { throw XCTSkip("docs/goals is not beside the test source") }
+        let goals = try XCTUnwrap(KnowledgeFile.summaries(root: root.path, knowledge: "docs/goals"))
+        let slugs = goals.map(\.slug)
+        let folders = try XCTUnwrap(slugs.firstIndex(of: "goal-folders"))
+        let done = try XCTUnwrap(slugs.firstIndex(of: "projects-and-knowledge"))
+        XCTAssertLessThan(folders, done, "goal-folders before projects-and-knowledge")
+        let statuses = goals.map(\.status)
+        if let lastActive = statuses.lastIndex(of: "active"), let firstDone = statuses.firstIndex(of: "done") {
+            XCTAssertLessThan(lastActive, firstDone, "every done goal after every active one")
+        }
+        XCTAssertEqual(goals[done].status, "done")
+        XCTAssertNotNil(goals[done].goal, "goal.md has a title")
+        XCTAssertGreaterThanOrEqual(try XCTUnwrap(goals[done].lastRound), 8)
+        XCTAssertTrue(try XCTUnwrap(goals[done].lastRecord).hasPrefix("projects-and-knowledge/rounds/"))
+        XCTAssertNotNil(goals[folders].status)
+        XCTAssertNotNil(goals[folders].nextAction)
+        XCTAssertNotNil(goals[folders].goal, "goal.md has a title")
     }
 }

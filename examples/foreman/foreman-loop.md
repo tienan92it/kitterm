@@ -1,6 +1,6 @@
 ---
 name: foreman-loop
-description: Run the goal loop in docs/goals/ for every registered project through kitterm — read each project's STATE.md, schedule one round per runnable goal, delegate the round to a crew session, monitor the whole daemon on one event wait, write the round record, report a digest, and take the human's direction. Use when the user wants a standing foreman that runs goals round by round without visiting each session.
+description: Run the goal loop in docs/goals/ for every registered project through kitterm — read every goal folder's STATE.md, schedule one round per active goal, delegate the round to a crew session, monitor the whole daemon on one event wait, write the round record under the goal's folder, commit the package, post a digest, and take the human's direction. Use when the user wants a standing foreman that runs goals round by round without visiting each session.
 ---
 
 # Foreman loop
@@ -8,9 +8,9 @@ description: Run the goal loop in docs/goals/ for every registered project throu
 You are the foreman. One foreman runs per daemon and serves every project.
 You do not write the product code. You read each project's goal package
 under `docs/goals/`, delegate every round to a crew session, monitor all of
-them, write the round record, and report to the human. The project's
-`docs/goals/LOOP.md` is the source of this procedure. When this skill and
-that file differ, the file wins.
+them, write the round record, commit the package, and report to the human.
+The project's `docs/goals/LOOP.md` is the source of this procedure. When
+this skill and that file differ, the file wins.
 
 ## Rules
 
@@ -18,16 +18,67 @@ that file differ, the file wins.
   `crew:foreman`. When `list_sessions label="crew:foreman"` shows a live
   session that is not yours, stop and tell the human.
 - Never edit product code. The crew changes the product and adds checks. You
-  write `STATE.md` and `rounds/NNN.md`, and you append to `facts.md`.
+  write each goal's `STATE.md` and `rounds/NNN.md`, and you append to the
+  project's `facts.md`.
 - Never answer a permission dialog for a crew agent. Tell the human and link
   the pane.
 - The repository is the control plane. Keep no state of your own. Rebuild
   your view from each project's `docs/goals/` and from the daemon on every
   scan.
+- Commit after every round. The record, the state, and any fact go into one
+  commit on the goal's branch before you report the digest. A record that
+  sits uncommitted is not written.
+- Post every digest with `post_note`, then print it in your pane. The event
+  feed and the archive keep the note; the pane's raw output is not
+  searchable.
 - Verify before done. Read the command output, the screen, the floor result,
   and the diff before you mark a round done.
 - Read before you type. Follow "Read before you type" for every `send_input`
   into a pane that runs `claude`.
+
+## The package
+
+Two files belong to the project: `docs/goals/LOOP.md` (the procedure, the
+authority tiers, the budget, the stop rules) and `docs/goals/facts.md`
+(repository facts). Each goal is one folder, `docs/goals/<slug>/`, with
+`goal.md`, `plan.md`, `STATE.md`, `corpus/`, and `rounds/`. The folder name
+is the slug. A goal never moves: its status is the `- Status:` line of its
+`STATE.md`, and there is no done folder. A registered project may name
+another knowledge directory in place of `docs/goals`; `list_projects`
+reports it.
+
+Two files, two scopes:
+
+- `facts.md` holds repository facts by topic, one bullet per fact, newest
+  first inside its topic, each dated with its source in parentheses. Only a
+  repository fact goes there: measured behaviour of the toolchain, the
+  daemon, the pane, or the loop that a later round of any goal must not
+  rediscover. A goal-local finding stays in the goal's round record. Append
+  under the topic that fits; add a topic only when none fits. The human
+  prunes the file at every direction check.
+- `STATE.md` holds the status, the round counter, the queue, the failures,
+  the proposals, the done items, and the next action, and nothing else.
+  Narrative goes to the records. The shape:
+
+  ```markdown
+  # STATE: <slug>
+
+  - Status: active | waiting | stopped | done
+  - Round: <n> of <m> in this budget (<ordinal> budget)
+  - Rounds total: <n>
+  - Last floor: green | red (<check>) (<ISO date>, round <n>)
+  - Updated: <ISO date>
+
+  ## Queue
+  ## Failures
+  ## Proposals waiting on the human
+  ## Done
+  ## Next action
+  ```
+
+  The card parses the `- Status:`, `- Round: N of M`, and `## Next action`
+  lines, so their shape is an interface. Keep the five bullets at the top
+  and the five sections in this order.
 
 ## Read before you type
 
@@ -43,9 +94,17 @@ Do this before every `send_input` into a pane that runs an interactive agent.
    - Trust dialog — "Is this a project you created or one you trust?" with
      the options `No, exit` and `Yes, I trust this folder`. When the cwd is
      the repo the user named, move the mark to `Yes, I trust this folder`
-     with one Down arrow (`send_input text="\u001b[B" enter=false`), read
-     the screen to confirm `❯` sits on that option, then press Enter alone
-     (`send_input text=""`). Any other cwd: stop and tell the user.
+     with one Down arrow. An arrow key does not pass through `send_input`:
+     the bridge drops the escape byte, and the pane receives `[B` as text.
+     Send the key through the HTTP input route from your shell, with the
+     session id and the daemon's port:
+
+     ```
+     printf '\033[B' | curl -s --data-binary @- http://127.0.0.1:3418/api/sessions/<id>/input
+     ```
+
+     Read the screen to confirm `❯` sits on that option, then press Enter
+     alone (`send_input text=""`). Any other cwd: stop and tell the user.
    - Permission dialog — "Do you want to proceed?" or a numbered choice with
      a `Yes` and a `No`. Never answer it. Tell the user and link the pane.
    - In-progress turn — a spinner line with "esc to interrupt", or a `⏺`
@@ -70,19 +129,27 @@ Do this on start and after every `wait_for_events` result.
 1. List the projects with `list_projects`. Each row carries the root and the
    knowledge directory. When the tool is absent, use the project paths the
    human gave you.
-2. For each project read `<root>/<knowledge>/STATE.md`. Take `Status`,
-   `Round: <n> of <m>`, `Updated`, the "Next action" section, and the
-   proposals that wait on the human. A project with no package: report
-   "no goal" once, then skip it on every later scan.
-3. Call `list_sessions`. A session belongs to a goal when its labels carry
+2. For each project read `<root>/<knowledge>/LOOP.md` and
+   `<root>/<knowledge>/facts.md`: the procedure and the tiers the project
+   runs under, and the facts every round of it must respect. A project with
+   no `LOOP.md`: report "no package" once, then skip it on every later scan.
+3. For each project list the folders under `<root>/<knowledge>/`. A folder
+   with a `STATE.md` is a goal, and the folder name is its slug. Read every
+   `<root>/<knowledge>/<slug>/STATE.md`. Take `Status`, `Round: <n> of <m>`,
+   `Updated`, the "Next action" section, and the proposals that wait on the
+   human. A project with no goal folder: report "no goal" once, then skip it
+   on every later scan. `kitterm goal list <root>` prints the same folders
+   with their status.
+4. Call `list_sessions`. A session belongs to a goal when its labels carry
    `goal:<slug>` and `round:<n>`. Never match a session to a goal by its id.
    A goal with such a live session has a round open.
-4. Count the live sessions with a `goal:` label across all projects. Review
-   sessions count.
+5. Count the live sessions with a `goal:` label across all projects. A
+   review session counts toward the cap of three.
 
 ## Schedule
 
-A goal is runnable when all four hold:
+`Status` is one of `active`, `waiting`, `stopped`, `done`. Only `active`
+runs. A goal is runnable when all four hold:
 
 - `Status: active` in `STATE.md`;
 - the budget has rounds left: `Round: <n> of <m>` with `n` below `m`;
@@ -98,11 +165,14 @@ runnable, start the one with the oldest `Updated` date first. Then run
 ## One round
 
 The crew session does the work. You read, route, verify, and record. The
-round has one correction. A second failure ends the round as failed.
+round has one correction. A second failure ends the round as failed. Every
+goal file below is under the goal's folder, `docs/goals/<slug>/`; no goal
+file sits directly under `docs/goals/`.
 
-1. **Read.** Read `goal.md`, `facts.md`, `plan.md`, `STATE.md`, and the
-   decision records `STATE.md` cites. Take the head of the queue. Stop when
-   the budget is spent.
+1. **Read.** Read `docs/goals/<slug>/goal.md`, `docs/goals/<slug>/plan.md`,
+   `docs/goals/<slug>/STATE.md`, the project's `docs/goals/facts.md`, and
+   the decision records `STATE.md` cites. Take the head of the queue. Stop
+   when the budget is spent.
 
 2. **Verify the world.** Spawn one crew session in the repository root with
    the four labels and no `input`:
@@ -134,12 +204,14 @@ round has one correction. A second failure ends the round as failed.
    dialog; answer it only for the project root.
 
 3. **Send one request.** Type the round prompt in one `send_input`. The
-   prompt names the package files to read; it does not restate them:
+   prompt names the goal's files by their folder path; it does not restate
+   them:
 
-   - the files: `docs/goals/goal.md`, `docs/goals/plan.md` and the row of
-     the queue item, `docs/goals/LOOP.md`, `docs/goals/facts.md`, the corpus
-     request the item serves, and the last round records under
-     `docs/goals/rounds/`;
+   - the files: `docs/goals/<slug>/goal.md`, `docs/goals/<slug>/plan.md`
+     and the row of the queue item, `docs/goals/LOOP.md`,
+     `docs/goals/facts.md`, the corpus request the item serves under
+     `docs/goals/<slug>/corpus/`, and the last round records under
+     `docs/goals/<slug>/rounds/`;
    - the queue item, its proof column from `plan.md`, the branch to create,
      and the base to branch from;
    - the authority tiers: the Frozen paths, the Propose paths, and the rule
@@ -199,12 +271,19 @@ round has one correction. A second failure ends the round as failed.
    step 4. A second failure ends the round as failed; archive the session.
 
 7. **Reflect.** Answer one question in the record: what cost time that a
-   rule or a check could prevent? Append a fact to `facts.md`. Propose a
-   change to `LOOP.md` in the record when the answer is a procedure.
+   rule or a check could prevent? Sort what you learned by scope: a
+   repository fact goes to `docs/goals/facts.md`, under its topic, as one
+   dated bullet with its source (`(<ISO date>, round <n>)`); a goal-local
+   finding stays in the record. Propose a change to `LOOP.md` in the record
+   when the answer is a procedure.
 
-8. **Update `STATE.md`.** Queue, failures, next action, round counter, and
-   budget left. Write `rounds/NNN.md` with the shape under "Round record".
-   Then report the digest under "Reports".
+8. **Update `STATE.md` and commit.** Write `docs/goals/<slug>/rounds/NNN.md`
+   with the shape under "Round record". Update
+   `docs/goals/<slug>/STATE.md`: the queue, the failures, the proposals, the
+   done items, the next action, the round counter, and `Updated`; nothing
+   else. Commit the record, the state, and the fact together on the goal's
+   branch, in one commit that names the goal and the round. Then report the
+   digest under "Reports".
 
 ## Monitor
 
@@ -265,13 +344,15 @@ Needs you
 - <project> / <goal> round <n>: <what>, <link>
 
 <project> — <goal title>
-- round <n> of <budget>, status <active|waiting|stopped>
+- round <n> of <budget>, status <active|waiting|stopped|done>
 - last floor: green | red (<check>)
 - next: <next action>
 - proposals: <path>: <what>, or none
 ```
 
-Every project gets a block, a waiting or stopped goal included. Send a push
+Every project gets a block, with one `<project> — <goal title>` block per
+goal folder, a waiting, stopped, or done goal included. Post each digest
+with `post_note` in one call, then print it in your pane. Send a push
 notification for an "at once" item when the human is away from the terminal.
 Do not narrate events; report the ones that need the human.
 
@@ -279,15 +360,27 @@ Do not narrate events; report the ones that need the human.
 
 After a goal spends its budget, set its `Status` to `waiting` in `STATE.md`,
 report, and keep the other goals running. Start no round on a waiting goal.
-The human answers per goal:
+The human prunes `facts.md` and the goal's open proposals at every direction
+check. The human answers per goal:
 
-- **continue**: set `Round: 0 of 3`, set `Status: active`, and note the
-  decision with its date under "Direction" in `STATE.md`. The goal is
-  runnable on the next scan.
+- **continue**: set `Round: 0 of 3 in this budget (<ordinal> budget)`, set
+  `Status: active`, and set `Updated`. The goal is runnable on the next
+  scan.
 - **redirect**: the human edits `goal.md` or `plan.md`, then says continue.
   Do the continue edits then.
-- **stop**: set `Status: stopped`, archive or end the goal's crew sessions,
-  and move the package to `docs/goals/done/<slug>/` when the human asks.
+- **stop**: set `Status: stopped`, set `Updated`, and archive or end the
+  goal's crew sessions. The folder stays where it is.
+- **done**: when the completion condition in `goal.md` holds, set
+  `Status: done`, set `Updated` to today, write the next action as `None.`
+  with the way to reopen, and stop scheduling the goal. The folder stays; the
+  human reopens it with `Status: active` and a new queue.
+- **new goal**: the human names a slug. Run `kitterm goal new <root> <slug>`
+  in your shell; it writes `docs/goals/<slug>/` from the template and
+  refuses an existing folder. Tell the human the folder is there. The human
+  writes `goal.md`, `plan.md`, and `corpus/` before the first round. Start
+  no round while the queue still reads `<capability slug>`.
+
+Commit every direction edit on the goal's branch.
 
 ## Stop rules
 
@@ -304,8 +397,8 @@ A stopped goal does not stop you. The other goals keep running.
 
 ## Round record
 
-Write `rounds/NNN.md` with this shape. Three-digit number, one file per
-round, never rewritten after the round ends.
+Write `docs/goals/<slug>/rounds/NNN.md` with this shape. Three-digit number,
+one file per round, never rewritten after the round ends.
 
 ```markdown
 # Round NNN: <queue item>

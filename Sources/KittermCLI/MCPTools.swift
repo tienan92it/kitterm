@@ -164,7 +164,7 @@ enum MCPTools {
             ),
             tool(
                 "list_projects",
-                "List every project the daemon has seen: registered in ~/.kitterm/projects.json (kitterm project add) or discovered from a session's cwd by its .git. Each row carries id, name, root, registered, and knowledge (the goal package directory, docs/goals by default). A foreman scans this to find each project's docs/goals/STATE.md; filter list_sessions by project with its project argument.",
+                "List every project the daemon has seen: registered in ~/.kitterm/projects.json (kitterm project add) or discovered from a session's cwd by its .git. Each row carries id, name, root, registered, and knowledge (the goal package directory, docs/goals by default). A foreman scans this to find each project's docs/goals/<slug>/STATE.md per goal folder; filter list_sessions by project with its project argument.",
                 properties: [:]
             ),
         ]

@@ -4,10 +4,21 @@ The procedure, the authority, the budget, and the stop rules for every goal
 loop in this repository. This file changes when the process changes.
 `STATE.md` changes after every round.
 
-The repository is the control plane. This package is small on purpose:
-`goal.md`, `facts.md`, `plan.md`, `LOOP.md`, `STATE.md`, `corpus/`,
-`rounds/`. Add a file only when a round proves the package cannot hold a
-fact without it.
+The repository is the control plane. The package is small on purpose.
+Two files belong to the project: this file and `facts.md`. Each goal is
+one folder under `docs/goals/<slug>/` with `goal.md`, `plan.md`,
+`STATE.md`, `corpus/`, and `rounds/`. A new goal is a new folder; a goal
+that ends stays where it is with its status in `STATE.md`. There is no
+done folder. Add a file only when a round proves the package cannot hold
+a fact without it.
+
+Two files, two scopes. `facts.md` holds repository facts by topic, each
+dated with its source; only a repository fact goes there, and a
+goal-local finding stays in its round record. `STATE.md` holds status,
+round counter, queue, failures, proposals, done, and next action, and
+nothing else; narrative goes to the records. The card parses the
+`- Status:`, `- Round: N of M`, and `## Next action` lines of `STATE.md`,
+so their shape is an interface.
 
 ## Roles
 
@@ -55,9 +66,10 @@ whether the product improved.
    budget is spent.
 2. **Verify the world.** Spawn one crew session in the repository root with
    labels `crew:<goal>`, `goal:<slug>`, `round:<n>`, `task:<queue-item>`,
-   and `input:"claude\n"`. Read the screen. Run the floor from `plan.md`. A
-   red floor makes the regression this round's job and pushes the queue item
-   back.
+   and no input. Run the floor from `plan.md` in the shell with
+   `send_input` and `wait_for_command`. A red floor makes the regression
+   this round's job and pushes the queue item back. Then send `claude` and
+   read the screen.
 3. **Send one request.** Type the round prompt in one `send_input`: the
    queue item, its proof from `plan.md`, the facts that apply, the frozen
    and propose paths, the corpus request it serves, and the rule to add a
@@ -93,12 +105,15 @@ plane; the foreman rebuilds its view from them and from the daemon.
 
 1. **Scan.** On start, and after every event batch, list the projects
    (`list_projects` once capability 1 ships; until then the paths the human
-   gave). For each project read `docs/goals/STATE.md`. A project without the
-   package is reported once as "no goal" and skipped. Match a live session
-   to its goal by the `goal:` and `round:` labels, never by id.
+   gave). For each project read every `docs/goals/<slug>/STATE.md`. A
+   project with no goal folder is reported once as "no goal" and skipped.
+   The folder name is the goal's slug; the `goal:` label carries it. Match
+   a live session to its goal by the `goal:` and `round:` labels, never by
+   id.
 2. **Schedule.** A goal is runnable when its `Status` is `active`, its
    budget has rounds left, no round is open, and no proposal blocks the next
-   action. Run at most one round per goal and at most three crew sessions
+   action. `Status` is one of `active`, `waiting`, `stopped`, `done`; only
+   `active` runs. Run at most one round per goal and at most three crew sessions
    across all projects. Start the runnable goal with the oldest `Updated`
    date first.
 3. **Delegate.** Run "One round" for that goal. The crew session does the
@@ -128,7 +143,7 @@ Needs you
 - <project> / <goal> round <n>: <what>, <link>
 
 <project> — <goal title>
-- round <n> of <budget>, status <active|waiting|stopped>
+- round <n> of <budget>, status <active|waiting|stopped|done>
 - last floor: green | red (<check>)
 - next: <next action>
 - proposals: <path>: <what>, or none
@@ -140,14 +155,23 @@ the terminal. Do not narrate events; report the ones that need the human.
 ## Direction
 
 After a goal spends its budget the foreman sets its `Status` to `waiting`,
-reports, and keeps the other goals running. The human answers per goal:
+reports, and keeps the other goals running. At every direction check the
+human prunes `facts.md` and the goal's open proposals. The human answers
+per goal:
 
 - **continue**: the foreman resets `Round: 0 of 3`, sets `Status: active`,
   and notes the decision in `STATE.md`.
 - **redirect**: the human edits `goal.md` or `plan.md`, then says continue.
-- **stop**: the foreman sets `Status: stopped`, archives or ends the goal's
-  crew sessions, and moves the package to `docs/goals/done/<slug>/` when the
-  human asks.
+- **stop**: the foreman sets `Status: stopped` and archives or ends the
+  goal's crew sessions. The folder stays where it is.
+- **done**: when the completion condition in `goal.md` holds, the foreman
+  sets `Status: done`, notes the date, and stops scheduling the goal. The
+  folder stays; the human can reopen it with `Status: active` and a new
+  queue at any time.
+- **new goal**: the human names a slug. The foreman creates
+  `docs/goals/<slug>/` from the template (`kitterm goal new <path> <slug>`
+  once it exists), and the human writes `goal.md`, `plan.md`, and the
+  corpus before the first round.
 
 ## Stop rules
 
@@ -164,7 +188,7 @@ A stopped goal does not stop the foreman. The other goals keep running.
 
 ## Round record
 
-Write `rounds/NNN.md` with this shape. Three-digit number, one file per
+Write `<slug>/rounds/NNN.md` with this shape. Three-digit number, one file per
 round, never rewritten after the round ends.
 
 ```markdown

@@ -79,12 +79,23 @@ export type AttentionItem<R extends ModelRow> =
   | { kind: "needs-input"; row: R }
   | { kind: "failed"; row: R };
 
-/** The summary of a project's knowledge package,
- * `GET /api/projects/<id>/knowledge`. Every field but `project` is absent
- * when the file or the line behind it is missing. */
+/** What `GET /api/projects/<id>/knowledge` answers: one summary per goal
+ * folder under the knowledge directory, `active` first, then `waiting`,
+ * `stopped`, `done`, the rest, and by slug; empty for a package with no
+ * goal folder. */
+export type KnowledgeAnswer = {
+  ok: boolean;
+  project: string;
+  goals: KnowledgeSummary[];
+};
+
+/** The summary of one goal folder of a project's knowledge package, one
+ * entry of `KnowledgeAnswer.goals`, with the project's id added by the
+ * page. Every field but `project` is absent when the file or the line
+ * behind it is missing. */
 export type KnowledgeSummary = {
   project: string;
-  /** The suffix of the `# STATE: <slug>` heading; what a `goal:` label names. */
+  /** The goal folder's name; what a `goal:` label names. */
   slug?: string;
   goal?: string;
   status?: string;
@@ -95,14 +106,21 @@ export type KnowledgeSummary = {
   proposals?: number;
   lastRound?: number;
   /** The latest record's path under the knowledge directory by its real
-   * file name, `rounds/7.md` included. Absent from a daemon before v0.24. */
+   * file name, `<slug>/rounds/7.md` included. Absent from a daemon before
+   * v0.24. */
   lastRecord?: string;
   /** The first line of the latest round record's `## Decision` section. */
   lastDecision?: string;
 };
 
-/** Rows whose `goal:` label names the project's own goal slug. */
+/** Rows that share one `goal:` label value: a goal folder's slug, or a
+ * label no folder of the project matches. */
 export type GoalGroup<R extends ModelRow> = { slug: string; rows: R[] };
+
+/** One goal of a card, and whether the card expands it (title, round,
+ * status, next action, proposals, record) or prints one line (title,
+ * status, record). */
+export type GoalBlock = { summary: KnowledgeSummary; expanded: boolean };
 
 /** A round record whose decision is `propose`: the human has to decide
  * before the goal's next round. */
@@ -313,28 +331,36 @@ export function approvalName(decision: "Allow" | "Deny", tool: string, who: stri
   return who ? `${decision} ${tool} in ${who}` : `${decision} ${tool}`;
 }
 
-/** What a record link shows: the record's file name without `rounds/` and
- * `.md`, so `rounds/005.md` reads `005` and `rounds/7.md` reads `7`. The
- * word "record" tells it from the `round N of M` counter beside it. */
+/** What a record link shows: the record's file name without the goal
+ * folder, `rounds/` and `.md`, so `goal-folders/rounds/005.md` reads `005`
+ * and `rounds/7.md` reads `7`. The word "record" tells it from the
+ * `round N of M` counter beside it. */
 export function recordLabel(path: string): string {
-  return path.replace(/^rounds\//, "").replace(/\.md$/, "");
+  return path.replace(/^(?:[^/]+\/)?rounds\//, "").replace(/\.md$/, "");
 }
 
-/** The accessible name of a record link: what it opens and whose. */
-export function recordName(path: string, project: string): string {
-  return `Open round record ${recordLabel(path)} of ${project}`;
+/** Whose a thing is, for a name: the goal and the project when the goal is
+ * given, else the project alone. */
+function whose(project: string, goal?: string): string {
+  return goal ? `${goal} in ${project}` : project;
 }
 
-/** The accessible name of the proposals chip, a link to `STATE.md`. */
-export function proposalsName(count: number, project: string): string {
+/** The accessible name of a record link: what it opens and whose, the goal
+ * and the project, so two `record 002` links on one card read apart. */
+export function recordName(path: string, project: string, goal?: string): string {
+  return `Open round record ${recordLabel(path)} of ${whose(project, goal)}`;
+}
+
+/** The accessible name of the proposals chip, a link to the goal's `STATE.md`. */
+export function proposalsName(count: number, project: string, goal?: string): string {
   const noun = count === 1 ? "proposal" : "proposals";
-  return `${count} ${noun} waiting on the human in STATE.md of ${project}`;
+  return `${count} ${noun} waiting on the human in STATE.md of ${whose(project, goal)}`;
 }
 
 /** The accessible name of a proposal's Dismiss button: which round of
- * which project, so two Dismiss buttons read apart. */
-export function dismissName(round: number, project: string): string {
-  return `Dismiss the proposal of round ${round} of ${project}`;
+ * which goal and project, so two Dismiss buttons read apart. */
+export function dismissName(round: number, project: string, goal?: string): string {
+  return `Dismiss the proposal of round ${round} of ${whose(project, goal)}`;
 }
 
 /** The `data-focus` key of a control, so `paint` can give focus back to it
@@ -374,23 +400,99 @@ export function roundOf(row: ModelRow): number | null {
 }
 
 /**
- * Split a card's rows into the goal's own crew and the rest: a row whose
- * `goal:` label equals the package's slug goes under that slug; every other
- * row, and every row when the package has no slug, stays in `rest` for the
- * crew sections. Both keep `sortInGroup`'s order.
+ * Split a card's rows by their `goal:` label. A row whose label equals a
+ * goal's slug goes under that slug: one group per goal that has a row, in
+ * the goals' order. A row whose label matches no goal of the project (or
+ * any labelled row when the project has no goal) goes to `unmatched`: one
+ * group per label value, in name order, so a crew on a goal the package
+ * does not know stays visible. The rows without the label stay in `rest`
+ * for the crew sections. Every group keeps `sortInGroup`'s order.
  */
 export function goalGroups<R extends ModelRow>(
   rows: R[],
-  summary: KnowledgeSummary | null | undefined,
-): { goals: GoalGroup<R>[]; rest: R[] } {
-  const slug = summary?.slug;
-  if (!slug) return { goals: [], rest: sortInGroup(rows) };
-  const own = rows.filter((row) => goalOf(row) === slug);
-  const rest = rows.filter((row) => goalOf(row) !== slug);
-  return {
-    goals: own.length > 0 ? [{ slug, rows: sortInGroup(own) }] : [],
-    rest: sortInGroup(rest),
-  };
+  goals: KnowledgeSummary[] | null | undefined,
+): { goals: GoalGroup<R>[]; unmatched: GoalGroup<R>[]; rest: R[] } {
+  const slugs = (goals ?? []).map((goal) => goal.slug).filter((slug): slug is string => !!slug);
+  const groups: GoalGroup<R>[] = [];
+  for (const slug of slugs) {
+    const own = rows.filter((row) => goalOf(row) === slug);
+    if (own.length > 0) groups.push({ slug, rows: sortInGroup(own) });
+  }
+  const strays = new Map<string, R[]>();
+  const rest: R[] = [];
+  for (const row of rows) {
+    const label = goalOf(row);
+    if (label === null) {
+      rest.push(row);
+      continue;
+    }
+    if (slugs.includes(label)) continue;
+    const list = strays.get(label) ?? [];
+    list.push(row);
+    strays.set(label, list);
+  }
+  const unmatched = [...strays.keys()]
+    .sort((a, b) => a.localeCompare(b))
+    .map((slug) => ({ slug, rows: sortInGroup(strays.get(slug) ?? []) }));
+  return { goals: groups, unmatched, rest: sortInGroup(rest) };
+}
+
+/** Which goals a card shows and how: every summary that carries a field,
+ * in the route's order (`active`, `waiting`, `stopped`, `done`). Only an
+ * `active` goal is expanded; a `waiting`, `stopped`, or `done` one is one
+ * line, so a project with several goals that wait on the human keeps its
+ * session rows above the fold on a phone. A goal with no status, or a
+ * status the loop does not name, is expanded, so nothing the human should
+ * read is folded away. */
+export function goalBlocks(goals: KnowledgeSummary[] | null | undefined): GoalBlock[] {
+  return (goals ?? [])
+    .filter(hasKnowledge)
+    .map((summary) => ({ summary, expanded: !isOneLine(summary.status) }));
+}
+
+function statusWord(status: string | undefined): string {
+  return (status ?? "").trim().toLowerCase();
+}
+
+function isOneLine(status: string | undefined): boolean {
+  const word = statusWord(status);
+  return word === "waiting" || word === "stopped" || word === "done";
+}
+
+/** Does the goal's line show its `proposals: N` chip? Yes while the goal
+ * is open (`active`, `waiting`, or a status the loop does not name) and
+ * proposals wait; a `stopped` or `done` goal keeps its line to the title,
+ * the status, and the record. */
+export function showsProposals(summary: KnowledgeSummary): boolean {
+  const word = statusWord(summary.status);
+  return (summary.proposals ?? 0) > 0 && word !== "stopped" && word !== "done";
+}
+
+/** What a goal is called on the page and in a name: its title, else its
+ * slug, else the word "goal". */
+export function goalTitle(summary: KnowledgeSummary): string {
+  return summary.goal ?? summary.slug ?? "goal";
+}
+
+/** The text of a `goal:` sub-header above a group of rows: the label, and
+ * `(no folder)` when no goal folder of the project carries it, so the
+ * heading says that the crew runs outside every `STATE.md`. */
+export function goalHeading(slug: string, known: boolean): string {
+  return known ? `goal: ${slug}` : `goal: ${slug} (no folder)`;
+}
+
+/** The slug shown beside an expanded goal's title, so the title maps to
+ * the `goal: <slug>` sub-header and to the `goal:` label; null when the
+ * title is the slug already. */
+export function titleSlug(summary: KnowledgeSummary): string | null {
+  return summary.slug && summary.slug !== goalTitle(summary) ? summary.slug : null;
+}
+
+/** The path of the goal's `STATE.md` under the knowledge directory, where
+ * its proposals wait: under the goal's folder, or at the root for a
+ * summary from a daemon that sends no slug. */
+export function statePath(summary: KnowledgeSummary): string {
+  return summary.slug ? `${summary.slug}/STATE.md` : "STATE.md";
 }
 
 /** `rounds/NNN.md` for round `n`: three digits, more when needed. */
@@ -424,17 +526,20 @@ export function knowledgeUrl(projectId: string, path: string): string {
   return `/api/projects/${encodeURIComponent(projectId)}/knowledge/${encoded}`;
 }
 
-/** What Dismiss stores for one proposal: the project and the round, so the
- * next round's proposal from the same project shows again. */
-export function dismissKey(projectId: string, round: number): string {
-  return `${projectId}:${round}`;
+/** What Dismiss stores for one proposal: the project, the goal's slug and
+ * the round, so the next round's proposal from the same goal, and another
+ * goal's proposal of the same round number, show again. The slug is ""
+ * for a summary from a daemon that sends none. */
+export function dismissKey(projectId: string, slug: string, round: number): string {
+  return `${projectId}:${slug}:${round}`;
 }
 
 /**
- * One attention item per project whose latest round record's decision
- * starts with `propose`, in the order given, less the ones in `dismissed`
- * (keys from `dismissKey`). A summary with no round record or a decision of
- * `done` or `failed` yields nothing.
+ * One attention item per goal whose latest round record's decision starts
+ * with `propose`, in the order given (one entry per goal of each project,
+ * the route's order), less the ones in `dismissed` (keys from
+ * `dismissKey`). A summary with no round record or a decision of `done` or
+ * `failed` yields nothing.
  */
 export function proposedItems(
   entries: { project: ProjectRef; summary: KnowledgeSummary }[],
@@ -446,7 +551,7 @@ export function proposedItems(
     const path = recordPath(summary);
     if (typeof round !== "number" || path === null) continue;
     if (!(summary.lastDecision ?? "").trim().toLowerCase().startsWith("propose")) continue;
-    if (dismissed.has(dismissKey(project.id, round))) continue;
+    if (dismissed.has(dismissKey(project.id, summary.slug ?? "", round))) continue;
     items.push({ kind: "proposed", project, summary, round, path });
   }
   return items;

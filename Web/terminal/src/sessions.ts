@@ -12,9 +12,11 @@ import {
   dismissName,
   filter as applyFilter,
   focusKey,
+  goalBlocks,
   goalGroups,
+  goalHeading,
+  goalTitle,
   group,
-  hasKnowledge,
   knowledgeUrl,
   needsYouMessage,
   NO_PROJECT,
@@ -24,14 +26,19 @@ import {
   recordLabel,
   recordName,
   recordPath,
+  showsProposals,
   roundOf,
   stateOf,
+  statePath,
+  titleSlug,
   tally,
   withProposed,
   type Approval,
   type AttentionItem,
   type Filter,
+  type GoalBlock,
   type Group,
+  type KnowledgeAnswer,
   type KnowledgeSummary,
   type MergedState,
   type ModelRow,
@@ -102,11 +109,16 @@ type Kind = "human" | "crew";
  * waits on the human in a project's knowledge package. */
 type StripItem = AttentionItem<SessionRow> | ProposedItem;
 
-/** One project's knowledge summary as last fetched. `summary` is null when
- * the daemon answered 404 (no knowledge directory); the page asks again
- * after `KNOWLEDGE_RETRY_POLLS` polls, so a `kitterm project init` shows up
- * without a reload. */
-type KnowledgeEntry = { etag: string | null; summary: KnowledgeSummary | null; missesLeft: number };
+/** One project's knowledge as last fetched: every goal summary the daemon
+ * listed, in its order, each with the project's id; empty for a package
+ * with no goal folder. `goals` is null when the daemon answered 404 (no
+ * knowledge directory); the page asks again after `KNOWLEDGE_RETRY_POLLS`
+ * polls, so a `kitterm project init` shows up without a reload. */
+type KnowledgeEntry = {
+  etag: string | null;
+  goals: KnowledgeSummary[] | null;
+  missesLeft: number;
+};
 
 /** The chip and search choice. Kept in `sessionStorage` so a reload on the
  * same tab keeps the view; a new tab starts clean. */
@@ -309,7 +321,7 @@ async function fetchKnowledge(): Promise<void> {
   await Promise.all(
     wanted.map(async (project) => {
       const entry = knowledge.get(project.id);
-      if (entry && entry.summary === null && entry.missesLeft > 0) {
+      if (entry && entry.goals === null && entry.missesLeft > 0) {
         entry.missesLeft -= 1;
         return;
       }
@@ -322,12 +334,16 @@ async function fetchKnowledge(): Promise<void> {
         });
         if (res.status === 304) return;
         if (res.status === 404) {
-          knowledge.set(project.id, { etag: null, summary: null, missesLeft: KNOWLEDGE_RETRY_POLLS });
+          knowledge.set(project.id, { etag: null, goals: null, missesLeft: KNOWLEDGE_RETRY_POLLS });
           return;
         }
         if (!res.ok) return;
-        const summary = (await res.json()) as KnowledgeSummary;
-        knowledge.set(project.id, { etag: res.headers.get("etag"), summary, missesLeft: 0 });
+        const answer = (await res.json()) as KnowledgeAnswer;
+        knowledge.set(project.id, {
+          etag: res.headers.get("etag"),
+          goals: knowledgeGoals(answer),
+          missesLeft: 0,
+        });
       } catch {
         // Keep what the card shows, on a timeout too; the next poll asks again.
       }
@@ -335,12 +351,18 @@ async function fetchKnowledge(): Promise<void> {
   );
 }
 
-/** The projects with a summary, for the strip's proposed items. */
+/** The goal summaries of one answer, each carrying the project's id, in
+ * the daemon's order. */
+function knowledgeGoals(answer: KnowledgeAnswer): KnowledgeSummary[] {
+  return (answer.goals ?? []).map((goal) => ({ ...goal, project: answer.project }));
+}
+
+/** Every goal of every project with a package, one entry each in the
+ * projects' then the route's order, for the strip's proposed items. */
 function knowledgeEntries(): { project: ProjectRef; summary: KnowledgeSummary }[] {
   const entries: { project: ProjectRef; summary: KnowledgeSummary }[] = [];
   for (const project of projects) {
-    const summary = knowledge.get(project.id)?.summary;
-    if (summary) entries.push({ project, summary });
+    for (const summary of knowledge.get(project.id)?.goals ?? []) entries.push({ project, summary });
   }
   return entries;
 }
@@ -411,7 +433,7 @@ function render(): void {
     projects,
     approvals.map((a) => a.id),
     archives.map((a) => a.id),
-    [...knowledge].map(([id, entry]) => [id, entry.etag, entry.summary === null]),
+    [...knowledge].map(([id, entry]) => [id, entry.etag, entry.goals === null]),
     [...dismissed],
     watchOnly,
     profiles.map((p) => p.name),
@@ -591,7 +613,7 @@ function approvalContent(approval: Approval, row: SessionRow | null): DocumentFr
  * decision line, and the record itself through the knowledge route. */
 function proposedContent(item: ProposedItem): DocumentFragment {
   const fragment = document.createDocumentFragment();
-  const goal = item.summary.goal ?? item.summary.slug ?? item.project.name;
+  const goal = goalTitle(item.summary);
   fragment.append(stripTop("proposed", goal, item.project.name));
   if (item.summary.lastDecision) {
     const line = document.createElement("div");
@@ -601,15 +623,15 @@ function proposedContent(item: ProposedItem): DocumentFragment {
   }
   const actions = document.createElement("div");
   actions.className = "proposed-actions";
-  const open = knowledgeLink(item.project.id, item.path, `Open record ${recordLabel(item.path)}`);
-  open.setAttribute("aria-label", recordName(item.path, item.project.name));
+  const open = knowledgeLink(item.project.id, item.path, `Open record ${recordLabel(item.path)}`, "strip-knowledge");
+  open.setAttribute("aria-label", recordName(item.path, item.project.name, goal));
   actions.append(open);
   // Read it, decided in STATE.md: the item leaves the strip and the count
-  // until the project's next round.
-  const key = dismissKey(item.project.id, item.round);
+  // until the goal's next round.
+  const key = dismissKey(item.project.id, item.summary.slug ?? "", item.round);
   const dismiss = button("Dismiss", "quiet", () => dismissProposal(key));
   dismiss.dataset.focus = focusKey("dismiss", key);
-  dismiss.setAttribute("aria-label", dismissName(item.round, item.project.name));
+  dismiss.setAttribute("aria-label", dismissName(item.round, item.project.name, goal));
   actions.append(dismiss);
   fragment.append(actions);
   return fragment;
@@ -895,14 +917,24 @@ function card(g: Group<SessionRow>, archived: ArchivedRow[]): HTMLElement {
   }
   head.append(counts);
   if (!watchOnly && g.project?.root) head.append(spawnControls(g.project));
-  const summary = g.project ? (knowledge.get(g.project.id)?.summary ?? null) : null;
-  if (summary && g.project && hasKnowledge(summary)) head.append(goalBlock(g.project, summary));
+  const entry = g.project ? knowledge.get(g.project.id) : undefined;
+  // One block per goal of the package, in the route's order. A package
+  // with no goal folder (an empty `goals`, not the null of a 404) says so,
+  // since the foreman skips such a project and the card must show why.
+  if (g.project) for (const block of goalBlocks(entry?.goals)) head.append(goalSection(g.project, block));
+  if (g.project && entry?.goals?.length === 0) {
+    const none = document.createElement("span");
+    none.className = "tally quiet goal-none";
+    none.textContent = "no goal folder";
+    head.append(none);
+  }
   section.append(head);
 
   if (g.rows.length > 0) {
-    // The rows without a crew label first, then the goal's own crew under
-    // its slug, then the other crews under a labelled rule each.
-    const { goals, rest } = goalGroups(g.rows, summary);
+    // The rows without a crew label first, then each goal's own crew under
+    // its slug, then the other crews under a labelled rule each, then the
+    // crews on a goal the package does not know, so they stay visible.
+    const { goals, unmatched, rest } = goalGroups(g.rows, entry?.goals);
     const sections = crewSections(rest).filter((sec) => sec.rows.length > 0);
     const rowList = (rows: SessionRow[]): HTMLElement => {
       const list = document.createElement("ul");
@@ -910,62 +942,88 @@ function card(g: Group<SessionRow>, archived: ArchivedRow[]): HTMLElement {
       for (const r of rows) list.append(row(r));
       return list;
     };
-    for (const sec of sections) if (sec.crew === null) section.append(rowList(sec.rows));
-    for (const goal of goals) {
+    const subHead = (text: string, className: string): HTMLElement => {
       const sub = document.createElement("h3");
-      sub.className = "crew-head goal-head";
-      sub.textContent = `goal: ${goal.slug}`;
-      section.append(sub, rowList(goal.rows));
-    }
+      sub.className = className;
+      sub.textContent = text;
+      return sub;
+    };
+    for (const sec of sections) if (sec.crew === null) section.append(rowList(sec.rows));
+    for (const goal of goals) section.append(subHead(goalHeading(goal.slug, true), "crew-head goal-head"), rowList(goal.rows));
     for (const sec of sections) {
       if (sec.crew === null) continue;
-      const sub = document.createElement("h3");
-      sub.className = "crew-head";
-      sub.textContent = `crew: ${sec.crew}`;
-      section.append(sub, rowList(sec.rows));
+      section.append(subHead(`crew: ${sec.crew}`, "crew-head"), rowList(sec.rows));
     }
+    for (const goal of unmatched) section.append(subHead(goalHeading(goal.slug, false), "crew-head goal-head"), rowList(goal.rows));
   }
   if (archived.length > 0) section.append(archivedFold(g.key, archived));
   return section;
 }
 
-/** What the project's knowledge package says, as a definition list: `Goal`
- * (the title, the proposals chip, the latest record), `Round` (the counter,
- * the status, the last floor) and `Next` (the next action). The terms are
- * visually hidden; a screen reader gets them and a sighted reader gets the
- * position and the weight. Every value comes from `STATE.md` and `goal.md`
- * as the daemon parsed them. */
-function goalBlock(project: ProjectRef, summary: KnowledgeSummary): HTMLElement {
-  const box = document.createElement("dl");
-  box.className = "goal";
+/** One goal of the project's knowledge package: a section under the
+ * card's heading, named by the goal's title. Expanded (`active`): the
+ * title with the slug beside it, the proposals chip and the latest record
+ * on the first line, then a definition list with `Round` (the counter, the
+ * status, the last floor) and `Next` (the next action); the terms are
+ * visually hidden, so a screen reader gets them and a sighted reader gets
+ * the position and the weight. One line (`waiting`, `stopped`, `done`):
+ * the title, the status word, the proposals chip while the goal is open,
+ * and the record. Every value comes from `STATE.md` and `goal.md` as the
+ * daemon parsed them. */
+function goalSection(project: ProjectRef, block: GoalBlock): HTMLElement {
+  const { summary, expanded } = block;
+  const goal = goalTitle(summary);
+  const box = document.createElement("section");
+  box.className = expanded ? "goal" : "goal brief";
+  const top = document.createElement("div");
+  top.className = "goal-top";
+  const title = document.createElement("h3");
+  title.className = "goal-title";
+  // The section is named by its own heading, so a screen reader hears the
+  // title once, not "Goal X, region; X, heading". Both ids are slugs.
+  title.id = `goal-${project.id}-${summary.slug ?? "goal"}`;
+  box.setAttribute("aria-labelledby", title.id);
+  title.textContent = goal;
+  const slug = expanded ? titleSlug(summary) : null;
+  if (slug !== null) {
+    // The slug maps the block to its `goal: <slug>` rule and label.
+    const mark = document.createElement("span");
+    mark.className = "goal-slug";
+    mark.textContent = slug;
+    title.append(" ", mark);
+  }
+  top.append(title);
+  if (!expanded && summary.status) {
+    const status = document.createElement("span");
+    status.className = "goal-status";
+    status.textContent = summary.status;
+    top.append(status);
+  }
+  if (showsProposals(summary)) {
+    // A link, so a phone can reach the file the proposals wait in.
+    const chip = knowledgeLink(project.id, statePath(summary), `proposals: ${summary.proposals}`, "card-knowledge");
+    chip.className = "tag proposals";
+    chip.setAttribute("aria-label", proposalsName(summary.proposals ?? 0, project.name, goal));
+    top.append(chip);
+  }
+  const record = recordPath(summary);
+  if (record !== null) {
+    const link = knowledgeLink(project.id, record, `record ${recordLabel(record)}`, "card-knowledge");
+    link.classList.add("goal-link");
+    link.setAttribute("aria-label", recordName(record, project.name, goal));
+    top.append(link);
+  }
+  box.append(top);
+  if (!expanded) return box;
+
+  const facts = document.createElement("dl");
+  facts.className = "goal-facts";
   const term = (name: string): HTMLElement => {
     const dt = document.createElement("dt");
     dt.className = "sr-only";
     dt.textContent = name;
     return dt;
   };
-  const top = document.createElement("dd");
-  top.className = "goal-top";
-  const title = document.createElement("span");
-  title.className = "goal-title";
-  title.textContent = summary.goal ?? summary.slug ?? "goal";
-  top.append(title);
-  if ((summary.proposals ?? 0) > 0) {
-    // A link, so a phone can reach the file the proposals wait in.
-    const chip = knowledgeLink(project.id, "STATE.md", `proposals: ${summary.proposals}`);
-    chip.className = "tag proposals";
-    chip.setAttribute("aria-label", proposalsName(summary.proposals ?? 0, project.name));
-    top.append(chip);
-  }
-  const record = recordPath(summary);
-  if (record !== null) {
-    const link = knowledgeLink(project.id, record, `record ${recordLabel(record)}`);
-    link.classList.add("goal-link");
-    link.setAttribute("aria-label", recordName(record, project.name));
-    top.append(link);
-  }
-  box.append(term("Goal"), top);
-
   const bits: string[] = [];
   if (typeof summary.round === "number") {
     bits.push(typeof summary.budget === "number" ? `round ${summary.round} of ${summary.budget}` : `round ${summary.round}`);
@@ -976,29 +1034,33 @@ function goalBlock(project: ProjectRef, summary: KnowledgeSummary): HTMLElement 
     const meta = document.createElement("dd");
     meta.className = "goal-meta";
     meta.textContent = bits.join(" · ");
-    box.append(term("Round"), meta);
+    facts.append(term("Round"), meta);
   }
-
   if (summary.nextAction) {
     const next = document.createElement("dd");
     next.className = "goal-next";
     next.textContent = `next: ${summary.nextAction}`;
-    box.append(term("Next"), next);
+    facts.append(term("Next"), next);
   }
+  if (facts.childElementCount > 0) box.append(facts);
   return box;
 }
 
 /** A link to one file of a project's package, opened in a new tab. Keyed
  * for focus like every other control, so a repaint does not drop a keyboard
- * user off it. */
-function knowledgeLink(projectId: string, path: string, text: string): HTMLAnchorElement {
+ * user off it; `region` tells the strip's link to a record from the card's
+ * link to the same record, so the repaint gives focus back to the one the
+ * user was on. */
+function knowledgeLink(
+  projectId: string, path: string, text: string, region: "strip-knowledge" | "card-knowledge",
+): HTMLAnchorElement {
   const a = document.createElement("a");
   a.className = "strip-open";
   a.href = knowledgeUrl(projectId, path);
   a.target = "_blank";
   a.rel = "noopener";
   a.textContent = text;
-  a.dataset.focus = focusKey("knowledge", projectId, path);
+  a.dataset.focus = focusKey(region, projectId, path);
   return a;
 }
 
