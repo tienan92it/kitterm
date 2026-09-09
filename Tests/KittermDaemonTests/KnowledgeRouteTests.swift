@@ -48,11 +48,27 @@ final class KnowledgeRouteTests: XCTestCase {
         alpha = try dir("alpha")
         outside = try dir("outside")
         try write("outside/secret.md", "# secret\n")
+        try write("outside/STATE.md", "# STATE: outside-goal\n\n- Status: active\n")
+        // The flat files stay for the file route; the goal folders under
+        // them are what the summary lists. `alpha-goal` is the one active
+        // goal, so it is `goals[0]`; `done-goal`'s heading names another
+        // slug; `notagoal/` has no `STATE.md`; `linkdir` is a symlink to a
+        // directory that holds one.
         try write("alpha/docs/goals/STATE.md", Self.stateText)
         try write("alpha/docs/goals/goal.md", "# Goal: alpha ships\n")
         try write("alpha/docs/goals/notes.txt", "plain notes\n")
         try write("alpha/docs/goals/rounds/001.md", "# Round 001: a\n\n## Decision\n\ndone.\n")
         try write("alpha/docs/goals/rounds/002.md", "# Round 002: b\n\n## Decision\n\npropose (`plan.md`: x)\n")
+        try write("alpha/docs/goals/alpha-goal/STATE.md", Self.stateText)
+        try write("alpha/docs/goals/alpha-goal/goal.md", "# Goal: alpha ships\n")
+        try write("alpha/docs/goals/alpha-goal/rounds/001.md", "# Round 001: a\n\n## Decision\n\ndone.\n")
+        try write("alpha/docs/goals/alpha-goal/rounds/002.md", "# Round 002: b\n\n## Decision\n\npropose (`plan.md`: x)\n")
+        try write("alpha/docs/goals/done-goal/STATE.md", "# STATE: something-else\n\n- Status: done\n")
+        try write("alpha/docs/goals/waiting-goal/STATE.md", "# STATE: waiting-goal\n\n- Status: waiting\n")
+        try write("alpha/docs/goals/stopped-goal/STATE.md", "# STATE: stopped-goal\n\n- Status: stopped\n")
+        try write("alpha/docs/goals/paused-goal/STATE.md", "# STATE: paused-goal\n\n- Status: paused\n")
+        try write("alpha/docs/goals/bare-goal/STATE.md", "# STATE: bare-goal\n")
+        try write("alpha/docs/goals/notagoal/README.md", "not a goal\n")
         try write("alpha/docs/goals/big.txt", String(repeating: "x", count: KnowledgeFile.maxBytes + 1))
         try write("alpha/docs/goals/exact.txt", String(repeating: "y", count: KnowledgeFile.maxBytes))
         try write("alpha/Package.swift", "// not knowledge\n")
@@ -72,20 +88,38 @@ final class KnowledgeRouteTests: XCTestCase {
         try write("outside/docs/goals/STATE.md", "# STATE: outside-goal\n")
         // zeta: the latest record is `7.md`, not `007.md`.
         let zeta = try dir("zeta")
-        try write("zeta/docs/goals/STATE.md", "# STATE: zeta-goal\n\n- Round: 3 of 3, budget spent\n")
-        try write("zeta/docs/goals/rounds/006.md", "# Round 006\n\n## Decision\n\ndone.\n")
-        try write("zeta/docs/goals/rounds/7.md", "# Round 7\n\n## Decision\n\npropose (seven)\n")
+        try write("zeta/docs/goals/zeta-goal/STATE.md", "# STATE: zeta-goal\n\n- Round: 3 of 3, budget spent\n")
+        try write("zeta/docs/goals/zeta-goal/rounds/006.md", "# Round 006\n\n## Decision\n\ndone.\n")
+        try write("zeta/docs/goals/zeta-goal/rounds/7.md", "# Round 7\n\n## Decision\n\npropose (seven)\n")
         let delta = try dir("delta/docs/goals")
-        try write("delta/docs/goals/STATE.md", "# STATE: delta-goal\n")
-        try link("delta/docs/goals/rounds", to: outside + "/rounds")
-        try ProjectStore.save([
+        try write("delta/docs/goals/delta-goal/STATE.md", "# STATE: delta-goal\n")
+        try link("delta/docs/goals/delta-goal/rounds", to: outside + "/rounds")
+        // eta: a knowledge directory with the project files and a flat
+        // `STATE.md`, no goal folder. theta: a symlinked `STATE.md` inside a
+        // real folder is refused, so the folder is not a goal.
+        let eta = try dir("eta")
+        try write("eta/docs/goals/LOOP.md", "# LOOP\n")
+        try write("eta/docs/goals/STATE.md", "# STATE: flat\n\n- Status: active\n")
+        _ = try dir("eta/docs/goals/corpus")
+        let theta = try dir("theta/docs/goals/linked-state")
+        try link("theta/docs/goals/linked-state/STATE.md", to: outside + "/STATE.md")
+        // this repository: two goals, `goal-folders` first, when the test
+        // source sits beside `docs/goals/`.
+        let selfRoot = Self.repositoryRoot
+        var registered = [
             Project(id: "alpha", name: "Alpha", root: alpha),
             Project(id: "beta", name: "Beta", root: URL(fileURLWithPath: beta).deletingLastPathComponent().path),
             Project(id: "gamma", name: "Gamma", root: gamma),
             Project(id: "zeta", name: "Zeta", root: zeta),
             Project(id: "delta", name: "Delta", root: URL(fileURLWithPath: delta).deletingLastPathComponent().deletingLastPathComponent().path),
             Project(id: "epsilon", name: "Epsilon", root: stateDir.appendingPathComponent("epsilon").path),
-        ])
+            Project(id: "eta", name: "Eta", root: eta),
+            Project(id: "theta", name: "Theta", root: URL(fileURLWithPath: theta).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().path),
+        ]
+        if Self.repositoryHasPackage {
+            registered.append(Project(id: "self", name: "kitterm", root: selfRoot.path))
+        }
+        try ProjectStore.save(registered)
         _ = ProjectStore.shared.registered()
         try link("epsilon", to: outside)
         _ = repo
@@ -144,6 +178,19 @@ final class KnowledgeRouteTests: XCTestCase {
         """
 
     // MARK: - helpers
+
+    /// The checkout the test source sits in: `Tests/KittermDaemonTests/<file>`.
+    private static let repositoryRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+
+    /// True when this repository's own package, with its two goal folders,
+    /// is beside the test source.
+    private static var repositoryHasPackage: Bool {
+        FileManager.default.fileExists(
+            atPath: repositoryRoot.appendingPathComponent("docs/goals/projects-and-knowledge/rounds/008.md").path)
+            && FileManager.default.fileExists(
+                atPath: repositoryRoot.appendingPathComponent("docs/goals/goal-folders/STATE.md").path)
+    }
 
     private func dir(_ path: String) throws -> String {
         let url = stateDir.appendingPathComponent(path, isDirectory: true)
@@ -228,6 +275,11 @@ final class KnowledgeRouteTests: XCTestCase {
         try XCTUnwrap(JSONSerialization.jsonObject(with: answer.body) as? [String: Any], answer.text)
     }
 
+    /// The `goals` array of a summary answer.
+    private func goals(_ answer: Answer) throws -> [[String: Any]] {
+        try XCTUnwrap((try json(answer))["goals"] as? [[String: Any]], answer.text)
+    }
+
     // MARK: - the jail
 
     func testDotDotSegmentIs400() throws {
@@ -276,11 +328,11 @@ final class KnowledgeRouteTests: XCTestCase {
     func testSymlinkedRoundsDirectoryListsNothing() async throws {
         let summary = try await get("/api/projects/delta/knowledge")
         XCTAssertEqual(summary.status, 200, summary.text)
-        let body = try json(summary)
+        let body = try XCTUnwrap(try goals(summary).first, summary.text)
         XCTAssertEqual(body["slug"] as? String, "delta-goal")
         XCTAssertNil(body["lastRound"], "a symlinked rounds/ must not leak its target's names")
         XCTAssertNil(body["lastDecision"])
-        let record = try await status("/api/projects/delta/knowledge/rounds/009.md")
+        let record = try await status("/api/projects/delta/knowledge/delta-goal/rounds/009.md")
         XCTAssertEqual(record, 404)
     }
 
@@ -353,9 +405,10 @@ final class KnowledgeRouteTests: XCTestCase {
     func testSummaryFieldsAndETag() async throws {
         let answer = try await get("/api/projects/alpha/knowledge")
         XCTAssertEqual(answer.status, 200, answer.text)
-        let body = try json(answer)
-        XCTAssertEqual(body["ok"] as? Bool, true)
-        XCTAssertEqual(body["project"] as? String, "alpha")
+        let envelope = try json(answer)
+        XCTAssertEqual(envelope["ok"] as? Bool, true)
+        XCTAssertEqual(envelope["project"] as? String, "alpha")
+        let body = try XCTUnwrap(try goals(answer).first, answer.text)
         XCTAssertEqual(body["slug"] as? String, "alpha-goal")
         XCTAssertEqual(body["goal"] as? String, "alpha ships")
         XCTAssertEqual(body["status"] as? String, "active")
@@ -374,21 +427,90 @@ final class KnowledgeRouteTests: XCTestCase {
         XCTAssertTrue(again.body.isEmpty)
         XCTAssertEqual(again.header("etag"), etag)
 
-        try write("alpha/docs/goals/STATE.md", Self.stateText.replacingOccurrences(of: "2 of 3", with: "3 of 3"))
+        try write("alpha/docs/goals/alpha-goal/STATE.md", Self.stateText.replacingOccurrences(of: "2 of 3", with: "3 of 3"))
         let changed = try raw("/api/projects/alpha/knowledge", extra: ["If-None-Match: \(etag)"])
         XCTAssertEqual(changed.status, 200, "a changed file has a new tag")
         XCTAssertNotEqual(changed.header("etag"), etag)
     }
 
+    /// The route answers one entry per goal folder, `active` first and
+    /// `done` after `waiting` and `stopped`, the unknown statuses after
+    /// `done` by slug; a folder without `STATE.md` and a symlinked child
+    /// are absent; the slug is the folder name, not the heading; the record
+    /// path carries the folder.
+    func testGoalsListEveryFolderInOrder() async throws {
+        let answer = try await get("/api/projects/alpha/knowledge")
+        XCTAssertEqual(answer.status, 200, answer.text)
+        let list = try goals(answer)
+        XCTAssertEqual(
+            list.map { $0["slug"] as? String },
+            ["alpha-goal", "waiting-goal", "stopped-goal", "done-goal", "bare-goal", "paused-goal"]
+        )
+        XCTAssertEqual(list.map { $0["status"] as? String }, ["active", "waiting", "stopped", "done", nil, "paused"])
+        XCTAssertEqual(list[0]["lastRecord"] as? String, "alpha-goal/rounds/002.md")
+        XCTAssertEqual(list[3]["slug"] as? String, "done-goal", "the folder name, not `# STATE: something-else`")
+        XCTAssertFalse(list.contains { $0["slug"] as? String == "notagoal" }, "no STATE.md")
+        XCTAssertFalse(list.contains { $0["slug"] as? String == "linkdir" }, "a symlinked child is refused")
+        let record = try await get("/api/projects/alpha/knowledge/alpha-goal/rounds/002.md")
+        XCTAssertEqual(record.status, 200, record.text)
+        XCTAssertTrue(record.text.hasPrefix("# Round 002"))
+    }
+
+    func testPackageWithNoGoalFolderAnswersAnEmptyList() async throws {
+        let answer = try await get("/api/projects/eta/knowledge")
+        XCTAssertEqual(answer.status, 200, answer.text)
+        XCTAssertEqual(try goals(answer).count, 0, "a flat STATE.md and corpus/ are not goals")
+        XCTAssertEqual((try json(answer))["project"] as? String, "eta")
+        XCTAssertNotNil(answer.header("etag"))
+        let linked = try await get("/api/projects/theta/knowledge")
+        XCTAssertEqual(linked.status, 200, linked.text)
+        XCTAssertEqual(try goals(linked).count, 0, "a symlinked STATE.md is refused, so the folder is not a goal")
+    }
+
+    /// The tag covers the whole body: a second goal folder changes it with
+    /// the first goal's files untouched.
+    func testETagChangesWhenASecondGoalAppears() async throws {
+        let first = try await get("/api/projects/zeta/knowledge")
+        XCTAssertEqual(first.status, 200, first.text)
+        XCTAssertEqual(try goals(first).count, 1)
+        let etag = try XCTUnwrap(first.header("etag"))
+        XCTAssertEqual(try raw("/api/projects/zeta/knowledge", extra: ["If-None-Match: \(etag)"]).status, 304)
+        try write("zeta/docs/goals/second/STATE.md", "# STATE: second\n\n- Status: done\n")
+        let second = try raw("/api/projects/zeta/knowledge", extra: ["If-None-Match: \(etag)"])
+        XCTAssertEqual(second.status, 200, second.text)
+        XCTAssertNotEqual(second.header("etag"), etag)
+        XCTAssertEqual(try goals(second).map { $0["slug"] as? String }, ["second", "zeta-goal"],
+                       "`done` sorts before a goal with no status line")
+    }
+
+    /// This repository's own package: two goals, `goal-folders` (active)
+    /// before `projects-and-knowledge` (done), and the done goal's latest
+    /// record served at `<slug>/rounds/NNN.md`.
+    func testThisRepositoryAnswersTwoGoalsAndServesARecord() async throws {
+        guard Self.repositoryHasPackage else { throw XCTSkip("docs/goals is not beside the test source") }
+        let answer = try await get("/api/projects/self/knowledge")
+        XCTAssertEqual(answer.status, 200, answer.text)
+        let list = try goals(answer)
+        XCTAssertEqual(list.map { $0["slug"] as? String }, ["goal-folders", "projects-and-knowledge"])
+        XCTAssertEqual(list[1]["status"] as? String, "done")
+        let record = try XCTUnwrap(list[1]["lastRecord"] as? String)
+        XCTAssertTrue(record.hasPrefix("projects-and-knowledge/rounds/"), record)
+        let served = try await get("/api/projects/self/knowledge/projects-and-knowledge/rounds/008.md")
+        XCTAssertEqual(served.status, 200, served.text)
+        XCTAssertTrue(served.text.hasPrefix("# Round 008"), String(served.text.prefix(40)))
+        let latest = try await status("/api/projects/self/knowledge/\(record)")
+        XCTAssertEqual(latest, 200)
+    }
+
     func testLatestRecordIsReadByItsRealName() async throws {
         let answer = try await get("/api/projects/zeta/knowledge")
         XCTAssertEqual(answer.status, 200, answer.text)
-        let body = try json(answer)
+        let body = try XCTUnwrap(try goals(answer).first, answer.text)
         XCTAssertEqual(body["lastRound"] as? Int, 7)
-        XCTAssertEqual(body["lastRecord"] as? String, "rounds/7.md")
+        XCTAssertEqual(body["lastRecord"] as? String, "zeta-goal/rounds/7.md")
         XCTAssertEqual(body["lastDecision"] as? String, "propose (seven)")
         XCTAssertEqual(body["budget"] as? Int, 3, "the comma after the budget")
-        let record = try await status("/api/projects/zeta/knowledge/rounds/7.md")
+        let record = try await status("/api/projects/zeta/knowledge/zeta-goal/rounds/7.md")
         XCTAssertEqual(record, 200)
     }
 
@@ -433,6 +555,8 @@ final class KnowledgeRouteTests: XCTestCase {
         _ = try await get("/api/projects/alpha/knowledge")
         _ = try await get("/api/projects/alpha/knowledge/STATE.md")
         _ = try await get("/api/projects/nobody/knowledge")
+        _ = try await get("/api/projects/eta/knowledge")
+        _ = try await get("/api/projects/alpha/knowledge/alpha-goal/rounds/002.md")
         XCTAssertEqual(ProjectStore.shared.eventLoopCalls, before, "a ProjectStore lock take ran on an event loop")
     }
 }

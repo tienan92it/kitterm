@@ -3,7 +3,8 @@ import XCTest
 
 @testable import KittermDaemon
 
-/// `KnowledgeSummary.parse` on string fixtures and on this repository's own
+/// `KnowledgeSummary.parse` on string fixtures, `KnowledgeFile.summaries`
+/// on a package with three folders, and both on this repository's own
 /// `docs/goals/`, read from the source tree.
 final class KnowledgeSummaryTests: XCTestCase {
     private let state = """
@@ -185,5 +186,93 @@ final class KnowledgeSummaryTests: XCTestCase {
         XCTAssertNotNil(parsed.proposals)
         XCTAssertGreaterThanOrEqual(try XCTUnwrap(parsed.lastRound), 5)
         XCTAssertNotNil(parsed.lastDecision)
+    }
+
+    // MARK: - one summary per goal folder
+
+    private static let repositoryRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+
+    /// A scratch package: `LOOP.md` and `facts.md` at the top, `zed/`
+    /// active with a record, `alpha/` done whose heading names another
+    /// slug, and `notes/` with no `STATE.md`.
+    private func threeFolders() throws -> String {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("kitterm-knowledge-summaries-\(UUID().uuidString)")
+        let files: [String: String] = [
+            "docs/goals/LOOP.md": "# LOOP\n",
+            "docs/goals/facts.md": "# Facts\n",
+            "docs/goals/zed/STATE.md": "# STATE: zed\n\n- Status: active\n- Round: 1 of 3\n\n## Next action\n\nRound 2.\n",
+            "docs/goals/zed/goal.md": "# Goal: zed ships\n",
+            "docs/goals/zed/rounds/001.md": "# Round 001\n\n## Decision\n\npropose (x)\n",
+            "docs/goals/alpha/STATE.md": "# STATE: not-alpha\n\n- Status: done\n",
+            "docs/goals/alpha/rounds/003.md": "# Round 003\n\n## Decision\n\ndone.\n",
+            "docs/goals/notes/README.md": "not a goal\n",
+        ]
+        for (path, text) in files {
+            let url = root.appendingPathComponent(path)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try text.write(to: url, atomically: true, encoding: .utf8)
+        }
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        return root.path
+    }
+
+    func testSummariesListEveryGoalFolder() throws {
+        let root = try threeFolders()
+        let goals = try XCTUnwrap(KnowledgeFile.summaries(root: root, knowledge: "docs/goals"))
+        XCTAssertEqual(goals.map(\.slug), ["zed", "alpha"], "active before done; `notes/` has no STATE.md")
+        XCTAssertEqual(goals[0].status, "active")
+        XCTAssertEqual(goals[0].goal, "zed ships")
+        XCTAssertEqual(goals[0].round, 1)
+        XCTAssertEqual(goals[0].nextAction, "Round 2.")
+        XCTAssertEqual(goals[0].lastRound, 1)
+        XCTAssertEqual(goals[0].lastRecord, "zed/rounds/001.md", "the record path carries the folder")
+        XCTAssertEqual(goals[0].lastDecision, "propose (x)")
+        XCTAssertEqual(goals[1].slug, "alpha", "the folder name, not the `# STATE:` heading")
+        XCTAssertEqual(goals[1].status, "done")
+        XCTAssertEqual(goals[1].lastRecord, "alpha/rounds/003.md")
+        XCTAssertNil(goals[1].goal)
+        XCTAssertNil(KnowledgeFile.summaries(root: root, knowledge: "docs/none"), "no knowledge directory")
+        XCTAssertEqual(KnowledgeFile.summaries(root: root, knowledge: "docs/goals/notes"), [], "a folder with no goal folder")
+    }
+
+    /// The order the summary route and `kitterm goal list` share: the same
+    /// slugs and statuses `GoalCommandTests.testListOrdersByStatusThenSlug`
+    /// pins, in the same order.
+    func testListOrderIsTheOneTheCLIPins() {
+        let folders: [(String, String?)] = [
+            ("zed", "active"), ("alpha", "done"), ("beta", "stopped"), ("mid", "waiting"),
+            ("gamma", "active"), ("odd", "paused"), ("bare", nil), ("blank", nil),
+        ]
+        let goals = folders.map { slug, status -> KnowledgeSummary in
+            var goal = KnowledgeSummary()
+            goal.slug = slug
+            goal.status = status
+            return goal
+        }.sorted(by: KnowledgeSummary.isOrderedBefore)
+        XCTAssertEqual(goals.map(\.slug), ["gamma", "zed", "mid", "beta", "alpha", "bare", "blank", "odd"])
+        XCTAssertEqual(KnowledgeSummary.statusOrder, ["active", "waiting", "stopped", "done"])
+        XCTAssertEqual(KnowledgeSummary.statusRank(nil), 4)
+        XCTAssertEqual(KnowledgeSummary.statusRank("paused"), 4)
+        XCTAssertEqual(KnowledgeSummary.statusRank("unknown"), 4, "the CLI's word for a missing line ranks the same")
+    }
+
+    /// This repository's own package as the second fixture: two goals,
+    /// `goal-folders` (active) before `projects-and-knowledge` (done).
+    func testSummariesOfThisRepositoryOwnPackage() throws {
+        let root = Self.repositoryRoot
+        guard FileManager.default.fileExists(atPath: root.appendingPathComponent("docs/goals/goal-folders/STATE.md").path),
+              FileManager.default.fileExists(atPath: root.appendingPathComponent("docs/goals/projects-and-knowledge/STATE.md").path)
+        else { throw XCTSkip("docs/goals is not beside the test source") }
+        let goals = try XCTUnwrap(KnowledgeFile.summaries(root: root.path, knowledge: "docs/goals"))
+        XCTAssertEqual(goals.map(\.slug), ["goal-folders", "projects-and-knowledge"])
+        XCTAssertEqual(goals[1].status, "done")
+        XCTAssertEqual(goals[1].goal, "projects on the fleet view, and a knowledge base per project")
+        XCTAssertGreaterThanOrEqual(try XCTUnwrap(goals[1].lastRound), 8)
+        XCTAssertTrue(try XCTUnwrap(goals[1].lastRecord).hasPrefix("projects-and-knowledge/rounds/"))
+        XCTAssertNotNil(goals[0].status)
+        XCTAssertNotNil(goals[0].nextAction)
+        XCTAssertEqual(goals[0].goal, "one folder per goal under docs/goals")
     }
 }

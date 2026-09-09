@@ -1,15 +1,18 @@
 import Foundation
 
-/// What the fleet view shows of a project's knowledge package
-/// (`docs/goals/`), parsed from `STATE.md`, `goal.md`, the latest round
-/// record, and the names under `rounds/`. Pure: text in, fields out. No
-/// Markdown renderer, because the dashboard shows titles and links only.
+/// What the fleet view shows of one goal folder (`docs/goals/<slug>/`),
+/// parsed from `STATE.md`, `goal.md`, the latest round record, and the
+/// names under `rounds/`. Pure: text in, fields out. No Markdown renderer,
+/// because the dashboard shows titles and links only.
+/// `KnowledgeFile.summaries` lists a package's goal folders and parses each.
 ///
 /// Every field is optional. A missing file or a missing line leaves its
 /// field absent; a malformed file is never an error, because the package
 /// is hand-written and the card must still show what it can read.
 public struct KnowledgeSummary: Equatable, Sendable {
-    /// The suffix of the `# STATE: <slug>` heading.
+    /// The goal folder's name, set by `KnowledgeFile.summaries`. A parse
+    /// of texts alone reads the suffix of the `# STATE: <slug>` heading,
+    /// which the folder name replaces on the route.
     public var slug: String?
     /// The first `# ` heading of `goal.md`, without a `Goal:` prefix.
     public var goal: String?
@@ -30,7 +33,8 @@ public struct KnowledgeSummary: Equatable, Sendable {
     public var lastRound: Int?
     /// That record's path under the knowledge directory, by its real file
     /// name (`rounds/7.md` stays `rounds/7.md`), so a link opens the file
-    /// that was read.
+    /// that was read. `KnowledgeFile.summaries` prefixes the folder name,
+    /// so the route answers `<slug>/rounds/NNN.md`.
     public var lastRecord: String?
     /// The first line of the latest round record's `## Decision` section.
     public var lastDecision: String?
@@ -38,7 +42,25 @@ public struct KnowledgeSummary: Equatable, Sendable {
     public static let nextActionCap = 512
     public static let lineCap = 256
 
+    /// The statuses `LOOP.md` names, in the order goals are listed. Any
+    /// other value, and a missing one, sorts after `done`.
+    public static let statusOrder = ["active", "waiting", "stopped", "done"]
+
     public init() {}
+
+    /// The listing order of the summary route and of `kitterm goal list`:
+    /// by `statusOrder`, then by slug. Both call this one comparator, so
+    /// the card and the CLI agree.
+    public static func isOrderedBefore(_ a: KnowledgeSummary, _ b: KnowledgeSummary) -> Bool {
+        let (ra, rb) = (statusRank(a.status), statusRank(b.status))
+        return ra != rb ? ra < rb : (a.slug ?? "") < (b.slug ?? "")
+    }
+
+    /// The position of `status` in `statusOrder`; `statusOrder.count` for
+    /// any other value or none.
+    public static func statusRank(_ status: String?) -> Int {
+        status.flatMap { statusOrder.firstIndex(of: $0) } ?? statusOrder.count
+    }
 
     /// Parse the package's texts. Each argument is nil when its file is
     /// missing or unreadable. `roundNames` holds the file names under

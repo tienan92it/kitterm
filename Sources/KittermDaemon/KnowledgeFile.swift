@@ -7,7 +7,7 @@ import Foundation
 
 /// Read-only access to a project's knowledge directory (`<root>/<knowledge>`,
 /// `docs/goals` by default) behind `GET /api/projects/<id>/knowledge/<path>`
-/// and the summary route beside it.
+/// and the summary route beside it, which lists the goal folders under it.
 ///
 /// The jail: the path from the URL is relative, holds no `..`, no empty and
 /// no `.` segment. A file read walks one descriptor from the root, opens
@@ -100,8 +100,33 @@ enum KnowledgeFile {
     /// cookie (see `FilePreview`).
     static let contentType = "text/plain; charset=utf-8"
 
-    /// The summary of the package under the knowledge directory, or nil
-    /// when the directory is missing or refused. Every file goes through the
+    /// One summary per goal folder under the knowledge directory, in
+    /// `KnowledgeSummary.isOrderedBefore` order, or nil when the directory
+    /// is missing or refused. A goal folder is a direct child that is a real
+    /// directory holding a regular `STATE.md`: a child without one is not a
+    /// goal and is skipped; a symlinked child, or a symlinked `STATE.md`, is
+    /// refused like every other component and skipped too. The folder name
+    /// is the slug and prefixes `lastRecord`. A package with no goal folder
+    /// is an empty list.
+    static func summaries(root: String, knowledge: String) -> [KnowledgeSummary]? {
+        guard let directory = try? jailedDirectory(root: root, knowledge: knowledge) else { return nil }
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory)) ?? []
+        var goals: [KnowledgeSummary] = []
+        for name in names {
+            let folder = directory + "/" + name
+            guard isRegular(folder, type: S_IFDIR), isRegular(folder + "/STATE.md", type: S_IFREG),
+                  var summary = summary(root: root, knowledge: knowledge + "/" + name)
+            else { continue }
+            summary.slug = name
+            summary.lastRecord = summary.lastRecord.map { name + "/" + $0 }
+            goals.append(summary)
+        }
+        goals.sort(by: KnowledgeSummary.isOrderedBefore)
+        return goals
+    }
+
+    /// The summary of one goal folder, `<root>/<knowledge>`, or nil when
+    /// the directory is missing or refused. Every file goes through the
     /// jailed read, so a symlinked `STATE.md` leaves its fields absent.
     static func summary(root: String, knowledge: String) -> KnowledgeSummary? {
         guard let directory = try? jailedDirectory(root: root, knowledge: knowledge) else { return nil }
@@ -160,6 +185,12 @@ enum KnowledgeFile {
             throw Failure.refused
         }
         throw Failure.notFound
+    }
+
+    /// True when `lstat` sees `type` at `path`: a symlink is never it.
+    private static func isRegular(_ path: String, type: mode_t) -> Bool {
+        var info = stat()
+        return lstat(path, &info) == 0 && (info.st_mode & S_IFMT) == type
     }
 
     /// `refused` for a symlink at `path`; `notFound` when nothing is there.

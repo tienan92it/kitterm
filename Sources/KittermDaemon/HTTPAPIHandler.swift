@@ -1325,10 +1325,13 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         case failed(HTTPResponseStatus, String)
     }
 
-    /// `GET /api/projects/<id>/knowledge` — a summary of the project's
-    /// knowledge package (`KnowledgeSummary`: goal, status, round, budget,
-    /// next action, proposals, last round) with an `ETag`, so the fleet view
-    /// can skip a repaint; `If-None-Match` answers 304.
+    /// `GET /api/projects/<id>/knowledge` — `{ok, project, goals}`: one
+    /// `KnowledgeSummary` per goal folder under the knowledge directory
+    /// (slug, goal, status, round, budget, next action, proposals, last
+    /// round and its record as `<slug>/rounds/NNN.md`), `active` first
+    /// (`KnowledgeSummary.isOrderedBefore`), an empty list for a package
+    /// with no goal folder. The `ETag` covers the whole body, so the fleet
+    /// view can skip a repaint; `If-None-Match` answers 304.
     /// `GET /api/projects/<id>/knowledge/<path>` — one file under the
     /// knowledge directory, read-only, jailed (`KnowledgeFile`): a `..`,
     /// `.`, empty segment or absolute path is 400, a symlink anywhere in the
@@ -1426,12 +1429,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// failure mapped to its status.
     private static func knowledgeAnswer(id: String, root: String, knowledge: String, path: String?) -> KnowledgeAnswer {
         guard let path else {
-            guard let summary = KnowledgeFile.summary(root: root, knowledge: knowledge) else {
+            guard let goals = KnowledgeFile.summaries(root: root, knowledge: knowledge) else {
                 return .failed(.notFound, "no knowledge directory")
             }
-            var item = summary.json
-            item["ok"] = true
-            item["project"] = id
+            let item: [String: Any] = ["ok": true, "project": id, "goals": goals.map(\.json)]
             guard let data = try? JSONSerialization.data(withJSONObject: item, options: [.sortedKeys]) else {
                 return .failed(.internalServerError, "encoding failed")
             }

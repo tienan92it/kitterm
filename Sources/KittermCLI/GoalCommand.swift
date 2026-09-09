@@ -10,9 +10,10 @@ enum GoalCommand {
         usage: kitterm goal new <path> <slug> [--knowledge <dir>] | list <path> [--knowledge <dir>]
         """
 
-    /// The statuses `LOOP.md` names, in the order `list` prints them. Any
-    /// other value sorts after `done`, with a missing line as `unknown`.
-    static let statusOrder = ["active", "waiting", "stopped", "done"]
+    /// The statuses `LOOP.md` names, in the order `list` prints them: the
+    /// daemon's summary route sorts with the same comparator,
+    /// `KnowledgeSummary.isOrderedBefore`. A missing line prints `unknown`.
+    static let statusOrder = KnowledgeSummary.statusOrder
 
     /// Run one subcommand. `out` takes every line meant for stdout.
     static func run<S: Sequence>(_ args: S, out: (String) -> Void = { print($0) }) throws
@@ -86,24 +87,26 @@ enum GoalCommand {
         try ProjectCommand.writeTemplates(templates, under: folder, root: root, out: out)
     }
 
-    /// `list`: one line per goal folder, `<slug>\t<status>`, sorted by
-    /// status (`active`, `waiting`, `stopped`, `done`, then the rest) and
-    /// slug. A folder without `STATE.md` is not a goal and is skipped.
+    /// `list`: one line per goal folder, `<slug>\t<status>`, in
+    /// `KnowledgeSummary.isOrderedBefore` order (`active`, `waiting`,
+    /// `stopped`, `done`, then the rest, then by slug), the order the
+    /// summary route answers. A folder without `STATE.md` is not a goal and
+    /// is skipped.
     private static func list(_ args: [String], out: (String) -> Void) throws {
         let (root, knowledge, _) = try parse(args, positionals: 0)
         let directory = root + "/" + knowledge
         let names = (try? FileManager.default.contentsOfDirectory(atPath: directory)) ?? []
-        var goals: [(slug: String, status: String)] = []
+        var goals: [KnowledgeSummary] = []
         for name in names {
             let state = directory + "/" + name + "/STATE.md"
             guard let text = try? String(contentsOfFile: state, encoding: .utf8) else { continue }
-            goals.append((name, status(of: text) ?? "unknown"))
+            var goal = KnowledgeSummary()
+            goal.slug = name
+            goal.status = status(of: text)
+            goals.append(goal)
         }
-        goals.sort { a, b in
-            let (ra, rb) = (rank(a.status), rank(b.status))
-            return ra != rb ? ra < rb : a.slug < b.slug
-        }
-        for goal in goals { out("\(goal.slug)\t\(goal.status)") }
+        goals.sort(by: KnowledgeSummary.isOrderedBefore)
+        for goal in goals { out("\(goal.slug ?? "")\t\(goal.status ?? "unknown")") }
     }
 
     /// The value of the first `- Status:` line, trimmed; nil when the file
@@ -116,10 +119,6 @@ enum GoalCommand {
             return value.isEmpty ? nil : value
         }
         return nil
-    }
-
-    private static func rank(_ status: String) -> Int {
-        statusOrder.firstIndex(of: status) ?? statusOrder.count
     }
 
     /// `lstat`: a dangling link at the folder path still occupies the name.
