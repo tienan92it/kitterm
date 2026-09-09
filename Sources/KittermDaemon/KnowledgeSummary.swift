@@ -226,17 +226,30 @@ public struct KnowledgeSummary: Equatable, Sendable {
     }
 
     /// The longest prefix of at most `bytes` UTF-8 bytes that ends on a
-    /// character boundary.
+    /// character boundary, with the C0 and C1 controls and the Unicode
+    /// bidirectional formatting characters dropped: every field passes
+    /// through here, and a right-to-left override in a heading would
+    /// reorder the strip line on the dashboard.
     static func cap(_ text: String, bytes: Int) -> String {
-        guard text.utf8.count > bytes else { return text }
         var out = ""
         var used = 0
-        for character in text {
+        for character in text where !isControlOrBidi(character) {
             let size = character.utf8.count
             if used + size > bytes { break }
             out.append(character)
             used += size
         }
         return out
+    }
+
+    /// C0 (`U+0000`–`U+001F`, `U+007F`), C1 (`U+0080`–`U+009F`), and the
+    /// bidi embeddings, overrides and isolates (`U+202A`–`U+202E`,
+    /// `U+2066`–`U+2069`). A tab counts as a control too.
+    private static func isControlOrBidi(_ character: Character) -> Bool {
+        character.unicodeScalars.contains { scalar in
+            let value = scalar.value
+            return value < 0x20 || (0x7F...0x9F).contains(value)
+                || (0x202A...0x202E).contains(value) || (0x2066...0x2069).contains(value)
+        }
     }
 }

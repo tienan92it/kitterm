@@ -77,6 +77,13 @@ final class KnowledgeSummaryTests: XCTestCase {
         XCTAssertNil(KnowledgeSummary.parse(state: nil, goal: nil, latestRecord: nil, latestRound: "## Decision\n\nx").lastRecord)
     }
 
+    func testControlAndBidiCharactersAreDropped() {
+        XCTAssertEqual(KnowledgeSummary.cap("a\u{202E}b\u{0007}c\u{2066}d\u{0085}e", bytes: 64), "abcde")
+        XCTAssertEqual(KnowledgeSummary.cap("é\u{202A}é", bytes: 2), "é", "the cap counts the kept bytes only")
+        let goal = KnowledgeSummary.parse(state: nil, goal: "# Goal: \u{202E}evil\u{202C}", roundNames: [], latestRound: nil)
+        XCTAssertEqual(goal.goal, "evil")
+    }
+
     func testRoundCounterKeepsTheBudgetAfterAComma() {
         XCTAssertEqual(KnowledgeSummary.roundCounter("3 of 3, budget spent").1, 3)
         XCTAssertEqual(KnowledgeSummary.roundCounter("3 of 3 (budget spent)").1, 3)
