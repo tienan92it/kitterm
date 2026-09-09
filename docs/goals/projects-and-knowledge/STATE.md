@@ -1,10 +1,10 @@
 # STATE: projects-and-knowledge
 
-- Status: waiting
+- Status: done
 - Round: 3 of 3 in this budget (third budget spent: rounds 7 and 8; the review gate took a round)
 - Rounds total: 8
 - Last floor: green (2026-09-09, round 7 after)
-- Updated: 2026-09-09
+- Updated: 2026-09-09, marked done
 
 ## Queue
 
@@ -143,11 +143,15 @@ push and one PR to `main`. `dogfood` starts after the push.
 - #76 `goals/knowledge-on-dashboard` to `main`: the knowledge routes and
   the card, with review gate 2's fixes. Merge waits for the human.
 
+## Direction
+
+2026-09-09: #76 merged as `15ea2a3`. The human marked the goal done and
+opened the next goal, `goal-folders`, with the direction that each goal
+is one folder under `docs/goals/` and its status lives in `STATE.md`. This
+package moved to `docs/goals/projects-and-knowledge/` in that goal's
+first commit. The proposals above stay open for the human.
+
 ## Next action
 
-Direction decision by the human on a complete goal: stop (move this
-package to `docs/goals/done/projects-and-knowledge/` and open the next
-goal), or redirect (a new `goal.md` for the proposals above). Before
-that: merge #76, then push `goals/dogfood` (records only) as one PR on
-top of it. The fixture projects `alpha` and `beta` can be removed with
-`kitterm project remove` when the human is done reading them.
+None. The goal is done. Reopen it with `Status: active` and a new queue
+when a proposal above becomes a capability.
