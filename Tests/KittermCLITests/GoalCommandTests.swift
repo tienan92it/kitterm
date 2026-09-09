@@ -87,7 +87,7 @@ final class GoalCommandTests: XCTestCase {
 
         XCTAssertThrowsError(try run(["new", project, "demo"])) { error in
             let message = String(describing: (error as? CLIError)?.errorDescription ?? "")
-            XCTAssertTrue(message.contains("docs/goals/demo exists"), message)
+            XCTAssertTrue(message.contains("docs/goals/demo"), message)
             XCTAssertTrue(message.contains("nothing written"), message)
         }
         XCTAssertEqual(try CLIFixture.files(under: folder), edited)
@@ -101,11 +101,12 @@ final class GoalCommandTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: project + "/nowhere"))
     }
 
-    /// A slug is lowercase letters, digits, and hyphens. Anything else is
-    /// refused before the knowledge directory exists.
+    /// A slug is lowercase letters, digits, and hyphens, none at the ends:
+    /// the daemon's `ProjectStore.isValidID`. Anything else is refused
+    /// before the knowledge directory exists.
     func testNewRefusesABadSlug() throws {
         let project = try dir("repo")
-        for slug in ["Demo", "demo_1", "demo.md", "a/b", "../x", ".", "", "démo", "demo x", String(repeating: "a", count: 65)] {
+        for slug in ["Demo", "demo_1", "demo.md", "a/b", "../x", ".", "", "démo", "demo x", "demo-", "-demo", String(repeating: "a", count: 65)] {
             XCTAssertThrowsError(try run(["new", project, slug]), "slug \(slug.debugDescription) is refused")
         }
         XCTAssertFalse(FileManager.default.fileExists(atPath: project + "/docs"), "nothing written")
@@ -167,6 +168,30 @@ final class GoalCommandTests: XCTestCase {
         try run(["new", project, "other", "--knowledge", "notes"])
         XCTAssertEqual(try run(["list", project, "--knowledge", "notes"]), ["other\tactive"])
         XCTAssertEqual(try run(["list", project]), ["demo\tactive"])
+    }
+
+    /// The CLI lists what the daemon lists: a symlinked folder and a folder
+    /// whose `STATE.md` is a symlink are skipped, a name that is not a slug
+    /// is skipped, a `STATE.md` over the daemon's cap is not loaded (its
+    /// folder lists with no status), and a control character in the status
+    /// is stripped the way the card strips it.
+    func testListSkipsWhatTheRouteSkips() throws {
+        let project = try dir("repo")
+        let outside = try dir("outside")
+        try writeState(outside, slug: "real", lines: ["# STATE: real", "", "- Status: active"])
+        try writeState(project, slug: "kept", lines: ["# STATE: kept", "", "- Status: active\u{1b}[31m"])
+        try writeState(project, slug: "huge", lines: ["# STATE: huge", "", "- Status: active", String(repeating: "x", count: 300 * 1024)])
+        try writeState(project, slug: "Bad Name", lines: ["# STATE: bad", "", "- Status: active"])
+        try FileManager.default.createSymbolicLink(
+            atPath: project + "/docs/goals/linked", withDestinationPath: outside + "/docs/goals/real")
+        try FileManager.default.createDirectory(atPath: project + "/docs/goals/linked-state", withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            atPath: project + "/docs/goals/linked-state/STATE.md", withDestinationPath: outside + "/docs/goals/real/STATE.md")
+
+        let lines = try run(["list", project])
+        XCTAssertEqual(lines, ["huge\tunknown", "kept\tactive[31m"], "neither word is a known status, so both sort by slug")
+        XCTAssertFalse(lines.joined().contains("\u{1b}"), "no control character reaches the terminal")
+        XCTAssertEqual(try run(["list", outside]), ["real\tactive"], "the target is a goal in its own checkout")
     }
 
     func testListUsageRefusals() throws {

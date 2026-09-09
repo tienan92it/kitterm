@@ -10,11 +10,6 @@ enum GoalCommand {
         usage: kitterm goal new <path> <slug> [--knowledge <dir>] | list <path> [--knowledge <dir>]
         """
 
-    /// The statuses `LOOP.md` names, in the order `list` prints them: the
-    /// daemon's summary route sorts with the same comparator,
-    /// `KnowledgeSummary.isOrderedBefore`. A missing line prints `unknown`.
-    static let statusOrder = KnowledgeSummary.statusOrder
-
     /// Run one subcommand. `out` takes every line meant for stdout.
     static func run<S: Sequence>(_ args: S, out: (String) -> Void = { print($0) }) throws
     where S.Element == String {
@@ -57,28 +52,26 @@ enum GoalCommand {
         return (root, try ProjectCommand.knowledge(knowledgeOption), Array(values.dropFirst()))
     }
 
-    /// A slug is lowercase letters, digits, and hyphens: it is a folder name,
-    /// a label value, and the `# STATE:` heading.
+    /// A slug is a project id (`ProjectStore.isValidID`): lowercase letters,
+    /// digits, and hyphens, no leading or trailing hyphen, at most
+    /// `maxIDLength` characters. It is a folder name, a label value, and the
+    /// `# STATE:` heading; the daemon lists a goal folder by the same rule.
     static func isValidSlug(_ slug: String) -> Bool {
-        !slug.isEmpty && slug.count <= ProjectStore.maxIDLength
-            && slug.allSatisfy { ($0.isASCII && $0.isLowercase && $0.isLetter) || ($0.isASCII && $0.isNumber) || $0 == "-" }
+        ProjectStore.isValidID(slug)
     }
 
     /// `new`: write `<knowledge>/<slug>/` from the goal template with the
-    /// slug in `STATE.md`. An existing folder, or a file of that name, is
-    /// refused before anything is written.
+    /// slug in `STATE.md`. An existing folder, a file, or a dangling link of
+    /// that name, and a symlink at any prefix of the path, are refused
+    /// before anything is written, by the rule `project init` uses.
     private static func new(_ args: [String], out: (String) -> Void) throws {
         let (root, knowledge, rest) = try parse(args, positionals: 1)
         let slug = rest[0]
         guard isValidSlug(slug) else {
-            throw CLIError.usage("slug must be lowercase letters, digits, and hyphens: \(slug)")
+            throw CLIError.usage("slug must be lowercase letters, digits, and hyphens, not at the ends: \(slug)")
         }
         let folder = knowledge + "/" + slug
-        let folderPath = root + "/" + folder
-        if FileManager.default.fileExists(atPath: folderPath) || isLink(folderPath) {
-            throw CLIError.usage("refusing to overwrite: \(folder) exists (nothing written)")
-        }
-        try ProjectCommand.refuseExisting(GoalsTemplates.goal.map(\.path), under: folder, root: root)
+        try ProjectCommand.refuseExisting([slug], under: knowledge, root: root)
         let templates = GoalsTemplates.goal.map { template in
             template.path == "STATE.md"
                 ? (path: template.path, contents: template.contents.replacingOccurrences(of: GoalsTemplates.slugPlaceholder, with: slug))
@@ -87,43 +80,17 @@ enum GoalCommand {
         try ProjectCommand.writeTemplates(templates, under: folder, root: root, out: out)
     }
 
-    /// `list`: one line per goal folder, `<slug>\t<status>`, in
-    /// `KnowledgeSummary.isOrderedBefore` order (`active`, `waiting`,
-    /// `stopped`, `done`, then the rest, then by slug), the order the
-    /// summary route answers. A folder without `STATE.md` is not a goal and
-    /// is skipped.
+    /// `list`: one line per goal folder, `<slug>\t<status>`, the folders,
+    /// the status words, and the order the summary route answers: the
+    /// daemon's `KnowledgeFile.summaries` (the symlink gate, the bounded
+    /// read, the slug rule, the folder cap) and its parser, sorted by
+    /// `KnowledgeSummary.isOrderedBefore` (`active`, `waiting`, `stopped`,
+    /// `done`, then the rest, then by slug). A missing status line prints
+    /// `unknown`; a missing knowledge directory lists nothing.
     private static func list(_ args: [String], out: (String) -> Void) throws {
         let (root, knowledge, _) = try parse(args, positionals: 0)
-        let directory = root + "/" + knowledge
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory)) ?? []
-        var goals: [KnowledgeSummary] = []
-        for name in names {
-            let state = directory + "/" + name + "/STATE.md"
-            guard let text = try? String(contentsOfFile: state, encoding: .utf8) else { continue }
-            var goal = KnowledgeSummary()
-            goal.slug = name
-            goal.status = status(of: text)
-            goals.append(goal)
+        for goal in KnowledgeFile.summaries(root: root, knowledge: knowledge) ?? [] {
+            out("\(goal.slug ?? "")\t\(goal.status ?? "unknown")")
         }
-        goals.sort(by: KnowledgeSummary.isOrderedBefore)
-        for goal in goals { out("\(goal.slug ?? "")\t\(goal.status ?? "unknown")") }
-    }
-
-    /// The value of the first `- Status:` line, trimmed; nil when the file
-    /// has none or the value is empty.
-    static func status(of stateText: String) -> String? {
-        let marker = "- Status:"
-        for line in stateText.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
-        where line.hasPrefix(marker) {
-            let value = line.dropFirst(marker.count).trimmingCharacters(in: .whitespaces)
-            return value.isEmpty ? nil : value
-        }
-        return nil
-    }
-
-    /// `lstat`: a dangling link at the folder path still occupies the name.
-    private static func isLink(_ path: String) -> Bool {
-        let type = (try? FileManager.default.attributesOfItem(atPath: path))?[.type] as? FileAttributeType
-        return type == .typeSymbolicLink
     }
 }

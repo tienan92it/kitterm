@@ -16,12 +16,13 @@ import Foundation
 /// in the chain is refused, the root and the knowledge directory included.
 /// The summary's listing of `rounds/` goes through `lstat` the same way.
 /// Files are capped at `maxBytes`. Every function here touches the disk, so
-/// the routes call them off the loop.
+/// the routes call them off the loop. `kitterm goal list` calls `summaries`
+/// too, so the CLI and the route list the same folders.
 ///
 /// Accepted: a hard link under the knowledge directory to a file elsewhere
 /// on the volume is served. The linker needs write access to the project
 /// tree, and that writer can copy the file into the directory outright.
-enum KnowledgeFile {
+public enum KnowledgeFile {
     static let maxBytes = 256 * 1024
     static let maxPathLength = 1024
     /// Goal folders read per listing, in name order; the rest are skipped.
@@ -117,7 +118,7 @@ enum KnowledgeFile {
     /// `maxGoalFolders` such names in name order are read; the rest are
     /// skipped. The folder name is the slug and prefixes `lastRecord`. A
     /// package with no goal folder is an empty list.
-    static func summaries(root: String, knowledge: String) -> [KnowledgeSummary]? {
+    public static func summaries(root: String, knowledge: String) -> [KnowledgeSummary]? {
         guard let directory = try? jailedDirectory(root: root, knowledge: knowledge) else { return nil }
         let names = ((try? FileManager.default.contentsOfDirectory(atPath: directory)) ?? [])
             .filter(ProjectStore.isValidID).sorted().prefix(maxGoalFolders)
