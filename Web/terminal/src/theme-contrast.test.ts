@@ -13,7 +13,8 @@ import { TERMINAL_THEMES } from "./themes";
  * The floor is WCAG 1.4.3: 4.5:1 for small text. The accent button text
  * holds it on every theme. The state label is the theme's own foreground,
  * which two themes set under 4.5 on a card; the muted line is the theme's
- * 66% mix in `tokens.css`, under 4.5 on ten. `KNOWN_BELOW` names each with
+ * 66% mix in `tokens.css`, under 4.5 on ten, and on twelve against
+ * `--ui-surface-2` (the `.tag` chips). `KNOWN_BELOW` names each with
  * the ratio measured here, so the test fails when one gets worse, when an
  * unlisted one drops under the floor, or when a listed one starts passing
  * and the entry is stale.
@@ -25,18 +26,25 @@ import { TERMINAL_THEMES } from "./themes";
 
 const FLOOR = 4.5;
 
+/** The lines measured: the state label and the muted line on `--ui-surface`
+ * (the card), and the same two colours on `--ui-surface-2` (the card head,
+ * where the goal block and the proposals chip sit, and every `.tag`). */
+type Line = "label" | "muted" | "label-2" | "muted-2";
+
 /** Ratios under the floor today, by theme and line (see the file comment). */
-const KNOWN_BELOW: Record<string, Partial<Record<"label" | "muted", number>>> = {
-  "github-dark-dimmed": { muted: 3.3 },
-  "solarized-dark": { label: 3.95, muted: 2.3 },
-  nord: { muted: 3.95 },
-  "one-dark": { muted: 2.95 },
-  "tokyo-night": { muted: 4.2 },
-  "tokyo-night-storm": { muted: 3.75 },
-  "catppuccin-macchiato": { muted: 4.05 },
-  "ayu-mirage": { muted: 3.9 },
-  "gruvbox-dark": { muted: 4.3 },
-  "synthwave-84": { label: 3.6, muted: 2.15 },
+const KNOWN_BELOW: Record<string, Partial<Record<Line, number>>> = {
+  "github-dark-dimmed": { muted: 3.3, "muted-2": 2.85 },
+  "solarized-dark": { label: 3.95, muted: 2.3, "label-2": 3.45, "muted-2": 2.0 },
+  nord: { muted: 3.95, "muted-2": 3.4 },
+  "one-dark": { muted: 2.95, "muted-2": 2.55 },
+  "tokyo-night": { muted: 4.2, "muted-2": 3.65 },
+  "tokyo-night-storm": { muted: 3.75, "muted-2": 3.25 },
+  "catppuccin-macchiato": { muted: 4.05, "muted-2": 3.55 },
+  "catppuccin-mocha": { "muted-2": 3.9 },
+  "ayu-mirage": { muted: 3.9, "muted-2": 3.4 },
+  "gruvbox-dark": { muted: 4.3, "muted-2": 3.75 },
+  "rose-pine": { "muted-2": 4.4 },
+  "synthwave-84": { label: 3.6, muted: 2.15, "label-2": 3.1, "muted-2": 1.85 },
 };
 
 type RGB = [number, number, number];
@@ -93,6 +101,7 @@ function palette(colors: { background?: string; foreground?: string }, accent: s
   const lift = luminance(bg) < 0.5 ? "#fff" : "#000";
   return {
     surface: mixOklab(bg, lift, 93),
+    surface2: mixOklab(bg, lift, 88),
     text,
     muted: mixOklab(text, bg, 66),
     accent,
@@ -100,7 +109,7 @@ function palette(colors: { background?: string; foreground?: string }, accent: s
   };
 }
 
-function check(theme: string, line: "label" | "muted", ratio: number): void {
+function check(theme: string, line: Line, ratio: number): void {
   const known = KNOWN_BELOW[theme]?.[line];
   if (known === undefined) {
     expect(ratio, `${theme} ${line} dropped under ${FLOOR}:1`).toBeGreaterThanOrEqual(FLOOR);
@@ -126,6 +135,14 @@ describe("every bundled theme on the fleet page", () => {
 
     it(`${entry.id}: the muted line (--ui-text-muted on --ui-surface)`, () => {
       check(entry.id, "muted", contrast(p.muted, p.surface));
+    });
+
+    it(`${entry.id}: the goal meta and the proposals chip (--ui-text on --ui-surface-2)`, () => {
+      check(entry.id, "label-2", contrast(p.text, p.surface2));
+    });
+
+    it(`${entry.id}: a tag (--ui-text-muted on --ui-surface-2)`, () => {
+      check(entry.id, "muted-2", contrast(p.muted, p.surface2));
     });
   }
 });

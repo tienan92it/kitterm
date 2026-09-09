@@ -197,12 +197,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .goal-top { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .goal-title { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
-.tag.proposals {
-  color: var(--ui-text); border: 1px solid var(--ui-warning);
-  background: color-mix(in srgb, var(--ui-warning) 10%, var(--ui-surface));
-}
+/* The warning colour sits on the border only; the text stays the tested
+   pair, --ui-text on --ui-surface-2 (theme-contrast.test.ts). */
+.tag.proposals { color: var(--ui-text); border: 1px solid var(--ui-warning); }
 .goal-link { margin-left: auto; margin-top: 0; }
-.goal-meta { font-size: 12px; color: var(--ui-text-muted); overflow-wrap: anywhere; }
+/* On the card head, like .state and .tallies: the muted mix drops under
+   4.5:1 on --ui-surface-2 for three more themes. */
+.goal-meta { font-size: 12px; color: var(--ui-text); overflow-wrap: anywhere; }
 /* The next action is an instruction: it wraps, three lines at most, so a
    phone reads the branch and the action rather than a title it cannot open. */
 .goal-next {
