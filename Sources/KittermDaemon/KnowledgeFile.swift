@@ -10,17 +10,26 @@ import Foundation
 /// and the summary route beside it.
 ///
 /// The jail: the path from the URL is relative, holds no `..`, no empty and
-/// no `.` segment; every component under the root is checked with `lstat`
-/// and a symlink anywhere in the chain is refused, the knowledge directory
-/// included; the final `realpath` must still sit under the knowledge
-/// directory. The root itself is a `realpath` already
-/// (`ProjectStore.canonicalRoot`). Files are capped at `maxBytes`. Every
-/// function here touches the disk, so the routes call them off the loop.
+/// no `.` segment. A file read walks one descriptor from the root, opens
+/// every component with `O_NOFOLLOW`, and reads through the descriptor it
+/// `fstat`ed, so the check and the read see one inode and a symlink anywhere
+/// in the chain is refused, the root and the knowledge directory included.
+/// The summary's listing of `rounds/` goes through `lstat` the same way.
+/// Files are capped at `maxBytes`. Every function here touches the disk, so
+/// the routes call them off the loop.
+///
+/// Accepted: a hard link under the knowledge directory to a file elsewhere
+/// on the volume is served. The linker needs write access to the project
+/// tree, and that writer can copy the file into the directory outright.
 enum KnowledgeFile {
     static let maxBytes = 256 * 1024
     static let maxPathLength = 1024
     /// One serial queue for every knowledge read, so a burst of dashboard
     /// polls costs one thread and the loop never waits on the disk.
+    /// Accepted: a stalled mount under one project's root holds every other
+    /// project's summary behind it; the fleet view bounds each summary
+    /// request by its poll interval, so the stall costs one card at a time
+    /// and never the fleet.
     static let queue = DispatchQueue(label: "kitterm.knowledge")
 
     enum Failure: Error, Equatable {
@@ -28,7 +37,7 @@ enum KnowledgeFile {
         case badPath
         /// Nothing servable at the path: missing, a directory, or unreadable.
         case notFound
-        /// A symlink in the chain, or a path that resolves outside.
+        /// A symlink in the chain, the root and the knowledge directory included.
         case refused
         /// The file is over `maxBytes`.
         case tooLarge
@@ -57,16 +66,28 @@ enum KnowledgeFile {
     }
 
     /// The bytes and the content type of `path` under the knowledge
-    /// directory. `knowledge` is relative to `root`.
+    /// directory. `knowledge` is relative to `root`. One descriptor walk:
+    /// each component is opened with `O_NOFOLLOW` relative to the one
+    /// before, the file with `O_NONBLOCK` too, so a FIFO answers at once and
+    /// its type refuses it; the size and the type come from `fstat` on the
+    /// descriptor the bytes are read from.
     static func read(root: String, knowledge: String, path: String) throws -> Payload {
-        let directory = try jailedDirectory(root: root, knowledge: knowledge)
-        let full = try jailedPath(directory: directory, root: root, knowledge: knowledge, path: path)
+        guard ProjectStore.isValidKnowledge(knowledge), isValidRelative(path) else { throw Failure.badPath }
+        let segments = (knowledge.split(separator: "/") + path.split(separator: "/")).map(String.init)
+        var current = try openComponent(at: AT_FDCWD, root, directory: true)
+        defer { close(current) }
+        for segment in segments.dropLast() {
+            let next = try openComponent(at: current, segment, directory: true)
+            close(current)
+            current = next
+        }
+        let file = try openComponent(at: current, segments[segments.count - 1], directory: false)
+        defer { close(file) }
         var info = stat()
-        guard stat(full, &info) == 0 else { throw Failure.notFound }
+        guard fstat(file, &info) == 0 else { throw Failure.notFound }
         guard (info.st_mode & S_IFMT) == S_IFREG else { throw Failure.notFound }
         guard info.st_size <= maxBytes else { throw Failure.tooLarge }
-        guard let handle = FileHandle(forReadingAtPath: full) else { throw Failure.notFound }
-        defer { try? handle.close() }
+        let handle = FileHandle(fileDescriptor: file, closeOnDealloc: false)
         let data = (try? handle.read(upToCount: maxBytes + 1)) ?? Data()
         guard data.count <= maxBytes else { throw Failure.tooLarge }
         return Payload(data: data, contentType: contentType(for: path))
@@ -88,7 +109,12 @@ enum KnowledgeFile {
             guard let payload = try? read(root: root, knowledge: knowledge, path: path) else { return nil }
             return String(data: payload.data, encoding: .utf8)
         }
-        let roundNames = (try? FileManager.default.contentsOfDirectory(atPath: directory + "/rounds")) ?? []
+        // A symlinked `rounds/` would list its target's names; refuse it like
+        // every other component, and treat it as no records.
+        var roundNames: [String] = []
+        if (try? refuseSymlink(directory + "/rounds")) != nil {
+            roundNames = (try? FileManager.default.contentsOfDirectory(atPath: directory + "/rounds")) ?? []
+        }
         let latest = roundNames.compactMap(KnowledgeSummary.roundNumber).max()
         return KnowledgeSummary.parse(
             state: text("STATE.md"),
@@ -100,10 +126,14 @@ enum KnowledgeFile {
 
     // MARK: - the jail
 
-    /// `<root>/<knowledge>` when every component under the root is a real
-    /// directory. A missing directory is `notFound`; a symlink is `refused`.
+    /// `<root>/<knowledge>` when the root and every component under it are
+    /// real directories. A missing directory is `notFound`; a symlink is
+    /// `refused`. The root is checked too: a registered root is a `realpath`
+    /// when it exists at load time, and a symlink put there later must not
+    /// be followed by the listing.
     static func jailedDirectory(root: String, knowledge: String) throws -> String {
         guard ProjectStore.isValidKnowledge(knowledge) else { throw Failure.badPath }
+        try refuseSymlink(root)
         var current = root
         for segment in knowledge.split(separator: "/") {
             current += "/" + segment
@@ -114,20 +144,20 @@ enum KnowledgeFile {
         return current
     }
 
-    /// `<directory>/<path>` when no component of `path` is a symlink and the
-    /// resolved path stays under `directory`.
-    private static func jailedPath(directory: String, root: String, knowledge: String, path: String) throws -> String {
-        guard isValidRelative(path) else { throw Failure.badPath }
-        var current = directory
-        for segment in path.split(separator: "/") {
-            current += "/" + segment
-            try refuseSymlink(current)
+    /// `name` opened relative to the descriptor `directory`, never through a
+    /// symlink. A directory component is opened `O_DIRECTORY`; the file is
+    /// opened `O_NONBLOCK`, so a FIFO does not wait for a writer. A symlink
+    /// at `name` is `refused`; anything else that fails to open is `notFound`.
+    private static func openComponent(at directory: Int32, _ name: String, directory isDirectory: Bool) throws -> Int32 {
+        let flags = O_RDONLY | O_NOFOLLOW | O_CLOEXEC | (isDirectory ? O_DIRECTORY : O_NONBLOCK)
+        let fd = openat(directory, name, flags)
+        if fd >= 0 { return fd }
+        // The kernel refused it; `lstat` only names the reason.
+        var info = stat()
+        if fstatat(directory, name, &info, AT_SYMLINK_NOFOLLOW) == 0, (info.st_mode & S_IFMT) == S_IFLNK {
+            throw Failure.refused
         }
-        var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
-        guard realpath(current, &buffer) != nil else { throw Failure.notFound }
-        let resolved = buffer.withUnsafeBufferPointer { String(cString: $0.baseAddress!) }
-        guard resolved.hasPrefix(directory + "/") else { throw Failure.refused }
-        return current
+        throw Failure.notFound
     }
 
     /// `refused` for a symlink at `path`; `notFound` when nothing is there.

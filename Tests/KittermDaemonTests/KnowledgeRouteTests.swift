@@ -64,11 +64,24 @@ final class KnowledgeRouteTests: XCTestCase {
         let repo = try dir("repo")
         _ = try dir("repo/.git")
         try write("repo/docs/goals/STATE.md", "# STATE: repo-goal\n\n- Status: active\n")
+        // pipe.md: a FIFO where a record could be; delta: `rounds/` is a
+        // symlink to a directory with a record; epsilon: the root does not
+        // exist when the store loads and becomes a symlink afterwards.
+        XCTAssertEqual(mkfifo(alpha + "/docs/goals/pipe.md", 0o600), 0, "mkfifo: errno \(errno)")
+        try write("outside/rounds/009.md", "# Round 009: elsewhere\n\n## Decision\n\npropose (x)\n")
+        try write("outside/docs/goals/STATE.md", "# STATE: outside-goal\n")
+        let delta = try dir("delta/docs/goals")
+        try write("delta/docs/goals/STATE.md", "# STATE: delta-goal\n")
+        try link("delta/docs/goals/rounds", to: outside + "/rounds")
         try ProjectStore.save([
             Project(id: "alpha", name: "Alpha", root: alpha),
             Project(id: "beta", name: "Beta", root: URL(fileURLWithPath: beta).deletingLastPathComponent().path),
             Project(id: "gamma", name: "Gamma", root: gamma),
+            Project(id: "delta", name: "Delta", root: URL(fileURLWithPath: delta).deletingLastPathComponent().deletingLastPathComponent().path),
+            Project(id: "epsilon", name: "Epsilon", root: stateDir.appendingPathComponent("epsilon").path),
         ])
+        _ = ProjectStore.shared.registered()
+        try link("epsilon", to: outside)
         _ = repo
 
         group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
@@ -239,6 +252,37 @@ final class KnowledgeRouteTests: XCTestCase {
         XCTAssertEqual(file.status, 404, file.text)
         let summary = try await get("/api/projects/beta/knowledge")
         XCTAssertEqual(summary.status, 404, "the summary refuses it too")
+    }
+
+    /// The open is `O_NONBLOCK` and the type comes from `fstat`, so a FIFO
+    /// is refused at once instead of holding the knowledge queue until a
+    /// writer opens it.
+    func testFIFOAtThePathIs404AtOnce() async throws {
+        let started = Date()
+        let answer = try await get("/api/projects/alpha/knowledge/pipe.md")
+        XCTAssertEqual(answer.status, 404, answer.text)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5, "the open blocked on the FIFO")
+        // The queue is free: the next read answers.
+        let next = try await status("/api/projects/alpha/knowledge/STATE.md")
+        XCTAssertEqual(next, 200)
+    }
+
+    func testSymlinkedRoundsDirectoryListsNothing() async throws {
+        let summary = try await get("/api/projects/delta/knowledge")
+        XCTAssertEqual(summary.status, 200, summary.text)
+        let body = try json(summary)
+        XCTAssertEqual(body["slug"] as? String, "delta-goal")
+        XCTAssertNil(body["lastRound"], "a symlinked rounds/ must not leak its target's names")
+        XCTAssertNil(body["lastDecision"])
+        let record = try await status("/api/projects/delta/knowledge/rounds/009.md")
+        XCTAssertEqual(record, 404)
+    }
+
+    func testRootThatBecameASymlinkIs404() async throws {
+        let summary = try await status("/api/projects/epsilon/knowledge")
+        XCTAssertEqual(summary, 404, "the listing must not follow the root")
+        let file = try await status("/api/projects/epsilon/knowledge/STATE.md")
+        XCTAssertEqual(file, 404)
     }
 
     func testPathThatResolvesUnderTheDirectoryIsServed() async throws {
