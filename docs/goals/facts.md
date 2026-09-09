@@ -10,6 +10,13 @@ decision moves to `docs/adr/`.
 
 ## Toolchain
 
+- This machine runs near its memory limit: on 2026-09-09 swap was
+  7.66 GB of 8 GB used, with a docker VM the largest consumer. A Swift
+  build spike is then enough for the kernel to kill the kitterm daemon
+  silently, with no crash report, and its launchd `KeepAlive` agent
+  restarts it with a new pid and a fresh epoch. Three restarts happened
+  that afternoon; each one killed every session. Run one heavy build at a
+  time, and commit a crew's work as it lands.
 - A live check of the CLI runs `.build/debug/kitterm` (fresh after `swift
   test`), because `swift run` needs `Package.swift` in the cwd.
   `KITTERM_STATE_DIR` isolates the state. (2026-09-08, round 3)
