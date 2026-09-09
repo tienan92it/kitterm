@@ -170,11 +170,11 @@ final class KnowledgeSummaryTests: XCTestCase {
     func testParsesThisRepositoryOwnPackage() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        let package = root.appendingPathComponent("docs/goals")
+        let package = root.appendingPathComponent("docs/goals/projects-and-knowledge")
         guard FileManager.default.fileExists(atPath: package.appendingPathComponent("STATE.md").path) else {
-            throw XCTSkip("docs/goals is not beside the test source")
+            throw XCTSkip("docs/goals/projects-and-knowledge is not beside the test source")
         }
-        let summary = KnowledgeFile.summary(root: root.path, knowledge: "docs/goals")
+        let summary = KnowledgeFile.summary(root: root.path, knowledge: "docs/goals/projects-and-knowledge")
         let parsed = try XCTUnwrap(summary)
         XCTAssertEqual(parsed.slug, "projects-and-knowledge")
         XCTAssertEqual(parsed.goal, "projects on the fleet view, and a knowledge base per project")
