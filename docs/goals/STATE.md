@@ -1,7 +1,7 @@
 # STATE: projects-and-knowledge
 
 - Status: active
-- Round: 0 of 3 in this budget (third budget)
+- Round: 1 of 3 in this budget (third budget; round 7 open)
 - Rounds total: 6
 - Last floor: green (2026-09-08, round 6 after)
 - Updated: 2026-09-09
@@ -109,11 +109,23 @@ branch removed.
 accessibility); a fix round follows if it finds should-fix items; then
 push and one PR to `main`. `dogfood` starts after the push.
 
+## Review gate 2 (2026-09-09, on round 6's branch)
+
+- security: blocking 0, should-fix 2, nit 4. The read opens the unchecked
+  path after the checks; the discovered-project fallback serves any repo a
+  pane visited.
+- daemon: blocking 0, should-fix 3, nit 7. The poll waits on every summary
+  fetch; the latest record is re-derived from its number; a third copy of
+  the write path.
+- accessibility: blocking 0, should-fix 9, nit 6. The record link
+  downloads on Chrome and Firefox; new links lose focus on repaint; a
+  proposal cannot be dismissed; the next action is cut; two contrast pairs
+  outside the test; two numbers share the word "round".
+- ranked and deduped: the job's `review2/ranked.md`, F1 to F11 required.
+
 ## Next action
 
-Review gate on `goals/knowledge-on-dashboard`: three review sessions
-labelled `crew:review`, static and read-only through git. Collect, dedupe,
-rank. Then round 7 `review-fixes-2` if needed, then push and PR. Then
-`dogfood` (capability 6): a standing foreman in its own pane on the
-installed `foreman-loop` skill, two registered projects, corpus request
-03.
+Round 7 `review-fixes-2` on the same branch, then push and one PR to
+`main`. Then `dogfood` (capability 6): a standing foreman in its own pane
+on the installed `foreman-loop` skill, two registered projects, corpus
+request 03.
