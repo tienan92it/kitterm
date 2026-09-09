@@ -968,11 +968,14 @@ function goalSection(project: ProjectRef, block: GoalBlock): HTMLElement {
   const goal = goalTitle(summary);
   const box = document.createElement("section");
   box.className = expanded ? "goal" : "goal brief";
-  box.setAttribute("aria-label", `Goal ${goal}`);
   const top = document.createElement("div");
   top.className = "goal-top";
   const title = document.createElement("h3");
   title.className = "goal-title";
+  // The section is named by its own heading, so a screen reader hears the
+  // title once, not "Goal X, region; X, heading". Both ids are slugs.
+  title.id = `goal-${project.id}-${summary.slug ?? "goal"}`;
+  box.setAttribute("aria-labelledby", title.id);
   title.textContent = goal;
   const slug = expanded ? titleSlug(summary) : null;
   if (slug !== null) {
