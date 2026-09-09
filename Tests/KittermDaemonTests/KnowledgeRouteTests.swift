@@ -296,7 +296,7 @@ final class KnowledgeRouteTests: XCTestCase {
         XCTAssertEqual(nested.status, 200, nested.text)
         XCTAssertTrue(nested.text.hasPrefix("# Round 001"))
         XCTAssertEqual(try KnowledgeFile.read(root: alpha, knowledge: "docs/goals", path: "rounds/002.md").contentType,
-                       "text/markdown; charset=utf-8")
+                       "text/plain; charset=utf-8")
     }
 
     // MARK: - the cap and the types
@@ -312,7 +312,7 @@ final class KnowledgeRouteTests: XCTestCase {
     func testContentTypes() async throws {
         let markdown = try await get("/api/projects/alpha/knowledge/STATE.md")
         XCTAssertEqual(markdown.status, 200)
-        XCTAssertEqual(markdown.header("content-type"), "text/markdown; charset=utf-8")
+        XCTAssertEqual(markdown.header("content-type"), "text/plain; charset=utf-8")
         XCTAssertEqual(markdown.header("x-content-type-options"), "nosniff")
         XCTAssertEqual(markdown.text, Self.stateText)
         let plain = try await get("/api/projects/alpha/knowledge/notes.txt")
@@ -342,6 +342,13 @@ final class KnowledgeRouteTests: XCTestCase {
     }
 
     // MARK: - the summary
+
+    func testSummaryIsNosniffJSON() async throws {
+        let answer = try await get("/api/projects/alpha/knowledge")
+        XCTAssertEqual(answer.status, 200, answer.text)
+        XCTAssertEqual(answer.header("content-type"), "application/json")
+        XCTAssertEqual(answer.header("x-content-type-options"), "nosniff")
+    }
 
     func testSummaryFieldsAndETag() async throws {
         let answer = try await get("/api/projects/alpha/knowledge")

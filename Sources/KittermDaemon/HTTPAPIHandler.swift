@@ -1333,7 +1333,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// knowledge directory, read-only, jailed (`KnowledgeFile`): a `..`,
     /// `.`, empty segment or absolute path is 400, a symlink anywhere in the
     /// chain or a path that resolves outside is 404, a file over 256 KiB is
-    /// 413. `.md` is `text/markdown`, everything else `text/plain`.
+    /// 413. Every file is `text/plain`, so a link opens as a page.
     ///
     /// Any grade: the package is the same information class as a session's
     /// cwd and as `GET /api/projects`, and the daemon never writes it. The
@@ -1394,6 +1394,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                     return
                 }
                 headers.add(name: "Content-Type", value: "application/json")
+                headers.add(name: "X-Content-Type-Options", value: "nosniff")
                 self.writeBytes(status: .ok, headers: headers, data: data,
                                 context: context, version: head.version, keepAlive: head.isKeepAlive)
             case .file(let payload):

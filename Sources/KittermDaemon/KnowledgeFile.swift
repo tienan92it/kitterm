@@ -90,15 +90,15 @@ enum KnowledgeFile {
         let handle = FileHandle(fileDescriptor: file, closeOnDealloc: false)
         let data = (try? handle.read(upToCount: maxBytes + 1)) ?? Data()
         guard data.count <= maxBytes else { throw Failure.tooLarge }
-        return Payload(data: data, contentType: contentType(for: path))
+        return Payload(data: data, contentType: contentType)
     }
 
-    /// `text/markdown` for `.md`, `text/plain` for everything else. Never the
-    /// file's own type: this is the daemon's origin, and a `text/html` answer
-    /// would run with the auth cookie (see `FilePreview`).
-    static func contentType(for path: String) -> String {
-        path.lowercased().hasSuffix(".md") ? "text/markdown; charset=utf-8" : "text/plain; charset=utf-8"
-    }
+    /// Every file is `text/plain`, `.md` included: a link from the fleet
+    /// view must show a page, and Chrome for Android and Firefox download
+    /// `text/markdown` under `nosniff`. Never the file's own type: this is
+    /// the daemon's origin, and a `text/html` answer would run with the auth
+    /// cookie (see `FilePreview`).
+    static let contentType = "text/plain; charset=utf-8"
 
     /// The summary of the package under the knowledge directory, or nil
     /// when the directory is missing or refused. Every file goes through the
