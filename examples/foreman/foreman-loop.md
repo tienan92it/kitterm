@@ -143,8 +143,8 @@ Do this on start and after every `wait_for_events` result.
 4. Call `list_sessions`. A session belongs to a goal when its labels carry
    `goal:<slug>` and `round:<n>`. Never match a session to a goal by its id.
    A goal with such a live session has a round open.
-5. Count the live sessions with a `goal:` label across all projects. Review
-   sessions count.
+5. Count the live sessions with a `goal:` label across all projects. A
+   review session counts toward the cap of three.
 
 ## Schedule
 
