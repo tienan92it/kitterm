@@ -32,6 +32,7 @@ import {
   type AttentionItem,
   type Filter,
   type Group,
+  type KnowledgeAnswer,
   type KnowledgeSummary,
   type MergedState,
   type ModelRow,
@@ -102,11 +103,19 @@ type Kind = "human" | "crew";
  * waits on the human in a project's knowledge package. */
 type StripItem = AttentionItem<SessionRow> | ProposedItem;
 
-/** One project's knowledge summary as last fetched. `summary` is null when
- * the daemon answered 404 (no knowledge directory); the page asks again
- * after `KNOWLEDGE_RETRY_POLLS` polls, so a `kitterm project init` shows up
+/** One project's knowledge as last fetched: every goal summary the daemon
+ * listed, and `summary` as the first of them (the active goal, or the one
+ * that sorts first) with the project's id, or `{project}` alone for a
+ * package with no goal folder. `summary` is null when the daemon answered
+ * 404 (no knowledge directory); the page asks again after
+ * `KNOWLEDGE_RETRY_POLLS` polls, so a `kitterm project init` shows up
  * without a reload. */
-type KnowledgeEntry = { etag: string | null; summary: KnowledgeSummary | null; missesLeft: number };
+type KnowledgeEntry = {
+  etag: string | null;
+  goals: KnowledgeSummary[];
+  summary: KnowledgeSummary | null;
+  missesLeft: number;
+};
 
 /** The chip and search choice. Kept in `sessionStorage` so a reload on the
  * same tab keeps the view; a new tab starts clean. */
@@ -322,17 +331,29 @@ async function fetchKnowledge(): Promise<void> {
         });
         if (res.status === 304) return;
         if (res.status === 404) {
-          knowledge.set(project.id, { etag: null, summary: null, missesLeft: KNOWLEDGE_RETRY_POLLS });
+          knowledge.set(project.id, { etag: null, goals: [], summary: null, missesLeft: KNOWLEDGE_RETRY_POLLS });
           return;
         }
         if (!res.ok) return;
-        const summary = (await res.json()) as KnowledgeSummary;
-        knowledge.set(project.id, { etag: res.headers.get("etag"), summary, missesLeft: 0 });
+        const answer = (await res.json()) as KnowledgeAnswer;
+        const goals = knowledgeGoals(answer);
+        knowledge.set(project.id, {
+          etag: res.headers.get("etag"),
+          goals,
+          summary: goals[0] ?? { project: answer.project },
+          missesLeft: 0,
+        });
       } catch {
         // Keep what the card shows, on a timeout too; the next poll asks again.
       }
     }),
   );
+}
+
+/** The goal summaries of one answer, each carrying the project's id, in
+ * the daemon's order. */
+function knowledgeGoals(answer: KnowledgeAnswer): KnowledgeSummary[] {
+  return (answer.goals ?? []).map((goal) => ({ ...goal, project: answer.project }));
 }
 
 /** The projects with a summary, for the strip's proposed items. */
@@ -895,14 +916,15 @@ function card(g: Group<SessionRow>, archived: ArchivedRow[]): HTMLElement {
   }
   head.append(counts);
   if (!watchOnly && g.project?.root) head.append(spawnControls(g.project));
-  const summary = g.project ? (knowledge.get(g.project.id)?.summary ?? null) : null;
+  const entry = g.project ? knowledge.get(g.project.id) : undefined;
+  const summary = entry?.summary ?? null;
   if (summary && g.project && hasKnowledge(summary)) head.append(goalBlock(g.project, summary));
   section.append(head);
 
   if (g.rows.length > 0) {
     // The rows without a crew label first, then the goal's own crew under
     // its slug, then the other crews under a labelled rule each.
-    const { goals, rest } = goalGroups(g.rows, summary);
+    const { goals, rest } = goalGroups(g.rows, entry?.goals);
     const sections = crewSections(rest).filter((sec) => sec.rows.length > 0);
     const rowList = (rows: SessionRow[]): HTMLElement => {
       const list = document.createElement("ul");

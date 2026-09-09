@@ -61,13 +61,13 @@ describe("goalGroups", () => {
   const human = row("human");
 
   it("puts the rows labelled with the package's slug under it and keeps the rest", () => {
-    const { goals, rest } = goalGroups([human, foreign, crew], summary);
+    const { goals, rest } = goalGroups([human, foreign, crew], [summary]);
     expect(goals).toEqual([{ slug: "projects-and-knowledge", rows: [crew] }]);
     expect(rest.map((r) => r.id)).toEqual(["human", "foreign"]);
   });
 
   it("has no goal group when no row carries the slug", () => {
-    const { goals, rest } = goalGroups([human, foreign], summary);
+    const { goals, rest } = goalGroups([human, foreign], [summary]);
     expect(goals).toEqual([]);
     expect(rest.map((r) => r.id)).toEqual(["human", "foreign"]);
   });
@@ -75,13 +75,25 @@ describe("goalGroups", () => {
   it("keeps every row in rest without a summary or a slug", () => {
     expect(goalGroups([crew, human], null).goals).toEqual([]);
     expect(goalGroups([crew, human], undefined).rest.map((r) => r.id)).toEqual(["crew", "human"]);
-    expect(goalGroups([crew, human], { project: "kitterm" }).goals).toEqual([]);
+    expect(goalGroups([crew, human], [{ project: "kitterm" }]).goals).toEqual([]);
+    expect(goalGroups([crew, human], []).rest.map((r) => r.id)).toEqual(["crew", "human"]);
+  });
+
+  it("groups under every goal of the answer, in the daemon's order, and keeps the rest", () => {
+    const done: KnowledgeSummary = { project: "kitterm", slug: "another-goal", status: "done", lastRound: 8 };
+    const { goals, rest } = goalGroups([human, foreign, crew], [summary, done]);
+    expect(goals).toEqual([
+      { slug: "projects-and-knowledge", rows: [crew] },
+      { slug: "another-goal", rows: [foreign] },
+    ]);
+    expect(rest.map((r) => r.id)).toEqual(["human"]);
+    expect(goalGroups([human, crew], [done, summary]).goals.map((g) => g.slug)).toEqual(["projects-and-knowledge"]);
   });
 
   it("sorts inside the goal group like a card: attention first", () => {
     const idle = row("idle", { goal: "projects-and-knowledge" }, { mergedState: "idle" });
     const asks = row("asks", { goal: "projects-and-knowledge" }, { mergedState: "needs-input" });
-    const { goals } = goalGroups([idle, asks], summary);
+    const { goals } = goalGroups([idle, asks], [summary]);
     expect(goals[0].rows.map((r) => r.id)).toEqual(["asks", "idle"]);
   });
 });

@@ -79,12 +79,23 @@ export type AttentionItem<R extends ModelRow> =
   | { kind: "needs-input"; row: R }
   | { kind: "failed"; row: R };
 
-/** The summary of a project's knowledge package,
- * `GET /api/projects/<id>/knowledge`. Every field but `project` is absent
- * when the file or the line behind it is missing. */
+/** What `GET /api/projects/<id>/knowledge` answers: one summary per goal
+ * folder under the knowledge directory, `active` first, then `waiting`,
+ * `stopped`, `done`, the rest, and by slug; empty for a package with no
+ * goal folder. */
+export type KnowledgeAnswer = {
+  ok: boolean;
+  project: string;
+  goals: KnowledgeSummary[];
+};
+
+/** The summary of one goal folder of a project's knowledge package, one
+ * entry of `KnowledgeAnswer.goals`, with the project's id added by the
+ * page. Every field but `project` is absent when the file or the line
+ * behind it is missing. */
 export type KnowledgeSummary = {
   project: string;
-  /** The suffix of the `# STATE: <slug>` heading; what a `goal:` label names. */
+  /** The goal folder's name; what a `goal:` label names. */
   slug?: string;
   goal?: string;
   status?: string;
@@ -95,7 +106,8 @@ export type KnowledgeSummary = {
   proposals?: number;
   lastRound?: number;
   /** The latest record's path under the knowledge directory by its real
-   * file name, `rounds/7.md` included. Absent from a daemon before v0.24. */
+   * file name, `<slug>/rounds/7.md` included. Absent from a daemon before
+   * v0.24. */
   lastRecord?: string;
   /** The first line of the latest round record's `## Decision` section. */
   lastDecision?: string;
@@ -374,23 +386,24 @@ export function roundOf(row: ModelRow): number | null {
 }
 
 /**
- * Split a card's rows into the goal's own crew and the rest: a row whose
- * `goal:` label equals the package's slug goes under that slug; every other
- * row, and every row when the package has no slug, stays in `rest` for the
- * crew sections. Both keep `sortInGroup`'s order.
+ * Split a card's rows into the goals' own crews and the rest: a row whose
+ * `goal:` label equals a goal's slug goes under that slug, one group per
+ * goal with rows in the goals' order; every other row, and every row when
+ * no goal has a slug, stays in `rest` for the crew sections. Every group
+ * keeps `sortInGroup`'s order.
  */
 export function goalGroups<R extends ModelRow>(
   rows: R[],
-  summary: KnowledgeSummary | null | undefined,
+  goals: KnowledgeSummary[] | null | undefined,
 ): { goals: GoalGroup<R>[]; rest: R[] } {
-  const slug = summary?.slug;
-  if (!slug) return { goals: [], rest: sortInGroup(rows) };
-  const own = rows.filter((row) => goalOf(row) === slug);
-  const rest = rows.filter((row) => goalOf(row) !== slug);
-  return {
-    goals: own.length > 0 ? [{ slug, rows: sortInGroup(own) }] : [],
-    rest: sortInGroup(rest),
-  };
+  const slugs = (goals ?? []).map((goal) => goal.slug).filter((slug): slug is string => !!slug);
+  const groups: GoalGroup<R>[] = [];
+  for (const slug of slugs) {
+    const own = rows.filter((row) => goalOf(row) === slug);
+    if (own.length > 0) groups.push({ slug, rows: sortInGroup(own) });
+  }
+  const rest = rows.filter((row) => !slugs.includes(goalOf(row) ?? ""));
+  return { goals: groups, rest: sortInGroup(rest) };
 }
 
 /** `rounds/NNN.md` for round `n`: three digits, more when needed. */
