@@ -591,7 +591,7 @@ function proposedContent(item: ProposedItem): DocumentFragment {
   fragment.append(stripTop("proposed", goal, item.project.name));
   if (item.summary.lastDecision) {
     const line = document.createElement("div");
-    line.className = "strip-detail";
+    line.className = "strip-detail decision";
     line.textContent = item.summary.lastDecision;
     fragment.append(line);
   }
@@ -966,7 +966,6 @@ function goalBlock(project: ProjectRef, summary: KnowledgeSummary): HTMLElement 
     const next = document.createElement("div");
     next.className = "goal-next";
     next.textContent = `next: ${summary.nextAction}`;
-    next.title = summary.nextAction;
     box.append(next);
   }
   return box;

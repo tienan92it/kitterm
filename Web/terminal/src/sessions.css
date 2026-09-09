@@ -84,6 +84,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   color: var(--ui-text-muted); font-family: var(--font-mono); font-size: 12.5px; margin-top: 3px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* The decision line is what the human decides on: it wraps to two lines,
+   and the record link holds the rest. */
+.strip-detail.decision {
+  white-space: normal; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+}
 .strip-open {
   display: inline-flex; align-items: center; min-height: var(--tap-min); margin-top: 2px; font-size: 12px;
   color: var(--ui-text-muted); text-decoration: none; border-bottom: 1px solid var(--ui-border);
@@ -197,9 +203,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .goal-link { margin-left: auto; margin-top: 0; }
 .goal-meta { font-size: 12px; color: var(--ui-text-muted); overflow-wrap: anywhere; }
+/* The next action is an instruction: it wraps, three lines at most, so a
+   phone reads the branch and the action rather than a title it cannot open. */
 .goal-next {
-  font-size: 12.5px; color: var(--ui-text);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: 12.5px; color: var(--ui-text); overflow-wrap: anywhere; overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3;
 }
 
 /* --- rows ----------------------------------------------------------------- */
