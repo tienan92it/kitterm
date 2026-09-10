@@ -167,9 +167,10 @@ enum ForemanSkills {
            with their status.
         4. Call `list_sessions`. A session belongs to a goal when its labels carry
            `goal:<slug>` and `round:<n>`. Never match a session to a goal by its id.
-           A goal with such a live session has a round open. The round's own session
-           is the one with `crew:<slug>`; a `crew:helper` session beside it is a
-           fixture the crew made, and it does not hold the round open.
+           The round's own session is the one with `crew:<slug>`; a `crew:helper`
+           session beside it is a fixture the crew made. A round is open while a
+           live session carries `crew:<slug>`; a `crew:helper` session does not hold
+           the round open.
         5. Count the live sessions with a `goal:` label across all projects. A
            review session and a crew's helper count toward the cap of three.
 
@@ -180,12 +181,12 @@ enum ForemanSkills {
 
         - `Status: active` in `STATE.md`;
         - the budget has rounds left: `Round: <n> of <m>` with `n` below `m`;
-        - no round is open: no live session carries `goal:<slug>`;
+        - no round is open: no live session carries `crew:<slug>`;
         - no proposal blocks the next action: the "Next action" section does not
           depend on a proposal that waits on the human.
 
         Run at most one round per goal at a time. Keep at most three crew sessions
-        live across all projects; a review session counts. When more than one goal is
+        live across all projects; Scan step 5 counts them. When more than one goal is
         runnable, start the one with the oldest `Updated` date first. Then run
         "One round" for it.
 
@@ -196,10 +197,11 @@ enum ForemanSkills {
         goal file below is under the goal's folder, `docs/goals/<slug>/`; no goal
         file sits directly under `docs/goals/`.
 
-        A round attempt the host machine kills is not a failed round. It does not
-        spend the budget and it writes no record. Note it in `STATE.md` under
-        `Failures` as `attempt killed: <ISO date>, <what died>`. Leave the round
-        counter and the queue item where they are. Run the round again.
+        A round attempt the host machine kills does not spend the budget and writes
+        no round record. Note it in `STATE.md` under `Failures` as
+        `attempt killed: <ISO date>, <what died>`. Leave the round counter and the
+        queue item where they are. Run the round again. A failed round is the other
+        case: it spends the budget and it gets a record.
 
         1. **Read.** Read `docs/goals/<slug>/goal.md`, `docs/goals/<slug>/plan.md`,
            `docs/goals/<slug>/STATE.md`, the project's `docs/goals/facts.md`, and
@@ -251,10 +253,12 @@ enum ForemanSkills {
            - the floor commands to run after the work, and the rule to add one
              deterministic check for the behaviour the item closes;
            - commit on the branch, do not push, do not commit under `docs/goals/`;
-           - the report: post the note before the floor, then post the update
-             after, so a session that dies at its last step still leaves its
-             evidence; each `post_note` under 1900 bytes, with the commit shas, the
-             diff file list, the floor results, the tests added, and any proposal;
+           - the report: the crew posts its note before the floor, then posts the
+             update after; a session that dies at its last step still leaves its
+             evidence. The first note carries the commit shas so far, the diff file
+             list, the tests added, and any proposal. The second note carries those
+             fields at their final values and the floor results. Each `post_note`
+             stays under 1900 bytes;
            - a session the crew spawns inside the round carries `crew:helper` with
              the round's `goal:` and `round:` labels, and the crew ends it;
            - when a decision needs a human, ask in the pane and stop.
@@ -283,10 +287,19 @@ enum ForemanSkills {
            Sort every path into the Authority table of `LOOP.md`. A path under
            Frozen fails the round. A path under Propose turns the decision into
            `propose`. Read `git diff <base> -- Tests/` for an existing test file: a
-           deleted or weakened assertion counts as Frozen. An assertion that pins a
-           text, a count, or a layout this round must change is Propose, not Frozen,
-           when `goal.md` or the item's proof requires the change. Collect the
-           visible proof the crew posted: a screenshot path, a test name, a URL.
+           deleted or weakened assertion counts as Frozen.
+
+           An assertion in an existing test file can pin a text, a count, or a
+           layout. `goal.md` or the item's proof can require this round to change
+           that text, that count, or that layout. The assertion is then Chartered,
+           not Frozen. The crew replaces the assertion inside the round and keeps
+           its intent. The foreman records the old assertion, the new assertion, and
+           the line of `goal.md` or `plan.md` that requires the change. A Chartered
+           assertion is not a proposal: the human does not edit the file, and the
+           round's decision stays `done`.
+
+           Collect the visible proof the crew posted: a screenshot path, a test
+           name, a URL.
 
         5. **Classify the largest gap.** One class per round: `world` (the
            environment, the daemon build, the toolchain), `domain` (the product's

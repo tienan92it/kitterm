@@ -41,19 +41,25 @@ so their shape is an interface.
 |---|---|---|
 | Free | `<source directories>`, `<test directory>` new files, `<docs directory>` except this package, `AGENTS.md`, `<examples directory>`, `STATE.md`, `rounds/`, `facts.md` (append) | The crew and the foreman change these inside a round. |
 | Propose | `plan.md`, this file, `<decision records directory>`, `<CI workflow directory>`, `<package manifests>`, `<benchmark directory>` | The foreman writes the proposal in the round record with decision `propose`. The human edits the file. |
-| Frozen | `goal.md`, `corpus/`, an existing test file, an existing bench scenario and its gate, `<lockfiles>` | Nobody changes these inside a round. A repair that needs one stops the loop. |
+| Frozen | `goal.md`, `corpus/`, an existing test file, an existing bench scenario and its gate, `<lockfiles>` | Nobody changes these inside a round, except a Chartered assertion. A repair that needs one stops the loop. |
+| Chartered | an assertion in an existing test file that pins a text, a count, or a layout this round must change | The crew replaces the assertion inside the round and keeps its intent. The foreman records the replacement. |
 
 Before the foreman accepts a round it runs `git diff --name-only <base>` in
 the crew session and reads the output. A path under Frozen fails the round.
 A path under Propose turns the round's decision into `propose`. A deleted or
 weakened assertion in an existing test counts as a Frozen change.
 
-An assertion can pin a text, a count, or a layout that this round must
-change. That assertion is Propose, not Frozen, when `goal.md` or the item's
-proof requires the change. The crew replaces the assertion, keeps its
-intent, and names the line that requires it in the record.
+An assertion in an existing test file can pin a text, a count, or a layout.
+`goal.md` or the item's proof can require this round to change that text,
+that count, or that layout. The assertion is then Chartered, not Frozen. The
+crew replaces the assertion inside the round and keeps its intent. The
+foreman records the old assertion, the new assertion, and the line of
+`goal.md` or `plan.md` that requires the change. A Chartered assertion is
+not a proposal: the human does not edit the file, and the round's decision
+stays `done`.
 
-The loop can change the product. It cannot change the evidence that decides
+The loop can change the product. It can restate the evidence that `goal.md`
+charters it to change. It cannot delete or weaken the evidence that decides
 whether the product improved.
 
 ## Budget
@@ -123,13 +129,16 @@ plane; the foreman rebuilds its view from them and from the daemon.
    The folder name is the goal's slug; the `goal:` label carries it. Match
    a live session to its goal by the `goal:` and `round:` labels, never by
    id. The round's own session is the one with `crew:<slug>`; a
-   `crew:helper` session beside it is a fixture the crew made.
+   `crew:helper` session beside it is a fixture the crew made. A round is
+   open while a live session carries `crew:<slug>`; a `crew:helper` session
+   does not hold the round open.
 2. **Schedule.** A goal is runnable when its `Status` is `active`, its
    budget has rounds left, no round is open, and no proposal blocks the next
    action. `Status` is one of `active`, `waiting`, `stopped`, `done`; only
-   `active` runs. Run at most one round per goal and at most three crew sessions
-   across all projects. Start the runnable goal with the oldest `Updated`
-   date first.
+   `active` runs. Run at most one round per goal and at most three crew
+   sessions across all projects. A review session and a crew's helper count
+   toward the cap of three. Start the runnable goal with the oldest
+   `Updated` date first.
 3. **Delegate.** Run "One round" for that goal. The crew session does the
    work. The foreman reads, routes, verifies, and records.
 4. **Monitor.** Hold one `wait_for_events` for the whole daemon. On each
