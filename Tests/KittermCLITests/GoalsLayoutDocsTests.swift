@@ -60,6 +60,109 @@ final class GoalsLayoutDocsTests: XCTestCase {
         }
     }
 
+    /// The rules of the loop are written once and read in five places:
+    /// `docs/goals/LOOP.md`, its generic derivation `examples/goals/LOOP.md`,
+    /// the `foreman-loop` skill, and the two copies the binary embeds. Each
+    /// rule below is the sentence that carries it, and every source must hold
+    /// that sentence whole; only the line breaks may differ.
+    ///
+    /// A marker of a few words proves that the words co-occur, not that the
+    /// files agree: a file can hold `is Propose, not Frozen` inside a sentence
+    /// that states the rule backwards. A sentence cannot hold its own
+    /// negation, so the rule itself is the check.
+    static let loopRules: [(rule: String, sentence: String)] = [
+        (
+            "a killed attempt does not spend the budget",
+            """
+            A round attempt the host machine kills does not spend the budget and
+            writes no round record. Note it in `STATE.md` under `Failures` as
+            `attempt killed: <ISO date>, <what died>`. Leave the round counter and
+            the queue item where they are. Run the round again.
+            """
+        ),
+        (
+            "`resumed-from` carries the pane's previous id as well as an archive id",
+            "| `resumed-from` | archive id, or the id the pane held before an epoch change | foreman, on a respawn |"
+        ),
+        (
+            "the crew's note goes out before the floor",
+            """
+            The crew posts its note before the floor, then posts the update after;
+            a session that dies at its last step still leaves its evidence.
+            """
+        ),
+        (
+            "an assertion this round must change is Chartered, and the crew replaces it",
+            """
+            An assertion in an existing test file can pin a text, a count, or a
+            layout. `goal.md` or the item's proof can require this round to change
+            that text, that count, or that layout. The assertion is then Chartered,
+            not Frozen. The crew replaces the assertion inside the round and keeps
+            its intent. The foreman records the old assertion, the new assertion,
+            and the line of `goal.md` or `plan.md` that requires the change. A
+            Chartered assertion is not a proposal: the human does not edit the
+            file, and the round's decision stays `done`.
+            """
+        ),
+        (
+            "a helper carries `crew:helper` with the round's labels, and the crew ends it",
+            """
+            A session the crew spawns inside the round carries `crew:helper` with
+            the round's `goal:` and `round:` labels, and the crew ends it
+            """
+        ),
+        (
+            "a round is open while a `crew:<slug>` session is live, and a helper is not one",
+            """
+            A round is open while a live session carries `crew:<slug>`; a
+            `crew:helper` session does not hold the round open.
+            """
+        ),
+        (
+            "a review session and a helper count toward the cap of three",
+            "A review session and a crew's helper count toward the cap of three."
+        ),
+    ]
+
+    /// A wording a round replaced. It names a tier or a label that the rule
+    /// above now contradicts, so a copy that still carries it disagrees with
+    /// the other four whatever else it says.
+    static let retiredWordings = [
+        "is Propose, not Frozen",
+        "no live session carries `goal:<slug>`",
+    ]
+
+    /// Collapse every run of whitespace and fold the case, so one sentence
+    /// wrapped at two widths, indented inside a Swift literal, or opening a
+    /// bullet in lower case, reads as one string.
+    private static func oneLine(_ text: String) -> String {
+        collapsed(text).lowercased()
+    }
+
+    /// The same collapse with the case kept, for a failure message.
+    private static func collapsed(_ text: String) -> String {
+        text.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+    }
+
+    func testTheLoopFilesCarryTheSameRuleSentences() throws {
+        var files: [(name: String, text: String)] = try [
+            "docs/goals/LOOP.md",
+            "examples/goals/LOOP.md",
+            "examples/foreman/foreman-loop.md",
+        ].map { (name: $0, text: try String(contentsOf: Self.root.appendingPathComponent($0), encoding: .utf8)) }
+        files.append(("GoalsTemplates.loop", GoalsTemplates.loop))
+        files.append(("ForemanSkills.foremanLoop", ForemanSkills.foremanLoop))
+        for (name, text) in files {
+            let oneLine = Self.oneLine(text)
+            for (rule, sentence) in Self.loopRules where !oneLine.contains(Self.oneLine(sentence)) {
+                XCTFail("\(name) does not carry the rule that \(rule), in these words: \(Self.collapsed(sentence))")
+            }
+            for retired in Self.retiredWordings where oneLine.contains(Self.oneLine(retired)) {
+                XCTFail("\(name) still carries the wording a round retired: `\(retired)`")
+            }
+        }
+    }
+
     /// The skill names the goal's files by their folder path, so a round
     /// prompt cannot point a crew at a file that does not exist.
     func testForemanLoopNamesGoalFilesByFolder() {

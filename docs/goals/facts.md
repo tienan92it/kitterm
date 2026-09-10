@@ -88,6 +88,15 @@ decision moves to `docs/adr/`.
 
 ## Crew pane
 
+- A crew that runs `kitterm serve` must set `KITTERM_STATE_DIR` **and** a
+  free port. `serve` writes the pid file and the port file before it binds,
+  so a second daemon aimed at `~/.kitterm` clobbers the live daemon's pid
+  even when the bind then fails. `livePid()` reads that dead pid, cannot
+  signal it, deletes the file, and reports "kitterm not running", so
+  `kitterm stop` can no longer reach the daemon that is still serving. On
+  2026-09-10 a crew did this and the foreman repaired the pid file by hand.
+  `DaemonPaths.stateDirectory` documents the hazard; say it in the prompt
+  as well. (2026-09-10, `contrast-tokens` round 2)
 - An escape byte does not survive an MCP client's JSON string argument,
   and kitterm is not the layer that loses it. Measured 2026-09-10 by
   driving `kitterm mcp` with a hand-written JSON-RPC line into a pane
@@ -166,6 +175,29 @@ decision moves to `docs/adr/`.
 
 ## Foreman
 
+- A round can be recorded as done and then fail review. The loop closes a
+  round on a green floor and a clean diff; the human's rule puts the
+  review before the merge, which is after the round closes. On 2026-09-10
+  round 4 of `foreman-harness` was written up as complete, and two
+  reviewers then found four defects in it. Do not treat a round record as
+  final until the review returns. (2026-09-10, `foreman-harness` round 5)
+- Two blind reviewers are worth their cost on a document change. Both
+  found the same hole in a substring check and described it the same way:
+  a file can carry the exact marker while stating the rule backwards. One
+  wrote the inverted sentence out, the crew used it as an acceptance test,
+  and the foreman ran it again against the finished file.
+  (2026-09-10, `foreman-harness` round 5)
+- A round that needs a change under a path it may not write delivers a
+  command, not a description. On 2026-09-10 a crew wrote the patch for
+  `docs/goals/LOOP.md` as one `git show ... | sed ... | git apply -C1
+  --recount -` line, proved it by running it against a copy in a scratch
+  tree and diffing byte for byte, and said plainly it had not run the
+  suite green. The foreman ran that one command and the floor went green
+  on the first try. (2026-09-10, `foreman-harness` round 4)
+- A capability whose deliverable spans the crew's files and a
+  foreman-owned file is red at the crew's last commit by construction,
+  and the round is not failed. Expect the handoff and read the red floor
+  as the handoff. (2026-09-10, `foreman-harness` round 4)
 - Before starting a round, read the other open rounds' plan rows and name
   the shared file in the prompt. On 2026-09-10 the foreman gave
   `daemon-last-words` and `contrast-tokens` the same

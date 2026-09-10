@@ -1,14 +1,14 @@
 # STATE: foreman-harness
 
 - Status: active
-- Round: 3 of 3 in this budget (first budget spent: rounds 1, 2, 3)
-- Rounds total: 3
-- Last floor: green (2026-09-10, round 3 after)
-- Updated: 2026-09-10, objective amended
+- Round: 2 of 3 in this budget (second budget)
+- Rounds total: 5
+- Last floor: green (2026-09-10, round 5 after the foreman's command)
+- Updated: 2026-09-10, round 5 closed after review
 
 ## Queue
 
-1. `four-loop-rules` (capability 4)
+Empty. All four capabilities in `plan.md` are done.
 
 ## Failures
 
@@ -16,16 +16,17 @@ None.
 
 ## Proposals waiting on the human
 
-- `LOOP.md`, Labels: a crew's own helper session copies the round's four
-  labels, so a scan by label counts it as a round session
-  (`rounds/001.md`).
-- `plan.md` capability 3: the row does not name the
-  registered-root-inside-a-checkout case the code now carries
-  (`rounds/002.md`).
-- `LOOP.md` Authority: an assertion that pins the text of a document a
-  round is chartered to rewrite is Propose, not Frozen, when the goal's
-  own completion condition requires the change. Three rounds have hit
-  this family now (`rounds/003.md`).
+- `LOOP.md`, two parts of one gap. First, name the split-authority
+  handoff: a capability whose deliverable spans the crew's files and a
+  foreman-owned file is red at the crew's last commit by construction, so
+  the round is not failed. Rounds 4 and 5 both were. The crew proposes a
+  decision value `handoff` and a Floor line that reads "red at the crew's
+  commit, green after the foreman's command". Second, say when a round's
+  decision becomes final. The human requires a review before a merge, and
+  the review runs after the round closes, so round 4 was recorded as done
+  and then failed review on four defects. Either the record waits for the
+  review, or the decision is provisional until it returns
+  (`rounds/004.md`, `rounds/005.md`).
 
 ## Done
 
@@ -35,6 +36,13 @@ None.
   `rounds/002.md`. Taken out of order: capability 2 needed a release.
 - `skill-drops-curl` (capability 2), round 3, `7d600c3`. See
   `rounds/003.md`.
+- `four-loop-rules` (capability 4), rounds 4 and 5, `61b3f78` plus the
+  foreman's commit. See `rounds/004.md` and `rounds/005.md`. Round 4
+  wrote the four rules and closed the three proposals rounds 1, 2 and 3
+  left open. Review then found four defects in it, and round 5 repaired
+  them: the Authority table gains a fourth tier, **Chartered**, and the
+  agreement check now compares whole rule sentences instead of four-word
+  markers.
 
 ## Direction
 
@@ -42,12 +50,14 @@ None.
 1 disproved it. The escape byte is lost in the calling MCP client, not in
 kitterm. The capability and the exclusions stand.
 
+2026-09-10: the human said continue after the first budget. Round 4 ran
+in the second budget.
+
 ## Next action
 
-The budget is spent after three rounds, so this goal needs a direction
-check. Capability 4, `four-loop-rules`, is the only item left and it now
-carries four proposals of its own to fold in. On continue: `skill-drops-curl` from `plan.md` row 2;
-proof: the `ForemanSkills` golden, no `curl` in the trust-dialog step,
-and a live check that the installed skill answers a real dialog. It
-needs `keys` on `main` and installed, so it follows the merge and a
-`kitterm skills install`.
+Merge `goals/four-loop-rules-work` into `main` and check `main` green.
+That is completion condition 5, and conditions 1 to 4 already hold, so the
+merge finishes the goal. The review has run: two reviewers read round 4,
+found four defects, and round 5 repaired all four, so the branch is ready.
+Set `Status: done` after `main` is green. The proposal above waits on the
+human and does not block the merge.
