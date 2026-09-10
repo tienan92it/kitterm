@@ -1,10 +1,10 @@
 # STATE: contrast-tokens
 
 - Status: waiting
-- Round: 1 of 3 in this budget (second budget)
-- Rounds total: 3
-- Last floor: green (2026-09-11, round 3 after)
-- Updated: 2026-09-11, round 3 closed; the goal needs a second ruling
+- Round: 2 of 3 in this budget (second budget)
+- Rounds total: 4
+- Last floor: green (2026-09-11, round 4 after)
+- Updated: 2026-09-11, round 4 closed; the goal needs a second ruling
 
 ## Queue
 
@@ -60,6 +60,12 @@ None.
   of `--ui-lift` to 3/6/9/12, and `.pane-close` stops fading. 44 entries
   dropped and one whole pair is gone. Cards sit closer to the page and
   keep their border.
+- `keep-the-cues` (round 4, the repair), `1c01d28`. See `rounds/004.md`.
+  A review before the merge found three elements that lost their only
+  cue to the elevation drop. `.quiet` and `.more` take an inset
+  `--ui-border` ring on hover; `.selection-action:active` takes an inset
+  `--ui-accent` ring, because `--ui-border` measured no better than what
+  the press had lost.
 
 ## Direction
 
@@ -87,8 +93,8 @@ Waiting on the human for the two decisions above. Capability 4 cannot
 start until the second one is answered, and it is the only item left.
 
 The three shipped capabilities stand on their own and can merge:
-`goals/open-the-elevation` at `fae03f8`, which carries rounds 1, 2 and 3.
-Run the review skill before the merge, as the human requires. The page
+`goals/open-the-elevation` at `1c01d28`, which carries rounds 1 to 4.
+The review has run and round 4 closed both of its blocking findings. The page
 looks different after this branch, so the human should see the eight
-images in `/Users/antran/.claude/jobs/b7a30d73/tmp/ct-round3/` before it
-lands.
+images in `/Users/antran/.claude/jobs/b7a30d73/tmp/ct-round3/`, and the
+seven in `ct-round4/`, before it lands.
