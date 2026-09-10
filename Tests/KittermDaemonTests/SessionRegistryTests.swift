@@ -175,9 +175,7 @@ final class SessionRegistryTests: XCTestCase {
         // exists. Arming first is the other half — a window that expires
         // during shell startup reaps the session, and the wait then never
         // opens at all (measured with a 3 s spawn-helper shim: `count` 0).
-        try await waitUntil("sleep to take the terminal", seconds: 10) {
-            session.foregroundProgram == "sleep"
-        }
+        try await waitForForeground("sleep", in: session)
         let registered = await registry.registerDetached(session)
         let id = try XCTUnwrap(registered)
 
@@ -213,9 +211,7 @@ final class SessionRegistryTests: XCTestCase {
         try session.write(Data("sleep 4\n".utf8))
         // Every window this test measures must expire while `sleep` holds the
         // terminal, so wait for `sleep` by name and arm the clock after it.
-        try await waitUntil("sleep to take the terminal", seconds: 10) {
-            session.foregroundProgram == "sleep"
-        }
+        try await waitForForeground("sleep", in: session)
         let registered = await registry.registerDetached(session)
         let id = try XCTUnwrap(registered)
         let freshSummary = await registry.summary(id)
