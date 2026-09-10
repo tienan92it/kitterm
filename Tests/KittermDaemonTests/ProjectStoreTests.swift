@@ -46,17 +46,39 @@ final class ProjectStoreTests: XCTestCase {
 
     // MARK: - resolution table
 
-    /// A registered root wins over a nested `.git` below it.
-    func testRegisteredRootWins() throws {
+    /// A checkout under a registered root is its own project: the checkout
+    /// is the nearer boundary. The registered root keeps the cwd that no
+    /// checkout owns, with its name and its knowledge directory.
+    func testNestedCheckoutWinsOverARegisteredParent() throws {
         let alpha = try dir("alpha")
+        let vendor = try dir("alpha/vendor")
         _ = try dir("alpha/vendor/.git")
-        try register([Project(id: "alpha", name: "Alpha", root: alpha)])
+        try register([Project(id: "alpha", name: "Alpha", root: alpha, knowledge: "notes")])
 
-        let resolved = store.resolve(cwd: alpha + "/vendor/src")
         XCTAssertEqual(
-            resolved,
-            ResolvedProject(id: "alpha", name: "Alpha", root: alpha, registered: true, knowledge: "docs/goals")
+            store.resolve(cwd: alpha + "/vendor/src"),
+            ResolvedProject(id: "vendor", name: "vendor", root: vendor, registered: false, knowledge: "docs/goals")
         )
+        XCTAssertEqual(
+            store.resolve(cwd: alpha + "/docs"),
+            ResolvedProject(id: "alpha", name: "Alpha", root: alpha, registered: true, knowledge: "notes"),
+            "the registered root still names and configures the tree it owns"
+        )
+    }
+
+    /// A registered root inside a checkout is nearer to the cwd than the
+    /// checkout, so the registration is not inert: a package registered
+    /// under a monorepo names its own tree.
+    func testARegisteredRootInsideACheckoutNamesItsOwnTree() throws {
+        let repo = try dir("mono")
+        _ = try dir("mono/.git")
+        let web = try dir("mono/packages/web")
+        try register([Project(id: "web", name: "Web", root: web)])
+
+        XCTAssertEqual(store.resolve(cwd: web + "/src")?.id, "web")
+        XCTAssertEqual(store.resolve(cwd: web + "/src")?.registered, true)
+        XCTAssertEqual(store.resolve(cwd: repo + "/packages")?.id, "mono", "outside it the checkout wins")
+        XCTAssertEqual(store.resolve(cwd: repo + "/packages")?.registered, false)
     }
 
     func testLongestRegisteredRootWins() throws {
