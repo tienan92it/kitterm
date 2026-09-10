@@ -33,15 +33,42 @@
   /* Elevation mixes toward --ui-lift rather than toward the theme's own
      foreground: on a low-contrast theme like Solarized Dark, mixing toward
      that muddy foreground makes a panel almost invisible. Mixing toward pure
-     white keeps the step perceptually even across every theme. */
+     white keeps the step perceptually even across every theme.
+
+     Every point of lift costs contrast, and the cost is the reason these
+     numbers are as small as they are. On a dark theme --ui-lift is white and
+     the text is light, so a lifted surface moves toward the text: no text
+     colour dimmer than the foreground can win back what the lift takes. Round
+     2 of `contrast-tokens` proved the limit by setting --ui-text-muted and
+     --ui-text-faint to --ui-text itself, and 32 pair-and-theme combinations
+     still missed 4.5:1. The lever is here, not in the text steps.
+
+     One rule for all seventeen themes, and it is the same floor argument the
+     text steps use: each step keeps the least lift that still separates a
+     surface from the page it sits on. 3/6/9/12 is where the curve bends —
+     `theme-contrast.test.ts` measures 27 more pair-and-theme combinations at
+     4.5:1 than 7/12/17/23 did, one more point of lift wins back only 10, and
+     one less wins only 3 more while the fill step stops reading at all.
+
+     The cost is that a surface no longer reads as raised on its own: the fill
+     step against --ui-bg falls from about 1.13-1.21 to about 1.05-1.08. The
+     edge is --ui-border's job now, and --ui-border does not move, so `.card`
+     and `.settings-panel` are as crisp against the page as they ever were —
+     1.51 on github-dark, 1.65 on solarized-dark. The three fills that carried
+     their own edge and had no border (`.count`, `.tag`, `.card-head`) take one
+     from --ui-border as an inset shadow, which paints no layout. */
   --ui-bg: var(--term-bg, #0d1117);
   --ui-bg-sunken: color-mix(in oklab, var(--ui-bg) 94%, black);
-  --ui-surface: color-mix(in oklab, var(--ui-bg) 93%, var(--ui-lift));
-  --ui-surface-2: color-mix(in oklab, var(--ui-bg) 88%, var(--ui-lift));
-  --ui-hover: color-mix(in oklab, var(--ui-bg) 83%, var(--ui-lift));
-  --ui-active: color-mix(in oklab, var(--ui-bg) 77%, var(--ui-lift));
+  --ui-surface: color-mix(in oklab, var(--ui-bg) 97%, var(--ui-lift));
+  --ui-surface-2: color-mix(in oklab, var(--ui-bg) 94%, var(--ui-lift));
+  --ui-hover: color-mix(in oklab, var(--ui-bg) 91%, var(--ui-lift));
+  --ui-active: color-mix(in oklab, var(--ui-bg) 88%, var(--ui-lift));
 
   /* --- borders -------------------------------------------------------- */
+  /* Unchanged while the fills came down: it is what a card is drawn with now.
+     It also paints the strongest hover state (`.settings-close:hover`), so
+     `--ui-text on --ui-border` is a measured pair and raising it would push
+     three themes further under the floor. */
   --ui-border: color-mix(in oklab, var(--ui-bg) 82%, var(--ui-lift));
 
   /* --- text ----------------------------------------------------------- */

@@ -457,8 +457,12 @@ body,
 }
 
 /* Revealed on hover where there is a pointer to hover with. On touch there is
-   none, so the button would be permanently unreachable — show it outright and
-   let it fade like the gear does. */
+   none, so the button would be permanently unreachable — show it outright.
+   It used to fade to 0.55 the way the gear does, and that put its glyph under
+   4.5:1 on every one of the seventeen themes, worst 1.85 on synthwave-84: the
+   only control a touch user has for closing a split was the least legible
+   thing on the page. It reads at full strength now, and --ui-veil plus the
+   border are what keep it quiet over the output. */
 @media (hover: hover) {
   .pane.is-split:hover .pane-close {
     display: block;
@@ -470,7 +474,6 @@ body,
     display: block;
     width: var(--tap-min);
     height: var(--tap-min);
-    opacity: 0.55;
   }
 }
 
