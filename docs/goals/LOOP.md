@@ -48,6 +48,11 @@ the crew session and reads the output. A path under Frozen fails the round.
 A path under Propose turns the round's decision into `propose`. A deleted or
 weakened assertion in an existing test counts as a Frozen change.
 
+An assertion can pin a text, a count, or a layout that this round must
+change. That assertion is Propose, not Frozen, when `goal.md` or the item's
+proof requires the change. The crew replaces the assertion, keeps its
+intent, and names the line that requires it in the record.
+
 The loop can change the product. It cannot change the evidence that decides
 whether the product improved.
 
@@ -55,6 +60,11 @@ whether the product improved.
 
 - Three rounds per direction check. `STATE.md` counts them.
 - One correction per round. A second failure ends the round as failed.
+- A round attempt the host machine kills does not spend the budget and
+  writes no round record. Note it in `STATE.md` under `Failures` as
+  `attempt killed: <ISO date>, <what died>`. Leave the round counter and
+  the queue item where they are. Run the round again. A failed round is
+  the other case: it spends the budget and it gets a record.
 - One crew session per round, plus review sessions when the round's
   capability touches `Sources/KittermDaemon/PtySession.swift` or
   `HTTPAPIHandler.swift`.
@@ -72,10 +82,14 @@ whether the product improved.
    read the screen.
 3. **Send one request.** Type the round prompt in one `send_input`: the
    queue item, its proof from `plan.md`, the facts that apply, the frozen
-   and propose paths, the corpus request it serves, and the rule to add a
-   deterministic check. From here the foreman loop applies: read before you
-   type, wait on `wait_for_events`, route `needs-input` and `needs-approval`
-   to the human, never answer for them.
+   and propose paths, the corpus request it serves, the rule to add a
+   deterministic check, and two rules for the crew's own sessions. The
+   crew posts its note before the floor, then posts the update after; a
+   session that dies at its last step still leaves its evidence. A session
+   the crew spawns inside the round carries `crew:helper` with the round's
+   `goal:` and `round:` labels, and the crew ends it. From here the foreman
+   loop applies: read before you type, wait on `wait_for_events`, route
+   `needs-input` and `needs-approval` to the human, never answer for them.
 4. **Collect.** On `completed`, read the last command output and the screen.
    Run the floor again. Read the diff. Collect the visible proof the crew
    posted with `post_note`: a screenshot path, a test name, a URL.
@@ -109,7 +123,8 @@ plane; the foreman rebuilds its view from them and from the daemon.
    project with no goal folder is reported once as "no goal" and skipped.
    The folder name is the goal's slug; the `goal:` label carries it. Match
    a live session to its goal by the `goal:` and `round:` labels, never by
-   id.
+   id. The round's own session is the one with `crew:<slug>`; a
+   `crew:helper` session beside it is a fixture the crew made.
 2. **Schedule.** A goal is runnable when its `Status` is `active`, its
    budget has rounds left, no round is open, and no proposal blocks the next
    action. `Status` is one of `active`, `waiting`, `stopped`, `done`; only
@@ -121,8 +136,8 @@ plane; the foreman rebuilds its view from them and from the daemon.
 4. **Monitor.** Hold one `wait_for_events` for the whole daemon. On each
    scan compare `heldSince` with now: archive a crew session that sits at an
    empty prompt one hour past `completed`. Respawn a crew once after an
-   `epoch` change; record the open round as failed with gap `world` when the
-   respawn does not restore it.
+   `epoch` change; when the respawn does not restore the round, record a
+   killed attempt (see "Budget") and stop the goal.
 5. **Report.** See "Reports".
 
 ## Reports
@@ -225,8 +240,8 @@ done | failed | propose (<path>: <what and why>)
 
 | Key | Value | Set by |
 |---|---|---|
-| `crew` | goal slug, or `foreman` for the foreman's own pane | foreman |
+| `crew` | goal slug; `foreman` for the foreman's own pane; `helper` for a session a crew spawns inside a round | foreman, or the crew for a helper |
 | `goal` | goal slug | foreman |
 | `round` | round number | foreman |
 | `task` | queue item slug | foreman |
-| `resumed-from` | archive id | foreman, on a respawn |
+| `resumed-from` | archive id, or the id the pane held before an epoch change | foreman, on a respawn |

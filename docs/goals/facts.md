@@ -151,6 +151,17 @@ decision moves to `docs/adr/`.
 
 ## Foreman
 
+- A round that needs a change under a path it may not write delivers a
+  command, not a description. On 2026-09-10 a crew wrote the patch for
+  `docs/goals/LOOP.md` as one `git show ... | sed ... | git apply -C1
+  --recount -` line, proved it by running it against a copy in a scratch
+  tree and diffing byte for byte, and said plainly it had not run the
+  suite green. The foreman ran that one command and the floor went green
+  on the first try. (2026-09-10, `foreman-harness` round 4)
+- A capability whose deliverable spans the crew's files and a
+  foreman-owned file is red at the crew's last commit by construction,
+  and the round is not failed. Expect the handoff and read the red floor
+  as the handoff. (2026-09-10, `foreman-harness` round 4)
 - Before starting a round, read the other open rounds' plan rows and name
   the shared file in the prompt. On 2026-09-10 the foreman gave
   `daemon-last-words` and `contrast-tokens` the same
