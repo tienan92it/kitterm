@@ -9,13 +9,19 @@ import {
   filter,
   group,
   pickForeman,
+  restartDismissKey,
+  restartDismissName,
+  restartNotice,
   sortInGroup,
+  stampFormat,
   stateOf,
   tally,
   type Approval,
+  type DaemonStarted,
   type MergedState,
   type ModelRow,
   type ProjectSummary,
+  type StampFormat,
 } from "./sessions-model";
 
 const kitterm = { id: "p-kitterm", name: "kitterm", root: "/w/kitterm", registered: false };
@@ -279,5 +285,108 @@ describe("accessible names", () => {
     expect(needsYouMessage(0)).toBe("Nothing needs you");
     expect(needsYouMessage(1)).toBe("1 item needs you");
     expect(needsYouMessage(3)).toBe("3 items need you");
+  });
+});
+
+describe("stampFormat", () => {
+  const died = new Date(2026, 8, 10, 22, 35).getTime();
+
+  it("prints the time alone for a moment that falls on today", () => {
+    expect(stampFormat(died, new Date(2026, 8, 10, 23, 5).getTime())).toBe("time");
+  });
+
+  it("prints the time alone across a whole day, because the rule is the date", () => {
+    const earlyToday = new Date(2026, 8, 10, 0, 5).getTime();
+    expect(stampFormat(earlyToday, new Date(2026, 8, 10, 23, 55).getTime())).toBe("time");
+  });
+
+  it("carries the date for a moment that falls on yesterday", () => {
+    expect(stampFormat(died, new Date(2026, 8, 11, 9, 0).getTime())).toBe("date-and-time");
+  });
+
+  it("carries the date for a moment six days back", () => {
+    expect(stampFormat(died, new Date(2026, 8, 16, 9, 0).getTime())).toBe("date-and-time");
+  });
+
+  it("carries the date for a moment in another year", () => {
+    expect(stampFormat(died, new Date(2027, 8, 10, 22, 35).getTime())).toBe("date-and-time");
+  });
+
+  // The case an elapsed span gets wrong: 80 minutes apart, two dates.
+  it("carries the date when the clock passed midnight between the two", () => {
+    const beforeMidnight = new Date(2026, 8, 10, 23, 50).getTime();
+    const afterMidnight = new Date(2026, 8, 11, 0, 10).getTime();
+    expect(stampFormat(beforeMidnight, afterMidnight)).toBe("date-and-time");
+  });
+});
+
+describe("the restart line", () => {
+  /** A fixed formatter, so the text under test carries no locale. `T+` is the
+   * time alone, `D+` the date and the time. */
+  const at = (epochMs: number, format: StampFormat) => `${format === "time" ? "T" : "D"}+${epochMs}`;
+  const none = new Set<string>();
+  const started = (data: Record<string, string>, epoch = "e1"): DaemonStarted => ({ epoch, data });
+
+  /** 10 Sep 2026, 10:35 PM in the reader's own zone, and a read half an hour
+   * later on the same date. Built from local parts, so no zone moves them. */
+  const died = new Date(2026, 8, 10, 22, 35).getTime();
+  const read = new Date(2026, 8, 10, 23, 5).getTime();
+
+  const unrecorded = {
+    previous: "unrecorded",
+    previousPid: "4210",
+    previousAliveAt: String(died),
+    previousSessions: "2",
+  };
+
+  it("speaks for a run that ended with no recorded reason", () => {
+    expect(restartNotice(started(unrecorded), none, at, read)).toEqual({
+      text: `The daemon restarted. The previous run was last alive at T+${died} and lost 2 sessions.`,
+      key: "epoch:e1",
+    });
+  });
+
+  it("carries the date when the previous run did not die today", () => {
+    const monday = new Date(2026, 8, 14, 9, 0).getTime();
+    const line = restartNotice(started(unrecorded), none, at, monday);
+    expect(line?.text).toBe(
+      `The daemon restarted. The previous run was last alive at D+${died} and lost 2 sessions.`,
+    );
+  });
+
+  it("counts one lost session in the singular", () => {
+    const one = restartNotice(started({ ...unrecorded, previousSessions: "1" }), none, at, read);
+    expect(one?.text).toContain("and lost 1 session.");
+  });
+
+  it("says nothing after a clean stop, which ended on purpose", () => {
+    const clean = { ...unrecorded, previous: "clean", previousEndedAt: String(died + 1000) };
+    expect(restartNotice(started(clean), none, at, read)).toBeNull();
+  });
+
+  it("says nothing after a live upgrade, which loses no session", () => {
+    expect(restartNotice(started({ ...unrecorded, previous: "takeover" }), none, at, read)).toBeNull();
+  });
+
+  it("says nothing when the key is absent, which is no previous run", () => {
+    expect(restartNotice(started({ epoch: "e1", version: "0.24.0", pid: "99" }), none, at, read)).toBeNull();
+    expect(restartNotice(null, none, at, read)).toBeNull();
+  });
+
+  it("says nothing while this run's epoch is dismissed", () => {
+    const dismissed = new Set([restartDismissKey("e1")]);
+    expect(restartNotice(started(unrecorded), dismissed, at, read)).toBeNull();
+    // The next death is a new epoch, so the line comes back.
+    expect(restartNotice(started(unrecorded, "e2"), dismissed, at, read)?.key).toBe("epoch:e2");
+  });
+
+  it("says nothing when a fact the line claims is missing or not a number", () => {
+    const { previousSessions: _drop, ...noCount } = unrecorded;
+    expect(restartNotice(started(noCount), none, at, read)).toBeNull();
+    expect(restartNotice(started({ ...unrecorded, previousAliveAt: "soon" }), none, at, read)).toBeNull();
+  });
+
+  it("names its Dismiss button apart from the other Dismiss buttons", () => {
+    expect(restartDismissName()).toBe("Dismiss the restart notice");
   });
 });
