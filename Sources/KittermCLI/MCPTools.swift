@@ -32,6 +32,26 @@ enum MCPTools {
 
     enum ToolError: Error { case badArguments(String) }
 
+    /// The keys `send_input` presses by name, in the order the schema lists
+    /// them. A key travels by name and never as text because a JSON string
+    /// argument is not a safe carrier for a control byte: an MCP client that
+    /// strips control characters turns the Down arrow into the two bytes
+    /// `[B`, and one that leaves the byte raw makes the whole JSON-RPC line
+    /// unparseable, so the call disappears. A name survives both.
+    static let keyNames = ["up", "down", "left", "right", "enter", "escape", "ctrl-c"]
+
+    /// The bytes each named key sends. `enter` is absent on purpose: the
+    /// bridge never picks the Enter byte, the daemon does — see the route's
+    /// `?enter=1` and `PtySession.typeLine`.
+    static let keyBytes: [String: [UInt8]] = [
+        "up": [0x1b, 0x5b, 0x41],
+        "down": [0x1b, 0x5b, 0x42],
+        "right": [0x1b, 0x5b, 0x43],
+        "left": [0x1b, 0x5b, 0x44],
+        "escape": [0x1b],
+        "ctrl-c": [0x03],
+    ]
+
     /// The tool list for `tools/list`. Kept in one place so the schema a client
     /// caches and the dispatch below cannot drift.
     static func schemas() -> [[String: Any]] {
@@ -75,14 +95,19 @@ enum MCPTools {
             ),
             tool(
                 "send_input",
-                "Type into a crew session — a message to its agent, an answer to a prompt, or a shell command. By default Enter is pressed after the text, as whatever reads the session expects it (a newline for the shell, a carriage return for an interactive claude), so the text is submitted wherever it lands. Set enter:false to send keystrokes only (send \"\\u0003\" as text for Ctrl-C). A text over 1 KiB is refused with a `cooked reader` error while the terminal is in cooked mode — a `sleep`, a program still starting, a shell in a here-doc — because the kernel cuts a cooked line at 1024 bytes and nothing typed would arrive whole. The error names the program (`foregroundProgram`): read the screen, wait for the program to take raw mode (an interactive claude does), then send again. Set force:true to type it anyway.",
+                "Type into a crew session — a message to its agent, an answer to a prompt, or a shell command. Give it `text`, or `keys` for the keys a text cannot carry. By default Enter is pressed after the text, as whatever reads the session expects it (a newline for the shell, a carriage return for an interactive claude), so the text is submitted wherever it lands. Set enter:false to send keystrokes only. Use `keys` to press a named key — \(keyNames.joined(separator: ", ")) — which is the only way to send an arrow key: an escape byte inside `text` does not survive every MCP client, so it can reach the pane as the two characters `[B`. Answer a dialog with keys:[\"down\"] then keys:[\"enter\"], one call each. A text over 1 KiB is refused with a `cooked reader` error while the terminal is in cooked mode — a `sleep`, a program still starting, a shell in a here-doc — because the kernel cuts a cooked line at 1024 bytes and nothing typed would arrive whole. The error names the program (`foregroundProgram`): read the screen, wait for the program to take raw mode (an interactive claude does), then send again. Set force:true to type it anyway.",
                 properties: [
                     "session": idProp,
-                    "text": ["type": "string", "description": "The text to type; may be empty to press Enter alone"],
-                    "enter": ["type": "boolean", "description": "Press Enter after the text so it is submitted (default true)"],
+                    "text": ["type": "string", "description": "The text to type; may be empty to press Enter alone. Give text or keys, not both"],
+                    "keys": [
+                        "type": "array",
+                        "description": "Named keys to press instead of text, in order. `enter` is the same reader-aware Enter the `enter` argument presses, so it can only be the last key. Send one dialog keystroke per call.",
+                        "items": ["type": "string", "enum": keyNames],
+                    ],
+                    "enter": ["type": "boolean", "description": "Press Enter after the text so it is submitted (default true; default false with keys)"],
                     "force": ["type": "boolean", "description": "Type a text over 1 KiB even while a cooked reader holds the terminal (default false)"],
                 ],
-                required: ["session", "text"]
+                required: ["session"]
             ),
             tool(
                 "list_commands",
@@ -207,18 +232,55 @@ enum MCPTools {
             return Call(method: "PATCH", path: "/api/sessions/\(try id(arguments))", jsonBody: body)
 
         case "send_input":
-            guard let text = arguments["text"] as? String else {
-                throw ToolError.badArguments("text is required")
-            }
-            let enter = (arguments["enter"] as? Bool) ?? true
             // The daemon refuses a large text while a cooked reader holds the
             // terminal; `force` is the caller's word that it knows better.
             let force = (arguments["force"] as? Bool) ?? false
-            var query: [String] = []
-            if enter { query.append("enter=1") }
-            if force { query.append("force=1") }
-            let route = "/api/sessions/\(try id(arguments))/input"
-                + (query.isEmpty ? "" : "?" + query.joined(separator: "&"))
+            let session = try id(arguments)
+            func inputRoute(enter: Bool) -> String {
+                var query: [String] = []
+                if enter { query.append("enter=1") }
+                if force { query.append("force=1") }
+                return "/api/sessions/\(session)/input"
+                    + (query.isEmpty ? "" : "?" + query.joined(separator: "&"))
+            }
+
+            if let rawKeys = arguments["keys"] {
+                guard arguments["text"] == nil else {
+                    throw ToolError.badArguments("give text or keys, not both")
+                }
+                guard var names = rawKeys as? [String] else {
+                    throw ToolError.badArguments("keys must be an array of key names")
+                }
+                // Enter is the daemon's reader-aware press, not a byte in the
+                // body, so it can only close the sequence.
+                var enter = (arguments["enter"] as? Bool) ?? false
+                if names.last == "enter" {
+                    names.removeLast()
+                    enter = true
+                }
+                guard !names.contains("enter") else {
+                    throw ToolError.badArguments("enter must be the last key")
+                }
+                var body: [UInt8] = []
+                for name in names {
+                    guard let bytes = keyBytes[name] else {
+                        throw ToolError.badArguments(
+                            "unknown key \"\(name)\"; use one of \(keyNames.joined(separator: ", "))"
+                        )
+                    }
+                    body += bytes
+                }
+                guard !body.isEmpty || enter else {
+                    throw ToolError.badArguments("keys is empty")
+                }
+                return Call(method: "POST", path: inputRoute(enter: enter), rawBody: Data(body))
+            }
+
+            guard let text = arguments["text"] as? String else {
+                throw ToolError.badArguments("text or keys is required")
+            }
+            let enter = (arguments["enter"] as? Bool) ?? true
+            let route = inputRoute(enter: enter)
             guard enter else {
                 guard !text.isEmpty else { throw ToolError.badArguments("text is required") }
                 return Call(method: "POST", path: route, rawBody: Data(text.utf8))
