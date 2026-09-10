@@ -1,150 +1,482 @@
 import { describe, expect, it } from "vitest";
 
-import { accentOn, luminance, parseHex, pickAccent, themeTokens } from "./theme-tokens";
+import {
+  contrastRatio,
+  derivePairs,
+  floorFor,
+  isLargeText,
+  type Pair,
+  ratioFor,
+  readSource,
+  resolveColor,
+  rootVariables,
+} from "./theme-contrast-derive";
+import { accentOn, isDarkTheme, luminance, pickAccent, themeTokens } from "./theme-tokens";
 import { TERMINAL_THEMES } from "./themes";
 
 /**
- * The fleet page's small text against the surface it sits on, for every
- * bundled theme. The token layer derives `--ui-surface` and
- * `--ui-text-muted` with `color-mix(in oklab, …)`; the mix is reproduced
- * here (Björn Ottosson's Oklab, the matrices browsers use), so the ratios
- * are the ones a browser paints within a few hundredths.
+ * Every text-and-background pair the two pages paint, on every bundled theme.
  *
- * The floor is WCAG 1.4.3: 4.5:1 for small text. The accent button text
- * holds it on every theme. The state label is the theme's own foreground,
- * which two themes set under 4.5 on a card; the muted line is the theme's
- * 66% mix in `tokens.css`, under 4.5 on ten, and on twelve against
- * `--ui-surface-2` (the `.tag` chips). `KNOWN_BELOW` names each with
- * the ratio measured here, so the test fails when one gets worse, when an
- * unlisted one drops under the floor, or when a listed one starts passing
- * and the entry is stale.
+ * The pairs are derived, not listed. `theme-contrast-derive.ts` reads
+ * `tokens.css`, `sessions.css` and `styles.css` at test time, takes every rule
+ * that sets a text colour, a size, a weight, a background or an opacity, and
+ * works out the surface that text sits on. A hand list only measures what
+ * someone remembered: that is how the proposals chip and the goal meta line
+ * each shipped under the floor (rounds 5 and 7 of `projects-and-knowledge`).
+ * The old list held five pairs; the derivation holds forty-five.
  *
- * Which class uses which token is `sessions.css`'s side; vitest returns an
- * empty string for a `.css?raw` import, so that mapping is checked by hand
- * with a browser's computed style (rounds/005.md).
+ * ## How a surface is resolved
+ *
+ * A text rule does not name its background, and CSS carries no parent pointer,
+ * so the rule is four steps, most derived first. `surfacesFor` in the helper
+ * holds the code and the same four steps in full.
+ *
+ * 1. **The element's own paint** — the declarations in force on it. An opaque
+ *    background is the surface; a translucent one (`--ui-veil`,
+ *    `--ui-accent-soft`) is stacked over what steps 2 and 3 return.
+ * 2. **The written ancestry** — a descendant selector names real ancestors, so
+ *    `.menu.open .quiet`, `.settings-field select` and `.foreman .row` place
+ *    themselves. Walk right to left and take the first ancestor any rule paints.
+ * 3. **The block table** — `BLOCK_SURFACES` in the helper, one entry per block
+ *    with the reason. A block, never a pair: a new element inside a known block
+ *    is measured the day it is written, which is the defect this closes.
+ * 4. **Nothing** — the rule is reported unplaced and the first test below fails
+ *    naming it. A new block whose surface nobody stated breaks the build.
+ *
+ * ## What the rule cannot do
+ *
+ * - **It cannot choose between states.** `.strip-item` wears a warning tint, a
+ *   danger tint or `--ui-accent-soft` depending on a class its children's
+ *   selectors never mention. The rule does not guess: it collects every
+ *   background any rule paints on that class and measures all of them, so the
+ *   pair count is larger than the element count and the strictest case wins.
+ * - **It does not inherit a font across elements.** `.code-text` takes its
+ *   12.5px from `.preview-code`, and the derivation reads no size for it. A
+ *   pair with no size takes the small-text floor, which is the safe way to be
+ *   wrong.
+ * - **It fades the text but not the element under it.** `opacity` is applied to
+ *   the text over the resolved surface. The four faded elements paint
+ *   `--ui-veil` over the grid, which is `--ui-bg` either way, so the two agree
+ *   here; an opaque panel that faded would read a hundredth high.
+ * - **It cannot see the terminal grid.** Chrome over the output is measured
+ *   against `--term-bg`. A glyph the shell painted underneath is not modelled.
+ * - **It does not evaluate `@supports`.** `tokens.css` upgrades
+ *   `--ui-accent-on` to `contrast-color()` where the browser has it; the tested
+ *   value is the JS-published pole every other browser paints.
+ *
+ * ## KNOWN_BELOW
+ *
+ * `KNOWN_BELOW` names every pair under its floor with the theme and the ratio,
+ * so capability 3 has something to delete. A listed pair must not get worse and
+ * must not start passing without the entry going with it; an unlisted pair must
+ * hold its floor.
  */
 
+/** WCAG 1.4.3 for small text. Large text takes 3:1; see `floorFor`. */
 const FLOOR = 4.5;
 
-/** The lines measured: the state label and the muted line on `--ui-surface`
- * (the card), and the same two colours on `--ui-surface-2` (the card head,
- * where every goal section sits: the title, the round line, the one-line
- * status word, and the proposals chip in `--ui-text`; the record link,
- * the slug beside the title, and every `.tag` in `--ui-text-muted`). */
-type Line = "label" | "muted" | "label-2" | "muted-2";
+const SHEETS: Array<[name: string, source: string]> = [
+  ["sessions.css", readSource("sessions.css")],
+  ["styles.css", readSource("styles.css")],
+];
 
-/** Ratios under the floor today, by theme and line (see the file comment). */
-const KNOWN_BELOW: Record<string, Partial<Record<Line, number>>> = {
-  "github-dark-dimmed": { muted: 3.3, "muted-2": 2.85 },
-  "solarized-dark": { label: 3.95, muted: 2.3, "label-2": 3.45, "muted-2": 2.0 },
-  nord: { muted: 3.95, "muted-2": 3.4 },
-  "one-dark": { muted: 2.95, "muted-2": 2.55 },
-  "tokyo-night": { muted: 4.2, "muted-2": 3.65 },
-  "tokyo-night-storm": { muted: 3.75, "muted-2": 3.25 },
-  "catppuccin-macchiato": { muted: 4.05, "muted-2": 3.55 },
-  "catppuccin-mocha": { "muted-2": 3.9 },
-  "ayu-mirage": { muted: 3.9, "muted-2": 3.4 },
-  "gruvbox-dark": { muted: 4.3, "muted-2": 3.75 },
-  "rose-pine": { "muted-2": 4.4 },
-  "synthwave-84": { label: 3.6, muted: 2.15, "label-2": 3.1, "muted-2": 1.85 },
+const TOKENS = rootVariables(readSource("tokens.css"));
+
+/** The `--term-*` and `--ui-*` tiers as one table, for one theme. */
+const paletteFor = (theme: (typeof TERMINAL_THEMES)[number]): Map<string, string> =>
+  new Map([...TOKENS, ...Object.entries(themeTokens(theme.colors, { accent: theme.accent }))]);
+
+const { pairs, holes } = derivePairs(SHEETS, paletteFor(TERMINAL_THEMES[0]));
+
+/**
+ * Ratios under the floor today, by pair and theme, measured by this file.
+ * Pair first, because a token change clears part of a row.
+ *
+ * 178 entries over 39 pairs, after round 2 raised `--ui-text-muted` to 82% and
+ * `--ui-text-faint` to 72%, which cleared 95 entries.
+ *
+ * **24 of the 39 pairs are out of reach of those two tokens.** Their text is a
+ * colour the goal's exclusions freeze: `--code-error`, `--code-keyword`,
+ * `--code-name` and `--code-string` are the theme's own ANSI colours; three
+ * pairs paint `--ui-accent` and two paint `--ui-danger`; and fourteen paint
+ * `--ui-text`, the theme's own foreground, which reads 4.31 on its own
+ * background on synthwave-84 and 2.96 on `--ui-hover` on solarized-dark.
+ *
+ * **The other 15 cannot be cleared by a mix either, and the reason is
+ * arithmetic.** A pair that fails on a surface lifted above `--ui-bg` needs a
+ * text colour further from that surface than `--ui-text` itself is. Every mix
+ * toward `--ui-bg` moves the other way. Setting both tokens to `--ui-text`
+ * still leaves 32 pair-and-theme combinations below 4.5:1. The colours that do
+ * clear them mix toward `--ui-lift` — brighter than the foreground on a dark
+ * theme — which puts muted text above body text in the visual rank. Round 2
+ * measured that page and did not ship it; see `rounds/002.md`.
+ */
+const KNOWN_BELOW: Record<string, Record<string, number>> = {
+  "--code-comment on --ui-bg-sunken": {
+    "solarized-dark": 3.22,
+    "one-dark": 4.25,
+    "synthwave-84": 2.98,
+  },
+  "--code-error on --ui-bg-sunken": {
+    "solarized-dark": 3.40,
+    "nord": 3.27,
+    "gruvbox-dark": 2.83,
+    "monokai": 4.13,
+  },
+  "--code-keyword on --ui-bg-sunken": {
+    "solarized-dark": 3.46,
+    "gruvbox-dark": 3.66,
+  },
+  "--code-name on --ui-bg-sunken": {
+    "solarized-dark": 4.27,
+    "gruvbox-dark": 3.66,
+  },
+  "--code-punct on --ui-bg-sunken": {
+    "solarized-dark": 3.78,
+    "synthwave-84": 3.48,
+  },
+  "--code-string on --ui-bg-sunken": {
+    "rose-pine": 3.48,
+  },
+  "--ui-accent on --ui-bg + --ui-accent-soft": {
+    "solarized-dark": 3.20,
+    "nord": 3.46,
+    "one-dark": 4.25,
+    "tokyo-night-storm": 4.19,
+    "gruvbox-dark": 2.83,
+  },
+  "--ui-accent on --ui-surface": {
+    "solarized-dark": 3.41,
+    "nord": 3.86,
+    "gruvbox-dark": 2.89,
+  },
+  "--ui-accent on --ui-surface + --ui-accent-soft": {
+    "github-dark-dimmed": 4.14,
+    "solarized-dark": 2.73,
+    "dracula": 4.34,
+    "nord": 2.96,
+    "one-dark": 3.61,
+    "tokyo-night": 4.21,
+    "tokyo-night-storm": 3.55,
+    "catppuccin-macchiato": 3.92,
+    "gruvbox-dark": 2.40,
+  },
+  "--ui-danger on --ui-bg": {
+    "solarized-dark": 3.24,
+    "nord": 3.05,
+    "one-dark": 4.38,
+    "gruvbox-dark": 2.69,
+    "monokai": 3.92,
+    "synthwave-84": 4.45,
+  },
+  "--ui-danger on --ui-surface-2": {
+    "github-dark-dimmed": 3.83,
+    "solarized-dark": 2.36,
+    "dracula": 3.27,
+    "nord": 2.20,
+    "one-dark": 3.15,
+    "tokyo-night-storm": 3.99,
+    "catppuccin-macchiato": 4.33,
+    "night-owl": 4.05,
+    "gruvbox-dark": 1.95,
+    "monokai": 2.85,
+    "synthwave-84": 3.23,
+  },
+  "--ui-text on --ui-active": {
+    "github-dark-dimmed": 3.97,
+    "solarized-dark": 2.47,
+    "one-dark": 3.40,
+    "synthwave-84": 2.23,
+  },
+  "--ui-text on --ui-bg": {
+    "synthwave-84": 4.31,
+  },
+  "--ui-text on --ui-bg + --ui-accent-soft": {
+    "solarized-dark": 3.72,
+    "synthwave-84": 2.72,
+  },
+  "--ui-text on --ui-bg + --ui-veil": {
+    "synthwave-84": 4.31,
+  },
+  "--ui-text on --ui-bg + --ui-veil at 35% opacity": {
+    "github-dark": 2.89,
+    "github-dark-dimmed": 2.16,
+    "vesper": 3.19,
+    "solarized-dark": 1.71,
+    "dracula": 2.97,
+    "nord": 2.49,
+    "one-dark": 2.04,
+    "tokyo-night": 2.44,
+    "tokyo-night-storm": 2.37,
+    "catppuccin-mocha": 2.58,
+    "catppuccin-macchiato": 2.49,
+    "ayu-mirage": 2.39,
+    "night-owl": 2.66,
+    "gruvbox-dark": 2.60,
+    "monokai": 3.01,
+    "synthwave-84": 1.56,
+    "rose-pine": 2.73,
+  },
+  "--ui-text on --ui-bg + --ui-veil at 65% opacity": {
+    "github-dark-dimmed": 4.08,
+    "solarized-dark": 2.80,
+    "one-dark": 3.67,
+    "synthwave-84": 2.52,
+  },
+  "--ui-text on --ui-bg + --ui-veil at 75% opacity": {
+    "solarized-dark": 3.28,
+    "one-dark": 4.39,
+    "synthwave-84": 2.96,
+  },
+  "--ui-text on --ui-border": {
+    "solarized-dark": 2.87,
+    "one-dark": 3.98,
+    "synthwave-84": 2.61,
+  },
+  "--ui-text on --ui-hover": {
+    "solarized-dark": 2.96,
+    "one-dark": 4.09,
+    "synthwave-84": 2.69,
+  },
+  "--ui-text on --ui-surface": {
+    "solarized-dark": 3.97,
+    "synthwave-84": 3.63,
+  },
+  "--ui-text on --ui-surface + --ui-accent-soft": {
+    "solarized-dark": 3.17,
+    "one-dark": 4.00,
+    "synthwave-84": 2.31,
+  },
+  "--ui-text on --ui-surface + --ui-veil": {
+    "synthwave-84": 4.26,
+  },
+  "--ui-text on --ui-surface-2": {
+    "solarized-dark": 3.46,
+    "synthwave-84": 3.13,
+  },
+  "--ui-text on color-mix(in srgb, --ui-danger 8%, --ui-surface)": {
+    "solarized-dark": 3.89,
+    "synthwave-84": 3.35,
+  },
+  "--ui-text on color-mix(in srgb, --ui-warning 10%, --ui-surface)": {
+    "solarized-dark": 3.54,
+    "one-dark": 4.39,
+    "synthwave-84": 2.81,
+  },
+  "--ui-text-faint on --ui-bg-sunken": {
+    "solarized-dark": 3.22,
+    "one-dark": 4.25,
+    "synthwave-84": 2.98,
+  },
+  "--ui-text-faint on --ui-surface": {
+    "github-dark-dimmed": 3.72,
+    "solarized-dark": 2.57,
+    "nord": 4.46,
+    "one-dark": 3.33,
+    "tokyo-night-storm": 4.32,
+    "ayu-mirage": 4.45,
+    "synthwave-84": 2.39,
+  },
+  "--ui-text-faint on --ui-surface + --ui-accent-soft": {
+    "github-dark-dimmed": 2.64,
+    "solarized-dark": 2.05,
+    "dracula": 4.14,
+    "nord": 3.42,
+    "one-dark": 2.45,
+    "tokyo-night": 3.55,
+    "tokyo-night-storm": 3.19,
+    "catppuccin-mocha": 3.60,
+    "catppuccin-macchiato": 3.32,
+    "ayu-mirage": 2.97,
+    "night-owl": 4.27,
+    "gruvbox-dark": 4.11,
+    "monokai": 4.14,
+    "synthwave-84": 1.52,
+    "rose-pine": 3.91,
+  },
+  "--ui-text-muted on --ui-bg": {
+    "solarized-dark": 3.60,
+    "synthwave-84": 3.31,
+  },
+  "--ui-text-muted on --ui-bg + --ui-accent-soft": {
+    "github-dark-dimmed": 3.81,
+    "solarized-dark": 2.82,
+    "one-dark": 3.46,
+    "ayu-mirage": 4.34,
+    "synthwave-84": 2.09,
+  },
+  "--ui-text-muted on --ui-bg + --ui-veil": {
+    "solarized-dark": 3.60,
+    "synthwave-84": 3.31,
+  },
+  "--ui-text-muted on --ui-bg + --ui-veil at 55% opacity": {
+    "github-dark": 3.85,
+    "github-dark-dimmed": 2.65,
+    "vesper": 4.34,
+    "solarized-dark": 2.00,
+    "dracula": 3.84,
+    "nord": 3.11,
+    "one-dark": 2.47,
+    "tokyo-night": 3.11,
+    "tokyo-night-storm": 2.96,
+    "catppuccin-mocha": 3.30,
+    "catppuccin-macchiato": 3.14,
+    "ayu-mirage": 2.99,
+    "night-owl": 3.50,
+    "gruvbox-dark": 3.29,
+    "monokai": 3.90,
+    "synthwave-84": 1.85,
+    "rose-pine": 3.57,
+  },
+  "--ui-text-muted on --ui-bg-sunken": {
+    "solarized-dark": 3.78,
+    "synthwave-84": 3.48,
+  },
+  "--ui-text-muted on --ui-hover": {
+    "github-dark-dimmed": 3.40,
+    "solarized-dark": 2.25,
+    "nord": 4.14,
+    "one-dark": 3.00,
+    "tokyo-night-storm": 3.96,
+    "catppuccin-macchiato": 4.32,
+    "ayu-mirage": 4.14,
+    "synthwave-84": 2.07,
+  },
+  "--ui-text-muted on --ui-surface": {
+    "solarized-dark": 3.01,
+    "one-dark": 3.99,
+    "synthwave-84": 2.79,
+  },
+  "--ui-text-muted on --ui-surface-2": {
+    "github-dark-dimmed": 3.96,
+    "solarized-dark": 2.62,
+    "one-dark": 3.47,
+    "synthwave-84": 2.40,
+  },
+  "--ui-text-muted on color-mix(in srgb, --ui-danger 8%, --ui-surface)": {
+    "github-dark-dimmed": 4.09,
+    "solarized-dark": 2.96,
+    "one-dark": 3.63,
+    "synthwave-84": 2.57,
+  },
+  "--ui-text-muted on color-mix(in srgb, --ui-warning 10%, --ui-surface)": {
+    "github-dark-dimmed": 3.93,
+    "solarized-dark": 2.69,
+    "nord": 4.41,
+    "one-dark": 3.22,
+    "tokyo-night-storm": 4.37,
+    "ayu-mirage": 4.35,
+    "synthwave-84": 2.16,
+  },
 };
 
-type RGB = [number, number, number];
-
-const toLinear = (c: number): number => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
-const toGamma = (c: number): number => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
-
-function toOklab(hex: string): [number, number, number] {
-  const rgb = parseHex(hex);
-  if (!rgb) throw new Error(`not a colour: ${hex}`);
-  const [r, g, b] = rgb.map((v) => toLinear(v / 255)) as RGB;
-  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
-  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
-  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
-  return [
-    0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
-    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
-    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
-  ];
-}
-
-function fromOklab([L, a, b]: [number, number, number]): string {
-  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
-  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
-  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
-  const linear: RGB = [
-    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
-    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
-    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
-  ];
-  const channel = (c: number) => Math.round(Math.min(1, Math.max(0, toGamma(c))) * 255);
-  return "#" + linear.map((c) => channel(c).toString(16).padStart(2, "0")).join("");
-}
-
-/** `color-mix(in oklab, a <weight>%, b)`. */
-function mixOklab(a: string, b: string, weight: number): string {
-  const [la, aa, ba] = toOklab(a);
-  const [lb, ab, bb] = toOklab(b);
-  const w = weight / 100;
-  return fromOklab([la * w + lb * (1 - w), aa * w + ab * (1 - w), ba * w + bb * (1 - w)]);
-}
-
-/** WCAG 2.x contrast ratio, 1 to 21. */
-export function contrast(a: string, b: string): number {
-  const la = luminance(a);
-  const lb = luminance(b);
-  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
-}
-
-/** The page's colours for one theme, as `tokens.css` derives them. */
-function palette(colors: { background?: string; foreground?: string }, accent: string) {
-  const bg = colors.background ?? "#0d1117";
-  const text = colors.foreground ?? "#e6edf3";
-  const lift = luminance(bg) < 0.5 ? "#fff" : "#000";
-  return {
-    surface: mixOklab(bg, lift, 93),
-    surface2: mixOklab(bg, lift, 88),
-    text,
-    muted: mixOklab(text, bg, 66),
-    accent,
-    accentOn: accentOn(accent),
-  };
-}
-
-function check(theme: string, line: Line, ratio: number): void {
-  const known = KNOWN_BELOW[theme]?.[line];
+const check = (pair: Pair, theme: string, ratio: number): void => {
+  const known = KNOWN_BELOW[pair.key]?.[theme];
+  const where = `${pair.key} on ${theme}; first written at ${pair.rules[0]}`;
   if (known === undefined) {
-    expect(ratio, `${theme} ${line} dropped under ${FLOOR}:1`).toBeGreaterThanOrEqual(FLOOR);
+    expect(ratio, `${where} dropped under ${pair.floor}:1`).toBeGreaterThanOrEqual(pair.floor);
     return;
   }
-  expect(ratio, `${theme} ${line} got worse than its KNOWN_BELOW entry`).toBeGreaterThanOrEqual(known);
-  expect(ratio, `${theme} ${line} now passes; drop its KNOWN_BELOW entry`).toBeLessThan(FLOOR);
-}
+  expect(ratio, `${where} got worse than its KNOWN_BELOW entry`).toBeGreaterThanOrEqual(known);
+  expect(ratio, `${where} now passes; drop its KNOWN_BELOW entry`).toBeLessThan(pair.floor);
+};
 
-describe("every bundled theme on the fleet page", () => {
-  for (const entry of TERMINAL_THEMES) {
-    const accent = pickAccent(entry.colors, entry.accent);
-    const p = palette(entry.colors, accent);
+describe("the derivation covers the two stylesheets", () => {
+  /**
+   * The loud failure of step 4. A rule the surface rule cannot place is a hole
+   * in the measurement, not a pair to skip: it is named here with its file and
+   * line so whoever added it says what it sits on.
+   */
+  it("places every text rule in sessions.css and styles.css", () => {
+    const named = holes.map((h) => `${h.sheet}:${h.line} ${h.selector} — ${h.why}`);
+    expect(named, "add a BLOCK_SURFACES entry for each, or say why it holds no text").toEqual([]);
+  });
 
-    it(`${entry.id}: the accent button text (--ui-accent-on on --ui-accent) is at least 4.5:1`, () => {
-      expect(contrast(p.accentOn, p.accent)).toBeGreaterThanOrEqual(FLOOR);
-      expect(themeTokens(entry.colors, { accent: entry.accent })["--term-accent-on"]).toBe(p.accentOn);
-    });
+  it("measures more pairs than the hand list did", () => {
+    // The list this replaced held five: the accent button, the state label and
+    // the muted line on --ui-surface, and the same two on --ui-surface-2.
+    expect(pairs.length).toBeGreaterThan(5);
+    expect(pairs.every((p) => p.rules.length > 0)).toBe(true);
+  });
 
-    it(`${entry.id}: the state label (--ui-text on --ui-surface)`, () => {
-      check(entry.id, "label", contrast(p.text, p.surface));
-    });
+  it("resolves every colour it derived on every theme", () => {
+    const unresolved: string[] = [];
+    for (const theme of TERMINAL_THEMES) {
+      const vars = paletteFor(theme);
+      for (const pair of pairs) {
+        try {
+          resolveColor(pair.color, vars);
+          for (const layer of pair.stack) resolveColor(layer, vars);
+        } catch (error) {
+          unresolved.push(`${theme.id} ${pair.key}: ${(error as Error).message}`);
+        }
+      }
+    }
+    expect(unresolved).toEqual([]);
+  });
 
-    it(`${entry.id}: the muted line (--ui-text-muted on --ui-surface)`, () => {
-      check(entry.id, "muted", contrast(p.muted, p.surface));
-    });
+  it("carries no KNOWN_BELOW entry for a pair the derivation no longer finds", () => {
+    const found = new Set(pairs.map((p) => p.key));
+    expect(Object.keys(KNOWN_BELOW).filter((key) => !found.has(key))).toEqual([]);
+  });
+});
 
-    it(`${entry.id}: the goal meta and the proposals chip (--ui-text on --ui-surface-2)`, () => {
-      check(entry.id, "label-2", contrast(p.text, p.surface2));
-    });
+describe("polarity", () => {
+  /**
+   * `--ui-lift` flips to black on a light theme and one set of formulas covers
+   * both polarities, so a light theme is measured by the same pairs the day it
+   * is bundled. `facts.md` recorded that no bundled theme was light; that still
+   * holds, and this test says so out loud rather than leaving it implied.
+   */
+  it("has no light theme among the bundled ones, so every pair is measured dark", () => {
+    const light = TERMINAL_THEMES.filter((t) => !isDarkTheme(t.colors.background)).map((t) => t.id);
+    expect(light, "a light theme arrived; check its pairs and update facts.md").toEqual([]);
+    expect(TERMINAL_THEMES.length).toBe(17);
+  });
 
-    it(`${entry.id}: a tag (--ui-text-muted on --ui-surface-2)`, () => {
-      check(entry.id, "muted-2", contrast(p.muted, p.surface2));
+  it("derives --ui-lift from the theme's own background", () => {
+    expect(themeTokens({ background: "#0d1117" })["--ui-lift"]).toBe("#fff");
+    expect(themeTokens({ background: "#fdf6e3" })["--ui-lift"]).toBe("#000");
+  });
+});
+
+describe("the WCAG large-text threshold", () => {
+  it("is 24px regular or 18.66px bold, and 600 is not bold", () => {
+    expect(isLargeText(24, 400)).toBe(true);
+    expect(isLargeText(23.9, 400)).toBe(false);
+    expect(isLargeText(18.66, 700)).toBe(true);
+    expect(isLargeText(18.66, 600)).toBe(false);
+    expect(isLargeText(18.65, 700)).toBe(false);
+    expect(isLargeText(null, 700)).toBe(false);
+    expect(floorFor(24, 400)).toBe(3);
+    expect(floorFor(20, 600)).toBe(FLOOR);
+  });
+
+  /**
+   * Nothing either page prints is large by that definition: the biggest is the
+   * fleet page's 20px/600 `h1`. Every pair therefore takes 4.5:1 today. The
+   * rule is applied per pair regardless, so a heading that grows to 24px drops
+   * to 3:1 on its own.
+   */
+  it("puts every pair the two pages paint at 4.5:1 today", () => {
+    expect(pairs.filter((p) => p.floor !== FLOOR).map((p) => p.key)).toEqual([]);
+  });
+});
+
+describe.each(TERMINAL_THEMES.map((t) => [t.id, t] as const))("%s", (id, theme) => {
+  const vars = paletteFor(theme);
+
+  it("puts black or white on the accent, whichever contrasts more", () => {
+    const accent = pickAccent(theme.colors, theme.accent);
+    expect(contrastRatio(resolveColor(accentOn(accent), vars), resolveColor(accent, vars))).toBeGreaterThanOrEqual(
+      FLOOR,
+    );
+    expect(themeTokens(theme.colors, { accent: theme.accent })["--term-accent-on"]).toBe(accentOn(accent));
+  });
+
+  for (const pair of pairs) {
+    it(pair.key, () => {
+      check(pair, id, ratioFor(pair, vars));
     });
   }
 });
@@ -154,5 +486,10 @@ describe("accentOn", () => {
     expect(accentOn("#58a6ff")).toBe("#000");
     expect(accentOn("#1f3a8a")).toBe("#fff");
     expect(accentOn("#ffffff")).toBe("#000");
+  });
+
+  it("agrees with the luminance the token layer uses", () => {
+    expect(luminance("#ffffff")).toBeCloseTo(1, 5);
+    expect(luminance("#000000")).toBe(0);
   });
 });
