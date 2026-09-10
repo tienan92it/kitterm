@@ -108,6 +108,14 @@ decision moves to `docs/adr/`.
 
 ## Fleet view
 
+- A test that builds its fixtures from the current clock proves only what
+  is true today. Round 3 shipped a restart line that printed a bare
+  "10:35 PM", with a green suite and a real `kill -9` behind it, because
+  every test and every screenshot ran on the day the code was written. A
+  stamp that can be old carries its date: `archivedFold` already did
+  this, and `restartNotice` now does. Drive such a function with a fixed
+  reference time, and test the midnight case in both directions.
+  (2026-09-11, `daemon-last-words` round 4)
 - The two muted text steps cannot carry the pages to 4.5:1 on their own.
   The surfaces are lifted from `--ui-bg` toward `--ui-lift`, so on a theme
   whose foreground sits near the floor, no colour dimmer than the
