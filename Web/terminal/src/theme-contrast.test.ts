@@ -93,11 +93,15 @@ const { pairs, holes } = derivePairs(SHEETS, paletteFor(TERMINAL_THEMES[0]));
  * Ratios under the floor today, by pair and theme, measured by this file.
  * Pair first, because capability 2 raises a token and clears a whole row.
  *
- * Fourteen of these are theme-owned colours the goal's exclusions put out of
- * reach — `--code-*`, `--ui-danger`, `--ui-accent`, and `--ui-text` on
- * `--ui-bg` where a theme's own foreground fails on its own background. They
- * are recorded here with their ratios so the human decides, which is what the
- * goal's last exclusion asks for.
+ * Ten of these are theme-owned colours the goal's exclusions put out of reach:
+ * `--code-error`, `--code-keyword`, `--code-name` and `--code-string`, which
+ * are the theme's own ANSI colours; the three `--ui-accent` pairs; the two
+ * `--ui-danger` pairs; and `--ui-text` on `--ui-bg`, where synthwave-84's own
+ * foreground reads 4.32 on its own background. Capability 2 can move only
+ * `--ui-text-muted` and `--ui-text-faint`, which `--code-punct` and
+ * `--code-comment` alias, so those two clear with them. The ten are recorded
+ * with their ratios so the human decides, which is what the goal's last
+ * exclusion asks for.
  */
 const KNOWN_BELOW: Record<string, Record<string, number>> = {
   "--code-comment on --ui-bg-sunken": {
