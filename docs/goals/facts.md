@@ -12,8 +12,12 @@ decision moves to `docs/adr/`.
 
 - colima's sshfs mount can be dead while the VM is up, so a docker run
   with `-v $PWD:/src` sees an empty directory and the build silently
-  tests nothing. Build from a tar of `HEAD` instead of restarting the VM.
-  (2026-09-10, `daemon-last-words` round 1)
+  tests nothing. Pipe a tar of `HEAD` into the container instead:
+  `git archive HEAD | docker run -i ... `. Seen in three rounds across
+  two goals on 2026-09-10, so assume it rather than test for it; a colima
+  restart is the real fix and is the human's to make.
+  (2026-09-10, `daemon-last-words` rounds 1 and 2, `foreman-harness`
+  round 2)
 - This machine runs near its memory limit: on 2026-09-09 swap was
   7.66 GB of 8 GB used, with a docker VM the largest consumer. A Swift
   build spike is then enough for the kernel to kill the kitterm daemon

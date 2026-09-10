@@ -94,13 +94,20 @@ public final class DaemonServer: @unchecked Sendable {
         let eventLog: EventLog
     }
 
-    public init(config: DaemonConfig = DaemonConfig(), lastRun: LastRunStore? = nil) {
+    /// `previous` is what the run before this one left behind
+    /// (`LastRunStore.beginRun`), so `daemon.started` carries how it ended.
+    /// Nil outside `runDaemon`: a server built in a test reports nothing.
+    public init(
+        config: DaemonConfig = DaemonConfig(),
+        lastRun: LastRunStore? = nil,
+        previous: LastRun? = nil
+    ) {
         self.config = config
         self.lastRun = lastRun
         let eventLog = EventLog()
         // The first event of this epoch: a foreman whose cursor predates it
         // reads this before any session it can still find.
-        eventLog.markStarted(version: BuildVersion.running, pid: getpid())
+        eventLog.markStarted(version: BuildVersion.running, pid: getpid(), previous: previous)
         self.eventLog = eventLog
         self.registry = SessionRegistry(
             orchestratedLingerSeconds: config.orchestratedLingerSeconds,
@@ -116,12 +123,14 @@ public final class DaemonServer: @unchecked Sendable {
     /// lands inside the carried epoch with `takeover` true.
     public init(
         config: DaemonConfig, adopting state: TakeoverState, from directory: URL,
-        lastRun: LastRunStore? = nil
+        lastRun: LastRunStore? = nil, previous: LastRun? = nil
     ) {
         self.config = config
         self.lastRun = lastRun
         let eventLog = EventLog(restoring: state.eventLog)
-        eventLog.markStarted(version: BuildVersion.running, pid: getpid(), takeover: true)
+        eventLog.markStarted(
+            version: BuildVersion.running, pid: getpid(), takeover: true, previous: previous
+        )
         self.eventLog = eventLog
         self.registry = SessionRegistry(
             orchestratedLingerSeconds: config.orchestratedLingerSeconds,
@@ -635,9 +644,15 @@ public func runDaemon(
     // because replacing the file is the moment it stops existing on disk. A
     // run the kernel killed left no `endedAt`; capability 2 reports that.
     let lastRun = LastRunStore(file: DaemonPaths.lastRunFile)
-    _ = lastRun.beginRun()
+    let previousRun = lastRun.beginRun()
+    // The first line of this run's log is what happened to the last one. It
+    // goes out before the listener opens, so a start that then fails to bind
+    // still leaves the reader the answer they came for.
+    FileHandle.standardError.write(Data(PreviousRun.logLine(previousRun).utf8))
 
-    let current = ServerBox(makeServer(config: config, takeover: takeover, lastRun: lastRun))
+    let current = ServerBox(
+        makeServer(config: config, takeover: takeover, lastRun: lastRun, previous: previousRun)
+    )
     try current.server.start()
 
     // Not the main queue: this thread parks in `waitUntilClosed()` and never
@@ -691,6 +706,12 @@ public func runDaemon(
                 // `prepareHandoff` already recorded a `takeover` ending that
                 // did not happen. This process serves on, so it is a new run
                 // of the same pid and the record has to say so again.
+                //
+                // Nothing is reported about it. The record `beginRun` returns
+                // here is the one this very process wrote a moment ago about
+                // an ending it then did not have, so reporting it would tell
+                // a reader the daemon handed over when it did not. The line
+                // above about the failed `exec` is the true account.
                 _ = lastRun.beginRun()
                 let carried = current.server.carried
                 current.server = DaemonServer(config: config, carrying: carried, lastRun: lastRun)
@@ -730,10 +751,11 @@ private final class ServerBox: @unchecked Sendable {
 /// the shells hang up rather than block forever on a buffer nobody drains,
 /// and the outcome equals `upgrade --restart`.
 private func makeServer(
-    config: DaemonConfig, takeover: TakeoverOptions, lastRun: LastRunStore
+    config: DaemonConfig, takeover: TakeoverOptions, lastRun: LastRunStore,
+    previous: LastRun?
 ) -> DaemonServer {
     guard let directory = takeover.adoptFrom else {
-        return DaemonServer(config: config, lastRun: lastRun)
+        return DaemonServer(config: config, lastRun: lastRun, previous: previous)
     }
     defer { try? FileManager.default.removeItem(at: directory) }
     do {
@@ -741,7 +763,10 @@ private func makeServer(
         FileHandle.standardError.write(
             Data("kitterm: takeover: adopting \(state.sessions.count) session(s) from \(state.writtenBy)\n".utf8)
         )
-        return DaemonServer(config: config, adopting: state, from: directory, lastRun: lastRun)
+        return DaemonServer(
+            config: config, adopting: state, from: directory,
+            lastRun: lastRun, previous: previous
+        )
     } catch TakeoverState.LoadError.unsupportedFormat(let found, let fds) {
         FileHandle.standardError.write(
             Data("kitterm: takeover: state is format \(found), this build reads \(TakeoverState.currentFormatVersion); starting clean\n".utf8)
@@ -752,7 +777,7 @@ private func makeServer(
             Data("kitterm: takeover: \(error.localizedDescription); starting clean\n".utf8)
         )
     }
-    return DaemonServer(config: config, lastRun: lastRun)
+    return DaemonServer(config: config, lastRun: lastRun, previous: previous)
 }
 
 /// Accepted connections, so a takeover can close them all. Loop-confined:
