@@ -6,13 +6,23 @@ Three things the loop uses every round are wrong in a way that costs a
 round, not a minute. Each was found by running the loop, and each is
 recorded in a round record of a finished goal.
 
-1. **A foreman cannot press a key.** The MCP bridge drops the escape byte
-   from `send_input`, so an escape sequence for the Down arrow reaches a
-   pane as the two bytes `[B`. Answering a folder-trust dialog, the one
-   keystroke the skill tells a foreman to send, is impossible through the
-   toolset. The installed skill now carries a `printf` and `curl`
-   workaround against the HTTP route, which is the only place it tells a
-   foreman to bypass its own tools.
+1. **A foreman cannot press a key.** An escape byte does not survive the
+   trip through an MCP client's JSON string argument: a client that
+   strips control characters turns the Down arrow into two ordinary
+   characters, and a client that passes the byte raw makes the JSON-RPC
+   line unparseable, so the call disappears with no reply. Answering a
+   folder-trust dialog, the one keystroke the skill tells a foreman to
+   send, is therefore impossible through `text`. The installed skill
+   carries a `printf` and `curl` workaround against the HTTP route, which
+   is the only place it tells a foreman to bypass its own tools.
+
+   Amended by the human on 2026-09-10, after round 1 disproved the
+   original wording. That wording blamed the MCP bridge for dropping the
+   byte. It does not: the crew drove `kitterm mcp` into a pane running a
+   hex dump and read the bytes back, and a properly escaped Down arrow
+   arrives whole. The layer that loses it is the calling client, outside
+   kitterm. The capability and the exclusions below were right for the
+   wrong reason and stand unchanged; `facts.md` carries the measurement.
 2. **A registered parent swallows a nested checkout.** Project resolution
    takes the longest registered root before it walks for `.git`, so
    registering a folder hides every repository under it. Round 2 of
