@@ -107,6 +107,13 @@ public enum DaemonPaths: Sendable {
         stateDirectory.appendingPathComponent("respawn.json")
     }
 
+    /// How the last run of the daemon ended, or nothing where its ending
+    /// should be when the kernel killed it (`LastRun`). Written by the run it
+    /// describes; read by the next one.
+    public static var lastRunFile: URL {
+        stateDirectory.appendingPathComponent("last-run.json")
+    }
+
     /// Where a daemon writes its state for the process that replaces it in
     /// place (`POST /api/upgrade/takeover`, `serve --takeover`). Deleted by
     /// the successor once it has adopted everything.
