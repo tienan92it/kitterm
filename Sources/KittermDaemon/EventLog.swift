@@ -116,13 +116,22 @@ public final class EventLog: @unchecked Sendable {
     /// After a live upgrade the event lands inside the epoch it continues,
     /// with `takeover` true: the process changed its code, and every session
     /// id the foreman holds is still good.
-    public func markStarted(version: String, pid: Int32, takeover: Bool = false) {
+    ///
+    /// `previous` is the record the run before this one left (`LastRun`).
+    /// Its summary rides on the same event, `previous`-prefixed, so a
+    /// consumer parked on the feed learns how the last run ended from the
+    /// first event of the new epoch and never has to read the file itself.
+    /// Nothing here replaces an existing key: `pid` stays this run's pid.
+    public func markStarted(
+        version: String, pid: Int32, takeover: Bool = false, previous: LastRun? = nil
+    ) {
         var data = [
             "epoch": epoch,
             "version": version,
             "pid": String(pid),
         ]
         if takeover { data["takeover"] = "true" }
+        data.merge(PreviousRun.eventData(previous)) { existing, _ in existing }
         append(type: "daemon.started", session: nil, data: data)
     }
 

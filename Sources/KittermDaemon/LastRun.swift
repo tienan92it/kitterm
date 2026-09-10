@@ -215,3 +215,104 @@ public final class LastRunStore: @unchecked Sendable {
         }
     }
 }
+
+// MARK: - Reporting the previous run
+
+extension LastRun {
+    /// What the previous run did, as one word the next run reports and a
+    /// consumer branches on.
+    ///
+    /// Three values, not two, because `goal.md` asks a reader to tell three
+    /// things apart and `endedCleanly` alone cannot: a stop and a live
+    /// upgrade both set `endedAt`, and only one of them lost the sessions.
+    public enum Outcome: String, Sendable {
+        /// The run ended on purpose. `stopped` and `restarted` are one value
+        /// here: both take every session, and nothing that reads the record
+        /// needs the difference between them.
+        case clean
+        /// The run replaced itself in place. The successor kept every
+        /// session, so this is never a death and never a loss.
+        case takeover
+        /// The run never wrote an ending. The kernel killed it, the machine
+        /// lost power, or the process aborted. This is the case the goal
+        /// exists for.
+        case unrecorded
+    }
+
+    /// How this record reads to the run that follows it.
+    ///
+    /// A record needs both an end time and a reason to count as an ending. A
+    /// half-written file — a hand-edited one, or a newer daemon's field this
+    /// build decoded away — reads as `unrecorded` rather than as a claim
+    /// this build cannot support.
+    public var outcome: Outcome {
+        guard endedAt != nil, let reason else { return .unrecorded }
+        switch reason {
+        case .stopped, .restarted: return .clean
+        case .takeover: return .takeover
+        }
+    }
+}
+
+/// The reading half of `LastRun`: one log line and one set of event keys per
+/// case, so `server.log` and the feed never disagree about what happened.
+///
+/// ## The four cases
+///
+/// The record has three states; a state directory with no record at all is a
+/// fourth. Each gets a log line. Only a record gets event keys — the absence
+/// of `previous` on `daemon.started` *is* "no previous run", so a consumer
+/// branches on three values instead of four and a first start needs no
+/// special case.
+///
+/// ## Why the event keys are prefixed
+///
+/// `daemon.started` already carries `epoch`, `version`, `pid` and
+/// `takeover`, all about the run that just began. `pid` there is this run's
+/// pid, so the previous run's fields cannot use the bare names `plan.md`
+/// lists; every one of them is `previous`-prefixed. Nothing existing is
+/// touched, so a client that reads only `epoch` is unaffected.
+public enum PreviousRun {
+    /// One line for `server.log`, in the daemon's own voice: short,
+    /// lowercase, factual, and enough to act on. The unrecorded case names
+    /// the pid, the last time the run was alive, and the sessions it held,
+    /// which are the three facts `goal.md`'s completion condition 2 asks for.
+    public static func logLine(_ record: LastRun?) -> String {
+        guard let record else { return "kitterm: no previous run recorded\n" }
+        let pid = "previous run (pid \(record.pid))"
+        switch record.outcome {
+        case .clean:
+            let reason = record.reason?.rawValue ?? "clean"
+            return "kitterm: \(pid) ended cleanly (\(reason)) at \(stamp(record.aliveAt))\n"
+        case .takeover:
+            return "kitterm: \(pid) handed over in place at \(stamp(record.aliveAt)), "
+                + "\(record.sessions) session(s) kept\n"
+        case .unrecorded:
+            return "kitterm: \(pid) ended with no recorded reason, last alive "
+                + "\(stamp(record.aliveAt)) holding \(record.sessions) session(s)\n"
+        }
+    }
+
+    /// The same fact as `daemon.started` data: one key per field, never a
+    /// blob, so a consumer branches on `previous` without parsing prose.
+    /// Empty when there is no record.
+    public static func eventData(_ record: LastRun?) -> [String: String] {
+        guard let record else { return [:] }
+        var data = [
+            "previous": record.outcome.rawValue,
+            "previousPid": String(record.pid),
+            "previousAliveAt": String(record.aliveAt),
+            "previousSessions": String(record.sessions),
+        ]
+        // Absent exactly when the run left no ending, which is the signal.
+        if let endedAt = record.endedAt { data["previousEndedAt"] = String(endedAt) }
+        return data
+    }
+
+    /// Epoch milliseconds as the ISO 8601 stamp the rest of the CLI prints.
+    private static func stamp(_ milliseconds: Int64) -> String {
+        ISO8601DateFormatter().string(
+            from: Date(timeIntervalSince1970: Double(milliseconds) / 1000)
+        )
+    }
+}
