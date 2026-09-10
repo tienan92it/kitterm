@@ -65,11 +65,18 @@ decision moves to `docs/adr/`.
 
 ## Crew pane
 
-- The MCP bridge's `send_input` drops the escape byte: a body that starts
-  with the escape byte (0x1b) followed by `[B` arrives as the two bytes
-  `[B`, so an arrow key never reaches the pane. Send a keystroke through
-  the HTTP input route instead: `printf '\033[B' | curl --data-binary @-
-  http://127.0.0.1:3418/api/sessions/<id>/input`. (2026-09-09, round 8)
+- An escape byte does not survive an MCP client's JSON string argument,
+  and kitterm is not the layer that loses it. Measured 2026-09-10 by
+  driving `kitterm mcp` with a hand-written JSON-RPC line into a pane
+  running `xxd`: `text` spelled as a JSON escape arrives whole
+  (`1b 5b 42`), a raw escape byte makes `JSONSerialization` reject the
+  line so the call vanishes with no reply, and a doubly escaped spelling
+  types six literal bytes. A client that strips control characters is
+  what turns the Down arrow into two ordinary characters. Since round 1
+  of `foreman-harness`, `send_input` takes `keys` (`up`, `down`, `left`,
+  `right`, `enter`, `escape`, `ctrl-c`); use it for any key, and never
+  try to carry a control byte in `text`. This corrects the entry written
+  on 2026-09-09, which blamed the bridge.
 - A `claude` pane's raw output is not a transcript: Claude Code redraws
   in fragments with cursor moves, so a search of the retained log or the
   output route for a phrase the pane showed finds nothing. Read a pane
@@ -105,6 +112,15 @@ decision moves to `docs/adr/`.
 
 ## Foreman
 
+- Never move `HEAD` in a checkout a crew is using. On 2026-09-10 the
+  foreman ran a verification build on one crew's branch in the shared
+  checkout while a second crew was live; the second crew had made its own
+  worktree and lost nothing, but it had cut its branch while `HEAD` sat
+  on the first crew's, so its base carried the other round's commit.
+  Verify a branch in a worktree of your own, or wait until the crew ends.
+- A crew that spawns its own helper session copies the round's four
+  labels onto it, so a scan by label counts the helper as a round
+  session. Track the id you spawned when you watch a round.
 - Never generate machine-wide load on the machine that hosts the crew.
   On 2026-09-09 a round ran `swift test` twenty times under eight `yes`
   processes; the load starved the daemon, its launchd `KeepAlive` agent
