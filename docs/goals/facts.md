@@ -10,6 +10,10 @@ decision moves to `docs/adr/`.
 
 ## Toolchain
 
+- colima's sshfs mount can be dead while the VM is up, so a docker run
+  with `-v $PWD:/src` sees an empty directory and the build silently
+  tests nothing. Build from a tar of `HEAD` instead of restarting the VM.
+  (2026-09-10, `daemon-last-words` round 1)
 - This machine runs near its memory limit: on 2026-09-09 swap was
   7.66 GB of 8 GB used, with a docker VM the largest consumer. A Swift
   build spike is then enough for the kernel to kill the kitterm daemon
@@ -112,6 +116,14 @@ decision moves to `docs/adr/`.
 
 ## Foreman
 
+- `post_note` caps a note at 2048 bytes and cuts what is over rather than
+  refusing it, so a crew that reads its own note back sees the truncation
+  and posts again. Ask for a note under the cap and say what the cap
+  does. (2026-09-10, `daemon-last-words` round 1)
+- One crew, one worktree. Two crews in one checkout cut branches from
+  whatever `HEAD` happens to be and rebase over each other; on
+  2026-09-10 that put one round's commit under another's branch and cost
+  a rescue, though nothing was lost. (2026-09-10)
 - Never move `HEAD` in a checkout a crew is using. On 2026-09-10 the
   foreman ran a verification build on one crew's branch in the shared
   checkout while a second crew was live; the second crew had made its own

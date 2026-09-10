@@ -1,16 +1,15 @@
 # STATE: daemon-last-words
 
 - Status: active
-- Round: 0 of 3 in this budget (first budget)
-- Rounds total: 0
-- Last floor: green (2026-09-10, main at 2eb49c4)
+- Round: 1 of 3 in this budget (first budget; round 1 done)
+- Rounds total: 1
+- Last floor: green (2026-09-10, round 1 after)
 - Updated: 2026-09-10
 
 ## Queue
 
-1. `record-how-a-run-ends` (capability 1)
-2. `report-the-previous-run` (capability 2)
-3. `say-it-on-the-page` (capability 3)
+1. `report-the-previous-run` (capability 2)
+2. `say-it-on-the-page` (capability 3)
 
 ## Failures
 
@@ -18,14 +17,20 @@ None.
 
 ## Proposals waiting on the human
 
-None.
+- `plan.md` capability 1: the `restarted` reason has no writer. `kitterm
+  restart` reaches the daemon as the same `SIGTERM` that `kitterm stop`
+  sends, so the CLI would have to write its intent before signalling.
+  Both are clean ends, so capability 2 loses nothing by the gap. Decide
+  before capability 2 reads the file. See `rounds/001.md`.
 
 ## Done
 
-None.
+- `record-how-a-run-ends` (capability 1), round 1, `f76ec7c`. See
+  `rounds/001.md`.
 
 ## Next action
 
-Round 1: `record-how-a-run-ends` from `plan.md` row 1; proof: unit tests
-over the file's states and a SIGTERM path that writes `stopped`. Branch
-`goals/record-how-a-run-ends` off `main`.
+Merge round 1, then round 2: `report-the-previous-run` from `plan.md`
+row 2; proof: a scratch daemon killed with `SIGKILL` then started, whose
+log line and `daemon.started` event carry `unrecorded`, and `clean` after
+a `kitterm stop`. It reads the record `beginRun` already returns.
