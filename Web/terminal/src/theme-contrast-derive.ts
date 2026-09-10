@@ -490,6 +490,7 @@ const BLOCK_SURFACES: Array<{ block: string; stack: string[]; why: string }> = [
   { block: "chip-label", stack: ["var(--ui-bg)"], why: "in .filters, on the body" },
   { block: "chip", stack: ["var(--ui-bg)"], why: "in .filters, on the body" },
   { block: "notice", stack: ["var(--ui-bg)"], why: "above the cards, on the body" },
+  { block: "restart", stack: ["var(--ui-bg)"], why: "above the cards, on the body; it paints its own danger tint over --ui-bg" },
   { block: "cards", stack: ["var(--ui-bg)"], why: "the card column, on the body" },
   // --- sessions.css: the attention strip, itself on the body ---
   { block: "strip", stack: ["var(--ui-bg)"], why: "sticky on the body; it paints --ui-bg itself" },
