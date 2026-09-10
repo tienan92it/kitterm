@@ -20,7 +20,13 @@ each shipped under the bar.
   mixes derived from them.
 - No change to the terminal grid's colours, which the themes own and
   xterm.js renders.
-- No redesign. Sizes, weights, and layout stay as they are.
+- No redesign. Sizes, weights, and layout stay as they are. The surface
+  elevation is not a redesign for this purpose: the human opened it on
+  2026-09-11, because it is the lever that actually holds the page under
+  the floor. A round may change what lifts `--ui-surface`,
+  `--ui-surface-2`, `--ui-hover` and `--ui-active` off `--ui-bg`, and the
+  `.pane-close` opacity at `styles.css:469`. Every other size, weight and
+  layout still stays.
 - No dropping a theme that cannot pass; if one cannot, it is recorded
   with its measured ratios and the human decides.
 
