@@ -1,10 +1,10 @@
 # STATE: foreman-harness
 
-- Status: active
+- Status: done
 - Round: 2 of 3 in this budget (second budget)
 - Rounds total: 5
 - Last floor: green (2026-09-10, round 5 after the foreman's command)
-- Updated: 2026-09-10, round 5 closed after review
+- Updated: 2026-09-11, done
 
 ## Queue
 
@@ -55,9 +55,20 @@ in the second budget.
 
 ## Next action
 
-Merge `goals/four-loop-rules-work` into `main` and check `main` green.
-That is completion condition 5, and conditions 1 to 4 already hold, so the
-merge finishes the goal. The review has run: two reviewers read round 4,
-found four defects, and round 5 repaired all four, so the branch is ready.
-Set `Status: done` after `main` is green. The proposal above waits on the
-human and does not block the merge.
+None. The goal is done. All five completion conditions hold and every
+capability is in `main`:
+
+1. A foreman sends an arrow key through the MCP toolset alone, and a test
+   proves the three bytes reach the pane (`a563957`, #84).
+2. The skill answers the trust dialog with the toolset, carries no
+   `curl`, and `kitterm skills install` ships it (`a056b3d`, #89).
+3. A session under a registered parent resolves to its own checkout, and
+   the resolution table pins it (`79d34e0`, #87).
+4. The two `LOOP.md` files and the skill carry the rules and agree, and a
+   test compares whole rule sentences rather than markers (`f49800b`,
+   #92).
+5. `main` is green: `swift test` 647 tests, vitest 1350 tests, the Linux
+   build and the bench.
+
+To reopen it, set `Status: active`, give it a new budget and a new queue.
+One proposal from round 5 stays open and is listed above.
