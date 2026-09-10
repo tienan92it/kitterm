@@ -66,11 +66,10 @@ import { TERMINAL_THEMES } from "./themes";
  *
  * ## KNOWN_BELOW
  *
- * This round measures; it does not fix. `KNOWN_BELOW` names every pair under
- * its floor with the theme and the ratio, so capability 2 has its target list
- * and capability 3 has something to delete. A listed pair must not get worse
- * and must not start passing without the entry going with it; an unlisted pair
- * must hold its floor.
+ * `KNOWN_BELOW` names every pair under its floor with the theme and the ratio,
+ * so capability 3 has something to delete. A listed pair must not get worse and
+ * must not start passing without the entry going with it; an unlisted pair must
+ * hold its floor.
  */
 
 /** WCAG 1.4.3 for small text. Large text takes 3:1; see `floorFor`. */
@@ -91,37 +90,32 @@ const { pairs, holes } = derivePairs(SHEETS, paletteFor(TERMINAL_THEMES[0]));
 
 /**
  * Ratios under the floor today, by pair and theme, measured by this file.
- * Pair first, because capability 2 raises a token and clears a whole row.
+ * Pair first, because a token change clears part of a row.
  *
- * Ten of these are theme-owned colours the goal's exclusions put out of reach:
- * `--code-error`, `--code-keyword`, `--code-name` and `--code-string`, which
- * are the theme's own ANSI colours; the three `--ui-accent` pairs; the two
- * `--ui-danger` pairs; and `--ui-text` on `--ui-bg`, where synthwave-84's own
- * foreground reads 4.32 on its own background. Capability 2 can move only
- * `--ui-text-muted` and `--ui-text-faint`, which `--code-punct` and
- * `--code-comment` alias, so those two clear with them. The ten are recorded
- * with their ratios so the human decides, which is what the goal's last
- * exclusion asks for.
+ * 178 entries over 39 pairs, after round 2 raised `--ui-text-muted` to 82% and
+ * `--ui-text-faint` to 72%, which cleared 95 entries.
+ *
+ * **24 of the 39 pairs are out of reach of those two tokens.** Their text is a
+ * colour the goal's exclusions freeze: `--code-error`, `--code-keyword`,
+ * `--code-name` and `--code-string` are the theme's own ANSI colours; three
+ * pairs paint `--ui-accent` and two paint `--ui-danger`; and fourteen paint
+ * `--ui-text`, the theme's own foreground, which reads 4.31 on its own
+ * background on synthwave-84 and 2.96 on `--ui-hover` on solarized-dark.
+ *
+ * **The other 15 cannot be cleared by a mix either, and the reason is
+ * arithmetic.** A pair that fails on a surface lifted above `--ui-bg` needs a
+ * text colour further from that surface than `--ui-text` itself is. Every mix
+ * toward `--ui-bg` moves the other way. Setting both tokens to `--ui-text`
+ * still leaves 32 pair-and-theme combinations below 4.5:1. The colours that do
+ * clear them mix toward `--ui-lift` — brighter than the foreground on a dark
+ * theme — which puts muted text above body text in the visual rank. Round 2
+ * measured that page and did not ship it; see `rounds/002.md`.
  */
 const KNOWN_BELOW: Record<string, Record<string, number>> = {
   "--code-comment on --ui-bg-sunken": {
-    "github-dark": 3.62,
-    "github-dark-dimmed": 2.70,
-    "vesper": 4.01,
-    "solarized-dark": 2.09,
-    "dracula": 3.87,
-    "nord": 3.24,
-    "one-dark": 2.55,
-    "tokyo-night": 3.07,
-    "tokyo-night-storm": 3.02,
-    "catppuccin-mocha": 3.27,
-    "catppuccin-macchiato": 3.18,
-    "ayu-mirage": 3.03,
-    "night-owl": 3.38,
-    "gruvbox-dark": 3.34,
-    "monokai": 3.92,
-    "synthwave-84": 2.00,
-    "rose-pine": 3.45,
+    "solarized-dark": 3.22,
+    "one-dark": 4.25,
+    "synthwave-84": 2.98,
   },
   "--code-error on --ui-bg-sunken": {
     "solarized-dark": 3.40,
@@ -138,10 +132,8 @@ const KNOWN_BELOW: Record<string, Record<string, number>> = {
     "gruvbox-dark": 3.66,
   },
   "--code-punct on --ui-bg-sunken": {
-    "github-dark-dimmed": 4.15,
-    "solarized-dark": 2.91,
-    "one-dark": 3.77,
-    "synthwave-84": 2.73,
+    "solarized-dark": 3.78,
+    "synthwave-84": 3.48,
   },
   "--code-string on --ui-bg-sunken": {
     "rose-pine": 3.48,
@@ -272,188 +264,109 @@ const KNOWN_BELOW: Record<string, Record<string, number>> = {
     "synthwave-84": 2.81,
   },
   "--ui-text-faint on --ui-bg-sunken": {
-    "github-dark": 3.62,
-    "github-dark-dimmed": 2.70,
-    "vesper": 4.01,
-    "solarized-dark": 2.09,
-    "dracula": 3.87,
-    "nord": 3.24,
-    "one-dark": 2.55,
-    "tokyo-night": 3.07,
-    "tokyo-night-storm": 3.02,
-    "catppuccin-mocha": 3.27,
-    "catppuccin-macchiato": 3.18,
-    "ayu-mirage": 3.03,
-    "night-owl": 3.38,
-    "gruvbox-dark": 3.34,
-    "monokai": 3.92,
-    "synthwave-84": 2.00,
-    "rose-pine": 3.45,
+    "solarized-dark": 3.22,
+    "one-dark": 4.25,
+    "synthwave-84": 2.98,
   },
   "--ui-text-faint on --ui-surface": {
-    "github-dark": 3.15,
-    "github-dark-dimmed": 2.15,
-    "vesper": 3.50,
-    "solarized-dark": 1.67,
-    "dracula": 3.04,
-    "nord": 2.51,
-    "one-dark": 2.00,
-    "tokyo-night": 2.54,
-    "tokyo-night-storm": 2.39,
-    "catppuccin-mocha": 2.68,
-    "catppuccin-macchiato": 2.52,
-    "ayu-mirage": 2.43,
-    "night-owl": 2.89,
-    "gruvbox-dark": 2.64,
-    "monokai": 3.10,
-    "synthwave-84": 1.60,
-    "rose-pine": 2.89,
+    "github-dark-dimmed": 3.72,
+    "solarized-dark": 2.57,
+    "nord": 4.46,
+    "one-dark": 3.33,
+    "tokyo-night-storm": 4.32,
+    "ayu-mirage": 4.45,
+    "synthwave-84": 2.39,
   },
   "--ui-text-faint on --ui-surface + --ui-accent-soft": {
-    "github-dark": 2.15,
-    "github-dark-dimmed": 1.52,
-    "vesper": 2.24,
-    "solarized-dark": 1.33,
-    "dracula": 2.09,
-    "nord": 1.93,
-    "one-dark": 1.47,
-    "tokyo-night": 1.84,
-    "tokyo-night-storm": 1.76,
-    "catppuccin-mocha": 1.86,
-    "catppuccin-macchiato": 1.80,
-    "ayu-mirage": 1.62,
-    "night-owl": 2.04,
-    "gruvbox-dark": 2.19,
-    "monokai": 2.07,
-    "synthwave-84": 1.02,
-    "rose-pine": 1.90,
+    "github-dark-dimmed": 2.64,
+    "solarized-dark": 2.05,
+    "dracula": 4.14,
+    "nord": 3.42,
+    "one-dark": 2.45,
+    "tokyo-night": 3.55,
+    "tokyo-night-storm": 3.19,
+    "catppuccin-mocha": 3.60,
+    "catppuccin-macchiato": 3.32,
+    "ayu-mirage": 2.97,
+    "night-owl": 4.27,
+    "gruvbox-dark": 4.11,
+    "monokai": 4.14,
+    "synthwave-84": 1.52,
+    "rose-pine": 3.91,
   },
   "--ui-text-muted on --ui-bg": {
-    "github-dark-dimmed": 3.95,
-    "solarized-dark": 2.77,
-    "one-dark": 3.57,
-    "synthwave-84": 2.60,
+    "solarized-dark": 3.60,
+    "synthwave-84": 3.31,
   },
   "--ui-text-muted on --ui-bg + --ui-accent-soft": {
-    "github-dark-dimmed": 2.76,
-    "solarized-dark": 2.18,
-    "dracula": 4.22,
-    "nord": 3.54,
-    "one-dark": 2.56,
-    "tokyo-night": 3.61,
-    "tokyo-night-storm": 3.27,
-    "catppuccin-mocha": 3.70,
-    "catppuccin-macchiato": 3.45,
-    "ayu-mirage": 3.07,
-    "night-owl": 4.24,
-    "gruvbox-dark": 4.23,
-    "monokai": 4.21,
-    "synthwave-84": 1.64,
-    "rose-pine": 3.93,
+    "github-dark-dimmed": 3.81,
+    "solarized-dark": 2.82,
+    "one-dark": 3.46,
+    "ayu-mirage": 4.34,
+    "synthwave-84": 2.09,
   },
   "--ui-text-muted on --ui-bg + --ui-veil": {
-    "github-dark-dimmed": 3.95,
-    "solarized-dark": 2.77,
-    "one-dark": 3.57,
-    "synthwave-84": 2.60,
+    "solarized-dark": 3.60,
+    "synthwave-84": 3.31,
   },
   "--ui-text-muted on --ui-bg + --ui-veil at 55% opacity": {
-    "github-dark": 2.81,
-    "github-dark-dimmed": 2.15,
-    "vesper": 3.09,
-    "solarized-dark": 1.72,
-    "dracula": 2.94,
-    "nord": 2.48,
-    "one-dark": 2.04,
-    "tokyo-night": 2.41,
-    "tokyo-night-storm": 2.35,
-    "catppuccin-mocha": 2.56,
-    "catppuccin-macchiato": 2.48,
-    "ayu-mirage": 2.37,
-    "night-owl": 2.61,
-    "gruvbox-dark": 2.58,
-    "monokai": 2.97,
-    "synthwave-84": 1.62,
-    "rose-pine": 2.68,
+    "github-dark": 3.85,
+    "github-dark-dimmed": 2.65,
+    "vesper": 4.34,
+    "solarized-dark": 2.00,
+    "dracula": 3.84,
+    "nord": 3.11,
+    "one-dark": 2.47,
+    "tokyo-night": 3.11,
+    "tokyo-night-storm": 2.96,
+    "catppuccin-mocha": 3.30,
+    "catppuccin-macchiato": 3.14,
+    "ayu-mirage": 2.99,
+    "night-owl": 3.50,
+    "gruvbox-dark": 3.29,
+    "monokai": 3.90,
+    "synthwave-84": 1.85,
+    "rose-pine": 3.57,
   },
   "--ui-text-muted on --ui-bg-sunken": {
-    "github-dark-dimmed": 4.15,
-    "solarized-dark": 2.91,
-    "one-dark": 3.77,
-    "synthwave-84": 2.73,
+    "solarized-dark": 3.78,
+    "synthwave-84": 3.48,
   },
   "--ui-text-muted on --ui-hover": {
-    "github-dark-dimmed": 2.46,
-    "solarized-dark": 1.73,
-    "dracula": 3.93,
-    "nord": 2.98,
-    "one-dark": 2.23,
-    "tokyo-night": 3.17,
-    "tokyo-night-storm": 2.81,
-    "catppuccin-mocha": 3.36,
-    "catppuccin-macchiato": 3.06,
-    "ayu-mirage": 2.93,
-    "night-owl": 3.87,
-    "gruvbox-dark": 3.28,
-    "monokai": 3.98,
-    "synthwave-84": 1.62,
-    "rose-pine": 3.83,
+    "github-dark-dimmed": 3.40,
+    "solarized-dark": 2.25,
+    "nord": 4.14,
+    "one-dark": 3.00,
+    "tokyo-night-storm": 3.96,
+    "catppuccin-macchiato": 4.32,
+    "ayu-mirage": 4.14,
+    "synthwave-84": 2.07,
   },
   "--ui-text-muted on --ui-surface": {
-    "github-dark-dimmed": 3.30,
-    "solarized-dark": 2.32,
-    "nord": 3.96,
-    "one-dark": 2.96,
-    "tokyo-night": 4.23,
-    "tokyo-night-storm": 3.76,
-    "catppuccin-macchiato": 4.09,
-    "ayu-mirage": 3.91,
-    "gruvbox-dark": 4.33,
-    "synthwave-84": 2.19,
+    "solarized-dark": 3.01,
+    "one-dark": 3.99,
+    "synthwave-84": 2.79,
   },
   "--ui-text-muted on --ui-surface-2": {
-    "github-dark-dimmed": 2.87,
-    "solarized-dark": 2.02,
-    "nord": 3.43,
-    "one-dark": 2.57,
-    "tokyo-night": 3.68,
-    "tokyo-night-storm": 3.28,
-    "catppuccin-mocha": 3.91,
-    "catppuccin-macchiato": 3.57,
-    "ayu-mirage": 3.41,
-    "gruvbox-dark": 3.78,
-    "synthwave-84": 1.88,
-    "rose-pine": 4.44,
+    "github-dark-dimmed": 3.96,
+    "solarized-dark": 2.62,
+    "one-dark": 3.47,
+    "synthwave-84": 2.40,
   },
   "--ui-text-muted on color-mix(in srgb, --ui-danger 8%, --ui-surface)": {
-    "github-dark-dimmed": 2.97,
-    "solarized-dark": 2.28,
-    "nord": 3.70,
-    "one-dark": 2.69,
-    "tokyo-night": 3.75,
-    "tokyo-night-storm": 3.36,
-    "catppuccin-mocha": 3.92,
-    "catppuccin-macchiato": 3.60,
-    "ayu-mirage": 3.44,
-    "gruvbox-dark": 4.22,
-    "synthwave-84": 2.02,
+    "github-dark-dimmed": 4.09,
+    "solarized-dark": 2.96,
+    "one-dark": 3.63,
+    "synthwave-84": 2.57,
   },
   "--ui-text-muted on color-mix(in srgb, --ui-warning 10%, --ui-surface)": {
-    "github-dark-dimmed": 2.85,
-    "solarized-dark": 2.07,
-    "dracula": 3.90,
-    "nord": 3.18,
-    "one-dark": 2.39,
-    "tokyo-night": 3.47,
-    "tokyo-night-storm": 3.11,
-    "catppuccin-mocha": 3.44,
-    "catppuccin-macchiato": 3.20,
-    "ayu-mirage": 3.08,
-    "night-owl": 4.11,
-    "gruvbox-dark": 3.68,
-    "monokai": 4.27,
-    "synthwave-84": 1.69,
-    "rose-pine": 4.05,
+    "github-dark-dimmed": 3.93,
+    "solarized-dark": 2.69,
+    "nord": 4.41,
+    "one-dark": 3.22,
+    "tokyo-night-storm": 4.37,
+    "ayu-mirage": 4.35,
+    "synthwave-84": 2.16,
   },
 };
 

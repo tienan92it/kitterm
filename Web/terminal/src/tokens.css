@@ -47,10 +47,24 @@
   /* --- text ----------------------------------------------------------- */
   /* Text steps mix the theme's foreground toward its background, so muted
      text stays in the theme's own family and inverts correctly on light
-     themes without a branch. */
+     themes without a branch.
+
+     One rule for all seventeen themes, and it is a floor, not a preference:
+     each step keeps as much of the foreground as the worst theme allows.
+     `theme-contrast.test.ts` measures every pair the two pages paint, and a
+     step further from the foreground drops pairs under 4.5:1 on
+     `solarized-dark`, `synthwave-84` and `one-dark`, whose foregrounds sit
+     near the floor before any mix. 82% and 72% are the values that clear the
+     most of those pairs while muted still reads as muted: the ramp stays
+     text, then muted, then faint, in that order, on every theme.
+
+     These two steps cannot clear every pair. A pair that fails on a lifted
+     surface needs a colour further from that surface than `--ui-text`
+     itself is, which on a dark theme means brighter than the foreground.
+     `KNOWN_BELOW` records what is left. */
   --ui-text: var(--term-fg, #e6edf3);
-  --ui-text-muted: color-mix(in oklab, var(--ui-text) 66%, var(--ui-bg));
-  --ui-text-faint: color-mix(in oklab, var(--ui-text) 46%, var(--ui-bg));
+  --ui-text-muted: color-mix(in oklab, var(--ui-text) 82%, var(--ui-bg));
+  --ui-text-faint: color-mix(in oklab, var(--ui-text) 72%, var(--ui-bg));
 
   /* --- accent --------------------------------------------------------- */
   /* `--term-accent` is chosen per theme, not assumed to be blue: Vesper's
