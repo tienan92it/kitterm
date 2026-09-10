@@ -34,6 +34,14 @@ decision moves to `docs/adr/`.
 
 ## Daemon and API
 
+- `PtySession.foregroundIsShell` is true in three cases, not one: the
+  shell reads the terminal, nothing has claimed the tty yet, or the spawn
+  helper holds it before it execs the shell. So it is a no-op as a "the
+  shell is ready" gate, and `!foregroundIsShell` names any program rather
+  than a chosen one. Wait for the program by name, or for
+  `inputIsCanonical == false`, whichever the next lines need
+  (`Tests/KittermDaemonTests/ForegroundWait.swift`). Measured 2026-09-10
+  with a spawn-helper shim that slept 3 s.
 - The kernel reports a shell's cwd as a real path, `/private/var/…` on
   macOS; Foundation's `resolvingSymlinksInPath()` keeps `/var/…`, so a
   registered root must go through `realpath(3)`. `Projects.canonicalRoot`
