@@ -36,12 +36,12 @@ None.
 
 ## Next action
 
-Merge the three branches bottom up and check `main` green. That is
+Merge `goals/say-it-on-the-page` and check `main` green. That is
 completion condition 4, and conditions 1, 2 and 3 already hold, so the
-merges finish the goal. Order: `goals/record-how-a-run-ends` `f76ec7c`,
-then `goals/report-the-previous-run` `884be00`, then
-`goals/say-it-on-the-page` `39127a2`. Run the review skill before each,
-as the human requires. Set `Status: done` after `main` is green.
+merge finishes the goal. Capabilities 1 and 2 are already in `main` as
+`63c7069` (#85) and `9009fbe` (#88); only capability 3 is outstanding.
+Run the review skill before the merge, as the human requires. Set
+`Status: done` after `main` is green.
 
 One collision to watch: `contrast-tokens` is rewriting how
 `theme-contrast.test.ts` derives its pairs, and round 3 added a `tint`
