@@ -73,6 +73,15 @@ decision moves to `docs/adr/`.
 
 ## Crew pane
 
+- A crew that runs `kitterm serve` must set `KITTERM_STATE_DIR` **and** a
+  free port. `serve` writes the pid file and the port file before it binds,
+  so a second daemon aimed at `~/.kitterm` clobbers the live daemon's pid
+  even when the bind then fails. `livePid()` reads that dead pid, cannot
+  signal it, deletes the file, and reports "kitterm not running", so
+  `kitterm stop` can no longer reach the daemon that is still serving. On
+  2026-09-10 a crew did this and the foreman repaired the pid file by hand.
+  `DaemonPaths.stateDirectory` documents the hazard; say it in the prompt
+  as well. (2026-09-10, `contrast-tokens` round 2)
 - An escape byte does not survive an MCP client's JSON string argument,
   and kitterm is not the layer that loses it. Measured 2026-09-10 by
   driving `kitterm mcp` with a hand-written JSON-RPC line into a pane
