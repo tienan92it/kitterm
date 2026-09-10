@@ -1527,10 +1527,14 @@ function clockTime(epochMs: number): string {
 }
 
 /** A label for a moment that can be old: the time alone when `stampFormat`
- * says the moment falls on today, else the date and the time, which is the
- * convention `archivedFold` already follows. */
+ * says the moment falls on today, else the date and the time, the convention
+ * `archivedFold` already follows. The short styles drop the seconds that a
+ * bare `toLocaleString()` prints: the daemon writes the previous run's clock
+ * on a heartbeat, so the seconds are false precision, and the line has one
+ * line above the cards at 390 px. */
 function pastTime(epochMs: number, format: StampFormat): string {
-  return format === "time" ? clockTime(epochMs) : new Date(epochMs).toLocaleString();
+  if (format === "time") return clockTime(epochMs);
+  return new Date(epochMs).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
 }
 
 function folderOf(cwd: string): string {
