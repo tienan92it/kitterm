@@ -108,6 +108,16 @@ decision moves to `docs/adr/`.
 
 ## Fleet view
 
+- A `.css?raw` import returns an empty string under vitest, because
+  vitest's css-disable plugin empties any id that holds `.css?`. A test
+  that must read a stylesheet reads it with `node:fs` at test time
+  instead. (2026-09-10, `contrast-tokens` round 1)
+- The two pages use 45 distinct text-and-background pairs over 150 text
+  rules, and 39 of the 45 miss 4.5:1 on at least one bundled theme. All
+  17 bundled themes are dark. No text is large by the WCAG definition:
+  the largest is the 20 px h1 at weight 600, under the 18.66 px bold
+  threshold, so every pair takes 4.5:1 and none takes 3:1.
+  (2026-09-10, `contrast-tokens` round 1)
 - `sessions.ts` runs on import; page logic goes in a pure module with
   tests (`sessions-model.ts`, `approval-format.ts`). (2026-09-08)
 - The page's own contrast pairs are pinned by `theme-contrast.test.ts`
