@@ -9,10 +9,14 @@ import {
   filter,
   group,
   pickForeman,
+  restartDismissKey,
+  restartDismissName,
+  restartNotice,
   sortInGroup,
   stateOf,
   tally,
   type Approval,
+  type DaemonStarted,
   type MergedState,
   type ModelRow,
   type ProjectSummary,
@@ -279,5 +283,62 @@ describe("accessible names", () => {
     expect(needsYouMessage(0)).toBe("Nothing needs you");
     expect(needsYouMessage(1)).toBe("1 item needs you");
     expect(needsYouMessage(3)).toBe("3 items need you");
+  });
+});
+
+describe("the restart line", () => {
+  /** A fixed formatter, so the text under test carries no locale. */
+  const at = (epochMs: number) => `T+${epochMs}`;
+  const none = new Set<string>();
+  const started = (data: Record<string, string>, epoch = "e1"): DaemonStarted => ({ epoch, data });
+
+  const unrecorded = {
+    previous: "unrecorded",
+    previousPid: "4210",
+    previousAliveAt: "1757500000000",
+    previousSessions: "2",
+  };
+
+  it("speaks for a run that ended with no recorded reason", () => {
+    expect(restartNotice(started(unrecorded), none, at)).toEqual({
+      text: "The daemon restarted. The previous run was last alive at T+1757500000000 and lost 2 sessions.",
+      key: "epoch:e1",
+    });
+  });
+
+  it("counts one lost session in the singular", () => {
+    const one = restartNotice(started({ ...unrecorded, previousSessions: "1" }), none, at);
+    expect(one?.text).toContain("and lost 1 session.");
+  });
+
+  it("says nothing after a clean stop, which ended on purpose", () => {
+    const clean = { ...unrecorded, previous: "clean", previousEndedAt: "1757500001000" };
+    expect(restartNotice(started(clean), none, at)).toBeNull();
+  });
+
+  it("says nothing after a live upgrade, which loses no session", () => {
+    expect(restartNotice(started({ ...unrecorded, previous: "takeover" }), none, at)).toBeNull();
+  });
+
+  it("says nothing when the key is absent, which is no previous run", () => {
+    expect(restartNotice(started({ epoch: "e1", version: "0.24.0", pid: "99" }), none, at)).toBeNull();
+    expect(restartNotice(null, none, at)).toBeNull();
+  });
+
+  it("says nothing while this run's epoch is dismissed", () => {
+    const dismissed = new Set([restartDismissKey("e1")]);
+    expect(restartNotice(started(unrecorded), dismissed, at)).toBeNull();
+    // The next death is a new epoch, so the line comes back.
+    expect(restartNotice(started(unrecorded, "e2"), dismissed, at)?.key).toBe("epoch:e2");
+  });
+
+  it("says nothing when a fact the line claims is missing or not a number", () => {
+    const { previousSessions: _drop, ...noCount } = unrecorded;
+    expect(restartNotice(started(noCount), none, at)).toBeNull();
+    expect(restartNotice(started({ ...unrecorded, previousAliveAt: "soon" }), none, at)).toBeNull();
+  });
+
+  it("names its Dismiss button apart from the other Dismiss buttons", () => {
+    expect(restartDismissName()).toBe("Dismiss the restart notice");
   });
 });

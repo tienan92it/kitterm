@@ -149,6 +149,21 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .notice span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
+/* The restart line: the previous run died and took its sessions with it.
+   It borrows the failed strip item's shape — the danger rule and the 8%
+   danger tint — because it reports the same kind of thing, a loss that
+   already happened, and not a keystroke the human owes anyone. The text is
+   --ui-text on that tint, the pair theme-contrast.test.ts calls `tint`. */
+.restart[hidden] { display: none; }
+.restart {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 12px;
+  padding: 8px 12px; font-size: 12.5px; color: var(--ui-text);
+  border-left: 3px solid var(--ui-danger);
+  background: color-mix(in srgb, var(--ui-danger) 8%, var(--ui-surface));
+  border-radius: 0 var(--radius-2) var(--radius-2) 0;
+}
+.restart span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
 /* --- project cards -------------------------------------------------------- */
 .cards { display: flex; flex-direction: column; gap: 14px; }
 /* No `overflow: hidden` here: it clipped the open row menu and the focus

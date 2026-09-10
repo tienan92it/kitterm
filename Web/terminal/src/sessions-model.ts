@@ -570,3 +570,75 @@ export function withProposed<R extends ModelRow>(
   if (at < 0) return [...items, ...proposed];
   return [...items.slice(0, at), ...proposed, ...items.slice(at)];
 }
+
+// --- the restart line -------------------------------------------------------
+
+/**
+ * One `daemon.started` event: the feed's epoch and the event's data. The
+ * daemon puts the previous run's summary on this event (round 2 of
+ * `daemon-last-words`), so the page never reads `~/.kitterm/last-run.json`
+ * itself.
+ *
+ * Three keys of `data` matter here. `previous` is `unrecorded`, `clean` or
+ * `takeover`, and is absent when the daemon found no record of a previous
+ * run. `previousAliveAt` is epoch milliseconds; `previousSessions` is a
+ * count. Both arrive as strings, because every event value is a string.
+ */
+export type DaemonStarted = { epoch: string; data: Record<string, string> };
+
+/** The line above the cards, and the key its Dismiss button stores. */
+export type RestartNotice = { text: string; key: string };
+
+/** What Dismiss stores for the restart line: the current run's epoch. A
+ * restart gives the feed a new epoch, so the next death shows a new line,
+ * and a live upgrade keeps the epoch, which is right because it loses
+ * nothing and shows no line at all. */
+export function restartDismissKey(epoch: string): string {
+  return `epoch:${epoch}`;
+}
+
+/** The accessible name of the restart line's Dismiss button, so it reads
+ * apart from the notice line's and a proposal's Dismiss. */
+export function restartDismissName(): string {
+  return "Dismiss the restart notice";
+}
+
+/** A whole number from an event value, or null when the key is absent or
+ * carries something else. */
+function wholeNumber(raw: string | undefined): number | null {
+  if (raw === undefined || !/^\d+$/.test(raw)) return null;
+  return Number(raw);
+}
+
+/**
+ * The one line the fleet view shows above the cards, or null for silence.
+ *
+ * Only `previous: unrecorded` speaks: that run died without writing an
+ * ending, so every session it held is gone. `clean` says nothing, because
+ * the run ended on purpose. `takeover` says nothing, because a live upgrade
+ * keeps every session. An absent `previous` says nothing, because there was
+ * no previous run to lose. A dismissed epoch says nothing until the next
+ * restart, which is a new epoch and a new key.
+ *
+ * `clockTime` formats epoch milliseconds; the page passes its own wall-clock
+ * formatter, so this function stays free of the locale and the DOM.
+ */
+export function restartNotice(
+  started: DaemonStarted | null | undefined,
+  dismissed: ReadonlySet<string>,
+  clockTime: (epochMs: number) => string,
+): RestartNotice | null {
+  if (!started) return null;
+  if (started.data.previous !== "unrecorded") return null;
+  const key = restartDismissKey(started.epoch);
+  if (dismissed.has(key)) return null;
+  const aliveAt = wholeNumber(started.data.previousAliveAt);
+  const sessions = wholeNumber(started.data.previousSessions);
+  // Both facts are the line's claim; a half-line would say less than nothing.
+  if (aliveAt === null || sessions === null) return null;
+  const lost = sessions === 1 ? "1 session" : `${sessions} sessions`;
+  return {
+    text: `The daemon restarted. The previous run was last alive at ${clockTime(aliveAt)} and lost ${lost}.`,
+    key,
+  };
+}

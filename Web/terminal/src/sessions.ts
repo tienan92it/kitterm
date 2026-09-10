@@ -26,6 +26,8 @@ import {
   recordLabel,
   recordName,
   recordPath,
+  restartDismissName,
+  restartNotice,
   showsProposals,
   roundOf,
   stateOf,
@@ -35,6 +37,7 @@ import {
   withProposed,
   type Approval,
   type AttentionItem,
+  type DaemonStarted,
   type Filter,
   type GoalBlock,
   type Group,
@@ -137,6 +140,11 @@ const CHOICE_KEY = "kitterm.sessions.filter";
  * a read proposal stays out of the strip and the title count across reloads
  * until the project's next round. */
 const DISMISSED_KEY = "kitterm.sessions.dismissed";
+/** The runs whose restart line the human dismissed, `restartDismissKey`s in
+ * `localStorage` beside the proposals above: the same pattern, its own key,
+ * so one list does not have to hold two kinds of entry. A dismissal keys on
+ * the epoch, so it dies with the run it answers. */
+const RESTART_DISMISSED_KEY = "kitterm.sessions.restart-dismissed";
 const STATE_ORDER: MergedState[] = [
   "needs-approval",
   "needs-input",
@@ -213,24 +221,39 @@ function loadChoice(): Choice {
   }
 }
 
-let dismissed: Set<string> = loadDismissed();
+let dismissed: Set<string> = loadDismissed(DISMISSED_KEY);
+let restartDismissed: Set<string> = loadDismissed(RESTART_DISMISSED_KEY);
+/** The last `daemon.started` the event feed carried: the run's epoch and the
+ * previous run's summary on it. Null until the feed answers, and on a daemon
+ * whose ring no longer holds the event. */
+let started: DaemonStarted | null = null;
 
-function loadDismissed(): Set<string> {
+function loadDismissed(storageKey: string): Set<string> {
   try {
-    const parsed = JSON.parse(localStorage.getItem(DISMISSED_KEY) ?? "[]") as unknown;
+    const parsed = JSON.parse(localStorage.getItem(storageKey) ?? "[]") as unknown;
     return new Set(Array.isArray(parsed) ? parsed.filter((k): k is string => typeof k === "string") : []);
   } catch {
     return new Set();
   }
 }
 
-function dismissProposal(key: string): void {
-  dismissed.add(key);
+function saveDismissed(storageKey: string, keys: Set<string>): void {
   try {
-    localStorage.setItem(DISMISSED_KEY, JSON.stringify([...dismissed]));
+    localStorage.setItem(storageKey, JSON.stringify([...keys]));
   } catch {
     // Storage blocked: the dismissal holds for this page life.
   }
+}
+
+function dismissProposal(key: string): void {
+  dismissed.add(key);
+  saveDismissed(DISMISSED_KEY, dismissed);
+  render();
+}
+
+function dismissRestart(key: string): void {
+  restartDismissed.add(key);
+  saveDismissed(RESTART_DISMISSED_KEY, restartDismissed);
   render();
 }
 
@@ -407,6 +430,16 @@ const announce = document.createElement("p");
 announce.className = "sr-only";
 announce.setAttribute("aria-live", "polite");
 let announcedCount = -1;
+/** One line above the cards when the previous run died without recording a
+ * reason (`restartNotice`). It paints once per run and its text is fixed, so
+ * unlike the strip it can be a live region; `paintRestart` only touches it
+ * when the text changes, so a 2 s repaint never announces it twice. */
+const restartLine = document.createElement("p");
+restartLine.className = "restart";
+restartLine.hidden = true;
+restartLine.setAttribute("role", "status");
+/** The text on the line right now, so an unchanged line is left alone. */
+let restartPainted = "";
 const cards = document.createElement("div");
 cards.className = "cards";
 let skeletonMounted = false;
@@ -414,7 +447,7 @@ let skeletonMounted = false;
 function mountSkeleton(): void {
   if (!root || skeletonMounted) return;
   skeletonMounted = true;
-  root.replaceChildren(header(), announce, strip, pinned, filters, noticeLine, cards);
+  root.replaceChildren(header(), announce, strip, pinned, filters, noticeLine, restartLine, cards);
 }
 
 function render(): void {
@@ -435,6 +468,8 @@ function render(): void {
     archives.map((a) => a.id),
     [...knowledge].map(([id, entry]) => [id, entry.etag, entry.goals === null]),
     [...dismissed],
+    [...restartDismissed],
+    started,
     watchOnly,
     profiles.map((p) => p.name),
     notice,
@@ -476,6 +511,7 @@ function paint(): void {
   chips.replaceChildren(...chipGroups(rest));
   noticeLine.hidden = notice === null;
   noticeLine.replaceChildren(...(notice === null ? [] : [noticeContent(notice)]));
+  paintRestart();
   cards.replaceChildren(...cardList(rest));
   if (focusKey) restoreFocus(focusKey);
 }
@@ -520,6 +556,29 @@ function noticeContent(text: string): DocumentFragment {
     lastSignature = "";
     render();
   });
+  fragment.append(span, dismiss);
+  return fragment;
+}
+
+/** Show, hide, or leave the restart line. The line is rebuilt only when its
+ * text changes, so the live region announces one restart once, and the focus
+ * a keyboard user has on Dismiss survives every poll between the two taps. */
+function paintRestart(): void {
+  const item = restartNotice(started, restartDismissed, clockTime);
+  const text = item?.text ?? "";
+  if (text === restartPainted) return;
+  restartPainted = text;
+  restartLine.hidden = item === null;
+  restartLine.replaceChildren(...(item === null ? [] : [restartContent(item.text, item.key)]));
+}
+
+function restartContent(text: string, key: string): DocumentFragment {
+  const fragment = document.createDocumentFragment();
+  const span = document.createElement("span");
+  span.textContent = text;
+  const dismiss = button("Dismiss", "quiet", () => dismissRestart(key));
+  dismiss.dataset.focus = focusKey("dismiss", "restart", key);
+  dismiss.setAttribute("aria-label", restartDismissName());
   fragment.append(span, dismiss);
   return fragment;
 }
@@ -1513,6 +1572,28 @@ document.addEventListener("visibilitychange", () => {
  * note) triggers an immediate repaint. A daemon too old to serve `/api/events`
  * answers 404 once and the watcher stops; the 2 s poll still covers it.
  */
+/** One event of `GET /api/events`. The page reads the type and the data of
+ * `daemon.started` and nothing else; the rest are a signal to repaint. */
+type FeedEvent = { type?: string; data?: Record<string, string> };
+
+/**
+ * Keep the run's own `daemon.started`, the event that carries how the run
+ * before this one ended. The page opens with `since=0`, so the first answer
+ * replays the epoch from its head and the event is in it, unless 1024 events
+ * have already pushed it out of the daemon's ring — an old daemon then simply
+ * shows no line.
+ *
+ * The last one in the batch wins: a live upgrade appends a second
+ * `daemon.started` inside the same epoch, and that one (`previous:
+ * takeover`) is the truth about the process now running.
+ */
+function readStarted(events: FeedEvent[], epoch: string | undefined): void {
+  if (epoch === undefined) return;
+  for (const event of events) {
+    if (event.type === "daemon.started") started = { epoch, data: event.data ?? {} };
+  }
+}
+
 let eventCursor = 0;
 /** The daemon's epoch from the last answer. Sent back so a cursor from before
  * a restart is answered `pruned` (and repaints) instead of silently reused. */
@@ -1536,10 +1617,11 @@ async function watchEvents(): Promise<void> {
         next?: number;
         epoch?: string;
         pruned?: boolean;
-        events?: unknown[];
+        events?: FeedEvent[];
       };
       if (typeof data.next === "number") eventCursor = data.next;
       if (typeof data.epoch === "string") eventEpoch = data.epoch;
+      readStarted(data.events ?? [], data.epoch);
       if (data.pruned || (data.events?.length ?? 0) > 0) void poll();
     } catch {
       // Network blip or daemon restart: back off, then resume the watch.
