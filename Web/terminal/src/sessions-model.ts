@@ -392,11 +392,16 @@ export function goalOf(row: ModelRow): string | null {
   return goal ? goal : null;
 }
 
+/** A whole number from a label or an event value, or null when the value is
+ * absent or carries something else. */
+function wholeNumber(raw: string | undefined): number | null {
+  if (raw === undefined || !/^\d+$/.test(raw)) return null;
+  return Number(raw);
+}
+
 /** The `round:` label as a whole number, or null when absent or not one. */
 export function roundOf(row: ModelRow): number | null {
-  const raw = row.labels?.round;
-  if (!raw || !/^\d+$/.test(raw)) return null;
-  return Number(raw);
+  return wholeNumber(row.labels?.round);
 }
 
 /**
@@ -589,6 +594,36 @@ export type DaemonStarted = { epoch: string; data: Record<string, string> };
 /** The line above the cards, and the key its Dismiss button stores. */
 export type RestartNotice = { text: string; key: string };
 
+/** How the page prints one past moment: the time alone, or the date and the
+ * time. `sessions.ts` owns the locale; the model picks the format only. */
+export type StampFormat = "time" | "date-and-time";
+
+/** Do the two moments fall on the same day of the reader's own calendar? */
+function sameLocalDay(a: number, b: number): boolean {
+  const first = new Date(a);
+  const second = new Date(b);
+  return (
+    first.getFullYear() === second.getFullYear() &&
+    first.getMonth() === second.getMonth() &&
+    first.getDate() === second.getDate()
+  );
+}
+
+/**
+ * The format a past moment needs, read at `now`: the time alone while the
+ * moment falls on today, the date and the time on every other day.
+ *
+ * The rule is the calendar day, not an elapsed span, because a bare "10:35
+ * PM" is unambiguous only while the moment and the read carry the same date:
+ * a daemon that died at 23:50 and a page opened at 00:10 are 80 minutes apart
+ * on two dates, and a reader who returns on Monday must not take Friday's
+ * time for this morning's. The short format holds the line to one line at
+ * 390 px on the common case, the restart the reader just watched.
+ */
+export function stampFormat(epochMs: number, now: number): StampFormat {
+  return sameLocalDay(epochMs, now) ? "time" : "date-and-time";
+}
+
 /** What Dismiss stores for the restart line: the current run's epoch. A
  * restart gives the feed a new epoch, so the next death shows a new line,
  * and a live upgrade keeps the epoch, which is right because it loses
@@ -603,13 +638,6 @@ export function restartDismissName(): string {
   return "Dismiss the restart notice";
 }
 
-/** A whole number from an event value, or null when the key is absent or
- * carries something else. */
-function wholeNumber(raw: string | undefined): number | null {
-  if (raw === undefined || !/^\d+$/.test(raw)) return null;
-  return Number(raw);
-}
-
 /**
  * The one line the fleet view shows above the cards, or null for silence.
  *
@@ -620,13 +648,15 @@ function wholeNumber(raw: string | undefined): number | null {
  * no previous run to lose. A dismissed epoch says nothing until the next
  * restart, which is a new epoch and a new key.
  *
- * `clockTime` formats epoch milliseconds; the page passes its own wall-clock
+ * `stamp` prints epoch milliseconds in the format `stampFormat` picks against
+ * `now`, the moment the page reads the event; the page passes its own
  * formatter, so this function stays free of the locale and the DOM.
  */
 export function restartNotice(
   started: DaemonStarted | null | undefined,
   dismissed: ReadonlySet<string>,
-  clockTime: (epochMs: number) => string,
+  stamp: (epochMs: number, format: StampFormat) => string,
+  now: number,
 ): RestartNotice | null {
   if (!started) return null;
   if (started.data.previous !== "unrecorded") return null;
@@ -637,8 +667,9 @@ export function restartNotice(
   // Both facts are the line's claim; a half-line would say less than nothing.
   if (aliveAt === null || sessions === null) return null;
   const lost = sessions === 1 ? "1 session" : `${sessions} sessions`;
+  const when = stamp(aliveAt, stampFormat(aliveAt, now));
   return {
-    text: `The daemon restarted. The previous run was last alive at ${clockTime(aliveAt)} and lost ${lost}.`,
+    text: `The daemon restarted. The previous run was last alive at ${when} and lost ${lost}.`,
     key,
   };
 }

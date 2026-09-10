@@ -48,6 +48,7 @@ import {
   type ProjectRef,
   type ProjectSummary,
   type ProposedItem,
+  type StampFormat,
 } from "./sessions-model";
 import { loadSettings } from "./settings-store";
 import { applyThemeTokens } from "./theme-tokens";
@@ -564,7 +565,7 @@ function noticeContent(text: string): DocumentFragment {
  * text changes, so the live region announces one restart once, and the focus
  * a keyboard user has on Dismiss survives every poll between the two taps. */
 function paintRestart(): void {
-  const item = restartNotice(started, restartDismissed, clockTime);
+  const item = restartNotice(started, restartDismissed, pastTime, Date.now());
   const text = item?.text ?? "";
   if (text === restartPainted) return;
   restartPainted = text;
@@ -1523,6 +1524,13 @@ async function reasonOf(res: Response): Promise<string> {
  * text is stable between polls (a duration would go stale between repaints). */
 function clockTime(epochMs: number): string {
   return new Date(epochMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+/** A label for a moment that can be old: the time alone when `stampFormat`
+ * says the moment falls on today, else the date and the time, which is the
+ * convention `archivedFold` already follows. */
+function pastTime(epochMs: number, format: StampFormat): string {
+  return format === "time" ? clockTime(epochMs) : new Date(epochMs).toLocaleString();
 }
 
 function folderOf(cwd: string): string {
