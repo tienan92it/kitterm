@@ -120,6 +120,12 @@ decision moves to `docs/adr/`.
 
 ## Foreman
 
+- After a round's floor, either send the prompt or record why not. On
+  2026-09-10 the foreman spawned a pane, ran its floor, turned to another
+  goal, and left it idle for twenty minutes with no task. The loop says
+  to commit to the base before the prompt; it never said to send the
+  prompt, because that was assumed. (2026-09-10, `foreman-harness`
+  round 3)
 - `post_note` caps a note at 2048 bytes and cuts what is over rather than
   refusing it, so a crew that reads its own note back sees the truncation
   and posts again. Ask for a note under the cap and say what the cap

@@ -64,7 +64,7 @@ The bridge gives the foreman these tools.
 | `get_session` | One session's full status row. |
 | `spawn_session` | Start a crew session. Name it; optionally set cwd, profile, labels, and an initial input line. |
 | `rename_session` | Set a session's name, note, or labels. |
-| `send_input` | Type into a session and press Enter — a message to its agent, an answer, or a command. Refuses a text over 1 KiB while a cooked reader holds the terminal; `force:true` overrides. An arrow key does not pass: the bridge drops the escape byte. Send a keystroke as raw bytes to `POST /api/sessions/<id>/input` instead. |
+| `send_input` | Type into a session and press Enter — a message to its agent, an answer, or a command. Refuses a text over 1 KiB while a cooked reader holds the terminal; `force:true` overrides. Give `keys` to press a named key (`up`, `down`, `left`, `right`, `enter`, `escape`, `ctrl-c`): an escape byte does not survive an MCP client's JSON string argument, so `text` cannot carry an arrow key. |
 | `list_commands` | The commands a session ran, with exit codes. |
 | `wait_for_command` | Block until a command finishes, then read its exit code. |
 | `read_output` | Read a command's captured output. |
@@ -282,15 +282,15 @@ Do this before every `send_input` into a pane that runs an interactive agent.
      trust?" with the options `No, exit` and `Yes, I trust this folder`, and
      `❯` marks `No, exit`. This is not a permission dialog: it asks about the
      folder the foreman chose. When the cwd is the repo the user named, send
-     one Down arrow, read the screen to confirm `❯` now marks `Yes, I trust
-     this folder`, then press Enter alone (`send_input text=""`). Any other
-     cwd: stop and tell the user. The arrow does not pass through
-     `send_input`: the bridge drops the escape byte and the pane receives
-     `[B` as text. Send it as raw bytes through the input route:
-     `printf '\033[B' | curl -s --data-binary @-
-     http://127.0.0.1:3418/api/sessions/<id>/input`. Send the arrow and the
-     Enter in two calls: a keystroke and a carriage return in one write can
-     confirm the option that was marked before the keystroke arrived.
+     `send_input keys=["down"]`, read the screen to confirm `❯` now marks
+     `Yes, I trust this folder`, then press Enter with
+     `send_input keys=["enter"]`. Any other cwd: stop and tell the user. A
+     key goes by name because an escape byte does not survive an MCP
+     client's JSON string argument: a client that strips it types `[B` as
+     text, and a client that passes it raw breaks the JSON-RPC line. Send
+     the arrow and the Enter in two calls: a keystroke and a carriage return
+     in one write can confirm the option that was marked before the
+     keystroke arrived.
    - Permission dialog. The pane reads "Do you want to proceed?" or a
      numbered choice with a `Yes` and a `No`. Never answer it. Tell the user
      and link the pane; the fleet view holds the same dialog.

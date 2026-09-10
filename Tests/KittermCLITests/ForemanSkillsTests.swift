@@ -52,5 +52,10 @@ final class ForemanSkillsTests: XCTestCase {
             XCTAssertEqual(sections[0], other)
         }
         XCTAssertTrue(sections[0].contains("cooked reader"))
+        // The trust dialog is answered with the toolset alone: `keys`, not a
+        // shell that pipes raw bytes into the input route.
+        XCTAssertFalse(sections[0].contains("curl"))
+        XCTAssertTrue(sections[0].contains("send_input keys=[\"down\"]"))
+        XCTAssertTrue(sections[0].contains("send_input keys=[\"enter\"]"))
     }
 }
