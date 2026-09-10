@@ -198,6 +198,7 @@ State lives in `~/.kitterm/`. The default port is 3418.
 ├── history/<key>             per-pane shell history
 ├── archive/<id>/             archived sessions (archive.json, output.log)
 ├── respawn.json              names and labels of live sessions, for a respawn
+├── last-run.json             how the last run ended, or nothing where its end should be
 ├── takeover/                 live-upgrade handoff, between execv and adoption
 └── web-root                  the web bundle the running daemon pinned
 ```

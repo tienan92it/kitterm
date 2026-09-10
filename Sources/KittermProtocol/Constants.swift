@@ -71,6 +71,13 @@ public enum KittermConstants: Sendable {
     public static let portFileName: String = "port"
     public static let logFileName: String = "server.log"
 
+    /// How often a run refreshes `last-run.json` to say it is alive
+    /// (`LastRun`). It bounds how far the record's `aliveAt` is behind the
+    /// moment a killed run actually died, so it is a claim about accuracy,
+    /// not a poll anything waits on. One small atomic file write per
+    /// interval, off the event loop.
+    public static let lastRunRefreshSeconds: Int = 30
+
     /// Env vars stripped from the PTY child so TUIs don't probe a foreign terminal identity.
     public static let ptyEnvDenylist: Set<String> = [
         "KITTERM_DAEMON_CHILD",
