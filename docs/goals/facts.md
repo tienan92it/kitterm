@@ -143,6 +143,14 @@ decision moves to `docs/adr/`.
 
 ## Foreman
 
+- Before starting a round, read the other open rounds' plan rows and name
+  the shared file in the prompt. On 2026-09-10 the foreman gave
+  `daemon-last-words` and `contrast-tokens` the same
+  `Web/terminal/src/theme-contrast.test.ts` in the same hour. The queue is
+  scheduled by the `Updated` date, not by the files a capability names, so
+  nothing in the loop catches the collision. The second crew found it
+  itself and said so in its first note. (2026-09-10, `daemon-last-words`
+  round 3)
 - After a round's floor, either send the prompt or record why not. On
   2026-09-10 the foreman spawned a pane, ran its floor, turned to another
   goal, and left it idle for twenty minutes with no task. The loop says
