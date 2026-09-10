@@ -151,6 +151,18 @@ decision moves to `docs/adr/`.
 
 ## Foreman
 
+- A round can be recorded as done and then fail review. The loop closes a
+  round on a green floor and a clean diff; the human's rule puts the
+  review before the merge, which is after the round closes. On 2026-09-10
+  round 4 of `foreman-harness` was written up as complete, and two
+  reviewers then found four defects in it. Do not treat a round record as
+  final until the review returns. (2026-09-10, `foreman-harness` round 5)
+- Two blind reviewers are worth their cost on a document change. Both
+  found the same hole in a substring check and described it the same way:
+  a file can carry the exact marker while stating the rule backwards. One
+  wrote the inverted sentence out, the crew used it as an acceptance test,
+  and the foreman ran it again against the finished file.
+  (2026-09-10, `foreman-harness` round 5)
 - A round that needs a change under a path it may not write delivers a
   command, not a description. On 2026-09-10 a crew wrote the patch for
   `docs/goals/LOOP.md` as one `git show ... | sed ... | git apply -C1
