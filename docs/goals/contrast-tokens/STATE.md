@@ -1,10 +1,10 @@
 # STATE: contrast-tokens
 
-- Status: waiting
+- Status: active
 - Round: 0 of 3 in this budget (first budget)
 - Rounds total: 0
 - Last floor: green (2026-09-10, main at 2eb49c4)
-- Updated: 2026-09-10
+- Updated: 2026-09-10, started
 
 ## Queue
 
@@ -24,9 +24,14 @@ None.
 
 None.
 
+## Direction
+
+2026-09-10: the human said start. The goal was `waiting` on the foreman's
+own scheduling choice, not on a real block.
+
 ## Next action
 
-Waiting on the human to say continue. This goal is planned and not
-started: the foreman runs at most three crew sessions, and
-`foreman-harness` and `daemon-last-words` are active. On continue, round
-1 is `derive-the-pairs` from `plan.md` row 1.
+Round 1: `derive-the-pairs` from `plan.md` row 1; proof: the test
+enumerates more pairs than the hand list did and names each, and the
+failures it reports are the ones the two accessibility reviews recorded
+plus whatever the derivation adds.
