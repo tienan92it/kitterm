@@ -22,17 +22,10 @@ Do this before every `send_input` into a pane that runs an interactive agent.
    - Trust dialog — "Is this a project you created or one you trust?" with
      the options `No, exit` and `Yes, I trust this folder`. When the cwd is
      the repo the user named, move the mark to `Yes, I trust this folder`
-     with one Down arrow. An arrow key does not pass through `send_input`:
-     the bridge drops the escape byte, and the pane receives `[B` as text.
-     Send the key through the HTTP input route from your shell, with the
-     session id and the daemon's port:
-
-     ```
-     printf '\033[B' | curl -s --data-binary @- http://127.0.0.1:3418/api/sessions/<id>/input
-     ```
-
-     Read the screen to confirm `❯` sits on that option, then press Enter
-     alone (`send_input text=""`). Any other cwd: stop and tell the user.
+     with `send_input keys=["down"]`. A key goes by name because an escape
+     byte does not survive an MCP client's JSON string argument. Read the
+     screen to confirm `❯` sits on that option, then press Enter with
+     `send_input keys=["enter"]`. Any other cwd: stop and tell the user.
    - Permission dialog — "Do you want to proceed?" or a numbered choice with
      a `Yes` and a `No`. Never answer it. Tell the user and link the pane.
    - In-progress turn — a spinner line with "esc to interrupt", or a `⏺`

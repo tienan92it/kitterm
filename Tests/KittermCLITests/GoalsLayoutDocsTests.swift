@@ -69,8 +69,9 @@ final class GoalsLayoutDocsTests: XCTestCase {
         }
         XCTAssertTrue(skill.contains("post_note"), "the digest goes to the event feed")
         XCTAssertTrue(skill.contains("Commit after every round"), "the package is committed each round")
-        XCTAssertTrue(skill.contains("printf '\\033[B' | curl"), "an arrow key goes through the input route")
-        XCTAssertFalse(skill.contains("\\u001b[B"), "no arrow key through send_input")
+        XCTAssertTrue(skill.contains("send_input keys=[\"down\"]"), "an arrow key goes by name")
+        XCTAssertFalse(skill.contains("curl"), "no shell workaround in the skill")
+        XCTAssertFalse(skill.contains("\\u001b[B"), "no arrow key inside a text argument")
     }
 
     /// The `- Round:` and `- Last floor:` lines have one shape: the
