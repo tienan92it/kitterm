@@ -43,8 +43,18 @@ All four hold:
    shell"; `LiveTakeoverTests` proves the second request arrives while
    the first is pending, or asserts only what two independent requests
    guarantee.
-2. Each test passes 20 consecutive local runs of its own suite under a
-   parallel load that keeps every core busy.
+2. Each test passes 20 consecutive local runs of its own suite, and the
+   race it held is reproduced by a widening that the fix then survives.
+
+   Amended by the human on 2026-09-10. This condition first required the
+   20 runs "under a parallel load that keeps every core busy". That load
+   starved the kitterm daemon on the machine hosting the loop, its
+   launchd agent restarted it three times, and two crew sessions died
+   with their uncommitted work (`facts.md`, Foreman). Load is also the
+   weaker instrument: it makes a race likelier without proving it, and it
+   would have accepted a fix that round 1 caught as a proxy. A widening
+   that makes the race fail every time, and that the fix then survives,
+   is the evidence this goal actually wanted.
 3. The full floor is green, and the `test` job is green on the pull
    request that carries the fix.
 4. `main`'s next CI run after the merge is green.
