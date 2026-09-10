@@ -162,8 +162,6 @@ final class SessionRegistryTests: XCTestCase {
         let registry = SessionRegistry(orchestratedLingerSeconds: 1)
         let session = try PtySession.spawn(cwd: NSTemporaryDirectory(), spawnedByAPI: true)
         defer { session.terminate() }
-        let registered = await registry.registerDetached(session)
-        let id = try XCTUnwrap(registered)
         // Input reaches the shell only through the reader channel the spawn
         // service would have made.
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
@@ -171,7 +169,17 @@ final class SessionRegistryTests: XCTestCase {
         try await session.makeReader(group: group, eventLoop: group.next()).get()
 
         try session.write(Data("sleep 4\n".utf8))
-        try await waitUntil("sleep to take the foreground", seconds: 5) { !session.foregroundIsShell }
+        // Wait for `sleep` itself, then arm the clock. `!foregroundIsShell` is
+        // not that condition: it also holds while nothing has claimed the tty
+        // and while the spawn helper has it, so it opens before the shell
+        // exists. Arming first is the other half — a window that expires
+        // during shell startup reaps the session, and the wait then never
+        // opens at all (measured with a 3 s spawn-helper shim: `count` 0).
+        try await waitUntil("sleep to take the terminal", seconds: 10) {
+            session.foregroundProgram == "sleep"
+        }
+        let registered = await registry.registerDetached(session)
+        let id = try XCTUnwrap(registered)
 
         // Two windows and a half with a program in the foreground: still here.
         try await Task.sleep(for: .seconds(2.5), clock: .suspending)
@@ -199,17 +207,20 @@ final class SessionRegistryTests: XCTestCase {
         let registry = SessionRegistry(orchestratedLingerSeconds: 1, eventLog: eventLog)
         let session = try PtySession.spawn(cwd: NSTemporaryDirectory(), spawnedByAPI: true)
         defer { session.terminate() }
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        defer { group.shutdownGracefully { _ in } }
+        try await session.makeReader(group: group, eventLoop: group.next()).get()
+        try session.write(Data("sleep 4\n".utf8))
+        // Every window this test measures must expire while `sleep` holds the
+        // terminal, so wait for `sleep` by name and arm the clock after it.
+        try await waitUntil("sleep to take the terminal", seconds: 10) {
+            session.foregroundProgram == "sleep"
+        }
         let registered = await registry.registerDetached(session)
         let id = try XCTUnwrap(registered)
         let freshSummary = await registry.summary(id)
         let fresh = try XCTUnwrap(freshSummary)
         XCTAssertNil(fresh.heldSince, "nothing is held before a window expires")
-
-        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        defer { group.shutdownGracefully { _ in } }
-        try await session.makeReader(group: group, eventLoop: group.next()).get()
-        try session.write(Data("sleep 4\n".utf8))
-        try await waitUntil("sleep to take the foreground", seconds: 5) { !session.foregroundIsShell }
 
         func lingered() -> [DaemonEvent] {
             eventLog.snapshot(since: 0, session: id).events.filter { $0.type == "session.lingered" }
