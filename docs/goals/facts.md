@@ -42,6 +42,21 @@ decision moves to `docs/adr/`.
 
 ## Daemon and API
 
+- `--lan` with no `--trusted-host` grants unauthenticated full access to
+  anything that reaches the daemon through a loopback proxy. In
+  `AccessPolicy.decide`, an empty `trustedHosts` makes `viaTrustedHost`
+  false, the proxy's peer is loopback, and `lanEnabled` skips the
+  rejection check, so the branch returns `.allow(.full)`. Behind
+  `tailscale serve` that is the whole tailnet, and it defeats the token
+  grades and `--agent-control`. Measured: `200` full with `--lan` alone,
+  `403 non-loopback Host` with neither flag, `403 missing or invalid
+  token` with `--trusted-host` either way. Always pass `--trusted-host`
+  behind a proxy. (2026-09-11, `agent-push` round 1)
+- `tailscale cert` on macOS runs sandboxed. It writes only inside
+  `~/Library/Containers/io.tailscale.ipn.macos/Data` and cannot write an
+  absolute path, so every renewal for the daemon's own TLS listener is a
+  copy, a `chmod 600` and a restart. `tailscale serve` avoids this
+  because `tailscaled` keeps the key. (2026-09-11, `agent-push` round 1)
 - `PtySession.foregroundIsShell` is true in three cases, not one: the
   shell reads the terminal, nothing has claimed the tty yet, or the spawn
   helper holds it before it execs the shell. So it is a no-op as a "the

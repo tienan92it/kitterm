@@ -148,7 +148,9 @@ can reach it has a shell. The controls below decide who can reach it.
 - **`--trusted-host NAME`.** This names a public name that the daemon answers to behind
   a proxy. A request that names one is treated as remote and must present a token, even
   though the proxy connects from loopback. This stops the proxy from leaking loopback's
-  trust.
+  trust. Set it whenever a proxy fronts the daemon. Without it, `--lan` makes the daemon
+  read the proxy's loopback connection as local and skip the token
+  ([Reaching the daemon from a phone](#reaching-the-daemon-from-a-phone)).
 - **Token grades.** A **full** token can do everything. A **watch** token can observe
   sessions and read the API, but can never type, take control, or open a shell. The
   WebSocket handler takes a watch-only path that cannot reach `spawnNew`. `POST /input`
@@ -156,6 +158,73 @@ can reach it has a shell. The controls below decide who can reach it.
 - **`--agent-control` is a separate switch.** It adds the one write route
   (`POST /input`). Default off. It stops a program from driving your shell; it is not
   about a person dropping a file into their own browser.
+
+## Reaching the daemon from a phone
+
+A phone needs a secure context. A browser registers a service worker only over HTTPS
+with a certificate that validates against the device's trust store, or on `localhost`.
+A self-signed certificate does not qualify, so the transport decides whether the fleet
+view can ever notify a phone.
+
+**kitterm fronts the daemon with `tailscale serve` and requires `--trusted-host`.** The
+tailnet issues a publicly trusted certificate for the machine's MagicDNS name.
+`tailscaled` terminates TLS and proxies to the plain loopback listener. The phone
+installs no certificate, and nothing reaches the public internet.
+
+The human runs two commands once:
+
+```
+tailscale serve --bg --https=443 http://127.0.0.1:3418
+kitterm restart --trusted-host <machine>.<tailnet>.ts.net
+```
+
+The phone then opens `https://<machine>.<tailnet>.ts.net/sessions.html?token=…` once.
+The daemon sets the auth cookie, so later visits carry no token in the URL.
+
+### Consequences
+
+- **The origin carries no port.** It survives a daemon restart, a port change and a
+  live upgrade. A service worker registration and a push subscription outlive all
+  three, because the browser keys both to the origin.
+- **`tailscaled` owns the certificate and renews it.** kitterm reads no private key on
+  this path, and `--tls-cert` stays unused.
+- **`--trusted-host` is not optional.** The proxy connects from loopback. Without the
+  flag, and with `--lan`, the daemon reads that peer as local and grants full access to
+  the whole tailnet with no token. That would defeat both the token grades and
+  `--agent-control`. With the flag, the request is remote and must present a token.
+- **`tailscale serve` injects `Tailscale-User-*` headers.** kitterm ignores them. The
+  token remains the only credential.
+- **The cost: the tailnet becomes a dependency.** The MagicDNS name does not resolve on
+  a public resolver, and the `100.64.0.0/10` address does not route. A phone off the
+  tailnet cannot open the page at all.
+- **The option closed: a phone on the LAN with no Tailscale.** That phone needs the
+  daemon's own TLS listener instead.
+
+The daemon's own listener (`--lan --tls-cert --tls-key`) stays supported and reaches a
+LAN phone. It costs more to keep: `tailscale cert` on macOS runs sandboxed and writes
+only inside `~/Library/Containers/io.tailscale.ipn.macos/Data`, so every renewal is a
+copy, a `chmod 600` and a daemon restart. `NIOSSLContext` loads the files once in
+`DaemonServer.start()`. The origin also carries the TLS port, so changing `--tls-port`
+discards every registration on every phone.
+
+### The measurement that settled it
+
+Measured on 2026-09-11 against a scratch daemon under `KITTERM_STATE_DIR`, on
+`genos-pro.tail66794d.ts.net`, with Chromium driven from this machine.
+
+- Both routes give a real secure context. `curl` with no `-k` reported
+  `ssl_verify_result=0` and TLSv1.3, and the page reported `isSecureContext: true`.
+  `navigator.serviceWorker.register('/sw.js')` reached `activated`, and after a reload
+  with no token in the URL the registration still controlled the page. `PushManager`
+  was present on both. `tailscale serve` also proxied the `/ws` upgrade.
+- The certificate is a 90-day Let's Encrypt certificate for the MagicDNS name only.
+  `tailscale cert` writes the key `0600` and renews only when it is called.
+- `dig @1.1.1.1 <machine>.<tailnet>.ts.net` returned nothing; the tailnet resolver
+  returned the `100.x` address.
+- Behind `tailscale serve`, `GET /api/sessions` with no token answered: `200` and full
+  access with `--lan` and no `--trusted-host`; `403 non-loopback Host` with neither
+  flag; `403 missing or invalid token` with `--trusted-host`, with or without `--lan`.
+  A full token then answered `200`.
 
 ## The binary protocol
 
