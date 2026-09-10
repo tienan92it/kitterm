@@ -108,6 +108,19 @@ decision moves to `docs/adr/`.
 
 ## Fleet view
 
+- The two muted text steps cannot carry the pages to 4.5:1 on their own.
+  The surfaces are lifted from `--ui-bg` toward `--ui-lift`, so on a theme
+  whose foreground sits near the floor, no colour dimmer than the
+  foreground clears a lifted surface. Proved by setting both
+  `--ui-text-muted` and `--ui-text-faint` to `--ui-text` itself: 32
+  pair-and-theme cases still fail. The lever is the surface elevation.
+  (2026-09-10, `contrast-tokens` round 2)
+- `--ui-text-muted` is 82% of `--ui-text` and `--ui-text-faint` is 72%,
+  both mixed toward `--ui-bg`. These are a floor, not a preference: a
+  dimmer step drops pairs under 4.5:1 on `solarized-dark`, `synthwave-84`
+  and `one-dark`. A brighter step passes more pairs but puts muted above
+  body text in rank, which was built, photographed and rejected.
+  (2026-09-10, `contrast-tokens` round 2)
 - A `.css?raw` import returns an empty string under vitest, because
   vitest's css-disable plugin empties any id that holds `.css?`. A test
   that must read a stylesheet reads it with `node:fs` at test time
