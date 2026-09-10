@@ -8,6 +8,13 @@ import NIOConcurrencyHelpers
 import NIOPosix
 
 /// A project the user registered in `~/.kitterm/projects.json`.
+///
+/// A registered root is a name and a configuration for one root: the id, the
+/// name, and the knowledge directory the daemon reads under it. It is not a
+/// claim over everything below it. A git checkout under a registered root is
+/// its own project, discovered by its `.git`, because the checkout is the
+/// nearer boundary; the registered root keeps every cwd that no nearer root
+/// owns. See `ProjectStore` for the order.
 public struct Project: Sendable, Equatable {
     /// A slug of the root's folder name, unique in the file.
     public let id: String
@@ -63,9 +70,12 @@ public struct ResolvedProject: Sendable, Equatable {
 /// Registered projects plus the resolution of a working directory to a
 /// project (`~/.kitterm/projects.json`, `kitterm project add|list|remove`).
 ///
-/// Resolution order: the longest registered root that is a prefix of the
-/// cwd; else the nearest ancestor that holds `.git`, following a `gitdir:`
-/// file one level so a worktree resolves to its main checkout; else nil.
+/// Resolution order: the nearest ancestor of the cwd that is either a
+/// checkout or a registered root wins. The walk looks for `.git`, following
+/// a `gitdir:` file one level so a worktree resolves to its main checkout;
+/// the checkout names the project unless a registered root sits inside it,
+/// nearer to the cwd, or is the checkout itself. Outside every checkout the
+/// longest registered root that is a prefix of the cwd wins. Else nil.
 ///
 /// The file is reloaded when its mtime changes, like `tokens.json`, so
 /// `kitterm project add` reaches a running daemon. Lock-guarded, because
@@ -184,11 +194,22 @@ public final class ProjectStore: @unchecked Sendable {
     }
 
     private func resolveUncached(cwd: String, projects: [Project]) -> ResolvedProject? {
-        if let best = projects.filter({ Self.isPrefix($0.root, of: cwd) }).max(by: { $0.root.count < $1.root.count }) {
-            return ResolvedProject(best)
+        let nearestRegistered = projects
+            .filter { Self.isPrefix($0.root, of: cwd) }
+            .max(by: { $0.root.count < $1.root.count })
+        guard let root = Self.gitRoot(from: cwd) else {
+            // Outside every checkout the registered root owns the cwd.
+            return nearestRegistered.map(ResolvedProject.init)
         }
-        guard let root = Self.gitRoot(from: cwd) else { return nil }
-        // A worktree kept outside a registered root still belongs to it.
+        // A registered root inside the checkout is nearer to the cwd than the
+        // checkout, so it still names and configures its own tree. A worktree
+        // kept under a registered root is not this case: its checkout lies
+        // outside that root, and the checkout wins.
+        if let nearestRegistered, nearestRegistered.root != root, Self.isPrefix(root, of: nearestRegistered.root) {
+            return ResolvedProject(nearestRegistered)
+        }
+        // The checkout itself may be registered, directly or through the
+        // `gitdir:` follow from a worktree kept outside the root.
         if let project = projects.first(where: { $0.root == root }) {
             return ResolvedProject(project)
         }
