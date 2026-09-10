@@ -60,6 +60,34 @@ final class GoalsLayoutDocsTests: XCTestCase {
         }
     }
 
+    /// The rules of the loop are written once and read in three places:
+    /// `docs/goals/LOOP.md`, its generic derivation `examples/goals/LOOP.md`,
+    /// and the `foreman-loop` skill. A rule that lands in one file and not the
+    /// others fails here, and so does an embedded copy that lags behind its
+    /// file. One marker per rule, chosen to be the words the rule cannot lose.
+    static let loopRules: [(rule: String, marker: String)] = [
+        ("a killed attempt does not spend the budget", "attempt killed:"),
+        ("`resumed-from` may carry the pane's previous id", "the id the pane held before"),
+        ("the crew's note goes out before the floor", "note before the floor"),
+        ("an assertion this round must change is Propose", "is Propose, not Frozen"),
+        ("a crew's helper session carries its own `crew` value", "crew:helper"),
+    ]
+
+    func testTheThreeLoopFilesCarryTheSameRules() throws {
+        var files: [(name: String, text: String)] = try [
+            "docs/goals/LOOP.md",
+            "examples/goals/LOOP.md",
+            "examples/foreman/foreman-loop.md",
+        ].map { (name: $0, text: try String(contentsOf: Self.root.appendingPathComponent($0), encoding: .utf8)) }
+        files.append(("GoalsTemplates.loop", GoalsTemplates.loop))
+        files.append(("ForemanSkills.foremanLoop", ForemanSkills.foremanLoop))
+        for (rule, marker) in Self.loopRules {
+            for (name, text) in files where !text.contains(marker) {
+                XCTFail("\(name) does not carry the rule that \(rule): no `\(marker)`")
+            }
+        }
+    }
+
     /// The skill names the goal's files by their folder path, so a round
     /// prompt cannot point a crew at a file that does not exist.
     func testForemanLoopNamesGoalFilesByFolder() {
