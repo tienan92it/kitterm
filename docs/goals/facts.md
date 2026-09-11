@@ -10,6 +10,21 @@ decision moves to `docs/adr/`.
 
 ## Toolchain
 
+- Skipping the Linux build hides a real class of error, not just a slow
+  gate. Linux Swift 6.1 rejects concurrency that the macOS toolchain
+  accepts. On 2026-09-11 `agent-push` round 2 was green on macOS with 668
+  tests and failed CI with `capture of 'change' with non-sendable type
+  '() -> (HTTPResponseStatus, String)' in a '@Sendable' closure`. The fix
+  was one annotation. A round that touches `Sources/` and skips the Linux
+  build should say so and expect that class of failure.
+  (2026-09-11, `agent-push` round 2)
+- The Linux build runs locally without a bind mount, which is what
+  colima's dead sshfs rules out. Pipe the tree in:
+  `git ls-files -z | tar -c --null -T - -f - | docker run -i --rm -v
+  /tmp/kitterm-linux-cache:/root/.cache swift:6.1 bash -c 'mkdir -p /src
+  && tar x -C /src && cd /src && swift build'`. It builds in about 75 s
+  with the cache volume. Match the image tag to `.github/workflows/`.
+  (2026-09-11, `agent-push` round 2)
 - colima's sshfs mount can be dead while the VM is up, so a docker run
   with `-v $PWD:/src` sees an empty directory and the build silently
   tests nothing. Pipe a tar of `HEAD` into the container instead:
