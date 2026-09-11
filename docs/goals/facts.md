@@ -88,15 +88,24 @@ decision moves to `docs/adr/`.
 
 ## Crew pane
 
-- A crew that runs `kitterm serve` must set `KITTERM_STATE_DIR` **and** a
-  free port. `serve` writes the pid file and the port file before it binds,
-  so a second daemon aimed at `~/.kitterm` clobbers the live daemon's pid
-  even when the bind then fails. `livePid()` reads that dead pid, cannot
-  signal it, deletes the file, and reports "kitterm not running", so
-  `kitterm stop` can no longer reach the daemon that is still serving. On
-  2026-09-10 a crew did this and the foreman repaired the pid file by hand.
-  `DaemonPaths.stateDirectory` documents the hazard; say it in the prompt
-  as well. (2026-09-10, `contrast-tokens` round 2)
+- A crew that runs `kitterm serve` must still set `KITTERM_STATE_DIR`
+  **and** a free port, but a mistake no longer costs the live daemon its
+  pid file. `serve` used to write the pid and the port before it bound, so
+  a second daemon aimed at `~/.kitterm` clobbered the live daemon's pid
+  even when its own bind then failed; `livePid()` read that dead pid,
+  deleted the file, and reported "kitterm not running" while the daemon
+  served on. That happened three times on 2026-09-10 and the foreman
+  repaired the file by hand each time. Fixed on 2026-09-11 in `5c92731`
+  (#96): `runDaemon` takes an `onListening` hook and `serve` writes both
+  files from it, after the bind. `PidAfterBindTests` pins it with two real
+  processes. A losing `serve` now writes nothing and logs `Address already
+  in use (errno: 48)`. (2026-09-11, `fix/pid-after-bind`)
+- A `serve` that loses the bind still writes one misleading line into the
+  state directory's `server.log` first: the previous-run reader runs
+  before the bind, so it reports the **live** daemon as a run that "ended
+  with no recorded reason". It is only a log line and nothing else acts on
+  it, but it is in the file a human reads to diagnose a restart.
+  (2026-09-11, `fix/pid-after-bind`)
 - An escape byte does not survive an MCP client's JSON string argument,
   and kitterm is not the layer that loses it. Measured 2026-09-10 by
   driving `kitterm mcp` with a hand-written JSON-RPC line into a pane
