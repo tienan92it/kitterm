@@ -1,16 +1,15 @@
 # STATE: contrast-tokens
 
-- Status: waiting
-- Round: 2 of 3 in this budget (second budget)
-- Rounds total: 4
-- Last floor: green (2026-09-11, round 4 after)
-- Updated: 2026-09-11, round 4 closed; the goal needs a second ruling
+- Status: active
+- Round: 1 of 3 in this budget (third budget)
+- Rounds total: 5
+- Last floor: green (2026-09-11, round 5 after)
+- Updated: 2026-09-11, round 5 closed
 
 ## Queue
 
-1. `delete-known-below` (capability 4). Blocked: it requires
-   `KNOWN_BELOW` to be empty, and 134 entries remain. It needs the
-   ruling below first.
+1. `raise-the-accent-soft` (capability 5). The cheapest lever left: one
+   token, 18 of the 110 entries. Then the sunken well, worth 13.
 
 ## Failures
 
@@ -18,33 +17,7 @@ None.
 
 ## Proposals waiting on the human
 
-- **The elevation lever is spent, and it could never have emptied the
-  table.** Round 3 lowered all four surface tokens as far as they pay and
-  went from 178 entries to 134. It then measured the limit: with all four
-  set to `--ui-bg` itself, 136 still fail, which is worse than the rule
-  it shipped. Sinking them below `--ui-bg` bottoms out at 115. The
-  foreman recommended this lever as "the only route that can empty
-  `KNOWN_BELOW`" and that was wrong; see the gap in `rounds/003.md`.
-
-  What blocks the remaining 134: 33 the four surface tokens, because the
-  theme's own colours already fail on `--ui-bg`; 32 under
-  `--ui-accent-soft`; 24 under the three opacities round 3 did not open;
-  19 on `--ui-bg-sunken`; 12 on `--ui-bg`; 11 on the status tints; 3 on
-  `--ui-border` used as a fill.
-
-  The human decides two things:
-
-  1. **How much further to go.** The cheapest next step is the other
-     three opacities, `.settings-gear` at 0.35 and 0.65 and
-     `.keyboard-toggle` at 0.75. That clears all 24 of that group with
-     the same one-line change `.pane-close` already took.
-     `--ui-accent-soft` is the next largest at 32. Neither empties the
-     table.
-  2. **Whether `KNOWN_BELOW` is ever meant to reach zero.** Completion
-     condition 3 requires it today, and no combination of levers measured
-     so far gets there. Either the condition changes, or the goal accepts
-     a recorded, tested debt, or the themes' own colours come into scope,
-     which `goal.md` excludes.
+None. The human ruled on 2026-09-11; see "Direction".
 
 ## Done
 
@@ -66,8 +39,28 @@ None.
   `--ui-border` ring on hover; `.selection-action:active` takes an inset
   `--ui-accent` ring, because `--ui-border` measured no better than what
   the press had lost.
+- `ratchet-known-below` (capability 4), round 5, `e52edbd`. See
+  `rounds/005.md`. `KNOWN_BELOW` is a ratchet with five checks, all five
+  planted and watched to fail. The three opacities are gone: 134 falls to
+  110. Every entry names its blocker.
 
 ## Direction
+
+2026-09-11: the human ruled on the contradiction round 3 exposed.
+Completion condition 3 required `KNOWN_BELOW` to be empty, and no lever
+the goal allows can reach zero: 134 combinations remain, and most are a
+theme's own foreground on its own background, which `goal.md` excludes
+from change. `solarized-dark` reads 4.32 there.
+
+**The list becomes a ratchet.** It can shrink and it cannot grow. A pair
+that is not already listed and fails the floor fails the build. A listed
+pair that starts passing fails the build until its entry goes. That keeps
+the promise the goal exists for, which is that no new unreadable text
+ships, without demanding a number the themes make impossible.
+
+Completion conditions 1 and 3 are amended to say so, and capability 4 is
+rewritten from "delete the escape hatch" to "make it a ratchet, and
+shorten it once more".
 
 2026-09-11: round 3 ran the ruling and reported that the lever cannot
 reach the goal. That is not a failed round; it is the measurement the
@@ -89,12 +82,12 @@ own scheduling choice, not on a real block.
 
 ## Next action
 
-Waiting on the human for the two decisions above. Capability 4 cannot
-start until the second one is answered, and it is the only item left.
+Round 6: `raise-the-accent-soft` from `plan.md`. `--ui-accent-soft` is
+the cheapest lever left, worth 18 of the 110 entries and one token. The
+sunken well is next at 13. Of the 110, levers reach 44 and 66 are the
+theme's own colours, which the exclusions protect and the ratchet now
+records permanently.
 
-The three shipped capabilities stand on their own and can merge:
-`goals/open-the-elevation` at `1c01d28`, which carries rounds 1 to 4.
-The review has run and round 4 closed both of its blocking findings. The page
-looks different after this branch, so the human should see the eight
-images in `/Users/antran/.claude/jobs/b7a30d73/tmp/ct-round3/`, and the
-seven in `ct-round4/`, before it lands.
+The goal no longer requires the list to empty, so it can close whenever
+the human judges the remaining levers not worth their cost. Capability 5
+is worth running because it is one token.

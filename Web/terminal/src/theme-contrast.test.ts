@@ -66,10 +66,26 @@ import { TERMINAL_THEMES } from "./themes";
  *
  * ## KNOWN_BELOW
  *
- * `KNOWN_BELOW` names every pair under its floor with the theme and the ratio,
- * so capability 3 has something to delete. A listed pair must not get worse and
- * must not start passing without the entry going with it; an unlisted pair must
- * hold its floor.
+ * `KNOWN_BELOW` is a ratchet, not an escape hatch. It names every pair under
+ * its floor today, by theme, with the ratio it reads and the surface that
+ * holds it there. The list can shrink and it cannot grow. `check` below holds
+ * that in four directions:
+ *
+ * - an unlisted pair that misses its floor fails, named by file, line and
+ *   selector;
+ * - a listed pair that reaches its floor fails until its entry goes;
+ * - a listed pair that reads lower than its entry fails, so nothing listed
+ *   gets worse;
+ * - a listed pair that reads higher than its entry fails until the entry is
+ *   re-recorded, so an entry is always the measured ratio and the floor it
+ *   holds is the best one measured.
+ *
+ * Two tests keep the list itself honest: every entry names a bundled theme,
+ * and every entry's `blocker` is the group its surface puts it in. Round 3
+ * proved that no lever the goal allows can empty the list; most of what is
+ * left is a theme's own foreground on its own background, which the goal does
+ * not change. The human ruled on 2026-09-11 that the list is a ratchet, and
+ * every entry now says what would clear it, or that only the theme could.
  */
 
 /** WCAG 1.4.3 for small text. Large text takes 3:1; see `floorFor`. */
@@ -89,268 +105,447 @@ const paletteFor = (theme: (typeof TERMINAL_THEMES)[number]): Map<string, string
 const { pairs, holes } = derivePairs(SHEETS, paletteFor(TERMINAL_THEMES[0]));
 
 /**
- * Ratios under the floor today, by pair and theme, measured by this file.
- * Pair first, because a token change clears part of a row.
- *
- * 134 entries over 38 pairs, after round 3 lowered the elevation of
- * `--ui-surface`, `--ui-surface-2`, `--ui-hover` and `--ui-active` from
- * 7/12/17/23 percent of `--ui-lift` to 3/6/9/12, and dropped the 0.55 opacity
- * `.pane-close` wore on a touch device. That cleared 44 of the 178 entries
- * round 2 left, and one whole pair: `--ui-text-muted on --ui-bg + --ui-veil at
- * 55% opacity` no longer exists, because the element no longer fades. No
- * ratio fell, and no pair that passed started failing.
- *
- * **The elevation lever is now spent, and it could never have emptied this
- * table.** Only 18 of the 38 pairs paint on one of the four elevated tokens at
- * all; the rest sit on `--ui-bg`, `--ui-bg-sunken`, `--ui-border`,
- * `--ui-accent-soft`, or under one of the three opacities the goal did not
- * open. Measured: with all four tokens set to `--ui-bg` itself, 136 entries
- * still miss 4.5:1, and sinking them well below `--ui-bg` bottoms out at 115.
- * The reason is that `--ui-text-muted` reads 3.61 on `--ui-bg` on
- * solarized-dark and 3.32 on synthwave-84, and `--ui-text` itself reads 4.32
- * on `--ui-bg` on synthwave-84 — under the floor before any surface exists.
- * No elevation can beat a theme's own foreground on its own background.
- *
- * The remainder, grouped by the surface that holds it down. The groups are
- * exclusive and they cover all 134:
- *
- * - **33 over 11 pairs, on the four elevated tokens.** Eight themes, led by
- *   solarized-dark and synthwave-84. Every one of the 33 is a theme whose text
- *   or whose red or blue already misses the floor on `--ui-bg`, so no surface
- *   near `--ui-bg` can carry it. They need the theme's own colours to move.
- * - **32 over 6 pairs, under `--ui-accent-soft`.** The selected row and the
- *   selected chip paint the accent at 18% over the surface. The tint is not
- *   one of the tokens the ruling opened.
- * - **24 over 3 pairs, under an opacity the ruling did not open**:
- *   `.settings-gear` at 0.35 and 0.65, `.keyboard-toggle` at 0.75. The same
- *   change `.pane-close` just took would clear all 24: at full strength the
- *   three keys collapse into `--ui-text on --ui-bg + --ui-veil`, which already
- *   carries its one failing theme.
- * - **19 over 8 pairs, on `--ui-bg-sunken`.** The file preview. `--ui-bg-sunken`
- *   is a well, not a lift, and the ruling named four lifted tokens.
- * - **12 over 5 pairs, on `--ui-bg` itself.** Nothing but a theme's colours can
- *   move these.
- * - **11 over 4 pairs, on a `--ui-danger` or `--ui-warning` tint over
- *   `--ui-surface`.** The attention strip. The tint is not opened either.
- * - **3, on `--ui-border` used as a hover fill** by `.settings-close:hover`,
- *   `.settings-stepper button:hover` and `#search button:hover`.
+ * The surface that holds an entry under its floor, and the lever that would
+ * move it. The six groups are the ones `rounds/003.md` measured; they are
+ * exclusive and `blockerOf` assigns each pair to exactly one, from its stack.
+ * The counts are what each lever reaches at its extreme, measured on
+ * 2026-09-11 with the arithmetic `ratioFor` uses, so a reader can tell an
+ * entry that waits on work from one that is permanent. Of the 110 entries the
+ * levers reach 44; the other 66 fail on the bare surface too, so only the
+ * theme's own colours could move them, and the goal does not change those.
  */
-const KNOWN_BELOW: Record<string, Record<string, number>> = {
+type Blocker =
+  /**
+   * 33 over 11 pairs, on `--ui-surface`, `--ui-surface-2`, `--ui-hover` or
+   * `--ui-active`. The lever is the elevation of the four tokens, which round
+   * 3 settled at 3/6/9/12 percent of `--ui-lift`. With all four at `--ui-bg`
+   * itself, 10 clear and 23 fail on `--ui-bg` too.
+   */
+  | "elevated"
+  /**
+   * 32 over 6 pairs, under `--ui-accent-soft`, the 18% accent tint of the
+   * selected row and the selected chip. The lever is that tint, which no
+   * ruling has opened. Without the tint 18 clear and 14 fail on the bare
+   * surface too.
+   */
+  | "accent-soft"
+  /**
+   * 19 over 8 pairs, on `--ui-bg-sunken`, the file preview's well at 94%
+   * `--ui-bg` toward black. The lever is the well's depth, which no ruling has
+   * opened. On black itself 13 clear and 6 fail even there.
+   */
+  | "sunken"
+  /**
+   * 12 over 5 pairs, on `--ui-bg` itself (`--ui-veil` over `--ui-bg` is
+   * `--ui-bg`). Only the theme's own colours could move these.
+   */
+  | "bg"
+  /**
+   * 11 over 4 pairs, on the danger or warning tint the attention strip paints
+   * over `--ui-surface`. The lever is the tint, which no ruling has opened.
+   * Without it 1 clears and 10 fail on `--ui-surface` too.
+   */
+  | "tint"
+  /**
+   * 3 over 1 pair, `--ui-border` used as a hover fill by
+   * `.settings-close:hover`, `.settings-stepper button:hover` and
+   * `#search button:hover`. The lever is a different fill: at `--ui-bg` 2
+   * clear and synthwave-84 fails on `--ui-bg` too.
+   */
+  | "border-fill";
+
+const ELEVATED = ["var(--ui-surface)", "var(--ui-surface-2)", "var(--ui-hover)", "var(--ui-active)"];
+
+/** The group a surface stack belongs to, or `undefined` for a surface no group names. */
+const blockerOf = (stack: string[]): Blocker | undefined => {
+  const [base, ...over] = stack;
+  if (over.some((layer) => layer.includes("--ui-accent-soft"))) return "accent-soft";
+  if (base.includes("--ui-danger") || base.includes("--ui-warning")) return "tint";
+  if (base === "var(--ui-bg-sunken)") return "sunken";
+  if (base === "var(--ui-border)") return "border-fill";
+  if (ELEVATED.includes(base)) return "elevated";
+  if (base === "var(--ui-bg)") return "bg";
+  return undefined;
+};
+
+interface Below {
+  /** The group the pair's surface puts it in; `blockerOf` checks it. */
+  blocker: Blocker;
+  /** Theme id to the ratio the pair reads there, floored to two places. */
+  themes: Record<string, number>;
+}
+
+/**
+ * Ratios under the floor today, by pair and theme, measured by this file.
+ * Pair first, because a token change clears part of a row. The comment on
+ * each pair says which themes its lever reaches and which fail without the
+ * blocker too.
+ *
+ * 110 entries over 35 pairs. The list read 273 after round 1 derived it, 178
+ * after round 2 raised the two muted tokens, 134 after round 3 lowered the
+ * elevation, and 110 after round 5 opened the three opacities round 3 left
+ * alone: `.settings-gear` at 0.35 and 0.65 and `.keyboard-toggle` at 0.75.
+ * Those three pairs went whole, 24 entries, and their keys collapsed into
+ * `--ui-text on --ui-bg + --ui-veil`, which already carried synthwave-84. No
+ * ratio fell and no new entry appeared.
+ */
+const KNOWN_BELOW: Record<string, Below> = {
   "--code-comment on --ui-bg-sunken": {
-    "solarized-dark": 3.22,
-    "one-dark": 4.25,
-    "synthwave-84": 2.98,
+    blocker: "sunken",
+    // A black well clears one-dark; solarized-dark and synthwave-84 fail even
+    // there.
+    themes: {
+      "solarized-dark": 3.22,
+      "one-dark": 4.25,
+      "synthwave-84": 2.98,
+    },
   },
   "--code-error on --ui-bg-sunken": {
-    "solarized-dark": 3.40,
-    "nord": 3.27,
-    "gruvbox-dark": 2.83,
-    "monokai": 4.13,
+    blocker: "sunken",
+    // A black well clears solarized-dark, nord and monokai; gruvbox-dark fails
+    // even there.
+    themes: {
+      "solarized-dark": 3.40,
+      "nord": 3.27,
+      "gruvbox-dark": 2.83,
+      "monokai": 4.13,
+    },
   },
   "--code-keyword on --ui-bg-sunken": {
-    "solarized-dark": 3.46,
-    "gruvbox-dark": 3.66,
+    blocker: "sunken",
+    // A black well clears solarized-dark and gruvbox-dark.
+    themes: {
+      "solarized-dark": 3.46,
+      "gruvbox-dark": 3.66,
+    },
   },
   "--code-name on --ui-bg-sunken": {
-    "solarized-dark": 4.27,
-    "gruvbox-dark": 3.66,
+    blocker: "sunken",
+    // A black well clears solarized-dark and gruvbox-dark.
+    themes: {
+      "solarized-dark": 4.27,
+      "gruvbox-dark": 3.66,
+    },
   },
   "--code-punct on --ui-bg-sunken": {
-    "solarized-dark": 3.78,
-    "synthwave-84": 3.48,
+    blocker: "sunken",
+    // A black well clears solarized-dark and synthwave-84.
+    themes: {
+      "solarized-dark": 3.78,
+      "synthwave-84": 3.48,
+    },
   },
   "--code-string on --ui-bg-sunken": {
-    "rose-pine": 3.48,
+    blocker: "sunken",
+    // rose-pine fails even on a black well; only the theme's own colours could
+    // move it.
+    themes: {
+      "rose-pine": 3.48,
+    },
   },
   "--ui-accent on --ui-bg + --ui-accent-soft": {
-    "solarized-dark": 3.20,
-    "nord": 3.46,
-    "one-dark": 4.25,
-    "tokyo-night-storm": 4.19,
-    "gruvbox-dark": 2.83,
+    blocker: "accent-soft",
+    // Without the tint the pair clears nord, one-dark and tokyo-night-storm;
+    // solarized-dark and gruvbox-dark fail on the bare surface too.
+    themes: {
+      "solarized-dark": 3.20,
+      "nord": 3.46,
+      "one-dark": 4.25,
+      "tokyo-night-storm": 4.19,
+      "gruvbox-dark": 2.83,
+    },
   },
   "--ui-accent on --ui-surface": {
-    "solarized-dark": 3.81,
-    "nord": 4.30,
-    "gruvbox-dark": 3.25,
+    blocker: "elevated",
+    // At --ui-bg itself the pair clears nord; solarized-dark and gruvbox-dark
+    // fail on --ui-bg too.
+    themes: {
+      "solarized-dark": 3.81,
+      "nord": 4.30,
+      "gruvbox-dark": 3.25,
+    },
   },
   "--ui-accent on --ui-surface + --ui-accent-soft": {
-    "solarized-dark": 3.01,
-    "nord": 3.24,
-    "one-dark": 3.99,
-    "tokyo-night-storm": 3.93,
-    "catppuccin-macchiato": 4.33,
-    "gruvbox-dark": 2.66,
+    blocker: "accent-soft",
+    // Without the tint the pair clears one-dark, tokyo-night-storm and
+    // catppuccin-macchiato; solarized-dark, nord and gruvbox-dark fail on the
+    // bare surface too.
+    themes: {
+      "solarized-dark": 3.01,
+      "nord": 3.24,
+      "one-dark": 3.99,
+      "tokyo-night-storm": 3.93,
+      "catppuccin-macchiato": 4.33,
+      "gruvbox-dark": 2.66,
+    },
   },
   "--ui-danger on --ui-bg": {
-    "solarized-dark": 3.24,
-    "nord": 3.05,
-    "one-dark": 4.38,
-    "gruvbox-dark": 2.69,
-    "monokai": 3.92,
-    "synthwave-84": 4.45,
+    blocker: "bg",
+    // Only the theme's own colours could move this.
+    themes: {
+      "solarized-dark": 3.24,
+      "nord": 3.05,
+      "one-dark": 4.38,
+      "gruvbox-dark": 2.69,
+      "monokai": 3.92,
+      "synthwave-84": 4.45,
+    },
   },
   "--ui-danger on --ui-surface-2": {
-    "solarized-dark": 2.79,
-    "dracula": 3.87,
-    "nord": 2.61,
-    "one-dark": 3.74,
-    "gruvbox-dark": 2.30,
-    "monokai": 3.36,
-    "synthwave-84": 3.84,
+    blocker: "elevated",
+    // At --ui-bg itself the pair clears dracula; solarized-dark, nord,
+    // one-dark, gruvbox-dark, monokai and synthwave-84 fail on --ui-bg too.
+    themes: {
+      "solarized-dark": 2.79,
+      "dracula": 3.87,
+      "nord": 2.61,
+      "one-dark": 3.74,
+      "gruvbox-dark": 2.30,
+      "monokai": 3.36,
+      "synthwave-84": 3.84,
+    },
   },
   "--ui-text on --ui-active": {
-    "solarized-dark": 3.46,
-    "synthwave-84": 3.13,
+    blocker: "elevated",
+    // At --ui-bg itself the pair clears solarized-dark; synthwave-84 fails on
+    // --ui-bg too.
+    themes: {
+      "solarized-dark": 3.46,
+      "synthwave-84": 3.13,
+    },
   },
   "--ui-text on --ui-bg": {
-    "synthwave-84": 4.31,
+    blocker: "bg",
+    // Only the theme's own colours could move this.
+    themes: {
+      "synthwave-84": 4.31,
+    },
   },
   "--ui-text on --ui-bg + --ui-accent-soft": {
-    "solarized-dark": 3.72,
-    "synthwave-84": 2.72,
+    blocker: "accent-soft",
+    // Without the tint the pair clears solarized-dark; synthwave-84 fails on
+    // the bare surface too.
+    themes: {
+      "solarized-dark": 3.72,
+      "synthwave-84": 2.72,
+    },
   },
   "--ui-text on --ui-bg + --ui-veil": {
-    "synthwave-84": 4.31,
-  },
-  "--ui-text on --ui-bg + --ui-veil at 35% opacity": {
-    "github-dark": 2.89,
-    "github-dark-dimmed": 2.16,
-    "vesper": 3.19,
-    "solarized-dark": 1.71,
-    "dracula": 2.97,
-    "nord": 2.49,
-    "one-dark": 2.04,
-    "tokyo-night": 2.44,
-    "tokyo-night-storm": 2.37,
-    "catppuccin-mocha": 2.58,
-    "catppuccin-macchiato": 2.49,
-    "ayu-mirage": 2.39,
-    "night-owl": 2.66,
-    "gruvbox-dark": 2.60,
-    "monokai": 3.01,
-    "synthwave-84": 1.56,
-    "rose-pine": 2.73,
-  },
-  "--ui-text on --ui-bg + --ui-veil at 65% opacity": {
-    "github-dark-dimmed": 4.08,
-    "solarized-dark": 2.80,
-    "one-dark": 3.67,
-    "synthwave-84": 2.52,
-  },
-  "--ui-text on --ui-bg + --ui-veil at 75% opacity": {
-    "solarized-dark": 3.28,
-    "one-dark": 4.39,
-    "synthwave-84": 2.96,
+    blocker: "bg",
+    // Only the theme's own colours could move this.
+    themes: {
+      "synthwave-84": 4.31,
+    },
   },
   "--ui-text on --ui-border": {
-    "solarized-dark": 2.87,
-    "one-dark": 3.98,
-    "synthwave-84": 2.61,
+    blocker: "border-fill",
+    // A fill of --ui-bg would clear solarized-dark and one-dark; synthwave-84
+    // fails on --ui-bg too.
+    themes: {
+      "solarized-dark": 2.87,
+      "one-dark": 3.98,
+      "synthwave-84": 2.61,
+    },
   },
   "--ui-text on --ui-hover": {
-    "solarized-dark": 3.74,
-    "synthwave-84": 3.42,
+    blocker: "elevated",
+    // At --ui-bg itself the pair clears solarized-dark; synthwave-84 fails on
+    // --ui-bg too.
+    themes: {
+      "solarized-dark": 3.74,
+      "synthwave-84": 3.42,
+    },
   },
   "--ui-text on --ui-surface": {
-    "solarized-dark": 4.43,
-    "synthwave-84": 4.00,
+    blocker: "elevated",
+    // At --ui-bg itself the pair clears solarized-dark; synthwave-84 fails on
+    // --ui-bg too.
+    themes: {
+      "solarized-dark": 4.43,
+      "synthwave-84": 4.00,
+    },
   },
   "--ui-text on --ui-surface + --ui-accent-soft": {
-    "solarized-dark": 3.50,
-    "one-dark": 4.42,
-    "synthwave-84": 2.53,
+    blocker: "accent-soft",
+    // Without the tint the pair clears one-dark; solarized-dark and
+    // synthwave-84 fail on the bare surface too.
+    themes: {
+      "solarized-dark": 3.50,
+      "one-dark": 4.42,
+      "synthwave-84": 2.53,
+    },
   },
   "--ui-text on --ui-surface + --ui-veil": {
-    "synthwave-84": 4.29,
+    blocker: "elevated",
+    // synthwave-84 fails on --ui-bg too; only the theme's own colours could
+    // move it.
+    themes: {
+      "synthwave-84": 4.29,
+    },
   },
   "--ui-text on --ui-surface-2": {
-    "solarized-dark": 4.08,
-    "synthwave-84": 3.71,
+    blocker: "elevated",
+    // At --ui-bg itself the pair clears solarized-dark; synthwave-84 fails on
+    // --ui-bg too.
+    themes: {
+      "solarized-dark": 4.08,
+      "synthwave-84": 3.71,
+    },
   },
   "--ui-text on color-mix(in srgb, --ui-danger 8%, --ui-surface)": {
-    "solarized-dark": 4.34,
-    "synthwave-84": 3.68,
+    blocker: "tint",
+    // solarized-dark and synthwave-84 fail on --ui-surface too; only the
+    // theme's own colours could move it.
+    themes: {
+      "solarized-dark": 4.34,
+      "synthwave-84": 3.68,
+    },
   },
   "--ui-text on color-mix(in srgb, --ui-warning 10%, --ui-surface)": {
-    "solarized-dark": 3.96,
-    "synthwave-84": 3.10,
+    blocker: "tint",
+    // solarized-dark and synthwave-84 fail on --ui-surface too; only the
+    // theme's own colours could move it.
+    themes: {
+      "solarized-dark": 3.96,
+      "synthwave-84": 3.10,
+    },
   },
   "--ui-text-faint on --ui-bg-sunken": {
-    "solarized-dark": 3.22,
-    "one-dark": 4.25,
-    "synthwave-84": 2.98,
+    blocker: "sunken",
+    // A black well clears one-dark; solarized-dark and synthwave-84 fail even
+    // there.
+    themes: {
+      "solarized-dark": 3.22,
+      "one-dark": 4.25,
+      "synthwave-84": 2.98,
+    },
   },
   "--ui-text-faint on --ui-surface": {
-    "github-dark-dimmed": 4.17,
-    "solarized-dark": 2.87,
-    "one-dark": 3.74,
-    "synthwave-84": 2.63,
+    blocker: "elevated",
+    // github-dark-dimmed, solarized-dark, one-dark and synthwave-84 fail on
+    // --ui-bg too; only the theme's own colours could move it.
+    themes: {
+      "github-dark-dimmed": 4.17,
+      "solarized-dark": 2.87,
+      "one-dark": 3.74,
+      "synthwave-84": 2.63,
+    },
   },
   "--ui-text-faint on --ui-surface + --ui-accent-soft": {
-    "github-dark-dimmed": 2.92,
-    "solarized-dark": 2.27,
-    "nord": 3.74,
-    "one-dark": 2.71,
-    "tokyo-night": 3.92,
-    "tokyo-night-storm": 3.52,
-    "catppuccin-mocha": 3.95,
-    "catppuccin-macchiato": 3.67,
-    "ayu-mirage": 3.28,
-    "synthwave-84": 1.66,
-    "rose-pine": 4.29,
+    blocker: "accent-soft",
+    // Without the tint the pair clears nord, tokyo-night, tokyo-night-storm,
+    // catppuccin-mocha, catppuccin-macchiato, ayu-mirage and rose-pine;
+    // github-dark-dimmed, solarized-dark, one-dark and synthwave-84 fail on the
+    // bare surface too.
+    themes: {
+      "github-dark-dimmed": 2.92,
+      "solarized-dark": 2.27,
+      "nord": 3.74,
+      "one-dark": 2.71,
+      "tokyo-night": 3.92,
+      "tokyo-night-storm": 3.52,
+      "catppuccin-mocha": 3.95,
+      "catppuccin-macchiato": 3.67,
+      "ayu-mirage": 3.28,
+      "synthwave-84": 1.66,
+      "rose-pine": 4.29,
+    },
   },
   "--ui-text-muted on --ui-bg": {
-    "solarized-dark": 3.60,
-    "synthwave-84": 3.31,
+    blocker: "bg",
+    // Only the theme's own colours could move this.
+    themes: {
+      "solarized-dark": 3.60,
+      "synthwave-84": 3.31,
+    },
   },
   "--ui-text-muted on --ui-bg + --ui-accent-soft": {
-    "github-dark-dimmed": 3.81,
-    "solarized-dark": 2.82,
-    "one-dark": 3.46,
-    "ayu-mirage": 4.34,
-    "synthwave-84": 2.09,
+    blocker: "accent-soft",
+    // Without the tint the pair clears github-dark-dimmed, one-dark and
+    // ayu-mirage; solarized-dark and synthwave-84 fail on the bare surface too.
+    themes: {
+      "github-dark-dimmed": 3.81,
+      "solarized-dark": 2.82,
+      "one-dark": 3.46,
+      "ayu-mirage": 4.34,
+      "synthwave-84": 2.09,
+    },
   },
   "--ui-text-muted on --ui-bg + --ui-veil": {
-    "solarized-dark": 3.60,
-    "synthwave-84": 3.31,
+    blocker: "bg",
+    // Only the theme's own colours could move this.
+    themes: {
+      "solarized-dark": 3.60,
+      "synthwave-84": 3.31,
+    },
   },
   "--ui-text-muted on --ui-bg-sunken": {
-    "solarized-dark": 3.78,
-    "synthwave-84": 3.48,
+    blocker: "sunken",
+    // A black well clears solarized-dark and synthwave-84.
+    themes: {
+      "solarized-dark": 3.78,
+      "synthwave-84": 3.48,
+    },
   },
   "--ui-text-muted on --ui-hover": {
-    "github-dark-dimmed": 4.33,
-    "solarized-dark": 2.84,
-    "one-dark": 3.81,
-    "synthwave-84": 2.63,
+    blocker: "elevated",
+    // At --ui-bg itself the pair clears github-dark-dimmed and one-dark;
+    // solarized-dark and synthwave-84 fail on --ui-bg too.
+    themes: {
+      "github-dark-dimmed": 4.33,
+      "solarized-dark": 2.84,
+      "one-dark": 3.81,
+      "synthwave-84": 2.63,
+    },
   },
   "--ui-text-muted on --ui-surface": {
-    "solarized-dark": 3.37,
-    "one-dark": 4.49,
-    "synthwave-84": 3.07,
+    blocker: "elevated",
+    // At --ui-bg itself the pair clears one-dark; solarized-dark and
+    // synthwave-84 fail on --ui-bg too.
+    themes: {
+      "solarized-dark": 3.37,
+      "one-dark": 4.49,
+      "synthwave-84": 3.07,
+    },
   },
   "--ui-text-muted on --ui-surface-2": {
-    "solarized-dark": 3.10,
-    "one-dark": 4.11,
-    "synthwave-84": 2.85,
+    blocker: "elevated",
+    // At --ui-bg itself the pair clears one-dark; solarized-dark and
+    // synthwave-84 fail on --ui-bg too.
+    themes: {
+      "solarized-dark": 3.10,
+      "one-dark": 4.11,
+      "synthwave-84": 2.85,
+    },
   },
   "--ui-text-muted on color-mix(in srgb, --ui-danger 8%, --ui-surface)": {
-    "solarized-dark": 3.30,
-    "one-dark": 4.06,
-    "synthwave-84": 2.83,
+    blocker: "tint",
+    // solarized-dark, one-dark and synthwave-84 fail on --ui-surface too; only
+    // the theme's own colours could move it.
+    themes: {
+      "solarized-dark": 3.30,
+      "one-dark": 4.06,
+      "synthwave-84": 2.83,
+    },
   },
   "--ui-text-muted on color-mix(in srgb, --ui-warning 10%, --ui-surface)": {
-    "github-dark-dimmed": 4.39,
-    "solarized-dark": 3.00,
-    "one-dark": 3.60,
-    "synthwave-84": 2.38,
+    blocker: "tint",
+    // Without the tint the pair clears github-dark-dimmed; solarized-dark,
+    // one-dark and synthwave-84 fail on --ui-surface too.
+    themes: {
+      "github-dark-dimmed": 4.39,
+      "solarized-dark": 3.00,
+      "one-dark": 3.60,
+      "synthwave-84": 2.38,
+    },
   },
 };
 
+/** The two-place floor an entry records. */
+const floor2 = (ratio: number): number => Math.floor(ratio * 100) / 100;
 
 const check = (pair: Pair, theme: string, ratio: number): void => {
-  const known = KNOWN_BELOW[pair.key]?.[theme];
+  const known = KNOWN_BELOW[pair.key]?.themes[theme];
   const where = `${pair.key} on ${theme}; first written at ${pair.rules[0]}`;
   if (known === undefined) {
     expect(ratio, `${where} dropped under ${pair.floor}:1`).toBeGreaterThanOrEqual(pair.floor);
@@ -358,6 +553,10 @@ const check = (pair: Pair, theme: string, ratio: number): void => {
   }
   expect(ratio, `${where} got worse than its KNOWN_BELOW entry`).toBeGreaterThanOrEqual(known);
   expect(ratio, `${where} now passes; drop its KNOWN_BELOW entry`).toBeLessThan(pair.floor);
+  expect(
+    floor2(ratio),
+    `${where} reads ${floor2(ratio)} and its KNOWN_BELOW entry says ${known}; re-record the entry at what it reads`,
+  ).toBeLessThanOrEqual(known);
 };
 
 describe("the derivation covers the two stylesheets", () => {
@@ -397,6 +596,29 @@ describe("the derivation covers the two stylesheets", () => {
   it("carries no KNOWN_BELOW entry for a pair the derivation no longer finds", () => {
     const found = new Set(pairs.map((p) => p.key));
     expect(Object.keys(KNOWN_BELOW).filter((key) => !found.has(key))).toEqual([]);
+  });
+
+  it("names a bundled theme in every KNOWN_BELOW entry", () => {
+    // An entry for a theme that is not bundled is never measured, so it can
+    // neither bite nor be dropped.
+    const ids = new Set<string>(TERMINAL_THEMES.map((t) => t.id));
+    const stray = Object.entries(KNOWN_BELOW).flatMap(([key, { themes }]) =>
+      Object.keys(themes)
+        .filter((id) => !ids.has(id))
+        .map((id) => `${key}: ${id}`),
+    );
+    expect(stray, "fix the theme id, or drop the entry").toEqual([]);
+  });
+
+  it("gives every KNOWN_BELOW entry the blocker its surface puts it in", () => {
+    const wrong = pairs
+      .filter((p) => KNOWN_BELOW[p.key] !== undefined)
+      .filter((p) => blockerOf(p.stack) !== KNOWN_BELOW[p.key].blocker)
+      .map(
+        (p) =>
+          `${p.key}: says ${KNOWN_BELOW[p.key].blocker}, the surface gives ${blockerOf(p.stack) ?? "no group; add a Blocker that names its lever"}`,
+      );
+    expect(wrong).toEqual([]);
   });
 });
 
