@@ -58,7 +58,26 @@
      their own edge and had no border (`.count`, `.tag`, `.card-head`) take one
      from --ui-border as an inset shadow, which paints no layout. */
   --ui-bg: var(--term-bg, #0d1117);
-  --ui-bg-sunken: color-mix(in oklab, var(--ui-bg) 94%, black);
+  /* The well: the file preview's body, the code gutter, the soft key row, the
+     file picker's header and hint, and the intro logo tile. It sinks the page
+     toward black rather than toward --ui-lift, because a well is darker in
+     both polarities.
+
+     Round 7 of `contrast-tokens` measured how deep it has to go. The preview
+     paints the theme's own ANSI red, magenta, blue and green as syntax, and
+     the goal does not change a theme's colours, so the well is the only lever
+     under them. At 94% the well sat 1.02-1.07 above --ui-bg, which on
+     github-dark is no step at all. 19 pair-and-theme combinations missed
+     4.5:1 there; 13 of them clear as the well deepens, the last at 26%, and 6
+     miss even on black. 25% clears the 13. The cost is that the well reads
+     #000000-#010203 on all 17 themes, so it no longer carries the page's hue:
+     the syntax colours carry the theme, and the well gives them room. Its
+     separation from --ui-bg rises to 1.11 on github-dark and 1.66 on nord,
+     about where --ui-border sits above the page. On a light theme this well
+     would be dark grey under dark text; no bundled theme is light, and the
+     polarity test in `theme-contrast.test.ts` names the day one arrives.
+     `KNOWN_BELOW` records the 6 that stay. */
+  --ui-bg-sunken: color-mix(in oklab, var(--ui-bg) 25%, black);
   --ui-surface: color-mix(in oklab, var(--ui-bg) 97%, var(--ui-lift));
   --ui-surface-2: color-mix(in oklab, var(--ui-bg) 94%, var(--ui-lift));
   --ui-hover: color-mix(in oklab, var(--ui-bg) 91%, var(--ui-lift));
