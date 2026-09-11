@@ -1,16 +1,15 @@
 # STATE: agent-push
 
 - Status: active
-- Round: 1 of 3 in this budget (first budget)
-- Rounds total: 1
-- Last floor: green (2026-09-11, round 1 after)
-- Updated: 2026-09-11, round 1 closed
+- Round: 2 of 3 in this budget (first budget)
+- Rounds total: 2
+- Last floor: green (2026-09-11, round 2 after)
+- Updated: 2026-09-11, round 2 closed
 
 ## Queue
 
-1. `subscriptions` (capability 2)
-2. `send-on-transition` (capability 3)
-3. `the-toggle` (capability 4)
+1. `send-on-transition` (capability 3)
+2. `the-toggle` (capability 4)
 
 ## Failures
 
@@ -28,6 +27,11 @@ None.
   refuse to start, or warn on every request, in that combination.
   **Nothing is exposed today**: the live daemon runs without `--lan` and
   `tailscale serve status` reports no serve config. See `rounds/001.md`.
+- Three from round 2, none blocking. `AGENTS.md`'s HTTP API list does not
+  name `POST` and `DELETE /api/push/subscriptions`. Capability 3 needs a
+  VAPID key pair, which belongs in its own `0600` file rather than in
+  `push.json`. Capability 4 may want `GET /api/push/subscriptions` for
+  the toggle's state, which `plan.md` row 2 does not ask for.
 
 ## Done
 
@@ -35,6 +39,11 @@ None.
   `rounds/001.md`. The goal does not stop: a phone gets a real secure
   context over the tailnet, with no certificate to install and nothing on
   the public internet.
+
+- `subscriptions` (capability 2), round 2, `c005f49`. See
+  `rounds/002.md`. `push.json` at `0600`, full grade only, one per
+  endpoint, removable, and proved to survive both a restart and a
+  takeover with real processes.
 
 ## Direction
 
@@ -45,17 +54,15 @@ answered on the machine rather than by a spike.
 
 ## Next action
 
-Round 2: `subscriptions` from `plan.md` row 2. `POST
-/api/push/subscriptions` stores a Web Push subscription in
-`~/.kitterm/push.json`, full grade only, one per endpoint, removable, and
-the file is written `0600`. `DELETE` removes one. Proof: route tests for
-the grades, the duplicate endpoint and the removal, and a watch token
-answering 403.
+Round 3: `send-on-transition` from `plan.md` row 3. On the `agent.status`
+transitions into `needs-input`, `needs-approval` and `failed`, send one
+message per subscription carrying the session name, the project and the
+reason. Dedupe per session and state, rate-limit per session, drop a
+subscription the endpoint answers `410` for, and do it off the event
+loop.
 
-Two things round 1 settled that capability 2 should assume. The origin is
-`https://<machine>.<tailnet>.ts.net` with no port, so a subscription
-outlives a daemon restart, a port change and a live upgrade, and
-capability 2 does not need to handle re-subscription. `push.json` must
-therefore persist across all three. Round 1 obtained no real push
-endpoint: `pushManager.subscribe` hung in headless Chromium on the
-permission prompt, so that proof belongs to capabilities 2 and 4.
+Round 2 settled what capability 3 inherits. Removal is capability 3's to
+call, through `PushSubscriptionStore.remove(endpoint:)`, the same call
+`DELETE` uses. The VAPID key pair it needs goes in its own `0600` file,
+not in `push.json`. The bench is a real gate for this goal, so round 3
+must report p95.
