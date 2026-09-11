@@ -227,6 +227,63 @@ carrying it through `TakeoverState`. When a push service answers `410 Gone`, the
 sender removes the endpoint with the same call `DELETE` uses; the store does not
 watch for it, because the sender is the one that sees the answer.
 
+### The message the daemon sends
+
+`PushNotifier` sends one message per subscription when a session enters
+`needs-input`, `needs-approval` or `failed`, and nothing for `working`, `idle`,
+`completed`, `exited` or `unknown`. The message is an RFC 8291 `aes128gcm` body
+sealed for one browser's keys, with a VAPID token (RFC 8292) signed over the
+endpoint's origin. The payload names the session, its state, the row's name and
+project, the reason (the hook's message, the tool that waits, or `exit N: <command>`),
+a composed `title` and `body`, and `url: /?session=<id>`. `TTL` is one hour and
+`Urgency` is `high`.
+
+**Where the transition is observed.** The daemon never advances a state machine.
+`mergedState` is computed at read time from a hook report, a pending approval and the
+shell's marks, so no one place knows the merged state changed. The notifier is told at
+each place the evidence changes, and it remembers the last state per session. That
+memory turns "the evidence changed" into "the state changed":
+
+- `HTTPAPIHandler.emitAgentStatus`, which already fires only on a hook transition,
+  and the `approval.pending` append and the held decision's completion, answered or
+  expired. Each hands over `MergedSessionState.merge` computed exactly as the row
+  computes it, with the approval store read on the loop.
+- `PtySession.setCommandEndHandler`, which the registry sets on every session it
+  admits (`SessionRegistryObserver`). A `commandEnd` mark with a non-zero exit is
+  `failed`; that state had no event before, and this handler fires once per command,
+  off the lock, so the byte path pays nothing for prompt marks.
+
+**One per transition.** The same state again is silent, whatever the hook's words. A
+transition out of an actionable state resets the memory, so the next `needs-input` is
+a message again. The memory lives in this process only. A restart ends every shell, so
+nothing that was waiting exists to be told about twice. A live upgrade restores each
+session's last hook report, which gates the `agent.status` transition at its source, so
+an unchanged state is silent before it reaches the notifier.
+
+**Rate limit.** At most 4 messages per session per 60 seconds. A message past the
+limit is dropped and logged, not queued: a human told four times in a minute that one
+session needs them is looking at it already, and a queue would deliver a state the
+session has left.
+
+**Off the loop.** `observe` takes a lock, updates two dictionaries and starts a `Task`.
+The session lookup, the encryption and the HTTP round trip run in that task. A push
+service that answers `404` or `410` has forgotten the subscription for good (RFC 8030),
+and the notifier forgets it through the same `remove(endpoint:)` that `DELETE` uses.
+
+**The VAPID pair.** `~/.kitterm/vapid.json` holds the P-256 private key at `0600`, in
+its own file because it is a daemon secret and `push.json` holds only what the browser
+handed the page. A browser binds its subscription to the public key it subscribed with,
+so a fresh pair per run would make every stored subscription answer `403` after the
+first restart. The pair is generated once, and a file that is not owner-only is
+replaced and the replacement logged, because it invalidates every subscription on
+every phone. The page reads the public key when it subscribes; that route belongs to
+the toggle.
+
+Measured on the live feed on 2026-09-11: Claude Code sends `Stop` and then a
+`Notification` 60 seconds later when nobody answers, so a finished turn becomes one
+message after a minute of silence. No `Notification` arrived beside a held
+`PermissionRequest`, so one question is one message.
+
 ### The measurement that settled it
 
 Measured on 2026-09-11 against a scratch daemon under `KITTERM_STATE_DIR`, on
@@ -289,6 +346,7 @@ State lives in `~/.kitterm/`. The default port is 3418.
 ├── respawn.json              names and labels of live sessions, for a respawn
 ├── last-run.json             how the last run ended, or nothing where its end should be
 ├── push.json                 Web Push subscriptions, one per browser endpoint (0600)
+├── vapid.json                the VAPID key pair every subscription is bound to (0600)
 ├── takeover/                 live-upgrade handoff, between execv and adoption
 └── web-root                  the web bundle the running daemon pinned
 ```

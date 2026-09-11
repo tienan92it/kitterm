@@ -195,6 +195,19 @@ public final class DaemonServer: @unchecked Sendable {
         // the browser still holds is still known after a restart or a
         // takeover; one store for every connection.
         let pushSubscriptions = PushSubscriptionStore(file: DaemonPaths.pushSubscriptionsFile)
+        // The pair every phone's subscription is bound to, kept in its own
+        // file: a fresh pair per run would make every stored subscription
+        // answer 403 after the first restart. A pair that cannot be written
+        // fails the start rather than binding phones to a key the next run
+        // will not have.
+        let vapidKeys = try VAPIDKeys.loadOrCreate(at: DaemonPaths.vapidKeyFile)
+        // What tells the phones. The hook route hands it hook transitions and
+        // approvals; the registry hands it command ends and removals, so it
+        // is set on the registry before any session can be admitted.
+        let pushNotifier = PushNotifier(store: pushSubscriptions, keys: vapidKeys, registry: registry)
+        let observed = group.next().makePromise(of: Void.self)
+        observed.completeWithTask { await registry.setObserver(pushNotifier) }
+        try observed.futureResult.wait()
         // One spawn path for a browser tab and the HTTP route alike.
         let spawnService = SessionSpawnService(
             registry: registry,
@@ -332,7 +345,8 @@ public final class DaemonServer: @unchecked Sendable {
                         tlsPort: config.tls?.port,
                         webSocketUpgrader: upgrader,
                         takeover: takeover,
-                        pushSubscriptions: pushSubscriptions
+                        pushSubscriptions: pushSubscriptions,
+                        pushNotifier: pushNotifier
                     )
                     connections.track(channel)
                     let upgradeConfig = NIOHTTPServerUpgradeConfiguration(

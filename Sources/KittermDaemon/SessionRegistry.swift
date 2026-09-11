@@ -1,6 +1,18 @@
 import Foundation
 import KittermProtocol
 
+/// Hears from the registry what no hook route sees: a command ending in a
+/// session's shell, with its exit code, and the session's removal. The
+/// registry sets it on every session it admits, so one listener
+/// (`PushNotifier`) learns `failed` without polling the rows.
+public protocol SessionRegistryObserver: AnyObject, Sendable {
+    /// A `commandEnd` mark landed, on the event loop. `exit` is the code the
+    /// shell reported, 0 when the mark carried none.
+    func commandEnded(session id: UUID, exit: Int32)
+    /// The session left the registry, from actor context.
+    func sessionRemoved(_ id: UUID)
+}
+
 /// Tracks live PTY sessions. A session survives a transient WS disconnect
 /// (sleep/wake, network blip): it is marked detached and reaped only if no
 /// client reattaches within the linger window. A program-created session is
@@ -35,6 +47,29 @@ public actor SessionRegistry {
 
     private var sessions: [UUID: PtySession] = [:]
     private var attachedIDs: Set<UUID> = []
+    /// Told about command ends and removals; nil in the tests that do not
+    /// exercise it. Set before the port opens, so every admitted session
+    /// carries its handler from the start.
+    private var observer: (any SessionRegistryObserver)?
+
+    public func setObserver(_ observer: (any SessionRegistryObserver)?) {
+        self.observer = observer
+        for (_, session) in sessions { wire(session) }
+    }
+
+    /// Point the session's `commandEnd` marks at the observer. The closure
+    /// holds the observer weakly so a session outliving it (a test) keeps
+    /// no dead reference alive.
+    private func wire(_ session: PtySession) {
+        guard let observer else {
+            session.setCommandEndHandler(nil)
+            return
+        }
+        let id = session.sessionID
+        session.setCommandEndHandler { [weak observer] exit in
+            observer?.commandEnded(session: id, exit: exit)
+        }
+    }
     private var lingerTasks: [UUID: Task<Void, Never>] = [:]
     /// When the first linger window expired and the session was kept because
     /// it was working (ADR 0002). A foreman reads it to find the sessions
@@ -61,6 +96,7 @@ public actor SessionRegistry {
         let id = session.sessionID
         sessions[id] = session
         attachedIDs.insert(id)
+        wire(session)
         recordHints(session)
         emitCreated(session, respawnOf: respawnOf)
         return id
@@ -76,6 +112,7 @@ public actor SessionRegistry {
         let id = session.sessionID
         sessions[id] = session
         scheduleLinger(id)
+        wire(session)
         recordHints(session)
         emitCreated(session)
         return id
@@ -92,6 +129,7 @@ public actor SessionRegistry {
         sessions[id] = session
         if let heldSince { self.heldSince[id] = heldSince }
         scheduleLinger(id)
+        wire(session)
         recordHints(session)
         return true
     }
@@ -446,6 +484,7 @@ public actor SessionRegistry {
             session.discardRetainedOutput()
             SessionDrops.discard(sessionID: id)
             respawnHints?.forget(id: id)
+            observer?.sessionRemoved(id)
             eventLog?.append(type: "session.removed", session: id, data: [:])
         }
     }
