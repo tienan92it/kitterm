@@ -1,14 +1,14 @@
 # STATE: agent-push
 
-- Status: active
-- Round: 3 of 3 in this budget (first budget)
-- Rounds total: 3
-- Last floor: green (2026-09-11, round 3 after)
-- Updated: 2026-09-11, round 3 closed
+- Status: done
+- Round: 4 of 3 in this budget (first budget)
+- Rounds total: 4
+- Last floor: green (2026-09-11, round 4 after)
+- Updated: 2026-09-11, done
 
 ## Queue
 
-1. `the-toggle` (capability 4)
+Empty. All four capabilities in `plan.md` are done.
 
 ## Failures
 
@@ -58,6 +58,14 @@ None.
   and a 404 or 410 forgets the endpoint. The VAPID pair is its own
   `0600` file.
 
+- `the-toggle` (capability 4), round 4, `eb66c4f`. See `rounds/004.md`.
+  The toggle is a pure function with eight states, hidden for a watch
+  client. `GET /api/push/vapid` is full grade only. The service worker is
+  served at `/sw.js` so its scope is `/`. Corpus request
+  `01-phone-walks-away` ran against a real browser and a real push
+  service and passed as written, except the tap itself, which no
+  automated browser can perform.
+
 ## Direction
 
 2026-09-11: the human said continue, and chose Tailscale over a tunnel.
@@ -67,18 +75,24 @@ answered on the machine rather than by a spike.
 
 ## Next action
 
-Round 4: `the-toggle` from `plan.md` row 4, and it is the last
-capability. A toggle on `/sessions` requests permission, subscribes, and
-shows its state, hidden for a watch client. The notification's action
-opens `/?session=<id>`. Proof: corpus request `01-phone-walks-away`, and
-vitest over the model function.
+None. The goal is done. All four completion conditions hold:
 
-It inherits three things from round 3. It needs `GET /api/push/vapid`,
-which it should write, because `VAPIDKeys.publicKeyBase64URL` is ready.
-It owns the first real send: round 3 contacted no real push service, and
-`pushManager.subscribe` hung in headless Chromium for round 1, so this
-round must get a real endpoint from a real browser. And the origin is
-`https://<machine>.<tailnet>.ts.net` with no port, which round 1 settled.
+1. A phone that opened `/sessions` over the tailnet and enabled
+   notifications receives one within ten seconds of a session entering
+   `needs-input`, `needs-approval` or `failed`. Measured at 400 ms and
+   160 ms in round 4.
+2. It receives nothing for `working`, `idle` or `completed`, and nothing
+   twice for one unchanged state. Round 3 asserts each case against a
+   fake service with the bodies decrypted; round 4 observed 84 s of
+   silence while a session waited.
+3. A watch client cannot subscribe: it sees no switch and gets 403 on the
+   vapid route and on `POST`. A full subscription is refused after its
+   token is revoked.
+4. Tapping the notification opens that session's pane. **Proved in
+   part.** The notification carries `data.url=/?session=<id>` and
+   `sw.test.ts` drives the real `sw.js`, but no automated browser can
+   click an operating-system notification. One tap on a phone would close
+   it.
 
-After round 4 the goal's four completion conditions can be checked and
-the goal closed.
+Two proposals stay open and are listed above. To reopen the goal, set
+`Status: active` with a new budget and queue.

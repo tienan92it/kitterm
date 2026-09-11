@@ -48,6 +48,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// on this handler where the evidence does; nil where no phone can be
     /// reached (a handler built without a server).
     private let pushNotifier: PushNotifier?
+    /// The pair behind `GET /api/push/vapid`, whose public half a page
+    /// subscribes with; nil in a handler built without one, where the
+    /// route answers 503.
+    private let vapidKeys: VAPIDKeys?
     private var pendingHead: HTTPRequestHead?
     /// Accumulated request body, capped at `maxInputBytes`; only the input
     /// route reads it. `bodyOverflow` trips once the cap is exceeded so a large
@@ -73,7 +77,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         takeover: TakeoverController? = nil,
         projects: ProjectStore = .shared,
         pushSubscriptions: PushSubscriptionStore? = nil,
-        pushNotifier: PushNotifier? = nil
+        pushNotifier: PushNotifier? = nil,
+        vapidKeys: VAPIDKeys? = nil
     ) {
         self.registry = registry
         self.projects = projects
@@ -90,6 +95,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.takeover = takeover
         self.pushSubscriptions = pushSubscriptions
         self.pushNotifier = pushNotifier
+        self.vapidKeys = vapidKeys
     }
 
     /// Put a fresh upgrade handler back in front of us so the *next* request on
@@ -451,6 +457,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 head: head,
                 context: context
             )
+        case (.GET, "/api/push/vapid"):
+            servePushKey(grade: grade, head: head, context: context)
         case (.GET, "/api/files"):
             serveFileListing(grade: grade, head: head, context: context)
         case (.GET, "/api/files/stat"):
@@ -2380,6 +2388,43 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     }
 
     // MARK: - Push subscriptions
+
+    /// `GET /api/push/vapid` answers the daemon's VAPID public key, the
+    /// `applicationServerKey` a page hands `pushManager.subscribe`.
+    ///
+    /// Full grade only, like the subscription routes, and not because the
+    /// key is a secret: it is not, it rides in the `k=` of every message the
+    /// daemon sends and the push service hands it to any browser that asks.
+    /// The gate is the feature's boundary. `goal.md` excludes a watch client
+    /// from push entirely, and its `POST /api/push/subscriptions` answers
+    /// 403, so a key it could fetch would only let its page build a
+    /// subscription the daemon then refuses. One grade at the first step
+    /// means the page learns "not for you" before it asks the browser for
+    /// permission, which the browser grants once per origin and cannot take
+    /// back on the page's behalf.
+    private func servePushKey(grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let vapidKeys else {
+            writeJSON(
+                status: .serviceUnavailable,
+                body: #"{"ok":false,"error":"no VAPID key"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        writeJSON(
+            status: .ok,
+            body: #"{"ok":true,"publicKey":"\#(vapidKeys.publicKeyBase64URL)"}"#,
+            context: context, version: head.version, keepAlive: head.isKeepAlive
+        )
+    }
 
     /// `POST /api/push/subscriptions` stores a browser's Web Push
     /// subscription; `DELETE` forgets one. The body is the browser's own
