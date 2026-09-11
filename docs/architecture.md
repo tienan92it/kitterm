@@ -276,13 +276,72 @@ handed the page. A browser binds its subscription to the public key it subscribe
 so a fresh pair per run would make every stored subscription answer `403` after the
 first restart. The pair is generated once, and a file that is not owner-only is
 replaced and the replacement logged, because it invalidates every subscription on
-every phone. The page reads the public key when it subscribes; that route belongs to
-the toggle.
+every phone. The page reads the public key from `GET /api/push/vapid` when it
+subscribes.
 
 Measured on the live feed on 2026-09-11: Claude Code sends `Stop` and then a
 `Notification` 60 seconds later when nobody answers, so a finished turn becomes one
 message after a minute of silence. No `Notification` arrived beside a held
 `PermissionRequest`, so one question is one message.
+
+### The page asks, and says
+
+The fleet view carries one switch under its head, `Notify this device`, with the
+reason beside it when pressing it could not work. `pushToggle` in `sessions-model.ts`
+decides the switch from what the page knows: the token's grade, whether the origin is
+secure and the browser has `PushManager`, `Notification.permission`, whether the
+daemon holds the subscription, and whether a change is in flight. `sessions.ts` only
+paints it, under one `data-focus` key, so a repaint gives focus back.
+
+- **Hidden for a watch client.** The switch is not disabled but absent, because the
+  daemon would refuse the subscription and the page should not offer what it will
+  refuse.
+- **Disabled, with the reason, where pressing it could not work**: no push in this
+  browser (iOS wants the page on the Home Screen first), an http origin, a daemon
+  before the vapid route, and `denied`. `denied` is the state that matters most: the
+  browser asks once and never again, so the line says the site's notifications are
+  blocked and points at the browser's site settings, rather than leaving a switch
+  that does nothing.
+- **On and off** otherwise. On asks the browser first, inside the tap, then registers
+  the worker, reads the key, subscribes with `userVisibleOnly` and posts the
+  subscription. Off tells the daemon first, while the endpoint is still known, and
+  then drops the browser's side either way, because an endpoint the browser gave up
+  answers the daemon `410` and the daemon forgets it. The page re-posts a held
+  subscription on every load, which the store answers `200` for, and a subscription
+  bound to another key than the daemon's is dropped and made again.
+
+**`GET /api/push/vapid`** answers `{ok, publicKey}`, the `applicationServerKey`. It is
+full grade only, and not because the key is secret: it rides in the `k=` of every
+message and the push service hands it to any browser. The gate is the feature's
+boundary. A watch client cannot subscribe, so a key would only let its page build a
+subscription the daemon then refuses, after asking the browser for a permission the
+page cannot take back.
+
+**The service worker** is `Web/terminal/public/sw.js`, copied into the bundle unbuilt
+and served at `/sw.js` from the web root, which is what gives it the scope `/` and
+control of `/sessions` and `/`. A worker served under a path controls only that path.
+It is plain JS with no imports, because a worker registered without `type: "module"`
+cannot import and a hashed bundle name would change its URL on every build. On `push`
+it shows the daemon's `title` and `body` as they are, tagged `session:<id>` so a later
+message about the same session replaces the earlier one, with `url` in the
+notification's data. On `notificationclick` it opens `/?session=<id>` on this origin,
+focusing a window already there and opening one otherwise, which is the case when the
+page is closed; a URL on another origin, or none, opens `/sessions`. `sw.test.ts` runs
+the file in a fake `self`.
+
+**Measured on 2026-09-11** against a scratch daemon behind `tailscale serve` with
+`--trusted-host`, from Google Chrome 152 driven by Playwright with the notification
+permission granted on the context, which is what round 1's headless run could not do.
+`pushManager.subscribe` returned a real `fcm.googleapis.com` endpoint. Corpus request
+`01-phone-walks-away`: one notification `alpha needs input` / `kitterm · Claude needs
+your permission to use Bash` 400 ms after the `Notification` hook, nothing more in the
+next 84 seconds, one `beta needs approval` / `kitterm · Bash` 160 ms after the held
+`PermissionRequest`, nothing for `PreToolUse`, `Stop` or the approval's answer, read
+back from `registration.getNotifications()`. `push.json` held one subscription at
+`0600`. A watch client saw no switch and got `403` from both routes. After the switch
+was turned off the file was empty and a fresh `needs-input` produced nothing. The tap
+itself was not automated: a notification is the OS's to click, so the pane it opens is
+proved by the notification's `data.url` and by `sw.test.ts`, not by a driven click.
 
 ### The measurement that settled it
 

@@ -773,6 +773,12 @@ async function disablePush(): Promise<void> {
   }
 }
 
+/** The switch had focus when a repaint disabled it. A disabled button
+ * cannot take focus back, so the browser parks focus on `body` for the
+ * busy state; the repaint that enables the switch again gives it back,
+ * unless the reader has moved on to something else meanwhile. */
+let pushWantsFocus = false;
+
 /** Show, hide, or leave the push line; rebuilt only when the toggle
  * changes, and the focus a keyboard user has on the switch survives. */
 function paintPush(): void {
@@ -781,10 +787,13 @@ function paintPush(): void {
   if (signature === pushPainted) return;
   pushPainted = signature;
   const active = document.activeElement;
-  const hadFocus = active instanceof HTMLElement && active.dataset.focus === toggle?.key;
+  const hadFocus =
+    (active instanceof HTMLElement && active.dataset.focus === toggle?.key) ||
+    (pushWantsFocus && active === document.body);
   pushLine.hidden = toggle === null;
   pushLine.replaceChildren(...(toggle === null ? [] : [pushContent(toggle)]));
-  if (hadFocus && toggle) restoreFocus(toggle.key);
+  pushWantsFocus = hadFocus && toggle !== null && !toggle.enabled;
+  if (hadFocus && toggle?.enabled) restoreFocus(toggle.key);
 }
 
 function pushContent(toggle: PushToggle): DocumentFragment {
