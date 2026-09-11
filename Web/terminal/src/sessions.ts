@@ -4,6 +4,7 @@ import { resolveFontFamily } from "./fonts";
 import { summarize, waitedLabel } from "./approval-format";
 import {
   actionName,
+  applicationServerKey,
   approvalName,
   attention,
   crewSections,
@@ -23,11 +24,13 @@ import {
   pickForeman,
   proposalsName,
   proposedItems,
+  pushToggle,
   recordLabel,
   recordName,
   recordPath,
   restartDismissName,
   restartNotice,
+  sameServerKey,
   showsProposals,
   roundOf,
   stateOf,
@@ -48,6 +51,9 @@ import {
   type ProjectRef,
   type ProjectSummary,
   type ProposedItem,
+  type PushFacts,
+  type PushSupport,
+  type PushToggle,
   type StampFormat,
 } from "./sessions-model";
 import { loadSettings } from "./settings-store";
@@ -435,6 +441,15 @@ let announcedCount = -1;
  * reason (`restartNotice`). It paints once per run and its text is fixed, so
  * unlike the strip it can be a live region; `paintRestart` only touches it
  * when the text changes, so a 2 s repaint never announces it twice. */
+/** The push line under the head: one switch that subscribes this device to
+ * the daemon's notifications, and the reason it cannot when it cannot
+ * (`pushToggle`). Hidden for a watch client. Built once; `paintPush` only
+ * touches it when the toggle changes. */
+const pushLine = document.createElement("p");
+pushLine.className = "push";
+pushLine.hidden = true;
+/** The toggle on the line right now, so an unchanged one is left alone. */
+let pushPainted = "";
 const restartLine = document.createElement("p");
 restartLine.className = "restart";
 restartLine.hidden = true;
@@ -448,7 +463,7 @@ let skeletonMounted = false;
 function mountSkeleton(): void {
   if (!root || skeletonMounted) return;
   skeletonMounted = true;
-  root.replaceChildren(header(), announce, strip, pinned, filters, noticeLine, restartLine, cards);
+  root.replaceChildren(header(), pushLine, announce, strip, pinned, filters, noticeLine, restartLine, cards);
 }
 
 function render(): void {
@@ -513,6 +528,7 @@ function paint(): void {
   noticeLine.hidden = notice === null;
   noticeLine.replaceChildren(...(notice === null ? [] : [noticeContent(notice)]));
   paintRestart();
+  paintPush();
   cards.replaceChildren(...cardList(rest));
   if (focusKey) restoreFocus(focusKey);
 }
@@ -581,6 +597,221 @@ function restartContent(text: string, key: string): DocumentFragment {
   dismiss.dataset.focus = focusKey("dismiss", "restart", key);
   dismiss.setAttribute("aria-label", restartDismissName());
   fragment.append(span, dismiss);
+  return fragment;
+}
+
+// --- push notifications -----------------------------------------------------
+
+/** What the page knows about push, less `watchOnly`, which `fetchProfiles`
+ * owns and `paintPush` reads at paint time. */
+let pushFacts: Omit<PushFacts, "watchOnly"> = {
+  support: "ok",
+  permission: "default",
+  subscribed: false,
+  busy: false,
+  error: null,
+};
+
+function setPush(change: Partial<Omit<PushFacts, "watchOnly">>): void {
+  pushFacts = { ...pushFacts, ...change };
+  paintPush();
+}
+
+/** Whether this page can subscribe at all. An insecure origin is reported
+ * before a missing API, because `navigator.serviceWorker` is absent on
+ * http and the fix there is the origin, not the browser. */
+function pushSupport(): PushSupport {
+  if (!window.isSecureContext) return "insecure";
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+    return "unsupported";
+  }
+  return "ok";
+}
+
+/** The worker at `/sw.js`, registered once from this page as well as from
+ * the terminal page, so a phone that only ever opens `/sessions` still has
+ * one to receive the push. Scope `/`, because it is served from the root. */
+let workerRegistration: Promise<ServiceWorkerRegistration> | null = null;
+function registerWorker(): Promise<ServiceWorkerRegistration> {
+  if (!workerRegistration) {
+    workerRegistration = navigator.serviceWorker.register("/sw.js").then(() => navigator.serviceWorker.ready);
+  }
+  return workerRegistration;
+}
+
+/** The daemon's `applicationServerKey`, or the reason it has none: a watch
+ * token, or a daemon before the route. */
+async function fetchServerKey(): Promise<Uint8Array<ArrayBuffer> | "watch" | "old-daemon"> {
+  const res = await fetch("/api/push/vapid", { headers: { accept: "application/json" } });
+  if (res.status === 403) return "watch";
+  if (res.status === 404) return "old-daemon";
+  if (!res.ok) throw new Error(`the daemon answered ${res.status} for its key`);
+  const data = (await res.json()) as { ok: boolean; publicKey?: string };
+  if (typeof data.publicKey !== "string" || !data.publicKey) throw new Error("the daemon sent no key");
+  return applicationServerKey(data.publicKey);
+}
+
+/** Hand the daemon the browser's subscription. A repeat is an update, not
+ * an error (`PushSubscriptionStore.upsert`). */
+async function postSubscription(subscription: PushSubscription): Promise<Response> {
+  return fetch("/api/push/subscriptions", {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify(subscription.toJSON()),
+  });
+}
+
+function pushError(prefix: string, error: unknown): string {
+  const reason = error instanceof Error ? error.message : String(error);
+  return `${prefix}: ${reason}`;
+}
+
+/**
+ * What the page knows on load: the support, the browser's answer, and
+ * whether a subscription it already holds is one the daemon still has. The
+ * page cannot know the daemon's side, so it posts the subscription it holds
+ * on every load; the daemon answers 200 for a repeat.
+ */
+async function syncPush(): Promise<void> {
+  const support = pushSupport();
+  setPush({ support, permission: support === "ok" ? Notification.permission : "default" });
+  if (support !== "ok" || watchOnly) return;
+  try {
+    const registration = await registerWorker();
+    if (Notification.permission !== "granted") return;
+    const subscription = await registration.pushManager.getSubscription();
+    if (!subscription) return;
+    const res = await postSubscription(subscription);
+    if (res.status === 403) {
+      watchOnly = true;
+      lastSignature = "";
+      render();
+      return;
+    }
+    if (res.status === 404) {
+      setPush({ support: "old-daemon" });
+      return;
+    }
+    setPush({ subscribed: res.ok, error: res.ok ? null : `The daemon answered ${res.status} for the subscription` });
+  } catch (error) {
+    setPush({ error: pushError("Could not check notifications", error) });
+  }
+}
+
+/**
+ * Ask, subscribe, and tell the daemon. The permission request goes first,
+ * before any await, because the browser only honours it inside the tap.
+ * A subscription bound to another key than the daemon's, one left over
+ * from a replaced `vapid.json`, is dropped and made again, because the push
+ * service would answer 403 to every message signed with the new pair.
+ */
+async function enablePush(): Promise<void> {
+  setPush({ busy: true, error: null });
+  try {
+    const permission = await Notification.requestPermission();
+    setPush({ permission });
+    if (permission !== "granted") return;
+    const registration = await registerWorker();
+    const key = await fetchServerKey();
+    if (key === "watch") {
+      watchOnly = true;
+      lastSignature = "";
+      render();
+      return;
+    }
+    if (key === "old-daemon") {
+      setPush({ support: "old-daemon" });
+      return;
+    }
+    let subscription = await registration.pushManager.getSubscription();
+    if (subscription && !sameServerKey(subscription.options.applicationServerKey, key)) {
+      await subscription.unsubscribe();
+      subscription = null;
+    }
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+    }
+    const res = await postSubscription(subscription);
+    if (!res.ok) throw new Error(`the daemon answered ${res.status} for the subscription`);
+    setPush({ subscribed: true });
+  } catch (error) {
+    setPush({ error: pushError("Could not turn on notifications", error) });
+  } finally {
+    setPush({ busy: false });
+  }
+}
+
+/** Tell the daemon first, while the endpoint is still known, then drop the
+ * browser's subscription. A daemon that no longer has it answers 404, which
+ * is the state wanted. The browser side is dropped either way: an endpoint
+ * the browser gave up answers the daemon 410, and the daemon forgets it. */
+async function disablePush(): Promise<void> {
+  setPush({ busy: true, error: null });
+  try {
+    const registration = await registerWorker();
+    const subscription = await registration.pushManager.getSubscription();
+    if (subscription) {
+      let told: Response | null = null;
+      try {
+        told = await fetch("/api/push/subscriptions", {
+          method: "DELETE",
+          headers: { "content-type": "application/json", accept: "application/json" },
+          body: JSON.stringify({ endpoint: subscription.endpoint }),
+        });
+      } finally {
+        await subscription.unsubscribe();
+      }
+      if (!told.ok && told.status !== 404) {
+        throw new Error(`the daemon answered ${told.status} for the removal`);
+      }
+    }
+    setPush({ subscribed: false });
+  } catch (error) {
+    setPush({ subscribed: false, error: pushError("Could not turn off notifications", error) });
+  } finally {
+    setPush({ busy: false });
+  }
+}
+
+/** Show, hide, or leave the push line; rebuilt only when the toggle
+ * changes, and the focus a keyboard user has on the switch survives. */
+function paintPush(): void {
+  const toggle = pushToggle({ ...pushFacts, watchOnly });
+  const signature = JSON.stringify(toggle);
+  if (signature === pushPainted) return;
+  pushPainted = signature;
+  const active = document.activeElement;
+  const hadFocus = active instanceof HTMLElement && active.dataset.focus === toggle?.key;
+  pushLine.hidden = toggle === null;
+  pushLine.replaceChildren(...(toggle === null ? [] : [pushContent(toggle)]));
+  if (hadFocus && toggle) restoreFocus(toggle.key);
+}
+
+function pushContent(toggle: PushToggle): DocumentFragment {
+  const fragment = document.createDocumentFragment();
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "push-switch";
+  b.setAttribute("role", "switch");
+  b.setAttribute("aria-checked", String(toggle.checked));
+  b.disabled = !toggle.enabled;
+  b.dataset.focus = toggle.key;
+  const state = document.createElement("span");
+  state.className = "push-state";
+  state.setAttribute("aria-hidden", "true");
+  state.textContent = toggle.checked ? "on" : "off";
+  b.append(toggle.label, state);
+  b.addEventListener("click", (event) => {
+    event.preventDefault();
+    void (toggle.checked ? disablePush() : enablePush());
+  });
+  fragment.append(b);
+  if (toggle.detail) {
+    const detail = document.createElement("span");
+    detail.className = "push-detail";
+    detail.textContent = toggle.detail;
+    fragment.append(detail);
+  }
   return fragment;
 }
 
@@ -1569,7 +1800,10 @@ document.addEventListener("click", (event) => {
   }
 });
 
-void fetchProfiles().then(() => poll());
+void fetchProfiles().then(() => {
+  void poll();
+  void syncPush();
+});
 // The 2 s poll is the safety net; the event long-poll below repaints the
 // instant something changes, so "needs input" surfaces without a 2 s wait.
 setInterval(() => void poll(), POLL_MS);

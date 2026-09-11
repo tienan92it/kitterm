@@ -673,3 +673,109 @@ export function restartNotice(
     key,
   };
 }
+
+// --- the push toggle ---------------------------------------------------------
+
+/** Whether this page can subscribe at all, read once at load. `insecure`
+ * is an http origin, where no service worker registers; `old-daemon` is a
+ * daemon that answers 404 to `GET /api/push/vapid`. */
+export type PushSupport = "ok" | "unsupported" | "insecure" | "old-daemon";
+
+/** `Notification.permission`. The browser asks once; after `denied` it
+ * never asks again, and only the browser's own site settings can undo it. */
+export type PushPermission = "default" | "granted" | "denied";
+
+/** What the page knows about push right now. */
+export type PushFacts = {
+  /** The token is watch-only: the feature is hidden, not refused. */
+  watchOnly: boolean;
+  support: PushSupport;
+  permission: PushPermission;
+  /** The browser holds a subscription and the daemon has accepted it. */
+  subscribed: boolean;
+  /** A subscribe or an unsubscribe is in flight. */
+  busy: boolean;
+  /** The last step that failed, in the words the page will print. */
+  error: string | null;
+};
+
+/** The switch the page paints: `checked` is the subscription, `enabled`
+ * is whether pressing it can change anything, and `detail` is the line
+ * beside it that says why it cannot, or what went wrong. */
+export type PushToggle = {
+  label: string;
+  checked: boolean;
+  enabled: boolean;
+  detail: string | null;
+  /** The `data-focus` key of the switch. */
+  key: string;
+};
+
+/** The label of the switch. The same words in every state, so a reader who
+ * finds it again knows it is the same control. */
+export const PUSH_LABEL = "Notify this device";
+
+/**
+ * The toggle for the facts, or null for a watch client, which `goal.md`
+ * excludes from push entirely: a watch token exists to withhold the answer,
+ * so it does not get the question, and the daemon answers its subscribe
+ * with 403. Hidden rather than disabled, so the page does not offer what
+ * it would refuse.
+ *
+ * The switch is disabled, with a line that says why, wherever pressing it
+ * could not work: no push in this browser, no secure context, a daemon
+ * with no key, and `denied`, where the browser will not ask again and only
+ * its site settings can turn the answer around. A disabled switch beside
+ * the reason reads as a decision; a missing one reads as a page that broke.
+ */
+export function pushToggle(facts: PushFacts): PushToggle | null {
+  if (facts.watchOnly) return null;
+  const key = focusKey("push");
+  const off = (detail: string): PushToggle => ({ label: PUSH_LABEL, checked: false, enabled: false, detail, key });
+  switch (facts.support) {
+    case "unsupported":
+      return off("This browser does not support push notifications. On iOS, add the page to the Home Screen and open it from there.");
+    case "insecure":
+      return off("Notifications need an HTTPS origin. Open the page over HTTPS.");
+    case "old-daemon":
+      return off("This daemon does not send notifications. Upgrade kitterm.");
+    case "ok":
+      break;
+  }
+  if (facts.permission === "denied") {
+    return off("Notifications are blocked for this site. Allow them in the browser's site settings, then reload.");
+  }
+  if (facts.busy) {
+    return {
+      label: PUSH_LABEL,
+      checked: facts.subscribed,
+      enabled: false,
+      detail: facts.subscribed ? "Turning off…" : "Turning on…",
+      key,
+    };
+  }
+  return { label: PUSH_LABEL, checked: facts.subscribed, enabled: true, detail: facts.error, key };
+}
+
+/** The `applicationServerKey` bytes from the daemon's base64url public key
+ * (`GET /api/push/vapid`). A `Uint8Array`, because every browser takes one
+ * and older Safari takes nothing else. */
+export function applicationServerKey(base64url: string): Uint8Array<ArrayBuffer> {
+  const padded = base64url.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (base64url.length % 4)) % 4);
+  const raw = atob(padded);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+  return bytes;
+}
+
+/** Whether the subscription the browser holds was made with `key`, so the
+ * page can tell a subscription bound to a daemon whose `vapid.json` was
+ * replaced, which the push service would answer 403 for, from one that is
+ * still good. `held` is `PushSubscription.options.applicationServerKey`. */
+export function sameServerKey(held: ArrayBuffer | null | undefined, key: Uint8Array<ArrayBuffer>): boolean {
+  if (!held) return false;
+  const bytes = new Uint8Array(held);
+  if (bytes.length !== key.length) return false;
+  for (let i = 0; i < key.length; i++) if (bytes[i] !== key[i]) return false;
+  return true;
+}

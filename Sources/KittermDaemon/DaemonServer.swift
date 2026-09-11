@@ -346,7 +346,8 @@ public final class DaemonServer: @unchecked Sendable {
                         webSocketUpgrader: upgrader,
                         takeover: takeover,
                         pushSubscriptions: pushSubscriptions,
-                        pushNotifier: pushNotifier
+                        pushNotifier: pushNotifier,
+                        vapidKeys: vapidKeys
                     )
                     connections.track(channel)
                     let upgradeConfig = NIOHTTPServerUpgradeConfiguration(
