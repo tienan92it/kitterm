@@ -103,6 +103,18 @@ decision moves to `docs/adr/`.
 
 ## Crew pane
 
+- A headless browser will not show a notification permission prompt, and
+  `pushManager.subscribe` hangs on it forever. Grant the permission on the
+  context instead: `page.context().grantPermissions(['notifications'])`.
+  That is one line, and it blocked `agent-push` for three rounds because
+  round 1 recorded the obstacle without it. (2026-09-11, `agent-push`
+  round 4)
+- When a command says something surprising about the repository, check
+  the remote before acting on it. On 2026-09-11 a crew concluded that the
+  previous round's code lived only on its branch, rebased onto that
+  branch, and lost eleven minutes; the round had been squash-merged and
+  `git log origin/main --oneline` would have shown it. (2026-09-11,
+  `agent-push` round 4)
 - A crew that runs `kitterm serve` must still set `KITTERM_STATE_DIR`
   **and** a free port, but a mistake no longer costs the live daemon its
   pid file. `serve` used to write the pid and the port before it bound, so
