@@ -114,6 +114,13 @@ public enum DaemonPaths: Sendable {
         stateDirectory.appendingPathComponent("last-run.json")
     }
 
+    /// Web Push subscriptions (`PushSubscriptionStore`): one entry per
+    /// browser endpoint, `0600`, reloaded by every run because the browser's
+    /// subscription outlives a restart and a live upgrade.
+    public static var pushSubscriptionsFile: URL {
+        stateDirectory.appendingPathComponent("push.json")
+    }
+
     /// Where a daemon writes its state for the process that replaces it in
     /// place (`POST /api/upgrade/takeover`, `serve --takeover`). Deleted by
     /// the successor once it has adopted everything.
