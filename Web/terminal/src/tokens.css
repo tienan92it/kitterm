@@ -98,7 +98,28 @@
      blue is pure grey, which would leave the UI colourless. */
   --ui-accent: var(--term-accent, var(--term-blue, #58a6ff));
   --ui-accent-hover: color-mix(in oklab, var(--ui-accent) 88%, var(--ui-lift));
-  --ui-accent-soft: color-mix(in srgb, var(--ui-accent) 18%, transparent);
+  /* The quiet fill: the selected chip and row, the approval strip item, the
+     splitter under the pointer. Text sits on it, and every point of tint costs
+     that text contrast, because the tint lifts a dark surface toward the light
+     text. Luminance is what the text pays for and hue is what the eye reads,
+     so the tint carries the accent's hue at less of its luminance: the accent
+     is darkened toward black first, then laid on at 14%. A darker mix at a
+     higher alpha keeps more of the hue than a plain alpha cut does, for the
+     same contrast: on github-dark this reads at ΔE 0.064 against the page,
+     where 18% read 0.130 and the 6% plain alpha that clears as many pairs
+     reads 0.045.
+
+     Round 6 of `contrast-tokens` measured the limit. Of the 32 pair-and-theme
+     combinations under this tint, 18 clear 4.5:1 with no tint at all, but
+     only with a tint the eye cannot see: nord's accent on its own page reads
+     4.63 bare, so any tint nord can see puts it back under. 65%/14% is the
+     point that clears the most (13) while the tint still reads at least as
+     strongly as the card's surface step on every theme, which is the knee
+     round 3 accepted for the elevation. `KNOWN_BELOW` records the other 19
+     with the tint they would need. Black rather than --ui-lift, as
+     --ui-bg-sunken does: lowering the tint's luminance is the point on a dark
+     theme, and on a light theme dark text has the room to spare. */
+  --ui-accent-soft: color-mix(in srgb, color-mix(in srgb, var(--ui-accent) 65%, black) 14%, transparent);
   /* Black or white by the accent's luminance, published by JS: white sits
      under 4.5:1 on every bundled accent, black passes on all of them. */
   --ui-accent-on: var(--term-accent-on, #fff);

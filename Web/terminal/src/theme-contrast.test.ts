@@ -110,8 +110,8 @@ const { pairs, holes } = derivePairs(SHEETS, paletteFor(TERMINAL_THEMES[0]));
  * exclusive and `blockerOf` assigns each pair to exactly one, from its stack.
  * The counts are what each lever reaches at its extreme, measured on
  * 2026-09-11 with the arithmetic `ratioFor` uses, so a reader can tell an
- * entry that waits on work from one that is permanent. Of the 110 entries the
- * levers reach 44; the other 66 fail on the bare surface too, so only the
+ * entry that waits on work from one that is permanent. Of the 97 entries the
+ * levers reach 31; the other 66 fail on the bare surface too, so only the
  * theme's own colours could move them, and the goal does not change those.
  */
 type Blocker =
@@ -123,10 +123,12 @@ type Blocker =
    */
   | "elevated"
   /**
-   * 32 over 6 pairs, under `--ui-accent-soft`, the 18% accent tint of the
-   * selected row and the selected chip. The lever is that tint, which no
-   * ruling has opened. Without the tint 18 clear and 14 fail on the bare
-   * surface too.
+   * 19 over 6 pairs, under `--ui-accent-soft`, the accent tint of the
+   * selected row and the selected chip. Round 6 opened the tint: the accent
+   * is darkened 65% toward black and laid on at 14%, which cleared 13. Of the
+   * 19 left, 14 fail on the bare surface too, and 5 clear bare by 0.13 to
+   * 0.47, which no tint the eye can see leaves room for: every construction
+   * that clears them reads under ΔE 0.01 on nord and gruvbox-dark.
    */
   | "accent-soft"
   /**
@@ -181,13 +183,14 @@ interface Below {
  * each pair says which themes its lever reaches and which fail without the
  * blocker too.
  *
- * 110 entries over 35 pairs. The list read 273 after round 1 derived it, 178
+ * 97 entries over 35 pairs. The list read 273 after round 1 derived it, 178
  * after round 2 raised the two muted tokens, 134 after round 3 lowered the
- * elevation, and 110 after round 5 opened the three opacities round 3 left
- * alone: `.settings-gear` at 0.35 and 0.65 and `.keyboard-toggle` at 0.75.
- * Those three pairs went whole, 24 entries, and their keys collapsed into
- * `--ui-text on --ui-bg + --ui-veil`, which already carried synthwave-84. No
- * ratio fell and no new entry appeared.
+ * elevation, 110 after round 5 opened the three opacities round 3 left
+ * alone (`.settings-gear` at 0.35 and 0.65 and `.keyboard-toggle` at 0.75;
+ * those three pairs went whole, 24 entries, and their keys collapsed into
+ * `--ui-text on --ui-bg + --ui-veil`, which already carried synthwave-84),
+ * and 97 after round 6 darkened `--ui-accent-soft`. No ratio fell and no new
+ * entry appeared.
  */
 const KNOWN_BELOW: Record<string, Below> = {
   "--code-comment on --ui-bg-sunken": {
@@ -245,14 +248,12 @@ const KNOWN_BELOW: Record<string, Below> = {
   },
   "--ui-accent on --ui-bg + --ui-accent-soft": {
     blocker: "accent-soft",
-    // Without the tint the pair clears nord, one-dark and tokyo-night-storm;
+    // nord clears bare by 0.13, and no tint it can see leaves that room;
     // solarized-dark and gruvbox-dark fail on the bare surface too.
     themes: {
-      "solarized-dark": 3.20,
-      "nord": 3.46,
-      "one-dark": 4.25,
-      "tokyo-night-storm": 4.19,
-      "gruvbox-dark": 2.83,
+      "solarized-dark": 3.72,
+      "nord": 4.17,
+      "gruvbox-dark": 3.23,
     },
   },
   "--ui-accent on --ui-surface": {
@@ -267,16 +268,12 @@ const KNOWN_BELOW: Record<string, Below> = {
   },
   "--ui-accent on --ui-surface + --ui-accent-soft": {
     blocker: "accent-soft",
-    // Without the tint the pair clears one-dark, tokyo-night-storm and
-    // catppuccin-macchiato; solarized-dark, nord and gruvbox-dark fail on the
-    // bare surface too.
+    // solarized-dark, nord and gruvbox-dark fail on the bare surface too; only
+    // the theme's own colours could move them.
     themes: {
-      "solarized-dark": 3.01,
-      "nord": 3.24,
-      "one-dark": 3.99,
-      "tokyo-night-storm": 3.93,
-      "catppuccin-macchiato": 4.33,
-      "gruvbox-dark": 2.66,
+      "solarized-dark": 3.50,
+      "nord": 3.90,
+      "gruvbox-dark": 3.04,
     },
   },
   "--ui-danger on --ui-bg": {
@@ -323,11 +320,11 @@ const KNOWN_BELOW: Record<string, Below> = {
   },
   "--ui-text on --ui-bg + --ui-accent-soft": {
     blocker: "accent-soft",
-    // Without the tint the pair clears solarized-dark; synthwave-84 fails on
-    // the bare surface too.
+    // solarized-dark clears bare by 0.24, and no tint it can see leaves that
+    // room; synthwave-84 fails on the bare surface too.
     themes: {
-      "solarized-dark": 3.72,
-      "synthwave-84": 2.72,
+      "solarized-dark": 4.33,
+      "synthwave-84": 3.57,
     },
   },
   "--ui-text on --ui-bg + --ui-veil": {
@@ -367,12 +364,11 @@ const KNOWN_BELOW: Record<string, Below> = {
   },
   "--ui-text on --ui-surface + --ui-accent-soft": {
     blocker: "accent-soft",
-    // Without the tint the pair clears one-dark; solarized-dark and
-    // synthwave-84 fail on the bare surface too.
+    // solarized-dark and synthwave-84 fail on the bare surface too; only the
+    // theme's own colours could move them.
     themes: {
-      "solarized-dark": 3.50,
-      "one-dark": 4.42,
-      "synthwave-84": 2.53,
+      "solarized-dark": 4.08,
+      "synthwave-84": 3.32,
     },
   },
   "--ui-text on --ui-surface + --ui-veil": {
@@ -433,22 +429,16 @@ const KNOWN_BELOW: Record<string, Below> = {
   },
   "--ui-text-faint on --ui-surface + --ui-accent-soft": {
     blocker: "accent-soft",
-    // Without the tint the pair clears nord, tokyo-night, tokyo-night-storm,
-    // catppuccin-mocha, catppuccin-macchiato, ayu-mirage and rose-pine;
-    // github-dark-dimmed, solarized-dark, one-dark and synthwave-84 fail on the
-    // bare surface too.
+    // tokyo-night-storm and ayu-mirage clear bare by 0.34 and 0.47, and no
+    // tint they can see leaves that room; github-dark-dimmed, solarized-dark,
+    // one-dark and synthwave-84 fail on the bare surface too.
     themes: {
-      "github-dark-dimmed": 2.92,
-      "solarized-dark": 2.27,
-      "nord": 3.74,
-      "one-dark": 2.71,
-      "tokyo-night": 3.92,
-      "tokyo-night-storm": 3.52,
-      "catppuccin-mocha": 3.95,
-      "catppuccin-macchiato": 3.67,
-      "ayu-mirage": 3.28,
-      "synthwave-84": 1.66,
-      "rose-pine": 4.29,
+      "github-dark-dimmed": 3.62,
+      "solarized-dark": 2.64,
+      "one-dark": 3.31,
+      "tokyo-night-storm": 4.28,
+      "ayu-mirage": 4.19,
+      "synthwave-84": 2.18,
     },
   },
   "--ui-text-muted on --ui-bg": {
@@ -461,14 +451,12 @@ const KNOWN_BELOW: Record<string, Below> = {
   },
   "--ui-text-muted on --ui-bg + --ui-accent-soft": {
     blocker: "accent-soft",
-    // Without the tint the pair clears github-dark-dimmed, one-dark and
-    // ayu-mirage; solarized-dark and synthwave-84 fail on the bare surface too.
+    // one-dark clears bare by 0.32, and no tint it can see leaves that room;
+    // solarized-dark and synthwave-84 fail on the bare surface too.
     themes: {
-      "github-dark-dimmed": 3.81,
-      "solarized-dark": 2.82,
-      "one-dark": 3.46,
-      "ayu-mirage": 4.34,
-      "synthwave-84": 2.09,
+      "solarized-dark": 3.29,
+      "one-dark": 4.23,
+      "synthwave-84": 2.74,
     },
   },
   "--ui-text-muted on --ui-bg + --ui-veil": {
