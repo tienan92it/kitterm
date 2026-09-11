@@ -40,6 +40,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// Registered projects and the cwd resolution behind the `project` row
     /// field, `GET /api/projects`, and the `?project=` filters.
     private let projects: ProjectStore
+    /// Web Push subscriptions behind `POST` and `DELETE
+    /// /api/push/subscriptions`; nil in a handler built without one, where
+    /// the routes answer 503 like `takeover`.
+    private let pushSubscriptions: PushSubscriptionStore?
     private var pendingHead: HTTPRequestHead?
     /// Accumulated request body, capped at `maxInputBytes`; only the input
     /// route reads it. `bodyOverflow` trips once the cap is exceeded so a large
@@ -63,7 +67,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         staticRoot: URL? = StaticFileServer.cachedRoot,
         webSocketUpgrader: (any HTTPServerProtocolUpgrader)? = nil,
         takeover: TakeoverController? = nil,
-        projects: ProjectStore = .shared
+        projects: ProjectStore = .shared,
+        pushSubscriptions: PushSubscriptionStore? = nil
     ) {
         self.registry = registry
         self.projects = projects
@@ -78,6 +83,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.staticRoot = staticRoot
         self.webSocketUpgrader = webSocketUpgrader
         self.takeover = takeover
+        self.pushSubscriptions = pushSubscriptions
     }
 
     /// Put a fresh upgrade handler back in front of us so the *next* request on
@@ -426,6 +432,15 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             serveApprovalDecision(
                 path: path,
                 body: body,
+                grade: grade,
+                head: head,
+                context: context
+            )
+        case (.POST, "/api/push/subscriptions"), (.DELETE, "/api/push/subscriptions"):
+            servePushSubscription(
+                method: head.method,
+                body: body,
+                bodyOverflow: bodyOverflow,
                 grade: grade,
                 head: head,
                 context: context
@@ -2333,6 +2348,105 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 status: .ok,
                 body: #"{"ok":true}"#,
                 context: context, version: head.version, keepAlive: head.isKeepAlive
+            )
+        }
+    }
+
+    // MARK: - Push subscriptions
+
+    /// `POST /api/push/subscriptions` stores a browser's Web Push
+    /// subscription; `DELETE` forgets one. The body is the browser's own
+    /// `PushSubscription.toJSON()` for a post, and `{endpoint}` for a delete.
+    ///
+    /// Full grade only, and never `--agent-control`: a person is registering
+    /// their own phone, and a watch token exists to withhold the answer, so
+    /// it does not get the question either. A post answers 201 when the
+    /// endpoint is new and 200 when it replaced the keys of a stored one, so
+    /// a page that posts on every load is never told it did something wrong.
+    /// The store's write runs on its own queue, off the loop.
+    private func servePushSubscription(
+        method: HTTPMethod,
+        body: Data,
+        bodyOverflow: Bool,
+        grade: TokenGrade,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let store = pushSubscriptions else {
+            writeJSON(
+                status: .serviceUnavailable,
+                body: #"{"ok":false,"error":"no subscription store"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        if bodyOverflow {
+            writeJSON(
+                status: .payloadTooLarge,
+                body: #"{"ok":false,"error":"body too large"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] else {
+            badRequest("body must be a JSON object", head: head, context: context)
+            return
+        }
+        // What the store does, decided after the body is valid so a 400
+        // never leaves a promise behind. The queue's closure is `@Sendable`,
+        // so this one must be too; its captures (the store, a parsed
+        // subscription, an endpoint string) all are.
+        let change: @Sendable () -> (HTTPResponseStatus, String)
+        switch method {
+        case .POST:
+            let subscription: PushSubscription
+            switch PushSubscription.parse(json) {
+            case .success(let parsed): subscription = parsed
+            case .failure(let invalid):
+                badRequest(invalid.reason, head: head, context: context)
+                return
+            }
+            change = {
+                switch store.upsert(subscription) {
+                case .created:
+                    return (.created, #"{"ok":true,"created":true,"count":\#(store.count)}"#)
+                case .updated:
+                    return (.ok, #"{"ok":true,"created":false,"count":\#(store.count)}"#)
+                case .full:
+                    return (
+                        .serviceUnavailable,
+                        #"{"ok":false,"error":"too many subscriptions (max \#(PushSubscriptionStore.maxSubscriptions))"}"#
+                    )
+                }
+            }
+        default:
+            guard let endpoint = json["endpoint"] as? String, !endpoint.isEmpty else {
+                badRequest("body must be {endpoint: string}", head: head, context: context)
+                return
+            }
+            change = {
+                store.remove(endpoint: endpoint)
+                    ? (.ok, #"{"ok":true,"count":\#(store.count)}"#)
+                    : (.notFound, #"{"ok":false,"error":"no such subscription"}"#)
+            }
+        }
+        let loop = context.eventLoop
+        let bound = NIOLoopBound(context, eventLoop: loop)
+        let promise = loop.makePromise(of: (HTTPResponseStatus, String).self)
+        PushSubscriptionStore.queue.async { promise.succeed(change()) }
+        promise.futureResult.whenSuccess { status, body in
+            let ok = status == .ok || status == .created
+            self.writeJSON(
+                status: status, body: body,
+                context: bound.value, version: head.version, keepAlive: ok && head.isKeepAlive
             )
         }
     }

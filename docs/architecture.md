@@ -207,6 +207,26 @@ copy, a `chmod 600` and a daemon restart. `NIOSSLContext` loads the files once i
 `DaemonServer.start()`. The origin also carries the TLS port, so changing `--tls-port`
 discards every registration on every phone.
 
+### The subscription the daemon keeps
+
+`POST /api/push/subscriptions` stores the browser's own `PushSubscription.toJSON()`
+(`{endpoint, keys: {p256dh, auth}}`) in `~/.kitterm/push.json`; `DELETE` with
+`{endpoint}` forgets it. Both are full grade only, with no `--agent-control`: a
+person registers their own phone, and a watch token exists to withhold the answer,
+so it does not get the question either. The store (`PushSubscriptionStore`) keeps
+one entry per endpoint. A second post of the same endpoint replaces its keys and
+answers `200` where the first answered `201`, because the page cannot know whether
+the daemon still holds its subscription and posts on every load. The file is
+`0600`, versioned like `last-run.json`, and holds nothing but the endpoint, its two
+keys, and when it was first stored: no session, no project, no token. A subscription
+names a browser; the message that names a session is composed at send time.
+
+Every run builds the store from the file, so the subscription is known again after
+a restart and after a live upgrade, whose successor reads the same file rather than
+carrying it through `TakeoverState`. When a push service answers `410 Gone`, the
+sender removes the endpoint with the same call `DELETE` uses; the store does not
+watch for it, because the sender is the one that sees the answer.
+
 ### The measurement that settled it
 
 Measured on 2026-09-11 against a scratch daemon under `KITTERM_STATE_DIR`, on
@@ -268,6 +288,7 @@ State lives in `~/.kitterm/`. The default port is 3418.
 ├── archive/<id>/             archived sessions (archive.json, output.log)
 ├── respawn.json              names and labels of live sessions, for a respawn
 ├── last-run.json             how the last run ended, or nothing where its end should be
+├── push.json                 Web Push subscriptions, one per browser endpoint (0600)
 ├── takeover/                 live-upgrade handoff, between execv and adoption
 └── web-root                  the web bundle the running daemon pinned
 ```

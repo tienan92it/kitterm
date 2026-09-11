@@ -191,6 +191,10 @@ public final class DaemonServer: @unchecked Sendable {
         // decision and the phone that answers it arrive on different
         // connections, so a per-connection store would never match them up.
         let approvals = ApprovalStore()
+        // The phones to notify, read back from `push.json` so a subscription
+        // the browser still holds is still known after a restart or a
+        // takeover; one store for every connection.
+        let pushSubscriptions = PushSubscriptionStore(file: DaemonPaths.pushSubscriptionsFile)
         // One spawn path for a browser tab and the HTTP route alike.
         let spawnService = SessionSpawnService(
             registry: registry,
@@ -327,7 +331,8 @@ public final class DaemonServer: @unchecked Sendable {
                         connectionIsTLS: sslContext != nil,
                         tlsPort: config.tls?.port,
                         webSocketUpgrader: upgrader,
-                        takeover: takeover
+                        takeover: takeover,
+                        pushSubscriptions: pushSubscriptions
                     )
                     connections.track(channel)
                     let upgradeConfig = NIOHTTPServerUpgradeConfiguration(
