@@ -110,8 +110,8 @@ const { pairs, holes } = derivePairs(SHEETS, paletteFor(TERMINAL_THEMES[0]));
  * exclusive and `blockerOf` assigns each pair to exactly one, from its stack.
  * The counts are what each lever reaches at its extreme, measured on
  * 2026-09-11 with the arithmetic `ratioFor` uses, so a reader can tell an
- * entry that waits on work from one that is permanent. Of the 97 entries the
- * levers reach 31; the other 66 fail on the bare surface too, so only the
+ * entry that waits on work from one that is permanent. Of the 84 entries the
+ * levers reach 18; the other 72 fail on the bare surface too, so only the
  * theme's own colours could move them, and the goal does not change those.
  */
 type Blocker =
@@ -132,9 +132,10 @@ type Blocker =
    */
   | "accent-soft"
   /**
-   * 19 over 8 pairs, on `--ui-bg-sunken`, the file preview's well at 94%
-   * `--ui-bg` toward black. The lever is the well's depth, which no ruling has
-   * opened. On black itself 13 clear and 6 fail even there.
+   * 6 over 4 pairs, on `--ui-bg-sunken`, the file preview's well. Round 7
+   * sank it from 94% to 25% `--ui-bg` toward black, which is black on every
+   * bundled theme, and 13 cleared. The 6 left fail on black itself, so only
+   * the theme's own colours could move them.
    */
   | "sunken"
   /**
@@ -183,67 +184,40 @@ interface Below {
  * each pair says which themes its lever reaches and which fail without the
  * blocker too.
  *
- * 97 entries over 35 pairs. The list read 273 after round 1 derived it, 178
+ * 84 entries over 31 pairs. The list read 273 after round 1 derived it, 178
  * after round 2 raised the two muted tokens, 134 after round 3 lowered the
  * elevation, 110 after round 5 opened the three opacities round 3 left
  * alone (`.settings-gear` at 0.35 and 0.65 and `.keyboard-toggle` at 0.75;
  * those three pairs went whole, 24 entries, and their keys collapsed into
  * `--ui-text on --ui-bg + --ui-veil`, which already carried synthwave-84),
- * and 97 after round 6 darkened `--ui-accent-soft`. No ratio fell and no new
+ * 97 after round 6 darkened `--ui-accent-soft`, and 84 after round 7 sank
+ * `--ui-bg-sunken` to black (four pairs went whole). No ratio fell and no new
  * entry appeared.
  */
 const KNOWN_BELOW: Record<string, Below> = {
   "--code-comment on --ui-bg-sunken": {
     blocker: "sunken",
-    // A black well clears one-dark; solarized-dark and synthwave-84 fail even
-    // there.
+    // The well is black; solarized-dark and synthwave-84 fail even there, so
+    // only the theme's own colours could move them.
     themes: {
-      "solarized-dark": 3.22,
-      "one-dark": 4.25,
-      "synthwave-84": 2.98,
+      "solarized-dark": 4.27,
+      "synthwave-84": 3.89,
     },
   },
   "--code-error on --ui-bg-sunken": {
     blocker: "sunken",
-    // A black well clears solarized-dark, nord and monokai; gruvbox-dark fails
-    // even there.
+    // The well is black; gruvbox-dark fails even there, so only the theme's
+    // own colours could move it.
     themes: {
-      "solarized-dark": 3.40,
-      "nord": 3.27,
-      "gruvbox-dark": 2.83,
-      "monokai": 4.13,
-    },
-  },
-  "--code-keyword on --ui-bg-sunken": {
-    blocker: "sunken",
-    // A black well clears solarized-dark and gruvbox-dark.
-    themes: {
-      "solarized-dark": 3.46,
-      "gruvbox-dark": 3.66,
-    },
-  },
-  "--code-name on --ui-bg-sunken": {
-    blocker: "sunken",
-    // A black well clears solarized-dark and gruvbox-dark.
-    themes: {
-      "solarized-dark": 4.27,
-      "gruvbox-dark": 3.66,
-    },
-  },
-  "--code-punct on --ui-bg-sunken": {
-    blocker: "sunken",
-    // A black well clears solarized-dark and synthwave-84.
-    themes: {
-      "solarized-dark": 3.78,
-      "synthwave-84": 3.48,
+      "gruvbox-dark": 3.81,
     },
   },
   "--code-string on --ui-bg-sunken": {
     blocker: "sunken",
-    // rose-pine fails even on a black well; only the theme's own colours could
-    // move it.
+    // The well is black; rose-pine fails even there, so only the theme's own
+    // colours could move it.
     themes: {
-      "rose-pine": 3.48,
+      "rose-pine": 4.01,
     },
   },
   "--ui-accent on --ui-bg + --ui-accent-soft": {
@@ -408,12 +382,11 @@ const KNOWN_BELOW: Record<string, Below> = {
   },
   "--ui-text-faint on --ui-bg-sunken": {
     blocker: "sunken",
-    // A black well clears one-dark; solarized-dark and synthwave-84 fail even
-    // there.
+    // The well is black; solarized-dark and synthwave-84 fail even there, so
+    // only the theme's own colours could move them.
     themes: {
-      "solarized-dark": 3.22,
-      "one-dark": 4.25,
-      "synthwave-84": 2.98,
+      "solarized-dark": 4.27,
+      "synthwave-84": 3.89,
     },
   },
   "--ui-text-faint on --ui-surface": {
@@ -465,14 +438,6 @@ const KNOWN_BELOW: Record<string, Below> = {
     themes: {
       "solarized-dark": 3.60,
       "synthwave-84": 3.31,
-    },
-  },
-  "--ui-text-muted on --ui-bg-sunken": {
-    blocker: "sunken",
-    // A black well clears solarized-dark and synthwave-84.
-    themes: {
-      "solarized-dark": 3.78,
-      "synthwave-84": 3.48,
     },
   },
   "--ui-text-muted on --ui-hover": {

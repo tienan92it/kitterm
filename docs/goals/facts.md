@@ -211,6 +211,13 @@ decision moves to `docs/adr/`.
 
 ## Foreman
 
+- A plan row that names a token must name everything the token paints. On
+  2026-09-11 a row called `--ui-bg-sunken` "the file preview's
+  background"; it also paints `.extra-keys`, `.file-picker-header`,
+  `.file-picker-hint` and `.intro-logo`, so darkening it changed five
+  surfaces and not one. The crew found this itself and gathered the extra
+  evidence unprompted, which is what kept the round honest. Grep the
+  token before writing the row. (2026-09-11, `contrast-tokens` round 7)
 - A round whose job is to move a value until a number passes must first
   set that value to its extreme and count what still fails. Two rounds in
   a row ended by proving their own lever insufficient, and both proved it
