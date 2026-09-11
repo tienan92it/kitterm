@@ -136,6 +136,12 @@ public final class PtySession: @unchecked Sendable {
     private var attached = false
     private var onOutput: ((Data) -> Void)?
     private var onExit: ((Int32) -> Void)?
+    /// Hears every `commandEnd` mark with its exit code, on the event loop
+    /// with the lock released. The registry sets it, so what a shell says
+    /// about a finished command reaches a listener that is not a hook route
+    /// (`PushNotifier` learns `failed` this way). A prompt mark never fires
+    /// it, so the byte path pays only for the once-per-command case.
+    private var onCommandEnd: ((Int32) -> Void)?
     /// Live cwd tracking: a low-frequency poll of the shell's own directory via
     /// `proc_pidinfo`, so the client learns `cd`s even when the shell emits no
     /// OSC 7 (a bare macOS zsh does not). Diff-gated to one frame per change.
@@ -602,6 +608,7 @@ public final class PtySession: @unchecked Sendable {
         // log — reads never pause for it, so a long-running program keeps
         // making progress while no client is watching.
         var readyWaiters: [EventLoopPromise<Void>] = []
+        var endedCommands: [(handler: (Int32) -> Void, exit: Int32)] = []
         let dispatch: (recorder: SessionRecorder?,
                        logStore: SessionLogStore?,
                        observers: [(Data) -> Void],
@@ -630,6 +637,9 @@ public final class PtySession: @unchecked Sendable {
                         command: command
                     )
                 )
+                if hit.kind == .commandEnd, let handler = onCommandEnd {
+                    endedCommands.append((handler, hit.exit ?? 0))
+                }
             }
             // Only a closing mark can satisfy a waiter, so the pairing pass is
             // skipped entirely for the prompt marks that make up most traffic.
@@ -654,6 +664,7 @@ public final class PtySession: @unchecked Sendable {
         }
         // Outside the lock: these callbacks re-enter this class.
         for promise in readyWaiters { promise.succeed(()) }
+        for ended in endedCommands { ended.handler(ended.exit) }
         guard let dispatch else { return }
 
         dispatch.recorder?.recordOutput(chunk)
@@ -1003,6 +1014,12 @@ public final class PtySession: @unchecked Sendable {
 
     public func appendMark(_ mark: SessionMark) {
         stateLock.withLock { markStore.append(mark) }
+    }
+
+    /// Set, or clear, the listener for `commandEnd` marks. Called once by
+    /// the registry when it admits the session.
+    public func setCommandEndHandler(_ handler: ((Int32) -> Void)?) {
+        stateLock.withLock { onCommandEnd = handler }
     }
 
     public func marksSnapshot() -> [SessionMark] {

@@ -121,6 +121,14 @@ public enum DaemonPaths: Sendable {
         stateDirectory.appendingPathComponent("push.json")
     }
 
+    /// The daemon's VAPID key pair (`VAPIDKeys`), `0600`, in its own file
+    /// because it is a daemon secret and `push.json` holds only what the
+    /// browser handed the page. Generated once; every phone's subscription
+    /// is bound to its public half.
+    public static var vapidKeyFile: URL {
+        stateDirectory.appendingPathComponent("vapid.json")
+    }
+
     /// Where a daemon writes its state for the process that replaces it in
     /// place (`POST /api/upgrade/takeover`, `serve --takeover`). Deleted by
     /// the successor once it has adopted everything.

@@ -44,6 +44,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// /api/push/subscriptions`; nil in a handler built without one, where
     /// the routes answer 503 like `takeover`.
     private let pushSubscriptions: PushSubscriptionStore?
+    /// Told when a session's state may have changed, from the three places
+    /// on this handler where the evidence does; nil where no phone can be
+    /// reached (a handler built without a server).
+    private let pushNotifier: PushNotifier?
     private var pendingHead: HTTPRequestHead?
     /// Accumulated request body, capped at `maxInputBytes`; only the input
     /// route reads it. `bodyOverflow` trips once the cap is exceeded so a large
@@ -68,7 +72,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         webSocketUpgrader: (any HTTPServerProtocolUpgrader)? = nil,
         takeover: TakeoverController? = nil,
         projects: ProjectStore = .shared,
-        pushSubscriptions: PushSubscriptionStore? = nil
+        pushSubscriptions: PushSubscriptionStore? = nil,
+        pushNotifier: PushNotifier? = nil
     ) {
         self.registry = registry
         self.projects = projects
@@ -84,6 +89,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.webSocketUpgrader = webSocketUpgrader
         self.takeover = takeover
         self.pushSubscriptions = pushSubscriptions
+        self.pushNotifier = pushNotifier
     }
 
     /// Put a fresh upgrade handler back in front of us so the *next* request on
@@ -2279,10 +2285,31 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// the report changed (`recordAgentStatus` returns true): a foreman that
     /// blocks on the feed reads one event per transition, never one per tool
     /// call.
-    private func emitAgentStatus(_ sessionID: UUID, report: AgentReport, message: String?) {
+    private func emitAgentStatus(
+        _ sessionID: UUID, session: PtySession, report: AgentReport, message: String?
+    ) {
         var data = ["status": report.rawValue]
         if let message { data["message"] = message }
         eventLog.append(type: "agent.status", session: sessionID, data: data)
+        observePush(sessionID, session: session, reason: message)
+    }
+
+    /// Hand the push notifier the session's state as the row would show it
+    /// now. Called on the loop wherever this handler changes the evidence
+    /// the merge rule reads: a hook transition, a held approval, its answer.
+    /// The merge is the row's own, so the notifier and the fleet view can
+    /// never disagree about what state a session entered; `approvals` is
+    /// loop-confined, and so is every caller.
+    private func observePush(_ sessionID: UUID, session: PtySession, reason: String?) {
+        guard let pushNotifier else { return }
+        let pending = approvals.snapshot().contains { $0.sessionID == sessionID }
+        let state = MergedSessionState.merge(
+            derived: DerivedSessionState.derive(from: session.marksSnapshot()),
+            agent: session.agentStatus,
+            pendingApproval: pending,
+            exited: !session.isRunning
+        )
+        pushNotifier.observe(sessionID, state: state, reason: reason)
     }
 
     /// `POST /api/sessions/<id>/events` — a crew agent posts a structured note
@@ -2557,17 +2584,17 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 switch name {
                 case "PreToolUse":
                     if session.recordAgentStatus(.working, message: nil) {
-                        emitAgentStatus(sessionID, report: .working, message: nil)
+                        emitAgentStatus(sessionID, session: session, report: .working, message: nil)
                     }
                 case "Notification":
                     let message = (event?["message"] as? String)
                         .map { String($0.prefix(KittermConstants.maxSessionNoteLength)) }
                     if session.recordAgentStatus(.needsInput, message: message) {
-                        emitAgentStatus(sessionID, report: .needsInput, message: message)
+                        emitAgentStatus(sessionID, session: session, report: .needsInput, message: message)
                     }
                 case "Stop":
                     if session.recordAgentStatus(.completed, message: nil) {
-                        emitAgentStatus(sessionID, report: .completed, message: nil)
+                        emitAgentStatus(sessionID, session: session, report: .completed, message: nil)
                     }
                 default:
                     break
@@ -2611,6 +2638,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 session: sessionID,
                 data: ["tool": toolName]
             )
+            // The session is `needs-approval` now, whatever it said before.
+            if let session { observePush(sessionID, session: session, reason: toolName) }
         }
         // The store is the mutual exclusion: resolve and expire both remove the
         // entry first, so exactly one of them completes the promise.
@@ -2621,6 +2650,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             timeoutTask.cancel()
             let context = boundContext.value
             let verdict = (try? result.get()) ?? nil
+            // Answered or expired, the entry is out of the store: the session
+            // has left `needs-approval`, and the notifier must hear that so
+            // the next held call is a transition again.
+            if let sessionID, let session { self.observePush(sessionID, session: session, reason: nil) }
             self.writeJSON(
                 status: .ok,
                 body: Self.hookResponse(for: verdict),
