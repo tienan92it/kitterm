@@ -36,9 +36,16 @@ All four hold:
 
 1. Every text-and-background pair the two pages actually use passes
    4.5:1, or 3:1 where the text is large by the WCAG definition, on every
-   bundled theme in both polarities.
+   bundled theme, **except where the theme's own colours put it out of
+   reach**. A theme paints its own foreground on its own background, and
+   this goal does not change either. `solarized-dark` reads 4.32 there,
+   so no token mix can carry it.
 2. `theme-contrast.test.ts` derives the pairs from the stylesheets rather
    than a hand-written list, so a new element is measured the day it is
    written.
-3. `KNOWN_BELOW` is empty and its mechanism is deleted.
+3. `KNOWN_BELOW` is a ratchet, not an escape hatch. It can shrink and it
+   cannot grow: a pair that is not already listed and fails the floor
+   fails the build, and a listed pair that starts passing fails the build
+   until its entry goes. Every entry names the lever that would clear it,
+   or says that only a theme's own colours could.
 4. The floor is green and `main` is green after the merge.

@@ -1,16 +1,14 @@
 # STATE: contrast-tokens
 
-- Status: waiting
-- Round: 2 of 3 in this budget (second budget)
+- Status: active
+- Round: 0 of 3 in this budget (third budget)
 - Rounds total: 4
 - Last floor: green (2026-09-11, round 4 after)
-- Updated: 2026-09-11, round 4 closed; the goal needs a second ruling
+- Updated: 2026-09-11, the human ruled; the goal continues
 
 ## Queue
 
-1. `delete-known-below` (capability 4). Blocked: it requires
-   `KNOWN_BELOW` to be empty, and 134 entries remain. It needs the
-   ruling below first.
+1. `ratchet-known-below` (capability 4, rewritten by the ruling)
 
 ## Failures
 
@@ -18,33 +16,7 @@ None.
 
 ## Proposals waiting on the human
 
-- **The elevation lever is spent, and it could never have emptied the
-  table.** Round 3 lowered all four surface tokens as far as they pay and
-  went from 178 entries to 134. It then measured the limit: with all four
-  set to `--ui-bg` itself, 136 still fail, which is worse than the rule
-  it shipped. Sinking them below `--ui-bg` bottoms out at 115. The
-  foreman recommended this lever as "the only route that can empty
-  `KNOWN_BELOW`" and that was wrong; see the gap in `rounds/003.md`.
-
-  What blocks the remaining 134: 33 the four surface tokens, because the
-  theme's own colours already fail on `--ui-bg`; 32 under
-  `--ui-accent-soft`; 24 under the three opacities round 3 did not open;
-  19 on `--ui-bg-sunken`; 12 on `--ui-bg`; 11 on the status tints; 3 on
-  `--ui-border` used as a fill.
-
-  The human decides two things:
-
-  1. **How much further to go.** The cheapest next step is the other
-     three opacities, `.settings-gear` at 0.35 and 0.65 and
-     `.keyboard-toggle` at 0.75. That clears all 24 of that group with
-     the same one-line change `.pane-close` already took.
-     `--ui-accent-soft` is the next largest at 32. Neither empties the
-     table.
-  2. **Whether `KNOWN_BELOW` is ever meant to reach zero.** Completion
-     condition 3 requires it today, and no combination of levers measured
-     so far gets there. Either the condition changes, or the goal accepts
-     a recorded, tested debt, or the themes' own colours come into scope,
-     which `goal.md` excludes.
+None. The human ruled on 2026-09-11; see "Direction".
 
 ## Done
 
@@ -69,6 +41,22 @@ None.
 
 ## Direction
 
+2026-09-11: the human ruled on the contradiction round 3 exposed.
+Completion condition 3 required `KNOWN_BELOW` to be empty, and no lever
+the goal allows can reach zero: 134 combinations remain, and most are a
+theme's own foreground on its own background, which `goal.md` excludes
+from change. `solarized-dark` reads 4.32 there.
+
+**The list becomes a ratchet.** It can shrink and it cannot grow. A pair
+that is not already listed and fails the floor fails the build. A listed
+pair that starts passing fails the build until its entry goes. That keeps
+the promise the goal exists for, which is that no new unreadable text
+ships, without demanding a number the themes make impossible.
+
+Completion conditions 1 and 3 are amended to say so, and capability 4 is
+rewritten from "delete the escape hatch" to "make it a ratchet, and
+shorten it once more".
+
 2026-09-11: round 3 ran the ruling and reported that the lever cannot
 reach the goal. That is not a failed round; it is the measurement the
 ruling lacked. The goal returns to the human.
@@ -89,12 +77,12 @@ own scheduling choice, not on a real block.
 
 ## Next action
 
-Waiting on the human for the two decisions above. Capability 4 cannot
-start until the second one is answered, and it is the only item left.
+Round 5: `ratchet-known-below` from `plan.md` row 4. Make the list a
+ratchet, then open the three opacities round 3 left alone, which
+`rounds/003.md` measured as clearing 24 entries. Give every remaining
+entry the lever that would clear it, or the note that only a theme's own
+colours could.
 
-The three shipped capabilities stand on their own and can merge:
-`goals/open-the-elevation` at `1c01d28`, which carries rounds 1 to 4.
-The review has run and round 4 closed both of its blocking findings. The page
-looks different after this branch, so the human should see the eight
-images in `/Users/antran/.claude/jobs/b7a30d73/tmp/ct-round3/`, and the
-seven in `ct-round4/`, before it lands.
+Proof: a planted new bad pair fails by file, line and selector; a planted
+entry that now passes fails with "drop this entry"; the 24 opacity
+entries are gone; every remaining entry carries its blocker.
