@@ -1,15 +1,14 @@
 # STATE: contrast-tokens
 
-- Status: active
-- Round: 2 of 3 in this budget (third budget)
-- Rounds total: 6
-- Last floor: green (2026-09-11, round 6 after)
-- Updated: 2026-09-11, round 6 closed
+- Status: done
+- Round: 3 of 3 in this budget (third budget)
+- Rounds total: 7
+- Last floor: green (2026-09-11, round 7 after)
+- Updated: 2026-09-11, done
 
 ## Queue
 
-1. `sink-the-well` (capability 6). The cheapest lever left: the
-   `--ui-bg-sunken` well, worth 13 of the 97 entries.
+Empty. All six capabilities in `plan.md` are done.
 
 ## Failures
 
@@ -49,6 +48,11 @@ None. The human ruled on 2026-09-11; see "Direction".
   cannot find on `nord` and `gruvbox-dark`. 110 falls to 97. The focus
   ring and `.launch:hover` are unchanged, and accent text on the fill
   improves.
+- `sink-the-well` (capability 6), round 7, `7a45e87`. See
+  `rounds/007.md`. `--ui-bg-sunken` goes to 25% of `--ui-bg` toward
+  black, which clears 13 and deepens the recess rather than flattening
+  it. The token paints four surfaces beyond the preview, which the plan
+  row had not said.
 
 ## Direction
 
@@ -88,16 +92,27 @@ own scheduling choice, not on a real block.
 
 ## Next action
 
-Round 7: `sink-the-well` from `plan.md`, once the row is written. The
-`--ui-bg-sunken` well is the cheapest lever left, worth 13 of the 97.
-Round 5 measured that group as 19 entries of which 13 clear when the well
-darkens and 6 fail there too.
+None. The goal is done. Its four completion conditions hold:
 
-Levers now reach 31 of the 97. 66 are a theme's own colours and the
-ratchet records them as permanent, so the goal can close whenever the
-remaining levers stop being worth their cost. Two are left after the
-well: nothing cheap.
+1. Every pair the two pages paint passes 4.5:1 on every bundled theme,
+   except where the theme's own colours put it out of reach. **84 entries
+   remain and 72 of those are exactly that case**, which `goal.md`
+   excludes from change.
+2. `theme-contrast.test.ts` derives the pairs from the three stylesheets
+   rather than a hand-written list, so a new element is measured the day
+   it is written. It found 45 pairs where the hand list named 5.
+3. `KNOWN_BELOW` is a ratchet, not an escape hatch. Five checks, each
+   planted and watched to fail: an unlisted pair under the floor, a
+   listed pair that now passes, a theme id that is not bundled, a ratio
+   lowered by hand, and a blocker that does not match its surface stack.
+   Every entry names the lever that would clear it or says only a theme's
+   own colours could.
+4. `main` is green after the merge.
 
-One option the human may still take: the literal 18 from capability 5, at
-a fill the eye cannot find on two themes. It is a one-line change and
-`rounds/006.md` says why round 6 declined it.
+The 12 entries levers can still reach are spread thin and none is cheap.
+To reopen, set `Status: active` with a new budget and queue.
+
+Two options the human may still take, both one line and both recorded:
+the literal 18 from capability 5, at a fill the eye cannot find on two
+themes (`rounds/006.md`), and the 82% well from capability 6, which
+clears 4 instead of 13 but keeps the page's hue (`rounds/007.md`).
