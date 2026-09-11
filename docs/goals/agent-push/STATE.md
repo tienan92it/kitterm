@@ -1,15 +1,14 @@
 # STATE: agent-push
 
 - Status: active
-- Round: 2 of 3 in this budget (first budget)
-- Rounds total: 2
-- Last floor: green (2026-09-11, round 2 after)
-- Updated: 2026-09-11, round 2 closed
+- Round: 3 of 3 in this budget (first budget)
+- Rounds total: 3
+- Last floor: green (2026-09-11, round 3 after)
+- Updated: 2026-09-11, round 3 closed
 
 ## Queue
 
-1. `send-on-transition` (capability 3)
-2. `the-toggle` (capability 4)
+1. `the-toggle` (capability 4)
 
 ## Failures
 
@@ -32,6 +31,13 @@ None.
   VAPID key pair, which belongs in its own `0600` file rather than in
   `push.json`. Capability 4 may want `GET /api/push/subscriptions` for
   the toggle's state, which `plan.md` row 2 does not ask for.
+- From round 3, and the second one needs the human. Capability 4 needs
+  `GET /api/push/vapid` for `applicationServerKey`;
+  `VAPIDKeys.publicKeyBase64URL` is ready and the route is not written,
+  which capability 4 can do itself. Separately, `failed` still has no
+  event on the feed, so a foreman polls rows for it; adding
+  `command.failed` would change `AGENTS.md` and was outside round 3's
+  authority.
 
 ## Done
 
@@ -45,6 +51,13 @@ None.
   endpoint, removable, and proved to survive both a restart and a
   takeover with real processes.
 
+- `send-on-transition` (capability 3), round 3, `64ff789`. See
+  `rounds/003.md`. The daemon sends one Web Push message per transition
+  into `needs-input`, `needs-approval` and `failed`, and none for
+  anything else. Dedupe per session and state, 4 per session per minute,
+  and a 404 or 410 forgets the endpoint. The VAPID pair is its own
+  `0600` file.
+
 ## Direction
 
 2026-09-11: the human said continue, and chose Tailscale over a tunnel.
@@ -54,15 +67,18 @@ answered on the machine rather than by a spike.
 
 ## Next action
 
-Round 3: `send-on-transition` from `plan.md` row 3. On the `agent.status`
-transitions into `needs-input`, `needs-approval` and `failed`, send one
-message per subscription carrying the session name, the project and the
-reason. Dedupe per session and state, rate-limit per session, drop a
-subscription the endpoint answers `410` for, and do it off the event
-loop.
+Round 4: `the-toggle` from `plan.md` row 4, and it is the last
+capability. A toggle on `/sessions` requests permission, subscribes, and
+shows its state, hidden for a watch client. The notification's action
+opens `/?session=<id>`. Proof: corpus request `01-phone-walks-away`, and
+vitest over the model function.
 
-Round 2 settled what capability 3 inherits. Removal is capability 3's to
-call, through `PushSubscriptionStore.remove(endpoint:)`, the same call
-`DELETE` uses. The VAPID key pair it needs goes in its own `0600` file,
-not in `push.json`. The bench is a real gate for this goal, so round 3
-must report p95.
+It inherits three things from round 3. It needs `GET /api/push/vapid`,
+which it should write, because `VAPIDKeys.publicKeyBase64URL` is ready.
+It owns the first real send: round 3 contacted no real push service, and
+`pushManager.subscribe` hung in headless Chromium for round 1, so this
+round must get a real endpoint from a real browser. And the origin is
+`https://<machine>.<tailnet>.ts.net` with no port, which round 1 settled.
+
+After round 4 the goal's four completion conditions can be checked and
+the goal closed.
