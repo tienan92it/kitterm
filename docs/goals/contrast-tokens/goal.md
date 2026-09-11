@@ -38,8 +38,9 @@ All four hold:
    4.5:1, or 3:1 where the text is large by the WCAG definition, on every
    bundled theme, **except where the theme's own colours put it out of
    reach**. A theme paints its own foreground on its own background, and
-   this goal does not change either. `solarized-dark` reads 4.32 there,
-   so no token mix can carry it.
+   this goal does not change either. `synthwave-84` reads 4.31 there, so
+   no token mix can carry it. (`solarized-dark` reads 4.75 and passes;
+   round 5 corrected the foreman's earlier claim.)
 2. `theme-contrast.test.ts` derives the pairs from the stylesheets rather
    than a hand-written list, so a new element is measured the day it is
    written.

@@ -1,14 +1,15 @@
 # STATE: contrast-tokens
 
 - Status: active
-- Round: 0 of 3 in this budget (third budget)
-- Rounds total: 4
-- Last floor: green (2026-09-11, round 4 after)
-- Updated: 2026-09-11, the human ruled; the goal continues
+- Round: 1 of 3 in this budget (third budget)
+- Rounds total: 5
+- Last floor: green (2026-09-11, round 5 after)
+- Updated: 2026-09-11, round 5 closed
 
 ## Queue
 
-1. `ratchet-known-below` (capability 4, rewritten by the ruling)
+1. `raise-the-accent-soft` (capability 5). The cheapest lever left: one
+   token, 18 of the 110 entries. Then the sunken well, worth 13.
 
 ## Failures
 
@@ -38,6 +39,10 @@ None. The human ruled on 2026-09-11; see "Direction".
   `--ui-border` ring on hover; `.selection-action:active` takes an inset
   `--ui-accent` ring, because `--ui-border` measured no better than what
   the press had lost.
+- `ratchet-known-below` (capability 4), round 5, `e52edbd`. See
+  `rounds/005.md`. `KNOWN_BELOW` is a ratchet with five checks, all five
+  planted and watched to fail. The three opacities are gone: 134 falls to
+  110. Every entry names its blocker.
 
 ## Direction
 
@@ -77,12 +82,12 @@ own scheduling choice, not on a real block.
 
 ## Next action
 
-Round 5: `ratchet-known-below` from `plan.md` row 4. Make the list a
-ratchet, then open the three opacities round 3 left alone, which
-`rounds/003.md` measured as clearing 24 entries. Give every remaining
-entry the lever that would clear it, or the note that only a theme's own
-colours could.
+Round 6: `raise-the-accent-soft` from `plan.md`. `--ui-accent-soft` is
+the cheapest lever left, worth 18 of the 110 entries and one token. The
+sunken well is next at 13. Of the 110, levers reach 44 and 66 are the
+theme's own colours, which the exclusions protect and the ratchet now
+records permanently.
 
-Proof: a planted new bad pair fails by file, line and selector; a planted
-entry that now passes fails with "drop this entry"; the 24 opacity
-entries are gone; every remaining entry carries its blocker.
+The goal no longer requires the list to empty, so it can close whenever
+the human judges the remaining levers not worth their cost. Capability 5
+is worth running because it is one token.
