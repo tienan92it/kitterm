@@ -92,24 +92,48 @@ const { pairs, holes } = derivePairs(SHEETS, paletteFor(TERMINAL_THEMES[0]));
  * Ratios under the floor today, by pair and theme, measured by this file.
  * Pair first, because a token change clears part of a row.
  *
- * 178 entries over 39 pairs, after round 2 raised `--ui-text-muted` to 82% and
- * `--ui-text-faint` to 72%, which cleared 95 entries.
+ * 134 entries over 38 pairs, after round 3 lowered the elevation of
+ * `--ui-surface`, `--ui-surface-2`, `--ui-hover` and `--ui-active` from
+ * 7/12/17/23 percent of `--ui-lift` to 3/6/9/12, and dropped the 0.55 opacity
+ * `.pane-close` wore on a touch device. That cleared 44 of the 178 entries
+ * round 2 left, and one whole pair: `--ui-text-muted on --ui-bg + --ui-veil at
+ * 55% opacity` no longer exists, because the element no longer fades. No
+ * ratio fell, and no pair that passed started failing.
  *
- * **24 of the 39 pairs are out of reach of those two tokens.** Their text is a
- * colour the goal's exclusions freeze: `--code-error`, `--code-keyword`,
- * `--code-name` and `--code-string` are the theme's own ANSI colours; three
- * pairs paint `--ui-accent` and two paint `--ui-danger`; and fourteen paint
- * `--ui-text`, the theme's own foreground, which reads 4.31 on its own
- * background on synthwave-84 and 2.96 on `--ui-hover` on solarized-dark.
+ * **The elevation lever is now spent, and it could never have emptied this
+ * table.** Only 18 of the 38 pairs paint on one of the four elevated tokens at
+ * all; the rest sit on `--ui-bg`, `--ui-bg-sunken`, `--ui-border`,
+ * `--ui-accent-soft`, or under one of the three opacities the goal did not
+ * open. Measured: with all four tokens set to `--ui-bg` itself, 136 entries
+ * still miss 4.5:1, and sinking them well below `--ui-bg` bottoms out at 115.
+ * The reason is that `--ui-text-muted` reads 3.61 on `--ui-bg` on
+ * solarized-dark and 3.32 on synthwave-84, and `--ui-text` itself reads 4.32
+ * on `--ui-bg` on synthwave-84 — under the floor before any surface exists.
+ * No elevation can beat a theme's own foreground on its own background.
  *
- * **The other 15 cannot be cleared by a mix either, and the reason is
- * arithmetic.** A pair that fails on a surface lifted above `--ui-bg` needs a
- * text colour further from that surface than `--ui-text` itself is. Every mix
- * toward `--ui-bg` moves the other way. Setting both tokens to `--ui-text`
- * still leaves 32 pair-and-theme combinations below 4.5:1. The colours that do
- * clear them mix toward `--ui-lift` — brighter than the foreground on a dark
- * theme — which puts muted text above body text in the visual rank. Round 2
- * measured that page and did not ship it; see `rounds/002.md`.
+ * The remainder, grouped by the surface that holds it down. The groups are
+ * exclusive and they cover all 134:
+ *
+ * - **33 over 11 pairs, on the four elevated tokens.** Eight themes, led by
+ *   solarized-dark and synthwave-84. Every one of the 33 is a theme whose text
+ *   or whose red or blue already misses the floor on `--ui-bg`, so no surface
+ *   near `--ui-bg` can carry it. They need the theme's own colours to move.
+ * - **32 over 6 pairs, under `--ui-accent-soft`.** The selected row and the
+ *   selected chip paint the accent at 18% over the surface. The tint is not
+ *   one of the tokens the ruling opened.
+ * - **24 over 3 pairs, under an opacity the ruling did not open**:
+ *   `.settings-gear` at 0.35 and 0.65, `.keyboard-toggle` at 0.75. The same
+ *   change `.pane-close` just took would clear all 24: at full strength the
+ *   three keys collapse into `--ui-text on --ui-bg + --ui-veil`, which already
+ *   carries its one failing theme.
+ * - **19 over 8 pairs, on `--ui-bg-sunken`.** The file preview. `--ui-bg-sunken`
+ *   is a well, not a lift, and the ruling named four lifted tokens.
+ * - **12 over 5 pairs, on `--ui-bg` itself.** Nothing but a theme's colours can
+ *   move these.
+ * - **11 over 4 pairs, on a `--ui-danger` or `--ui-warning` tint over
+ *   `--ui-surface`.** The attention strip. The tint is not opened either.
+ * - **3, on `--ui-border` used as a hover fill** by `.settings-close:hover`,
+ *   `.settings-stepper button:hover` and `#search button:hover`.
  */
 const KNOWN_BELOW: Record<string, Record<string, number>> = {
   "--code-comment on --ui-bg-sunken": {
@@ -146,20 +170,17 @@ const KNOWN_BELOW: Record<string, Record<string, number>> = {
     "gruvbox-dark": 2.83,
   },
   "--ui-accent on --ui-surface": {
-    "solarized-dark": 3.41,
-    "nord": 3.86,
-    "gruvbox-dark": 2.89,
+    "solarized-dark": 3.81,
+    "nord": 4.30,
+    "gruvbox-dark": 3.25,
   },
   "--ui-accent on --ui-surface + --ui-accent-soft": {
-    "github-dark-dimmed": 4.14,
-    "solarized-dark": 2.73,
-    "dracula": 4.34,
-    "nord": 2.96,
-    "one-dark": 3.61,
-    "tokyo-night": 4.21,
-    "tokyo-night-storm": 3.55,
-    "catppuccin-macchiato": 3.92,
-    "gruvbox-dark": 2.40,
+    "solarized-dark": 3.01,
+    "nord": 3.24,
+    "one-dark": 3.99,
+    "tokyo-night-storm": 3.93,
+    "catppuccin-macchiato": 4.33,
+    "gruvbox-dark": 2.66,
   },
   "--ui-danger on --ui-bg": {
     "solarized-dark": 3.24,
@@ -170,23 +191,17 @@ const KNOWN_BELOW: Record<string, Record<string, number>> = {
     "synthwave-84": 4.45,
   },
   "--ui-danger on --ui-surface-2": {
-    "github-dark-dimmed": 3.83,
-    "solarized-dark": 2.36,
-    "dracula": 3.27,
-    "nord": 2.20,
-    "one-dark": 3.15,
-    "tokyo-night-storm": 3.99,
-    "catppuccin-macchiato": 4.33,
-    "night-owl": 4.05,
-    "gruvbox-dark": 1.95,
-    "monokai": 2.85,
-    "synthwave-84": 3.23,
+    "solarized-dark": 2.79,
+    "dracula": 3.87,
+    "nord": 2.61,
+    "one-dark": 3.74,
+    "gruvbox-dark": 2.30,
+    "monokai": 3.36,
+    "synthwave-84": 3.84,
   },
   "--ui-text on --ui-active": {
-    "github-dark-dimmed": 3.97,
-    "solarized-dark": 2.47,
-    "one-dark": 3.40,
-    "synthwave-84": 2.23,
+    "solarized-dark": 3.46,
+    "synthwave-84": 3.13,
   },
   "--ui-text on --ui-bg": {
     "synthwave-84": 4.31,
@@ -234,34 +249,32 @@ const KNOWN_BELOW: Record<string, Record<string, number>> = {
     "synthwave-84": 2.61,
   },
   "--ui-text on --ui-hover": {
-    "solarized-dark": 2.96,
-    "one-dark": 4.09,
-    "synthwave-84": 2.69,
+    "solarized-dark": 3.74,
+    "synthwave-84": 3.42,
   },
   "--ui-text on --ui-surface": {
-    "solarized-dark": 3.97,
-    "synthwave-84": 3.63,
+    "solarized-dark": 4.43,
+    "synthwave-84": 4.00,
   },
   "--ui-text on --ui-surface + --ui-accent-soft": {
-    "solarized-dark": 3.17,
-    "one-dark": 4.00,
-    "synthwave-84": 2.31,
+    "solarized-dark": 3.50,
+    "one-dark": 4.42,
+    "synthwave-84": 2.53,
   },
   "--ui-text on --ui-surface + --ui-veil": {
-    "synthwave-84": 4.26,
+    "synthwave-84": 4.29,
   },
   "--ui-text on --ui-surface-2": {
-    "solarized-dark": 3.46,
-    "synthwave-84": 3.13,
+    "solarized-dark": 4.08,
+    "synthwave-84": 3.71,
   },
   "--ui-text on color-mix(in srgb, --ui-danger 8%, --ui-surface)": {
-    "solarized-dark": 3.89,
-    "synthwave-84": 3.35,
+    "solarized-dark": 4.34,
+    "synthwave-84": 3.68,
   },
   "--ui-text on color-mix(in srgb, --ui-warning 10%, --ui-surface)": {
-    "solarized-dark": 3.54,
-    "one-dark": 4.39,
-    "synthwave-84": 2.81,
+    "solarized-dark": 3.96,
+    "synthwave-84": 3.10,
   },
   "--ui-text-faint on --ui-bg-sunken": {
     "solarized-dark": 3.22,
@@ -269,30 +282,23 @@ const KNOWN_BELOW: Record<string, Record<string, number>> = {
     "synthwave-84": 2.98,
   },
   "--ui-text-faint on --ui-surface": {
-    "github-dark-dimmed": 3.72,
-    "solarized-dark": 2.57,
-    "nord": 4.46,
-    "one-dark": 3.33,
-    "tokyo-night-storm": 4.32,
-    "ayu-mirage": 4.45,
-    "synthwave-84": 2.39,
+    "github-dark-dimmed": 4.17,
+    "solarized-dark": 2.87,
+    "one-dark": 3.74,
+    "synthwave-84": 2.63,
   },
   "--ui-text-faint on --ui-surface + --ui-accent-soft": {
-    "github-dark-dimmed": 2.64,
-    "solarized-dark": 2.05,
-    "dracula": 4.14,
-    "nord": 3.42,
-    "one-dark": 2.45,
-    "tokyo-night": 3.55,
-    "tokyo-night-storm": 3.19,
-    "catppuccin-mocha": 3.60,
-    "catppuccin-macchiato": 3.32,
-    "ayu-mirage": 2.97,
-    "night-owl": 4.27,
-    "gruvbox-dark": 4.11,
-    "monokai": 4.14,
-    "synthwave-84": 1.52,
-    "rose-pine": 3.91,
+    "github-dark-dimmed": 2.92,
+    "solarized-dark": 2.27,
+    "nord": 3.74,
+    "one-dark": 2.71,
+    "tokyo-night": 3.92,
+    "tokyo-night-storm": 3.52,
+    "catppuccin-mocha": 3.95,
+    "catppuccin-macchiato": 3.67,
+    "ayu-mirage": 3.28,
+    "synthwave-84": 1.66,
+    "rose-pine": 4.29,
   },
   "--ui-text-muted on --ui-bg": {
     "solarized-dark": 3.60,
@@ -309,66 +315,39 @@ const KNOWN_BELOW: Record<string, Record<string, number>> = {
     "solarized-dark": 3.60,
     "synthwave-84": 3.31,
   },
-  "--ui-text-muted on --ui-bg + --ui-veil at 55% opacity": {
-    "github-dark": 3.85,
-    "github-dark-dimmed": 2.65,
-    "vesper": 4.34,
-    "solarized-dark": 2.00,
-    "dracula": 3.84,
-    "nord": 3.11,
-    "one-dark": 2.47,
-    "tokyo-night": 3.11,
-    "tokyo-night-storm": 2.96,
-    "catppuccin-mocha": 3.30,
-    "catppuccin-macchiato": 3.14,
-    "ayu-mirage": 2.99,
-    "night-owl": 3.50,
-    "gruvbox-dark": 3.29,
-    "monokai": 3.90,
-    "synthwave-84": 1.85,
-    "rose-pine": 3.57,
-  },
   "--ui-text-muted on --ui-bg-sunken": {
     "solarized-dark": 3.78,
     "synthwave-84": 3.48,
   },
   "--ui-text-muted on --ui-hover": {
-    "github-dark-dimmed": 3.40,
-    "solarized-dark": 2.25,
-    "nord": 4.14,
-    "one-dark": 3.00,
-    "tokyo-night-storm": 3.96,
-    "catppuccin-macchiato": 4.32,
-    "ayu-mirage": 4.14,
-    "synthwave-84": 2.07,
+    "github-dark-dimmed": 4.33,
+    "solarized-dark": 2.84,
+    "one-dark": 3.81,
+    "synthwave-84": 2.63,
   },
   "--ui-text-muted on --ui-surface": {
-    "solarized-dark": 3.01,
-    "one-dark": 3.99,
-    "synthwave-84": 2.79,
+    "solarized-dark": 3.37,
+    "one-dark": 4.49,
+    "synthwave-84": 3.07,
   },
   "--ui-text-muted on --ui-surface-2": {
-    "github-dark-dimmed": 3.96,
-    "solarized-dark": 2.62,
-    "one-dark": 3.47,
-    "synthwave-84": 2.40,
+    "solarized-dark": 3.10,
+    "one-dark": 4.11,
+    "synthwave-84": 2.85,
   },
   "--ui-text-muted on color-mix(in srgb, --ui-danger 8%, --ui-surface)": {
-    "github-dark-dimmed": 4.09,
-    "solarized-dark": 2.96,
-    "one-dark": 3.63,
-    "synthwave-84": 2.57,
+    "solarized-dark": 3.30,
+    "one-dark": 4.06,
+    "synthwave-84": 2.83,
   },
   "--ui-text-muted on color-mix(in srgb, --ui-warning 10%, --ui-surface)": {
-    "github-dark-dimmed": 3.93,
-    "solarized-dark": 2.69,
-    "nord": 4.41,
-    "one-dark": 3.22,
-    "tokyo-night-storm": 4.37,
-    "ayu-mirage": 4.35,
-    "synthwave-84": 2.16,
+    "github-dark-dimmed": 4.39,
+    "solarized-dark": 3.00,
+    "one-dark": 3.60,
+    "synthwave-84": 2.38,
   },
 };
+
 
 const check = (pair: Pair, theme: string, ratio: number): void => {
   const known = KNOWN_BELOW[pair.key]?.[theme];

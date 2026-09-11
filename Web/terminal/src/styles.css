@@ -457,8 +457,12 @@ body,
 }
 
 /* Revealed on hover where there is a pointer to hover with. On touch there is
-   none, so the button would be permanently unreachable — show it outright and
-   let it fade like the gear does. */
+   none, so the button would be permanently unreachable — show it outright.
+   It used to fade to 0.55 the way the gear does, and that put its glyph under
+   4.5:1 on every one of the seventeen themes, worst 1.85 on synthwave-84: the
+   only control a touch user has for closing a split was the least legible
+   thing on the page. It reads at full strength now, and --ui-veil plus the
+   border are what keep it quiet over the output. */
 @media (hover: hover) {
   .pane.is-split:hover .pane-close {
     display: block;
@@ -470,7 +474,6 @@ body,
     display: block;
     width: var(--tap-min);
     height: var(--tap-min);
-    opacity: 0.55;
   }
 }
 
@@ -638,8 +641,18 @@ body,
   user-select: none;
 }
 
+/* The press has to be unmistakable under the finger that made it. The fill
+   step alone no longer is: since elevation came down, --ui-active on the bar's
+   --ui-surface-2 reads 1.155, against 1.397 before. A hairline of --ui-border
+   does not rescue it either — it reads 1.183 against the fill it encloses and
+   1.366 against the bar, which is only what the press already lost. --ui-accent
+   reads 8.79 against the bar on github-dark and 2.99 on its worst theme
+   (gruvbox-dark), and it is the colour this page already uses for interaction,
+   in the focus outline and in `.launch:hover`. A shadow paints no layout, so
+   the pill does not move when it is pressed. */
 .selection-action:active {
   background: var(--ui-active);
+  box-shadow: inset 0 0 0 1px var(--ui-accent);
 }
 
 /* An observer pane already owns that slot with its "Take control" button, and

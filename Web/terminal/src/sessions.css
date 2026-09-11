@@ -16,9 +16,15 @@ body {
 #sessions { max-width: 760px; margin: 0 auto; padding: 16px 16px 64px; }
 header { display: flex; align-items: center; gap: 10px; margin: 4px 0 14px; }
 h1 { font-size: 20px; margin: 0; font-weight: 600; }
+/* The inset shadow is the edge the fill used to carry on its own. Elevation
+   came down in `tokens.css` so text clears 4.5:1, which left a --ui-surface-2
+   pill at about 1.05 against the page — present in a measurement and absent to
+   the eye. A shadow, not a border: a border would add 2 px to a pill whose
+   padding is tuned, and the goal changes no layout. */
 .count {
   background: var(--ui-surface-2); color: var(--ui-text-muted); border-radius: var(--radius-round);
   padding: 1px 9px; font-size: 12px; font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 0 0 1px var(--ui-border);
 }
 .empty { color: var(--ui-text-muted); padding: 24px 4px; }
 .launch {
@@ -42,6 +48,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   font-size: 12px; padding: 4px 8px; border-radius: var(--radius-1); min-height: var(--tap-min);
 }
 .quiet:hover { color: var(--ui-text); background: var(--ui-surface-2); }
+/* The hover fill alone no longer says "hovered". Elevation came down in
+   `tokens.css`, so --ui-surface-2 on the card reads 1.05 against it, and inside
+   an open `.menu`, which paints --ui-surface-2 itself, it reads 1.00. The edge
+   carries the state instead, the same edge `.count` and `.tag` took, and it
+   appears only while the pointer is on the button. A button, not `.quiet`:
+   `.tally.quiet` is a span, and a line of text must not outline under the
+   pointer. */
+button.quiet:hover { box-shadow: inset 0 0 0 1px var(--ui-border); }
 .quiet.danger:hover { color: var(--ui-danger); }
 
 /* --- the attention strip -------------------------------------------------
@@ -173,8 +187,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
   padding: 10px 14px; background: var(--ui-surface-2);
   border-radius: calc(var(--radius-2) - 1px) calc(var(--radius-2) - 1px) 0 0;
+  /* The head is a --ui-surface-2 band on a --ui-surface card. The two fills
+     are about 1.05 apart since elevation came down, so the band needs a rule
+     under it. An inset shadow rather than `border-bottom`, which would move
+     every row in the card down by a pixel. */
+  box-shadow: inset 0 -1px 0 0 var(--ui-border);
 }
-.card-head:last-child { border-radius: calc(var(--radius-2) - 1px); }
+.card-head:last-child { border-radius: calc(var(--radius-2) - 1px); box-shadow: none; }
 .card-title { display: flex; flex-direction: column; min-width: 0; flex: 1 1 200px; }
 .card-title h2 { font-size: 15px; font-weight: 600; margin: 0; }
 .card-root {
@@ -262,9 +281,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
    because an ANSI red at 11.5 px sits under 3:1 on half the themes. */
 .state { font-size: 11.5px; white-space: nowrap; color: var(--ui-text); }
 .state.attention { font-weight: 600; }
+/* Same edge as `.count`, and for the same reason. */
 .tag {
   background: var(--ui-surface-2); color: var(--ui-text-muted); border-radius: var(--radius-round);
   padding: 0 8px; font-size: 11px; white-space: nowrap;
+  box-shadow: inset 0 0 0 1px var(--ui-border);
 }
 .tag.program { color: var(--ui-text); }
 .sub {
@@ -289,7 +310,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     width: 36px; min-height: 36px; font-size: 18px; line-height: 1;
     color: var(--ui-text-muted); background: none; border: none; border-radius: var(--radius-1); cursor: pointer;
   }
-  .more:hover, .more[aria-expanded="true"] { color: var(--ui-text); background: var(--ui-surface-2); }
+  /* Same edge as a row action, and for the same reason. It also has to hold
+     the open state: the button keeps the fill while the menu is down. */
+  .more:hover, .more[aria-expanded="true"] {
+    color: var(--ui-text); background: var(--ui-surface-2);
+    box-shadow: inset 0 0 0 1px var(--ui-border);
+  }
   .menu { display: none; }
   .menu.open {
     display: flex; flex-direction: column; align-items: stretch;

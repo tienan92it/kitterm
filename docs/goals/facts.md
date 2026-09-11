@@ -175,6 +175,12 @@ decision moves to `docs/adr/`.
 
 ## Foreman
 
+- A round whose job is to move a value until a number passes must first
+  set that value to its extreme and count what still fails. Two rounds in
+  a row ended by proving their own lever insufficient, and both proved it
+  that way in minutes. A recommendation that names a lever should carry
+  the number the lever reaches, before the human spends a budget on it.
+  (2026-09-11, `contrast-tokens` round 3)
 - A round can be recorded as done and then fail review. The loop closes a
   round on a green floor and a clean diff; the human's rule puts the
   review before the merge, which is after the round closes. On 2026-09-10
