@@ -2401,8 +2401,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             return
         }
         // What the store does, decided after the body is valid so a 400
-        // never leaves a promise behind.
-        let change: () -> (HTTPResponseStatus, String)
+        // never leaves a promise behind. The queue's closure is `@Sendable`,
+        // so this one must be too; its captures (the store, a parsed
+        // subscription, an endpoint string) all are.
+        let change: @Sendable () -> (HTTPResponseStatus, String)
         switch method {
         case .POST:
             let subscription: PushSubscription
