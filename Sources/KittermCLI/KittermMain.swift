@@ -357,10 +357,6 @@ enum KittermMain {
         try DaemonPaths.ensureStateDirectory()
         redirectLogs(to: DaemonPaths.logFile)
 
-        let pid = ProcessInfo.processInfo.processIdentifier
-        try "\(pid)".write(to: DaemonPaths.pidFile, atomically: true, encoding: .utf8)
-        try "\(port)".write(to: DaemonPaths.portFile, atomically: true, encoding: .utf8)
-
         // `--takeover <dir>` is how a daemon that exec'd this one hands its
         // sessions over (`docs/live-upgrade.md`). The argv after `serve`
         // is what this process gives its own successor, less that pair.
@@ -370,7 +366,23 @@ enum KittermMain {
             stateDirectory: DaemonPaths.takeoverDirectory,
             relaunchArguments: arguments
         )
-        try runDaemon(config: flags.daemonConfig(port: port), takeover: takeover)
+        // `pid` and `port` are claimed only once this process holds the
+        // port. A second `serve` on the same state directory loses the bind
+        // and exits, and the files must still name the daemon that won —
+        // `livePid()` deletes a pid file that names a dead process, after
+        // which `kitterm stop` cannot find the daemon that is serving. A
+        // takeover successor is the same pid (`exec`), so it rewrites the
+        // same values. Best-effort: a daemon that cannot write them still
+        // serves; the log says so, and `stop` then needs the pid by hand.
+        try runDaemon(config: flags.daemonConfig(port: port), takeover: takeover) {
+            let pid = ProcessInfo.processInfo.processIdentifier
+            do {
+                try "\(pid)".write(to: DaemonPaths.pidFile, atomically: true, encoding: .utf8)
+                try "\(port)".write(to: DaemonPaths.portFile, atomically: true, encoding: .utf8)
+            } catch {
+                writeError("kitterm: could not write pid/port files: \(error.localizedDescription)\n")
+            }
+        }
     }
 
     /// Both listeners, labelled, after a successful start.
