@@ -27,7 +27,11 @@ import Foundation
 /// `PersistedToken` keeps the LAN token. A file that is not owner-only is
 /// replaced rather than trusted, and the replacement is logged, because it
 /// invalidates every subscription on every phone.
-public struct VAPIDKeys: Sendable {
+///
+/// `@unchecked` because swift-crypto's `P256.Signing.PrivateKey` is not
+/// marked `Sendable` where CryptoKit's is; the key is a `let` and never
+/// mutated, so sharing the struct across threads is safe on both.
+public struct VAPIDKeys: @unchecked Sendable {
     public static let formatVersion = 1
     /// What the signed token names as its contact (RFC 8292 §2.1).
     public static let subject = "mailto:kitterm@localhost"
