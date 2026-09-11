@@ -384,7 +384,7 @@ public final class DaemonServer: @unchecked Sendable {
             throw DaemonError.bindFailed(
                 host: plainHost,
                 port: config.port,
-                reason: error.localizedDescription
+                reason: Self.bindReason(error)
             )
         }
         channels.append(plain)
@@ -408,12 +408,23 @@ public final class DaemonServer: @unchecked Sendable {
                 throw DaemonError.bindFailed(
                     host: "0.0.0.0",
                     port: tls.port,
-                    reason: error.localizedDescription
+                    reason: Self.bindReason(error)
                 )
             }
         }
 
         startLastRunRefresh()
+    }
+
+    /// Why a bind failed, in words. `IOError.localizedDescription` is the
+    /// generic "operation couldn't be completed (NIOCore.IOError error 1)";
+    /// its `description` names the errno, and "Address already in use" is
+    /// the one a second daemon on a held port needs to read.
+    private static func bindReason(_ error: Error) -> String {
+        if let io = error as? IOError {
+            return io.description
+        }
+        return error.localizedDescription
     }
 
     /// Keep `last-run.json` saying this run is alive, and how many sessions it
@@ -612,12 +623,19 @@ public enum DaemonError: Error, LocalizedError {
 /// successor; the default leaves live upgrade wired to the state directory
 /// with no argv to relaunch with, which a takeover then reports as a failed
 /// `exec` and serves on (rung 2).
+///
+/// `onListening` runs once, after the listeners are bound and before the
+/// first `waitUntilClosed`. It is where `serve` claims `pid` and `port`: a
+/// process that has not bound the port yet must not name itself as the
+/// daemon, or a second `serve` that then loses the bind leaves the files
+/// pointing at a dead process while the first daemon serves on.
 public func runDaemon(
     config: DaemonConfig,
     takeover: TakeoverOptions = TakeoverOptions(
         stateDirectory: DaemonPaths.takeoverDirectory,
         relaunchArguments: Array(CommandLine.arguments.dropFirst())
-    )
+    ),
+    onListening: () -> Void = {}
 ) throws {
     signal(SIGPIPE, SIG_IGN)
     signal(SIGHUP, SIG_IGN)
@@ -654,6 +672,7 @@ public func runDaemon(
         makeServer(config: config, takeover: takeover, lastRun: lastRun, previous: previousRun)
     )
     try current.server.start()
+    onListening()
 
     // Not the main queue: this thread parks in `waitUntilClosed()` and never
     // drains it, so a `.main` source would never fire — the daemon would
