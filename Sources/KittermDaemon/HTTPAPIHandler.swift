@@ -386,6 +386,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             // After the command-output case, so this is the session-wide
             // tail: `/api/sessions/<id>/output`.
             serveOutputTail(path: path, head: head, context: context)
+        case (.GET, _) where path.hasPrefix("/api/sessions/") && path.hasSuffix("/cost"):
+            serveSessionCost(path: path, grade: grade, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/sessions/"):
             // After every suffixed sessions route, so this only catches the
             // bare `/api/sessions/<id>` — one session's listing row.
@@ -787,6 +789,129 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 context: context, version: head.version, keepAlive: head.isKeepAlive
             )
         }
+    }
+
+    /// `GET /api/sessions/<uuid>/cost` — the bill in the session's Claude
+    /// Code transcript: what its last `cost-state` line says, read by
+    /// `TranscriptBill` from the path the hooks recorded (`agentTranscript`).
+    ///
+    /// Full grade only: dollars and tokens are the session's accounting, the
+    /// class of thing a watch token exists to withhold. No `--agent-control`,
+    /// because reading a bill drives nothing.
+    ///
+    /// 404 when there is no such session, when the session never ran
+    /// `claude` (`no transcript`), and when the recorded path does not open
+    /// (`transcript not found`, with the path and the reason). A transcript
+    /// with no complete `cost-state` line at its end answers 200 with
+    /// `hasBill: false` and a `reason`, because "no bill yet" is a true
+    /// answer about a running session and not a failure of the request.
+    ///
+    /// The read opens a file that can be tens of megabytes and that another
+    /// process is appending to, so it runs on `TranscriptBill.queue` and the
+    /// response comes back through `NIOLoopBound`, the way the push
+    /// subscription store's writes do. The loop pays for a registry lookup
+    /// and an encode, and nothing else.
+    private func serveSessionCost(
+        path: String,
+        grade: TokenGrade,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let components = path.split(separator: "/")
+        // ["api", "sessions", "<uuid>", "cost"]
+        guard components.count == 4, let id = UUID(uuidString: String(components[2])) else {
+            notFound(context: context, version: head.version)
+            return
+        }
+        let loop = context.eventLoop
+        let bound = NIOLoopBound(context, eventLoop: loop)
+        let lookup = loop.makePromise(of: SessionRegistry.SessionSummary?.self)
+        lookup.completeWithTask {
+            await self.registry.summary(id)
+        }
+        lookup.futureResult.whenComplete { result in
+            guard case .success(.some(let summary)) = result else {
+                self.writeJSON(
+                    status: .notFound,
+                    body: #"{"ok":false,"error":"no such session"}"#,
+                    context: bound.value, version: head.version, keepAlive: false
+                )
+                return
+            }
+            guard let join = summary.agentJoin else {
+                self.writeJSON(
+                    status: .notFound,
+                    body: #"{"ok":false,"error":"no transcript"}"#,
+                    context: bound.value, version: head.version, keepAlive: false
+                )
+                return
+            }
+            let transcript = join.transcriptPath
+            let read = loop.makePromise(of: TranscriptBill.Outcome.self)
+            TranscriptBill.queue.async { read.succeed(TranscriptBill.read(path: transcript)) }
+            read.futureResult.whenSuccess { outcome in
+                let (status, body) = Self.costBody(outcome, join: join)
+                self.writeJSON(
+                    status: status, body: body,
+                    context: bound.value, version: head.version,
+                    keepAlive: status == .ok && head.isKeepAlive
+                )
+            }
+        }
+    }
+
+    /// The response of the cost route: the transcript's own field names,
+    /// unrounded, under `bill`, so a consumer's `--json` passes them through.
+    /// `hasBill` is false for the two empty cases and `reason` says which.
+    private struct CostResponse: Encodable {
+        let ok = true
+        let hasBill: Bool
+        let agentSessionId: String
+        let agentTranscript: String
+        let reason: String?
+        let bill: TranscriptBill?
+    }
+
+    static func costBody(_ outcome: TranscriptBill.Outcome, join: AgentJoin) -> (HTTPResponseStatus, String) {
+        let response: CostResponse
+        switch outcome {
+        case .bill(let bill):
+            response = CostResponse(
+                hasBill: true, agentSessionId: join.sessionID, agentTranscript: join.transcriptPath,
+                reason: nil, bill: bill
+            )
+        case .noBill(let why):
+            response = CostResponse(
+                hasBill: false, agentSessionId: join.sessionID, agentTranscript: join.transcriptPath,
+                reason: why.rawValue, bill: nil
+            )
+        case .unreadable(let detail):
+            let body = (try? JSONSerialization.data(withJSONObject: [
+                "ok": false,
+                "error": "transcript not found",
+                "agentTranscript": join.transcriptPath,
+                "detail": detail,
+            ] as [String: Any]))
+                .flatMap { String(data: $0, encoding: .utf8) }
+                ?? #"{"ok":false,"error":"transcript not found"}"#
+            return (.notFound, body)
+        }
+        let encoder = JSONEncoder()
+        // Slashes in the transcript's path stay as they are; sorted keys so
+        // the body reads the same on every run.
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(response), let body = String(data: data, encoding: .utf8) else {
+            return (.internalServerError, #"{"ok":false,"error":"encoding failed"}"#)
+        }
+        return (.ok, body)
     }
 
     /// A request field that failed validation, with the reason for the 400.

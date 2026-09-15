@@ -135,6 +135,24 @@ Two properties make this robust.
   submitted through `POST /input` names the command it creates, so `command` is not null
   on a normal setup. A command line that the shell does report always wins.
 
+### The bill
+
+A session that ran `claude` carries the Claude Code session id and the transcript path
+its hooks named, as `agentSessionId` and `agentTranscript` on the row and in the archive.
+`GET /api/sessions/<id>/cost` reads the transcript's last line, the `cost-state` line
+Claude Code writes when a session ends, and answers its numbers under the transcript's own
+field names, unrounded: dollars, wall-clock, API time, lines added and removed, and tokens
+by kind per model. The daemon computes nothing and stores nothing; the file is the record.
+
+`TranscriptBill` does the read off the event loop, on its own queue: it seeks to the end
+and takes one 64 KiB `pread`, so a transcript of tens of megabytes costs the same as a
+short one. Only the last newline-terminated line counts. A file that ends mid-line is a
+writer mid-write, and a last line that is a turn is a session still running or resumed
+after its last end. Both answer `hasBill: false` with a reason, because "no bill yet" is a
+true statement and zeros would be a false one. A `cost-state` line with no model is a bill
+of zero, and answers as one. Full grade only: the bill is what a watch token exists to
+withhold.
+
 ## Security model
 
 kitterm has no multi-user model. It serves shells as the user who runs it. Anyone who
