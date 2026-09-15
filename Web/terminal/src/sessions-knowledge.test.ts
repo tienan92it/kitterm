@@ -6,21 +6,25 @@ import {
   dismissKey,
   dismissName,
   focusKey,
-  goalBlocks,
+  doneLabel,
+  goalLine,
+  goalLines,
   goalOf,
   goalTitle,
+  isUnwritten,
   hasKnowledge,
   knowledgeUrl,
+  nextLine,
   proposalsName,
   proposedItems,
   proposedLabel,
   recordLabel,
   recordName,
   recordPath,
+  roundLabel,
   roundOf,
   roundPath,
   statePath,
-  titleSlug,
   withProposed,
   type KnowledgeSummary,
   type ModelRow,
@@ -60,45 +64,77 @@ describe("goalOf and roundOf", () => {
   });
 });
 
-describe("goalBlocks", () => {
-  const active: KnowledgeSummary = { project: "kitterm", slug: "goal-folders", goal: "one folder per goal", status: "active", round: 3, budget: 3 };
-  const waiting: KnowledgeSummary = { project: "kitterm", slug: "later", status: "waiting", round: 3, budget: 3 };
+describe("goalLines", () => {
+  const active: KnowledgeSummary = {
+    project: "kitterm", slug: "fleet-catch-up", goal: "the fleet view reads like a terminal", status: "active",
+    round: 2, budget: 3, lastFloor: "green (2026-09-15, round 2)",
+    nextAction: "Round 3: `catch-up-first` from `plan.md` row 3; proof: the 390 px screenshot.\nCapability 4 may run alongside.",
+  };
+  const waiting: KnowledgeSummary = { project: "kitterm", slug: "later", goal: "a goal that waits", status: "waiting", round: 3, budget: 3 };
   const stopped: KnowledgeSummary = { project: "kitterm", slug: "dropped", status: "stopped", lastRound: 2 };
-  const done: KnowledgeSummary = { project: "kitterm", slug: "projects-and-knowledge", status: "done", lastRound: 8 };
+  const done: KnowledgeSummary = { project: "kitterm", slug: "projects-and-knowledge", goal: "projects on the fleet view", status: "done", lastRound: 8 };
+  // `kitterm goal new` copied `examples/goals/goal/` and nobody filled it in.
+  const template: KnowledgeSummary = {
+    project: "kitterm", slug: "cost-per-round", goal: "<one line that names the outcome>", status: "active", round: 0, budget: 3,
+    lastFloor: "green | red (<check>) (<ISO date>, round <n>)",
+    nextAction: "Round 1: `<item>` from `plan.md` row 1; proof: `<test or screenshot>`.",
+  };
 
-  it("expands an active goal and folds a waiting, stopped, or done one, in the order given", () => {
-    expect(goalBlocks([active, waiting, stopped, done])).toEqual([
-      { summary: active, expanded: true },
-      { summary: waiting, expanded: false },
-      { summary: stopped, expanded: false },
-      { summary: done, expanded: false },
+  it("prints an active goal as one line: title, round, first line of the next action, no floor word, no slug", () => {
+    expect(goalLine(active)).toEqual({
+      summary: active, title: "the fleet view reads like a terminal", unwritten: false, status: null,
+      round: "round 2 of 3", next: "Round 3: `catch-up-first` from `plan.md` row 3; proof: the 390 px screenshot.",
+    });
+  });
+
+  it("prints a goal whose files still hold the template as \"not written yet\", named by its slug", () => {
+    expect(goalLine(template)).toEqual({ summary: template, title: "cost-per-round", unwritten: true, status: null, round: null, next: null });
+    expect(isUnwritten(template)).toBe(true);
+    expect(isUnwritten({ ...template, goal: "a real title" })).toBe(true);
+    expect(isUnwritten({ ...template, goal: "a real title", lastFloor: "green" })).toBe(true);
+    expect(isUnwritten({ project: "kitterm", slug: "fresh", goal: "<one line that names the outcome>" })).toBe(true);
+  });
+
+  it("does not take a written next action's own angle brackets for the template", () => {
+    const real: KnowledgeSummary = { ...active, nextAction: "Round 2: a route test for `GET /api/sessions/<id>/cost`." };
+    expect(isUnwritten(real)).toBe(false);
+    expect(goalLine(real).next).toBe("Round 2: a route test for `GET /api/sessions/<id>/cost`.");
+    expect(isUnwritten({ project: "kitterm", slug: "bare" })).toBe(false);
+  });
+
+  it("prints the status word only when the goal is not active", () => {
+    expect(goalLine(waiting)).toMatchObject({ title: "a goal that waits", status: "waiting", round: "round 3 of 3", next: null });
+    expect(goalLine(stopped)).toMatchObject({ title: "dropped", status: "stopped", round: null, next: null });
+    expect(goalLine({ ...active, status: " Active " }).status).toBeNull();
+    expect(goalLine({ ...active, status: "paused" }).status).toBe("paused");
+  });
+
+  it("folds the done goals behind one line and keeps the rest open, in the order given", () => {
+    const lines = goalLines([active, waiting, done, stopped, template, { ...done, slug: "goal-folders", status: " Done " }]);
+    expect(lines.open.map((line) => line.title)).toEqual([
+      "the fleet view reads like a terminal", "a goal that waits", "dropped", "cost-per-round",
     ]);
-  });
-
-  it("reads the status word in any case, after blanks", () => {
-    expect(goalBlocks([{ ...done, status: " Done " }])[0].expanded).toBe(false);
-    expect(goalBlocks([{ ...stopped, status: "STOPPED" }])[0].expanded).toBe(false);
-    expect(goalBlocks([{ ...waiting, status: " Waiting" }])[0].expanded).toBe(false);
-  });
-
-  it("expands a goal with no status or one the loop does not name", () => {
-    expect(goalBlocks([{ project: "kitterm", slug: "fresh" }])[0].expanded).toBe(true);
-    expect(goalBlocks([{ project: "kitterm", slug: "odd", status: "paused" }])[0].expanded).toBe(true);
+    expect(lines.done.map((summary) => summary.slug)).toEqual(["projects-and-knowledge", "goal-folders"]);
+    expect(doneLabel(lines.done.length)).toBe("2 done");
+    expect(doneLabel(7)).toBe("7 done");
+    expect(doneLabel(1)).toBe("1 done");
   });
 
   it("shows nothing for an empty package, no answer, or a summary with no field", () => {
-    expect(goalBlocks([])).toEqual([]);
-    expect(goalBlocks(null)).toEqual([]);
-    expect(goalBlocks(undefined)).toEqual([]);
-    expect(goalBlocks([{ project: "kitterm" }, active])).toEqual([{ summary: active, expanded: true }]);
+    expect(goalLines([])).toEqual({ open: [], done: [] });
+    expect(goalLines(null)).toEqual({ open: [], done: [] });
+    expect(goalLines(undefined)).toEqual({ open: [], done: [] });
+    expect(goalLines([{ project: "kitterm" }, active]).open).toHaveLength(1);
   });
-});
 
-describe("titleSlug", () => {
-  it("shows the slug beside a title, not beside itself", () => {
-    expect(titleSlug({ project: "kitterm", slug: "goal-folders", goal: "one folder per goal" })).toBe("goal-folders");
-    expect(titleSlug({ project: "kitterm", slug: "goal-folders" })).toBeNull();
-    expect(titleSlug({ project: "kitterm", goal: "no slug from an old daemon" })).toBeNull();
+  it("reads the round counter with or without a budget, and the next action's first line", () => {
+    expect(roundLabel({ project: "p", round: 4 })).toBe("round 4");
+    expect(roundLabel({ project: "p", round: 4, budget: 6 })).toBe("round 4 of 6");
+    expect(roundLabel({ project: "p", budget: 6 })).toBeNull();
+    expect(nextLine("  first line \nsecond line")).toBe("first line");
+    expect(nextLine("\nafter a blank line")).toBeNull();
+    expect(nextLine(undefined)).toBeNull();
+    expect(nextLine("   ")).toBeNull();
   });
 });
 

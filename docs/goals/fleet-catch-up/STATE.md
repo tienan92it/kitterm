@@ -1,15 +1,14 @@
 # STATE: fleet-catch-up
 
 - Status: active
-- Round: 2 of 3 in this budget (first budget)
-- Rounds total: 2
-- Last floor: green (2026-09-15, round 2 after: vitest 1321 in 34 files)
-- Updated: 2026-09-15, round 2 closed
+- Round: 3 of 3 in this budget (first budget)
+- Rounds total: 3
+- Last floor: green (2026-09-15, round 3 after: vitest 1328 in 34 files)
+- Updated: 2026-09-15, round 3 closed
 
 ## Queue
 
-1. `catch-up-first` (capability 3)
-2. `the-terminal-surface` (capability 4)
+1. `the-terminal-surface` (capability 4)
 
 ## Failures
 
@@ -28,8 +27,18 @@ None.
   `rounds/002.md`. A strip session is not a row; the card counts only
   what it lists; the proposals count reads from `STATE.md` and shows
   once at the top; the sub-headers and the chip are gone.
+- `catch-up-first` (capability 3), round 3, `96bd091`. See
+  `rounds/003.md`. The first screen at 390 px holds every attention
+  item and the count line with 419 px to spare; template goals read "not
+  written yet"; done goals fold; the tools sit below the projects.
 
 ## Direction
+
+2026-09-15: the human said to run these on their own and not to ask
+again, so the foreman merges each round on a green floor and a read
+image, and shows the human the before-and-after in the report rather
+than waiting on them. That overrides the plan's line about seeing images
+before a merge.
 
 2026-09-15: the human asked for a simpler, minimalist, terminal-looking
 fleet view that is easy to catch up on, with redundant detail removed.
@@ -41,10 +50,15 @@ and 4 before either merges.
 
 ## Next action
 
-Round 3: `catch-up-first` from `plan.md` row 3; proof: corpus request
-`01-back-after-lunch` at 390 px with the first screen holding the
-needs-you and failed items and the running count, and vitest cases for
-the placeholder goal and the done fold. One item from round 2: print the
-project on a strip item only when it differs from the session's name.
-Capability 4 may run alongside, now that round 2's CSS change has
-landed; it touches `sessions.css` and round 3 mostly does not.
+Round 4: `the-terminal-surface` from `plan.md` row 4, the last
+capability. Remove every `border-radius` above 2 px, every `box-shadow`
+that is not a hairline, every `color-mix` tint behind text, every
+`transition`, and the dot's glow; cards become hairline sections; chips
+become bracketed words; strip items become lines with a gutter mark.
+Round 3 adds one item: the card head still prints the root path and the
+"New session" button on their own lines, about 80 px per card on a
+phone; fold them into the card's one heading line. Proof: a vitest that
+reads `sessions.css` with `node:fs` and asserts the four absences; the
+ratchet unchanged and green; before and after on `github-dark` and
+`solarized-dark` at both widths. Then `AGENTS.md`'s fleet-view paragraph
+needs rewriting for the new shape, which round 4 may do.

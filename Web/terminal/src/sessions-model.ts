@@ -117,10 +117,23 @@ export type KnowledgeSummary = {
   lastDecision?: string;
 };
 
-/** One goal of a card, and whether the card expands it (title, round,
- * status, next action, record) or prints one line (title, status,
- * record). */
-export type GoalBlock = { summary: KnowledgeSummary; expanded: boolean };
+/** One goal that is not done, as its project prints it on one line: the
+ * title, the status word when the goal is not active, the round counter,
+ * and the first line of the next action. `unwritten` is a goal whose files
+ * still hold the template's placeholders; it prints "not written yet" in
+ * place of them. */
+export type GoalLine = {
+  summary: KnowledgeSummary;
+  title: string;
+  unwritten: boolean;
+  status: string | null;
+  round: string | null;
+  next: string | null;
+};
+
+/** What a project prints for its goals: one line per goal that is not
+ * done, then the done goals behind one folded line. */
+export type GoalLines = { open: GoalLine[]; done: KnowledgeSummary[] };
 
 /** A goal whose `STATE.md` lists proposals waiting on the human: the human
  * has to decide before the goal's next round. */
@@ -170,23 +183,46 @@ export function pickForeman<R extends ModelRow>(rows: R[]): { foreman: R | null;
   return { foreman: rows[index], rest: rows.filter((_, i) => i !== index) };
 }
 
-/** Attention rank: what the human is asked to act on, loudest first. Rows
- * with no rank sort after every ranked row. */
+/**
+ * The rank of a row inside its project: what the human is asked to act on
+ * first, then the foreman, then the rows by state. The state comes before
+ * the recency because a returning reader asks "what is still working", and
+ * a working row that went quiet three hours ago, which is the one that
+ * stalled, is what the reader must see before an idle shell that printed a
+ * prompt a minute ago. Recency then answers which of the working rows
+ * stalled. Recency alone would also reorder the rows on every poll, as the
+ * working rows' last output ticks.
+ */
 function rank(row: ModelRow): number {
-  switch (stateOf(row)) {
+  const state = stateOf(row);
+  switch (state) {
     case "needs-approval":
       return 0;
     case "needs-input":
       return 1;
     case "failed":
       return 2;
+  }
+  // The foreman is the first row of its project, ahead of the rows it
+  // supervises, whatever its own state: `done` with a note is its usual one.
+  if (crewOf(row) === FOREMAN_CREW) return 3;
+  switch (state) {
+    case "working":
+      return 4;
+    case "completed":
+      return 5;
+    case "idle":
+      return 6;
+    case "exited":
+      return 7;
     default:
-      return 3;
+      return 8;
   }
 }
 
-/** Attention first (needs-approval, needs-input, failed), then the most
- * recent output first. Stable: equal rows keep their input order. */
+/** Attention first (needs-approval, needs-input, failed), then the foreman,
+ * then by state (working, done, idle, exited, no integration), then the
+ * most recent output first. Stable: equal rows keep their input order. */
 export function sortInGroup<R extends ModelRow>(rows: R[]): R[] {
   return rows
     .map((row, index) => ({ row, index }))
@@ -419,26 +455,92 @@ export function roundOf(row: ModelRow): number | null {
   return wholeNumber(row.labels?.round);
 }
 
-/** Which goals a card shows and how: every summary that carries a field,
- * in the route's order (`active`, `waiting`, `stopped`, `done`). Only an
- * `active` goal is expanded; a `waiting`, `stopped`, or `done` one is one
- * line, so a project with several goals that wait on the human keeps its
- * session rows above the fold on a phone. A goal with no status, or a
- * status the loop does not name, is expanded, so nothing the human should
- * read is folded away. */
-export function goalBlocks(goals: KnowledgeSummary[] | null | undefined): GoalBlock[] {
-  return (goals ?? [])
-    .filter(hasKnowledge)
-    .map((summary) => ({ summary, expanded: !isOneLine(summary.status) }));
-}
-
 function statusWord(status: string | undefined): string {
   return (status ?? "").trim().toLowerCase();
 }
 
-function isOneLine(status: string | undefined): boolean {
-  const word = statusWord(status);
-  return word === "waiting" || word === "stopped" || word === "done";
+/**
+ * The placeholders `examples/goals/goal/` ships in `goal.md` and `STATE.md`.
+ * A goal whose summary still carries one is not written yet: `kitterm goal
+ * new` copied the template and nobody filled it in. The list names the
+ * template's own tokens rather than any `<…>`, because a written next
+ * action says `GET /api/sessions/<id>/cost` and means it.
+ */
+const TEMPLATE_PLACEHOLDERS = [
+  "<one line that names the outcome>",
+  "<goal slug>",
+  "<item>",
+  "<test or screenshot>",
+  "<check>",
+  "<ISO date>",
+];
+
+/** Do the goal's files still hold the template's placeholders? Reads the
+ * three fields the template fills with them: the title, the next action
+ * and the last floor. */
+export function isUnwritten(summary: KnowledgeSummary): boolean {
+  const texts = [summary.goal, summary.nextAction, summary.lastFloor];
+  return texts.some((text) => text !== undefined && TEMPLATE_PLACEHOLDERS.some((token) => text.includes(token)));
+}
+
+/** The round counter as one word group: `round 2 of 3`, `round 2` from a
+ * daemon that sends no budget, null without a round. */
+export function roundLabel(summary: KnowledgeSummary): string | null {
+  if (typeof summary.round !== "number") return null;
+  return typeof summary.budget === "number" ? `round ${summary.round} of ${summary.budget}` : `round ${summary.round}`;
+}
+
+/** The first line of the next action, trimmed; null when there is none.
+ * The page shows one line and cuts it with an ellipsis, so the text past
+ * the first line break would never be read. */
+export function nextLine(nextAction: string | undefined): string | null {
+  const first = (nextAction ?? "").split("\n")[0].trim();
+  return first === "" ? null : first;
+}
+
+/**
+ * One goal as its project prints it. An unwritten goal is named by its
+ * slug and carries nothing else: the placeholders are not a status, a
+ * round or a next action. The status word prints only when the goal is
+ * not `active`, because a line that is open is active by default; the
+ * floor word and the slug do not print, because neither is something the
+ * returning reader acts on.
+ */
+export function goalLine(summary: KnowledgeSummary): GoalLine {
+  if (isUnwritten(summary)) {
+    return { summary, title: summary.slug ?? "goal", unwritten: true, status: null, round: null, next: null };
+  }
+  const word = statusWord(summary.status);
+  return {
+    summary,
+    title: goalTitle(summary),
+    unwritten: false,
+    status: word === "" || word === "active" ? null : word,
+    round: roundLabel(summary),
+    next: nextLine(summary.nextAction),
+  };
+}
+
+/**
+ * What a project prints for its goals: every summary that carries a
+ * field, in the route's order (`active`, `waiting`, `stopped`, `done`).
+ * A goal that is not done is one line; the done goals go behind one
+ * folded line, because they are history and a returning reader scrolls
+ * past history to reach the next project.
+ */
+export function goalLines(goals: KnowledgeSummary[] | null | undefined): GoalLines {
+  const open: GoalLine[] = [];
+  const done: KnowledgeSummary[] = [];
+  for (const summary of (goals ?? []).filter(hasKnowledge)) {
+    if (statusWord(summary.status) === "done") done.push(summary);
+    else open.push(goalLine(summary));
+  }
+  return { open, done };
+}
+
+/** The folded line over the done goals: `1 done`, `7 done`. */
+export function doneLabel(count: number): string {
+  return `${count} done`;
 }
 
 /** What a goal is called on the page and in a name: its title, else its
@@ -452,13 +554,6 @@ export function goalTitle(summary: KnowledgeSummary): string {
  * summary from a daemon that sends no slug. */
 export function statePath(summary: KnowledgeSummary): string {
   return summary.slug ? `${summary.slug}/STATE.md` : "STATE.md";
-}
-
-/** The slug shown beside an expanded goal's title, the one place the page
- * prints it, so the title maps to the `goal:` label a crew carries; null
- * when the title is the slug already. */
-export function titleSlug(summary: KnowledgeSummary): string | null {
-  return summary.slug && summary.slug !== goalTitle(summary) ? summary.slug : null;
 }
 
 /** `rounds/NNN.md` for round `n`: three digits, more when needed. */
@@ -681,6 +776,41 @@ export function rowLine(row: ModelRow, now: number): RowLine {
     what: row.agent?.message ?? row.note ?? command,
     since: typeof row.lastOutputAt === "number" ? spanLabel(now - row.lastOutputAt) : null,
   };
+}
+
+/**
+ * The project word beside a strip item's name, or null when the name says
+ * it already. A row named after its folder, `NgheNhanTrading` in
+ * `/w/NgheNhanTrading`, would otherwise print the word twice; a row with no
+ * project is named by its folder, so there is nothing else to say.
+ */
+export function stripWhere(row: ModelRow): string | null {
+  const project = row.project?.name;
+  if (!project || project === rowName(row)) return null;
+  return project;
+}
+
+/** The states the fleet line counts, in the order it prints them. These
+ * are the states the strip does not hold. */
+const FLEET_STATES: MergedState[] = ["working", "completed", "idle", "exited", "unknown"];
+
+/**
+ * The one line above the projects: how many sessions are working, and how
+ * many are done, idle, exited or without integration. `working` prints
+ * even at zero, because "0 working" is the answer a returning reader came
+ * for; the other counts print only when they are not zero. The rows are
+ * the ones the projects list, so a session in the strip is counted there
+ * and not here again.
+ */
+export function fleetLine(rows: ModelRow[]): string {
+  const counts = tally(rows);
+  const parts: string[] = [];
+  for (const state of FLEET_STATES) {
+    const n = counts[state] ?? 0;
+    if (n === 0 && state !== "working") continue;
+    parts.push(`${n} ${stateName(state)}`);
+  }
+  return parts.join(" · ");
 }
 
 // --- the restart line -------------------------------------------------------

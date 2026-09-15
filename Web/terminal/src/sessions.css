@@ -130,16 +130,10 @@ button.quiet:hover { box-shadow: inset 0 0 0 1px var(--ui-border); }
 .approval-allow { border-color: var(--ui-accent); }
 .approval-allow:hover { background: var(--ui-accent); color: var(--ui-accent-on); }
 
-/* --- the foreman ----------------------------------------------------------
-   One pinned row above the cards, marked by its rule rather than a box. */
-.pinned:empty { display: none; }
-.foreman { margin: 0 0 14px; border-left: 3px solid var(--ui-accent); padding-left: 10px; }
-.foreman-label { font-size: 12px; font-weight: 400; color: var(--ui-text-muted); padding: 2px 0; margin: 0; }
-.foreman .rows { border: none; }
-.foreman .row { border-top: none; padding-left: 0; padding-right: 0; }
-
-/* --- filters -------------------------------------------------------------- */
-.filters { display: flex; flex-direction: column; gap: 6px; margin: 0 0 14px; }
+/* --- the tools, under the projects ---------------------------------------
+   The search, the chips and the push switch are things the reader does,
+   not things the reader came to learn, so they sit under the projects. */
+.filters { display: flex; flex-direction: column; gap: 6px; margin: 20px 0 0; }
 .search {
   width: 100%; box-sizing: border-box; font: inherit; font-size: 13px;
   color: var(--ui-text); background: var(--ui-surface); border: 1px solid var(--ui-border);
@@ -164,7 +158,7 @@ button.quiet:hover { box-shadow: inset 0 0 0 1px var(--ui-border); }
 .push[hidden] { display: none; }
 .push {
   display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
-  margin: -6px 0 12px; font-size: 12.5px;
+  margin: 12px 0 0; font-size: 12.5px;
 }
 .push-switch {
   display: inline-flex; align-items: center; gap: 8px;
@@ -201,6 +195,9 @@ button.quiet:hover { box-shadow: inset 0 0 0 1px var(--ui-border); }
 
 /* --- project cards -------------------------------------------------------- */
 .cards { display: flex; flex-direction: column; gap: 14px; }
+/* The one line of counts above the projects: how many sessions are
+   working, done, idle. --ui-text on the body, the page's own pair. */
+.cards .fleet { margin: 0; font-size: 12.5px; color: var(--ui-text); font-variant-numeric: tabular-nums; }
 /* No `overflow: hidden` here: it clipped the open row menu and the focus
    outline of the last row at 390 px. The head rounds its own corners. */
 .card { border: 1px solid var(--ui-border); border-radius: var(--radius-2); background: var(--ui-surface); }
@@ -222,8 +219,7 @@ button.quiet:hover { box-shadow: inset 0 0 0 1px var(--ui-border); }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tallies { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ui-text); }
-.tally { display: inline-flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.tally .dot { margin: 0; width: 7px; height: 7px; box-shadow: none; }
+.tally { display: inline-flex; align-items: center; white-space: nowrap; }
 .tally.quiet { color: var(--ui-text-muted); }
 .spawn { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .spawn-profile {
@@ -239,35 +235,27 @@ button.quiet:hover { box-shadow: inset 0 0 0 1px var(--ui-border); }
 .spawn-button:hover { border-color: var(--ui-accent); }
 .spawn-button:disabled { opacity: .5; cursor: progress; }
 
-/* The goal blocks: one section per goal of the project's knowledge
-   package, each one full row under the card's title, in the route's order.
-   Titles and links only; no rendered Markdown. A stopped or done goal is
-   the `brief` one-liner: the title in the plain weight, the status word,
-   the record. Both use --ui-text on --ui-surface-2, the tested pair. */
-.goal {
-  flex: 1 1 100%; min-width: 0; display: flex; flex-direction: column; gap: 2px;
-  margin: 0; padding-top: 6px; border-top: 1px solid var(--ui-border);
+/* The goal lines: under the rows, one line per goal that is not done, in
+   the route's order. The title, the status word when the goal is not
+   active, the round counter, then the next action cut at the line's end;
+   "not written yet" after the slug of a goal whose files still hold the
+   template. On the card's --ui-surface, the rows' own surface. */
+.card .goal-lines { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--ui-border); }
+.card .goal-line {
+  display: flex; align-items: baseline; gap: 10px; min-width: 0;
+  padding: 8px 14px; font-size: 12.5px; white-space: nowrap;
 }
-.goal-facts { display: flex; flex-direction: column; gap: 2px; margin: 0; min-width: 0; }
-.goal dd { margin: 0; min-width: 0; }
-.goal-top { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
-.goal-title { font-size: 13px; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
-.goal.brief .goal-title { font-weight: 400; }
-/* The slug beside an expanded title: --ui-text-muted on
-   --ui-surface-2 (theme-contrast.test.ts, `muted-2`). */
-.goal-slug { font-size: 12px; font-weight: 400; color: var(--ui-text-muted); }
-.goal-none { flex: 1 1 100%; padding-top: 6px; border-top: 1px solid var(--ui-border); }
-.goal-status { font-size: 12px; color: var(--ui-text); }
+.card .goal-line + .goal-line { padding-top: 0; }
+.card .goal-line .goal-name { flex: 0 1 auto; min-width: 8em; overflow: hidden; text-overflow: ellipsis; color: var(--ui-text); }
+.card .goal-line .goal-status, .card .goal-line .goal-round, .card .goal-line .goal-unwritten {
+  flex: none; font-size: 11.5px; color: var(--ui-text-muted);
+}
+.card .goal-line .goal-next {
+  flex: 1 1 6em; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  color: var(--ui-text-muted); font-family: var(--font-mono); font-size: 12px;
+}
+.card .goal-none { margin: 0; padding: 8px 14px; font-size: 12.5px; color: var(--ui-text-muted); border-top: 1px solid var(--ui-border); }
 .goal-link { margin-left: auto; margin-top: 0; }
-/* On the card head, like .state and .tallies: the muted mix drops under
-   4.5:1 on --ui-surface-2 for three more themes. */
-.goal-meta { font-size: 12px; color: var(--ui-text); overflow-wrap: anywhere; }
-/* The next action is an instruction: it wraps, three lines at most, so a
-   phone reads the branch and the action rather than a title it cannot open. */
-.goal-next {
-  font-size: 12.5px; color: var(--ui-text); overflow-wrap: anywhere; overflow: hidden;
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3;
-}
 
 /* --- rows ----------------------------------------------------------------- */
 .rows { list-style: none; margin: 0; padding: 0; }
@@ -335,8 +323,8 @@ button.quiet:hover { box-shadow: inset 0 0 0 1px var(--ui-border); }
   .chip { min-height: 32px; padding: 3px 12px; }
 }
 
-/* Archived sessions: collapsed evidence of finished work, at the foot of its
-   project. */
+/* The folds: the done goals ("7 done") and the archived sessions, collapsed
+   evidence of finished work, at the foot of its project. */
 .archived { color: var(--ui-text-muted); border-top: 1px solid var(--ui-border); }
 .archived > summary {
   cursor: pointer; font-size: 12.5px; color: var(--ui-text-muted);
