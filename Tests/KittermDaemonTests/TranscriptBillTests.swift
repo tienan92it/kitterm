@@ -4,8 +4,11 @@ import XCTest
 @testable import KittermDaemon
 
 /// The reader over three real transcript tails checked in under
-/// `Fixtures/transcripts/`: the last lines of two Claude Code transcripts from
-/// this repository, numbers untouched, and the first of them cut mid-line.
+/// `Tests/Fixtures/transcripts/`: the last lines of two Claude Code
+/// transcripts from this repository, numbers untouched, and the first of them
+/// cut mid-line. They sit outside the test target's directory because this
+/// target declares no resources, and SwiftPM warns on every build about a
+/// file it does not handle; the tests find them by path.
 ///
 /// - `bill.jsonl`: session `e89e7ec8…`, the transcript `corpus/data-sources.md`
 ///   quotes. Two models, $2.64, 5 m 48 s.
@@ -15,8 +18,9 @@ import XCTest
 /// - `truncated.jsonl`: `bill.jsonl` cut inside `modelUsage`, the state of a
 ///   file whose writer is mid-line.
 final class TranscriptBillTests: XCTestCase {
+    /// `Tests/Fixtures/transcripts/`, two levels up from this file.
     static let fixtures = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent()
         .appendingPathComponent("Fixtures/transcripts", isDirectory: true)
 
     static func fixture(_ name: String) -> String {
