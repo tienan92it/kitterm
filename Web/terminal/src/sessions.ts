@@ -599,7 +599,7 @@ function restartContent(text: string, key: string): DocumentFragment {
   const dismiss = button("Dismiss", "quiet", () => dismissRestart(key));
   dismiss.dataset.focus = focusKey("dismiss", "restart", key);
   dismiss.setAttribute("aria-label", restartDismissName());
-  fragment.append(span, dismiss);
+  fragment.append(mark("failed"), span, dismiss);
   return fragment;
 }
 
@@ -854,6 +854,9 @@ function stripContent(items: StripItem[], hasForeman: boolean): Node[] {
 function stripItem(item: StripItem): HTMLElement {
   const li = document.createElement("li");
   li.className = `strip-item ${item.kind}`;
+  // The gutter mark: `!` for a failure, `?` for anything that waits on a
+  // person. The item's first word says which; the mark is decoration.
+  li.append(mark(item.kind === "failed" ? "failed" : item.kind === "approval" ? "approval" : "attention"));
   if (item.kind === "approval") {
     li.append(approvalContent(item.approval, item.row));
     return li;
@@ -1180,11 +1183,13 @@ function archivesFor(key: string): ArchivedRow[] {
 }
 
 /**
- * One project, top to bottom: the head (the name, the root, the spawn
- * control), its rows, one line per goal that is not done, the done goals
- * folded, and the archives folded. The rows come before the goals because
- * a running session is what the reader can act on now; a goal's next
- * action is what the foreman does next.
+ * One project, top to bottom: one heading line (the name, "no live
+ * session" when it owns none, the spawn control), its rows, one line per
+ * goal that is not done, the done goals folded, and the archives folded.
+ * The root path is not printed: a row's place is relative to it, and the
+ * pane shows it; the heading carries it as a tooltip. The rows come before
+ * the goals because a running session is what the reader can act on now;
+ * a goal's next action is what the foreman does next.
  */
 function card(g: Group<SessionRow>, archived: ArchivedRow[], owned: number, proposed: ProposedItem[]): HTMLElement {
   const section = document.createElement("section");
@@ -1192,31 +1197,14 @@ function card(g: Group<SessionRow>, archived: ArchivedRow[], owned: number, prop
   section.setAttribute("aria-label", g.project?.name ?? "No project");
 
   const head = document.createElement("div");
-  head.className = "card-head";
-  const title = document.createElement("div");
-  title.className = "card-title";
+  head.className = "head";
   const name = document.createElement("h2");
   name.textContent = g.project?.name ?? "No project";
-  title.append(name);
-  if (g.project?.root) {
-    const path = document.createElement("span");
-    path.className = "card-root";
-    path.textContent = g.project.root;
-    path.title = g.project.root;
-    title.append(path);
-  }
-  head.append(title);
+  if (g.project?.root) name.title = g.project.root;
+  head.append(name);
   // The counts live on the fleet line above the projects; the rows say
   // their own state. A project with no session at all says so, once.
-  if (owned === 0) {
-    const counts = document.createElement("div");
-    counts.className = "tallies";
-    const none = document.createElement("span");
-    none.className = "tally quiet";
-    none.textContent = "no live session";
-    counts.append(none);
-    head.append(counts);
-  }
+  if (owned === 0) head.append(span("tally", "no live session"));
   if (!watchOnly && g.project?.root) head.append(spawnControls(g.project));
   section.append(head);
 
@@ -1358,7 +1346,8 @@ function spawnControls(project: ProjectRef): HTMLElement {
     picked.addEventListener("change", () => spawnProfile.set(project.id, picked.value));
     box.append(select);
   }
-  const b = button("New session", "spawn-button", () => {
+  // `[new]` on the heading line; the aria-label says what is new and where.
+  const b = button("new", "spawn-button", () => {
     void spawn(project, select?.value || undefined, b);
   });
   b.setAttribute("aria-label", `New session in ${project.name}`);
@@ -1436,10 +1425,8 @@ function row(s: SessionRow): HTMLElement {
   link.className = "open";
   link.dataset.focus = `${s.id}:open`;
 
-  // The state is the text beside it; the dot is decoration.
-  const dot = document.createElement("span");
-  dot.className = `dot ${familyOf(stateOf(s))}`;
-  dot.setAttribute("aria-hidden", "true");
+  // The state is the text beside it; the gutter mark is decoration.
+  const dot = mark(familyOf(stateOf(s)));
 
   // One line: name, state, place, what, how long. The model decides each
   // field; a null one is not painted.
@@ -1605,6 +1592,16 @@ function span(className: string, text: string): HTMLElement {
   const el = document.createElement("span");
   el.className = className;
   el.textContent = text;
+  return el;
+}
+
+/** The one-character gutter mark of a state family (`familyOf`, or
+ * `approval` for a strip approval). A shape in the family's colour that a
+ * screen reader skips: the state's word beside it carries the state. */
+function mark(family: string): HTMLElement {
+  const el = document.createElement("span");
+  el.className = `mark ${family}`;
+  el.setAttribute("aria-hidden", "true");
   return el;
 }
 
