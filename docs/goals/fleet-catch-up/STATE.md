@@ -1,14 +1,14 @@
 # STATE: fleet-catch-up
 
-- Status: active
-- Round: 3 of 3 in this budget (first budget)
-- Rounds total: 3
-- Last floor: green (2026-09-15, round 3 after: vitest 1328 in 34 files)
-- Updated: 2026-09-15, round 3 closed
+- Status: done
+- Round: 4 of 3 in this budget (first budget)
+- Rounds total: 4
+- Last floor: green (2026-09-15, round 4 after: vitest 1214 in 35 files)
+- Updated: 2026-09-15, done
 
 ## Queue
 
-1. `the-terminal-surface` (capability 4)
+Empty. All four capabilities in `plan.md` are done.
 
 ## Failures
 
@@ -31,6 +31,9 @@ None.
   `rounds/003.md`. The first screen at 390 px holds every attention
   item and the count line with 419 px to spare; template goals read "not
   written yet"; done goals fold; the tools sit below the projects.
+- `the-terminal-surface` (capability 4), round 4, `10309d0`. See
+  `rounds/004.md`. Monospace, hairline sections, bracketed buttons, four
+  gutter glyphs, no pill, shadow, tint or transition. 390 px height 1336.
 
 ## Direction
 
@@ -50,15 +53,22 @@ and 4 before either merges.
 
 ## Next action
 
-Round 4: `the-terminal-surface` from `plan.md` row 4, the last
-capability. Remove every `border-radius` above 2 px, every `box-shadow`
-that is not a hairline, every `color-mix` tint behind text, every
-`transition`, and the dot's glow; cards become hairline sections; chips
-become bracketed words; strip items become lines with a gutter mark.
-Round 3 adds one item: the card head still prints the root path and the
-"New session" button on their own lines, about 80 px per card on a
-phone; fold them into the card's one heading line. Proof: a vitest that
-reads `sessions.css` with `node:fs` and asserts the four absences; the
-ratchet unchanged and green; before and after on `github-dark` and
-`solarized-dark` at both widths. Then `AGENTS.md`'s fleet-view paragraph
-needs rewriting for the new shape, which round 4 may do.
+None. The goal is done. All five completion conditions hold:
+
+1. Corpus request `01-back-after-lunch` passes at 390 px: the first
+   screen holds every needs-input session, every failed session, and the
+   count line, with nothing above them but the title, measured in the
+   page at 425 px of 844.
+2. No fact appears twice. A strip session is not a row; a proposal
+   appears once, at the top, from `STATE.md`'s count; the slug, the
+   record link and the round counter each appear once or not at all.
+3. A row is name, state, what, since. `pid`, `exit 0`, `attached`, the
+   shell name and the root path are gone.
+4. `sessions.css` has no `border-radius` above 2 px, no `box-shadow` but
+   a hairline, no `color-mix` behind text, no `transition`, pinned by
+   `sessions-css.test.ts`.
+5. `main` is green after the merge.
+
+The phone page went from 2820 px to 1336 px across four rounds, at a
+total cost of $35.79, and gained nothing. To reopen, set
+`Status: active` with a new budget and queue.
