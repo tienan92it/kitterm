@@ -221,10 +221,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
    gone; a row's place is relative to it, and the pane shows it. */
 .card .head { display: flex; align-items: center; gap: 10px; padding: 4px 12px; min-height: 36px; }
 .card .head h2 {
-  font-size: 13px; font-weight: 600; margin: 0; flex: 0 1 auto; min-width: 3em;
+  font-size: 13px; font-weight: 600; margin: 0; flex: 0 1 auto; min-width: 4em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.card .head .tally { color: var(--ui-text-muted); font-size: 12px; white-space: nowrap; }
+/* The tally gives way before the name does: with a profile select on a
+   phone the line is short, and the name is what the reader scans for. */
+.card .head .tally {
+  color: var(--ui-text-muted); font-size: 12px; white-space: nowrap;
+  flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+}
 /* The profile select sits beside `[new]` because the two are one action:
    pick where, then start. It is on the page only when the daemon has
    profiles. */
