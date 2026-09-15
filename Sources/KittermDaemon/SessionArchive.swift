@@ -42,12 +42,21 @@ public enum SessionArchive {
         public let outputBase: UInt64
         public let outputPruned: Bool
         public let outputBytes: Int
+        /// The Claude Code session that ran in this session, from its hooks:
+        /// the session id and the transcript's path, both or neither. The
+        /// archive stores the path, not the file. Claude Code owns the
+        /// transcript under `~/.claude/projects/` and may delete it; a
+        /// reader that finds nothing there has a session with no bill, and
+        /// the archive does not copy the transcript to prevent that.
+        public let agentSessionID: String?
+        public let agentTranscript: String?
 
         public init(
             id: UUID, name: String?, note: String?, labels: [String: String],
             cwd: String, shell: String, profile: String?, exitCode: Int32?,
             archivedAt: Date, commands: [[String: Any]], marks: [[String: Any]],
-            outputBase: UInt64, outputPruned: Bool, outputBytes: Int
+            outputBase: UInt64, outputPruned: Bool, outputBytes: Int,
+            agentSessionID: String? = nil, agentTranscript: String? = nil
         ) {
             self.id = id
             self.name = name
@@ -63,6 +72,8 @@ public enum SessionArchive {
             self.outputBase = outputBase
             self.outputPruned = outputPruned
             self.outputBytes = outputBytes
+            self.agentSessionID = agentSessionID
+            self.agentTranscript = agentTranscript
         }
 
         func asJSON() -> [String: Any] {
@@ -85,6 +96,8 @@ public enum SessionArchive {
             if let profile { item["profile"] = profile }
             if let exitCode { item["exitCode"] = Int(exitCode) }
             if !labels.isEmpty { item["labels"] = labels }
+            if let agentSessionID { item["agentSessionId"] = agentSessionID }
+            if let agentTranscript { item["agentTranscript"] = agentTranscript }
             return item
         }
     }

@@ -401,7 +401,9 @@ State lives in `~/.kitterm/`. The default port is 3418.
 ├── projects.json             registered projects (kitterm project add|init)
 ├── logs/<session>.log        retained output (--retain-logs)
 ├── history/<key>             per-pane shell history
-├── archive/<id>/             archived sessions (archive.json, output.log)
+├── archive/<id>/             archived sessions (archive.json with the Claude Code
+│                             session id and transcript path when hooks named them,
+│                             output.log)
 ├── respawn.json              names and labels of live sessions, for a respawn
 ├── last-run.json             how the last run ended, or nothing where its end should be
 ├── push.json                 Web Push subscriptions, one per browser endpoint (0600)
