@@ -7,7 +7,8 @@ import {
   applicationServerKey,
   approvalName,
   attention,
-  crewSections,
+  cardRecord,
+  cardRows,
   crews as crewsOf,
   dismissKey,
   dismissName,
@@ -15,30 +16,24 @@ import {
   focusKey,
   folderOf,
   goalBlocks,
-  goalGroups,
-  goalHeading,
   goalTitle,
   group,
   knowledgeUrl,
   needsYouMessage,
   NO_PROJECT,
   pickForeman,
-  proposalsName,
   proposedItems,
   pushToggle,
   recordLabel,
   recordName,
-  recordPath,
   restartDismissName,
   restartNotice,
   rowLine,
   rowName,
   sameServerKey,
-  showsProposals,
   stateLabel,
   stateName,
   stateOf,
-  statePath,
   titleSlug,
   tally,
   withProposed,
@@ -505,7 +500,11 @@ function paint(): void {
   const active = document.activeElement;
   const focusKey = active instanceof HTMLElement ? active.dataset.focus : undefined;
   const { foreman, rest } = pickForeman(sessions);
-  const items: StripItem[] = withProposed(attention(sessions, approvals), proposedItems(knowledgeEntries(), dismissed));
+  const proposed = proposedItems(knowledgeEntries(), dismissed);
+  const items: StripItem[] = withProposed(attention(sessions, approvals), proposed);
+  // What the strip shows, the cards do not list again (`cardRows`); the
+  // chips and the search reach only what the cards list.
+  const listed = cardRows(rest, items);
 
   // Title badge: how many items want the human right now, so a phone's tab
   // or home-screen label says "come back" without a push notification.
@@ -521,12 +520,12 @@ function paint(): void {
 
   strip.replaceChildren(...stripContent(items, foreman !== null));
   pinned.replaceChildren(...(foreman ? [foremanRow(foreman)] : []));
-  chips.replaceChildren(...chipGroups(rest));
+  chips.replaceChildren(...chipGroups(listed));
   noticeLine.hidden = notice === null;
   noticeLine.replaceChildren(...(notice === null ? [] : [noticeContent(notice)]));
   paintRestart();
   paintPush();
-  cards.replaceChildren(...cardList(rest));
+  cards.replaceChildren(...cardList(listed, rest, proposed));
   if (focusKey) restoreFocus(focusKey);
 }
 
@@ -1137,9 +1136,13 @@ function currentFilter(): Filter {
 
 // --- project cards ----------------------------------------------------------
 
-function cardList(rows: SessionRow[]): Node[] {
+/** The cards: `rows` is what they list (the strip's sessions left out),
+ * `owned` is every session outside the foreman's pane, so a card can tell
+ * a project with no session from one whose sessions are all in the strip. */
+function cardList(rows: SessionRow[], owned: SessionRow[], proposed: ProposedItem[]): Node[] {
   const shown = applyFilter(rows, currentFilter());
   const groups = group(shown, projects);
+  const ownedCount = new Map(group(owned, projects).map((g) => [g.key, g.rows.length]));
   const narrowed = isNarrowed();
   const nodes: Node[] = [];
   for (const g of groups) {
@@ -1147,7 +1150,7 @@ function cardList(rows: SessionRow[]): Node[] {
     // a narrowed view lists what matched and nothing else.
     if (narrowed && g.rows.length === 0) continue;
     if (choice.projects.length > 0 && !choice.projects.includes(g.key)) continue;
-    nodes.push(card(g, archivesFor(g.key)));
+    nodes.push(card(g, archivesFor(g.key), ownedCount.get(g.key) ?? 0, proposed));
   }
   if (nodes.length === 0) {
     const empty = document.createElement("p");
@@ -1172,7 +1175,7 @@ function archivesFor(key: string): ArchivedRow[] {
   return archives.filter((a) => (a.project?.id ?? NO_PROJECT) === key);
 }
 
-function card(g: Group<SessionRow>, archived: ArchivedRow[]): HTMLElement {
+function card(g: Group<SessionRow>, archived: ArchivedRow[], owned: number, proposed: ProposedItem[]): HTMLElement {
   const section = document.createElement("section");
   section.className = "card";
   section.setAttribute("aria-label", g.project?.name ?? "No project");
@@ -1193,6 +1196,8 @@ function card(g: Group<SessionRow>, archived: ArchivedRow[]): HTMLElement {
   }
   head.append(title);
 
+  // The count is over the rows the card lists. A session in the strip is
+  // counted there, under its project's name, and not here again.
   const counts = document.createElement("div");
   counts.className = "tallies";
   const t = tally(g.rows);
@@ -1206,7 +1211,7 @@ function card(g: Group<SessionRow>, archived: ArchivedRow[]): HTMLElement {
     item.append(dot, document.createTextNode(`${n} ${stateName(state)}`));
     counts.append(item);
   }
-  if (g.rows.length === 0) {
+  if (owned === 0) {
     const none = document.createElement("span");
     none.className = "tally quiet";
     none.textContent = "no live session";
@@ -1218,7 +1223,7 @@ function card(g: Group<SessionRow>, archived: ArchivedRow[]): HTMLElement {
   // One block per goal of the package, in the route's order. A package
   // with no goal folder (an empty `goals`, not the null of a 404) says so,
   // since the foreman skips such a project and the card must show why.
-  if (g.project) for (const block of goalBlocks(entry?.goals)) head.append(goalSection(g.project, block));
+  if (g.project) for (const block of goalBlocks(entry?.goals)) head.append(goalSection(g.project, block, proposed));
   if (g.project && entry?.goals?.length === 0) {
     const none = document.createElement("span");
     none.className = "tally quiet goal-none";
@@ -1228,30 +1233,13 @@ function card(g: Group<SessionRow>, archived: ArchivedRow[]): HTMLElement {
   section.append(head);
 
   if (g.rows.length > 0) {
-    // The rows without a crew label first, then each goal's own crew under
-    // its slug, then the other crews under a labelled rule each, then the
-    // crews on a goal the package does not know, so they stay visible.
-    const { goals, unmatched, rest } = goalGroups(g.rows, entry?.goals);
-    const sections = crewSections(rest).filter((sec) => sec.rows.length > 0);
-    const rowList = (rows: SessionRow[]): HTMLElement => {
-      const list = document.createElement("ul");
-      list.className = "rows";
-      for (const r of rows) list.append(row(r));
-      return list;
-    };
-    const subHead = (text: string, className: string): HTMLElement => {
-      const sub = document.createElement("h3");
-      sub.className = className;
-      sub.textContent = text;
-      return sub;
-    };
-    for (const sec of sections) if (sec.crew === null) section.append(rowList(sec.rows));
-    for (const goal of goals) section.append(subHead(goalHeading(goal.slug, true), "crew-head goal-head"), rowList(goal.rows));
-    for (const sec of sections) {
-      if (sec.crew === null) continue;
-      section.append(subHead(`crew: ${sec.crew}`, "crew-head"), rowList(sec.rows));
-    }
-    for (const goal of unmatched) section.append(subHead(goalHeading(goal.slug, false), "crew-head goal-head"), rowList(goal.rows));
+    // One list in `sortInGroup`'s order: attention first, then the newest
+    // output. No `goal:` or `crew:` sub-header; a row's name and state say
+    // what those said.
+    const list = document.createElement("ul");
+    list.className = "rows";
+    for (const r of g.rows) list.append(row(r));
+    section.append(list);
   }
   if (archived.length > 0) section.append(archivedFold(g.key, archived));
   return section;
@@ -1259,15 +1247,16 @@ function card(g: Group<SessionRow>, archived: ArchivedRow[]): HTMLElement {
 
 /** One goal of the project's knowledge package: a section under the
  * card's heading, named by the goal's title. Expanded (`active`): the
- * title with the slug beside it, the proposals chip and the latest record
- * on the first line, then a definition list with `Round` (the counter, the
- * status, the last floor) and `Next` (the next action); the terms are
- * visually hidden, so a screen reader gets them and a sighted reader gets
- * the position and the weight. One line (`waiting`, `stopped`, `done`):
- * the title, the status word, the proposals chip while the goal is open,
- * and the record. Every value comes from `STATE.md` and `goal.md` as the
- * daemon parsed them. */
-function goalSection(project: ProjectRef, block: GoalBlock): HTMLElement {
+ * title with the slug beside it and the latest record on the first line,
+ * then a definition list with `Round` (the counter, the status, the last
+ * floor) and `Next` (the next action); the terms are visually hidden, so
+ * a screen reader gets them and a sighted reader gets the position and
+ * the weight. One line (`waiting`, `stopped`, `done`): the title, the
+ * status word, and the record. A proposal lives in the strip, with its
+ * record link, so the card carries no proposals chip and drops the record
+ * link while the strip shows it (`cardRecord`). Every value comes from
+ * `STATE.md` and `goal.md` as the daemon parsed them. */
+function goalSection(project: ProjectRef, block: GoalBlock, proposed: ProposedItem[]): HTMLElement {
   const { summary, expanded } = block;
   const goal = goalTitle(summary);
   const box = document.createElement("section");
@@ -1296,14 +1285,7 @@ function goalSection(project: ProjectRef, block: GoalBlock): HTMLElement {
     status.textContent = summary.status;
     top.append(status);
   }
-  if (showsProposals(summary)) {
-    // A link, so a phone can reach the file the proposals wait in.
-    const chip = knowledgeLink(project.id, statePath(summary), `proposals: ${summary.proposals}`, "card-knowledge");
-    chip.className = "tag proposals";
-    chip.setAttribute("aria-label", proposalsName(summary.proposals ?? 0, project.name, goal));
-    top.append(chip);
-  }
-  const record = recordPath(summary);
+  const record = cardRecord(project.id, summary, proposed);
   if (record !== null) {
     const link = knowledgeLink(project.id, record, `record ${recordLabel(record)}`, "card-knowledge");
     link.classList.add("goal-link");
