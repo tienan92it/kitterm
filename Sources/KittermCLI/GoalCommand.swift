@@ -1,13 +1,15 @@
 import Foundation
 import KittermDaemon
 
-/// `kitterm goal new|list` — the goal folders under a project's knowledge
-/// directory. Each goal is one folder, `<knowledge>/<slug>/`, and its
-/// status is the `- Status:` line of its `STATE.md`. The project need not
-/// be registered: the commands read and write the checkout only.
+/// `kitterm goal new|list|cost` — the goal folders under a project's
+/// knowledge directory. Each goal is one folder, `<knowledge>/<slug>/`, and
+/// its status is the `- Status:` line of its `STATE.md`. The project need
+/// not be registered: the commands read and write the checkout only, and
+/// `cost` reads the archives under `~/.kitterm` (`KITTERM_STATE_DIR`).
 enum GoalCommand {
     static let usage = """
-        usage: kitterm goal new <path> <slug> [--knowledge <dir>] | list <path> [--knowledge <dir>]
+        usage: kitterm goal new <path> <slug> [--knowledge <dir>] | list <path> [--knowledge <dir>] \
+        | cost <path> [<slug>] [--knowledge <dir>] [--json]
         """
 
     /// Run one subcommand. `out` takes every line meant for stdout.
@@ -19,16 +21,22 @@ enum GoalCommand {
             try new(Array(array.dropFirst()), out: out)
         case "list":
             try list(Array(array.dropFirst()), out: out)
+        case "cost":
+            try cost(Array(array.dropFirst()), out: out)
         default:
             throw CLIError.usage(usage)
         }
     }
 
-    /// Parse `<path> [<slug>] [--knowledge <dir>]`: the canonical root, the
-    /// knowledge directory, and the positional arguments after the path.
-    private static func parse(_ args: [String], positionals: Int) throws -> (root: String, knowledge: String, rest: [String]) {
+    /// Parse `<path> [<slug>] [--knowledge <dir>] [<flags>]`: the canonical
+    /// root, the knowledge directory, the positional arguments after the
+    /// path, and the flags seen from `flags`; any other option is refused.
+    private static func parse(
+        _ args: [String], positionals: ClosedRange<Int>, flags: Set<String> = []
+    ) throws -> (root: String, knowledge: String, rest: [String], flags: Set<String>) {
         var values: [String] = []
         var knowledgeOption: String?
+        var seen: Set<String> = []
         var index = 0
         while index < args.count {
             let arg = args[index]
@@ -40,6 +48,8 @@ enum GoalCommand {
                 continue
             case _ where arg.hasPrefix("--knowledge="):
                 knowledgeOption = String(arg.dropFirst("--knowledge=".count))
+            case _ where flags.contains(arg):
+                seen.insert(arg)
             case _ where arg.hasPrefix("-"):
                 throw CLIError.usage("unknown option \(arg)\n\(usage)")
             default:
@@ -47,9 +57,9 @@ enum GoalCommand {
             }
             index += 1
         }
-        guard values.count == positionals + 1 else { throw CLIError.usage(usage) }
+        guard positionals.contains(values.count - 1) else { throw CLIError.usage(usage) }
         let root = try ProjectCommand.canonicalRoot(values[0])
-        return (root, try ProjectCommand.knowledge(knowledgeOption), Array(values.dropFirst()))
+        return (root, try ProjectCommand.knowledge(knowledgeOption), Array(values.dropFirst()), seen)
     }
 
     /// A slug is a project id (`ProjectStore.isValidID`): lowercase letters,
@@ -65,7 +75,7 @@ enum GoalCommand {
     /// that name, and a symlink at any prefix of the path, are refused
     /// before anything is written, by the rule `project init` uses.
     private static func new(_ args: [String], out: (String) -> Void) throws {
-        let (root, knowledge, rest) = try parse(args, positionals: 1)
+        let (root, knowledge, rest, _) = try parse(args, positionals: 1...1)
         let slug = rest[0]
         guard isValidSlug(slug) else {
             throw CLIError.usage("slug must be lowercase letters, digits, and hyphens, not at the ends: \(slug)")
@@ -88,9 +98,28 @@ enum GoalCommand {
     /// `done`, then the rest, then by slug). A missing status line prints
     /// `unknown`; a missing knowledge directory lists nothing.
     private static func list(_ args: [String], out: (String) -> Void) throws {
-        let (root, knowledge, _) = try parse(args, positionals: 0)
+        let (root, knowledge, _, _) = try parse(args, positionals: 0...0)
         for goal in KnowledgeFile.summaries(root: root, knowledge: knowledge) ?? [] {
             out("\(goal.slug ?? "")\t\(goal.status ?? "unknown")")
+        }
+    }
+
+    /// `cost`: the ledger of every goal, or of the one named, per round:
+    /// dollars, tokens, the cache-read share of input, wall-clock, tests
+    /// added, files changed, the decision and the PR, with totals per goal.
+    /// One monospace table per goal, a blank line between goals; `--json`
+    /// prints one document with one object per round, unrounded. See
+    /// `GoalLedger` for where each column comes from and which source wins.
+    private static func cost(_ args: [String], out: (String) -> Void) throws {
+        let (root, knowledge, rest, flags) = try parse(args, positionals: 0...1, flags: ["--json"])
+        let goals = try GoalLedger.goals(root: root, knowledge: knowledge, slug: rest.first)
+        if flags.contains("--json") {
+            out(try GoalLedger.jsonText(goals))
+            return
+        }
+        for (index, goal) in goals.enumerated() {
+            if index > 0 { out("") }
+            for line in GoalLedger.table(goal) { out(line) }
         }
     }
 }

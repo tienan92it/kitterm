@@ -192,6 +192,8 @@ enum KittermMain {
                                       # write docs/goals/<slug>/ from the template
               kitterm goal list <path> [--knowledge DIR]
                                       # one line per goal folder: slug and status
+              kitterm goal cost <path> [<slug>] [--knowledge DIR] [--json]
+                                      # the ledger: dollars, tokens, wall-clock per round
               kitterm skills install [--dir DIR] | list
                                       # write the foreman skills into ~/.claude/skills
               kitterm identity [status|setup|sign]
@@ -254,8 +256,13 @@ enum KittermMain {
             template under examples/goals/goal/ (goal.md, plan.md, STATE.md,
             corpus/, rounds/) with the slug in STATE.md; it refuses an
             existing folder. goal list prints each goal folder's slug and
-            the Status line of its STATE.md, active first. Neither needs the
-            project registered.
+            the Status line of its STATE.md, active first. goal cost prints
+            the ledger per goal and per round from the round records and
+            the archives under ~/.kitterm (KITTERM_STATE_DIR): dollars,
+            tokens by kind, the cache-read share of input, wall-clock, tests
+            added, files changed from git, the decision and the PR, with
+            totals per goal; --json prints the same numbers unrounded. None
+            needs the project registered.
 
             skills install writes the reference foreman skills under
             examples/foreman/ (foreman-loop, review-crew, triage) to

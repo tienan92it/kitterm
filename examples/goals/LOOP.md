@@ -97,10 +97,13 @@ whether the product improved.
    `needs-input` and `needs-approval` to the human, never answer for them.
 4. **Collect.** On `completed`, read the last command output and the screen.
    Run the floor again. Read the diff. Collect the visible proof the crew
-   posted with `post_note`: a screenshot path, a test name, a URL. Read
-   `GET /api/sessions/<id>/cost` for every session the record's
-   `Sessions:` line names and write one `- Cost:` line per session, in
-   that order, under the record's header.
+   posted with `post_note`: a screenshot path, a test name, a URL. Archive
+   the session, then read `GET /api/archives/<id>/cost` for every session
+   the record's `Sessions:` line names and write one `- Cost:` line per
+   session, in that order, under the record's header. The bill exists only
+   once `claude` exits, and archiving is what ends it; a session the round
+   still needs for a correction is archived at step 6 and its line written
+   then.
 5. **Classify the largest gap.** One class per round:
    - **world**: the environment, the build, the toolchain.
    - **domain**: the product's own logic.
@@ -254,7 +257,7 @@ is `inputTokens` plus `cacheCreationInputTokens` plus
 cached` is the summed `cacheReadInputTokens` over `in`, rounded to a
 whole percent; `Nk out` is `outputTokens`; each token count is rounded to
 whole thousands; `Hh Mm` is `totalDuration` rounded to whole minutes.
-When `GET /api/sessions/<id>/cost` answers `hasBill: false` or 404, the
+When `GET /api/archives/<id>/cost` answers `hasBill: false` or 404, the
 line reads `- Cost: none recorded (<reason>)` with the reason the route
 gave.
 

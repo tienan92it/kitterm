@@ -127,11 +127,19 @@ final class GoalsLayoutDocsTests: XCTestCase {
             "- Cost: $D · Nk in (C% cached) · Nk out · Hh Mm"
         ),
         (
-            "the foreman reads the cost route at collect time and writes one `- Cost:` line per session",
+            "the foreman archives the session, then reads the archive's cost route and writes one `- Cost:` line per session",
             """
-            Read `GET /api/sessions/<id>/cost` for every session the record's
-            `Sessions:` line names and write one `- Cost:` line per session, in
-            that order, under the record's header.
+            Archive the session, then read `GET /api/archives/<id>/cost` for every
+            session the record's `Sessions:` line names and write one `- Cost:`
+            line per session, in that order, under the record's header.
+            """
+        ),
+        (
+            "the bill exists only once `claude` exits, so a session a correction still needs is archived at step 6",
+            """
+            The bill exists only once `claude` exits, and archiving is what ends
+            it; a session the round still needs for a correction is archived at
+            step 6 and its line written then.
             """
         ),
         (
@@ -148,7 +156,7 @@ final class GoalsLayoutDocsTests: XCTestCase {
         (
             "a session without a bill is `none recorded` with the route's reason",
             """
-            When `GET /api/sessions/<id>/cost` answers `hasBill: false` or 404, the
+            When `GET /api/archives/<id>/cost` answers `hasBill: false` or 404, the
             line reads `- Cost: none recorded (<reason>)` with the reason the route
             gave.
             """
@@ -161,6 +169,8 @@ final class GoalsLayoutDocsTests: XCTestCase {
     static let retiredWordings = [
         "is Propose, not Frozen",
         "no live session carries `goal:<slug>`",
+        "Read `GET /api/sessions/<id>/cost` for every session",
+        "When `GET /api/sessions/<id>/cost` answers",
     ]
 
     /// Collapse every run of whitespace and fold the case, so one sentence
