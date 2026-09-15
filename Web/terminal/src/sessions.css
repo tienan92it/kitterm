@@ -6,7 +6,7 @@
 
    Structure carries the information: the attention strip is the one tinted
    region on the page; a project is one bordered group; rows inside it are
-   divided by rules, not boxed; crews get a labelled rule. Nothing casts a
+   divided by rules, not boxed. Nothing casts a
    shadow. */
 
 body {
@@ -51,7 +51,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 /* The hover fill alone no longer says "hovered". Elevation came down in
    `tokens.css`, so --ui-surface-2 on the card reads 1.05 against it, and inside
    an open `.menu`, which paints --ui-surface-2 itself, it reads 1.00. The edge
-   carries the state instead, the same edge `.count` and `.tag` took, and it
+   carries the state instead, the same edge `.count` took, and it
    appears only while the pointer is on the button. A button, not `.quiet`:
    `.tally.quiet` is a span, and a line of text must not outline under the
    pointer. */
@@ -238,11 +238,6 @@ button.quiet:hover { box-shadow: inset 0 0 0 1px var(--ui-border); }
 }
 .spawn-button:hover { border-color: var(--ui-accent); }
 .spawn-button:disabled { opacity: .5; cursor: progress; }
-.crew-head {
-  font-size: 11.5px; font-weight: 400; color: var(--ui-text-muted); padding: 8px 14px 0; margin: 0;
-  display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; min-width: 0;
-}
-.crew-head::after { content: ""; flex: 1; border-top: 1px solid var(--ui-border); }
 
 /* The goal blocks: one section per goal of the project's knowledge
    package, each one full row under the card's title, in the route's order.
@@ -258,15 +253,11 @@ button.quiet:hover { box-shadow: inset 0 0 0 1px var(--ui-border); }
 .goal-top { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .goal-title { font-size: 13px; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
 .goal.brief .goal-title { font-weight: 400; }
-/* The slug beside an expanded title: the `.tag` pair, --ui-text-muted on
+/* The slug beside an expanded title: --ui-text-muted on
    --ui-surface-2 (theme-contrast.test.ts, `muted-2`). */
 .goal-slug { font-size: 12px; font-weight: 400; color: var(--ui-text-muted); }
 .goal-none { flex: 1 1 100%; padding-top: 6px; border-top: 1px solid var(--ui-border); }
 .goal-status { font-size: 12px; color: var(--ui-text); }
-/* The warning colour sits on the border only; the text stays the tested
-   pair, --ui-text on --ui-surface-2 (theme-contrast.test.ts). */
-.tag.proposals { color: var(--ui-text); border: 1px solid var(--ui-warning); text-decoration: none; padding: 2px 8px; }
-.tag.proposals:hover { border-color: var(--ui-accent); }
 .goal-link { margin-left: auto; margin-top: 0; }
 /* On the card head, like .state and .tallies: the muted mix drops under
    4.5:1 on --ui-surface-2 for three more themes. */
@@ -282,7 +273,6 @@ button.quiet:hover { box-shadow: inset 0 0 0 1px var(--ui-border); }
 .rows { list-style: none; margin: 0; padding: 0; }
 .row { display: flex; align-items: flex-start; gap: 4px; border-top: 1px solid var(--ui-border); padding: 0 8px 0 14px; }
 .card .rows:first-of-type .row:first-child { border-top: none; }
-.crew-head + .rows .row:first-child { border-top: none; }
 /* 44 px tall on one line (WCAG 2.2 SC 2.5.8), through the padding. */
 .open {
   flex: 1; min-width: 0; display: flex; gap: 12px; align-items: flex-start; text-decoration: none;
@@ -304,12 +294,6 @@ button.quiet:hover { box-shadow: inset 0 0 0 1px var(--ui-border); }
    because an ANSI red at 11.5 px sits under 3:1 on half the themes. */
 .state { font-size: 11.5px; white-space: nowrap; color: var(--ui-text); }
 .state.attention { font-weight: 600; }
-/* Same edge as `.count`, and for the same reason. */
-.tag {
-  background: var(--ui-surface-2); color: var(--ui-text-muted); border-radius: var(--radius-round);
-  padding: 0 8px; font-size: 11px; white-space: nowrap;
-  box-shadow: inset 0 0 0 1px var(--ui-border);
-}
 .main .place { color: var(--ui-text-muted); font-family: var(--font-mono); font-size: 12.5px; white-space: nowrap; }
 .main .what {
   flex: 1 1 14em; min-width: 0; color: var(--ui-text); font-family: var(--font-mono);
@@ -346,7 +330,6 @@ button.quiet:hover { box-shadow: inset 0 0 0 1px var(--ui-border); }
   .spawn { margin-left: 0; width: 100%; }
   .spawn-button { margin-left: auto; }
   .row { padding-left: 12px; padding-right: 4px; }
-  .crew-head { padding-left: 12px; }
   /* Thumb targets: 32 px chips with 8 px between them. */
   .chip-group { gap: 8px; }
   .chip { min-height: 32px; padding: 3px 12px; }

@@ -4,6 +4,7 @@ import {
   actionName,
   approvalName,
   attention,
+  cardRows,
   crews,
   needsYouMessage,
   filter,
@@ -16,6 +17,7 @@ import {
   rowName,
   sortInGroup,
   spanLabel,
+  stripIds,
   stampFormat,
   stateLabel,
   stateOf,
@@ -236,6 +238,56 @@ describe("attention", () => {
   it("orders several failed rows by last output, newest first", () => {
     const rows = [state("a", "failed", { lastOutputAt: 1 }), state("b", "failed", { lastOutputAt: 2 })];
     expect(attention(rows, []).map((item) => item.row?.id)).toEqual(["b", "a"]);
+  });
+});
+
+describe("cardRows", () => {
+  // The corpus fixture `01-back-after-lunch`: two sessions that need input,
+  // two that failed, a done foreman, and two idle shells.
+  const nnt = "/w/NgheNhanTrading";
+  const mdp = { id: "mdp", name: "market-data-pipeline", root: `${nnt}/market-data-pipeline`, registered: true };
+  const tda = { id: "tda", name: "trading-data-api", root: `${nnt}/trading-data-api`, registered: true };
+  const message = "Adopt two active Claude sessions finished";
+  const fixture: ModelRow[] = [
+    { id: "nnt-input", cwd: nnt, mergedState: "needs-input", agent: { message }, lastOutputAt: 7 },
+    { id: "ws-input", cwd: "/w", mergedState: "needs-input", agent: { message }, lastOutputAt: 6 },
+    { id: "mdp-failed", cwd: mdp.root, project: mdp, mergedState: "failed", lastExit: 1, lastOutputAt: 8 },
+    { id: "ws-failed", cwd: "/w", mergedState: "failed", lastExit: 1, lastOutputAt: 5 },
+    { id: "foreman", cwd: nnt, name: "foreman", labels: { crew: "foreman" }, mergedState: "completed", lastOutputAt: 8 },
+    { id: "postman", cwd: `${tda.root}/docs/postman`, project: tda, mergedState: "idle", lastOutputAt: 1 },
+    { id: "nnt-idle", cwd: nnt, mergedState: "idle", lastOutputAt: 3 },
+  ];
+  const projects: ProjectSummary[] = [kitterm, mdp, tda];
+
+  it("lists no session in both the strip and a card", () => {
+    const items = attention(fixture, []);
+    const inStrip = stripIds(items);
+    expect([...inStrip].sort()).toEqual(["mdp-failed", "nnt-input", "ws-failed", "ws-input"]);
+    const listed = cardRows(fixture, items);
+    expect(listed.filter((row) => inStrip.has(row.id))).toEqual([]);
+    expect(listed.map((row) => row.id)).toEqual(["foreman", "postman", "nnt-idle"]);
+    expect(items.length + listed.length).toBe(fixture.length);
+  });
+
+  it("counts on a card only what the card lists", () => {
+    const groups = group(cardRows(fixture, attention(fixture, [])), projects);
+    const counts = Object.fromEntries(groups.map((g) => [g.key, tally(g.rows)]));
+    expect(counts).toEqual({ "p-kitterm": {}, mdp: {}, tda: { idle: 1 }, "": { completed: 1, idle: 1 } });
+  });
+
+  it("keeps a needs-approval row in the strip only while its approval is listed", () => {
+    const held = state("held", "needs-approval");
+    const approval: Approval = { id: "ap", tool: "Bash", input: "{}", session: "held", waitingMs: 1 };
+    expect(cardRows([held], attention([held], [approval]))).toEqual([]);
+    expect(cardRows([held], attention([held], []))).toEqual([held]);
+    const orphan: Approval = { ...approval, session: "gone" };
+    expect(stripIds(attention([held], [orphan]))).toEqual(new Set());
+  });
+
+  it("lists every row when nothing needs the human", () => {
+    const rows = [state("a", "working"), state("b", "idle")];
+    expect(cardRows(rows, attention(rows, []))).toEqual(rows);
+    expect(cardRows([], [])).toEqual([]);
   });
 });
 
