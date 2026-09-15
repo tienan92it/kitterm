@@ -13,6 +13,7 @@ import {
   dismissName,
   filter as applyFilter,
   focusKey,
+  folderOf,
   goalBlocks,
   goalGroups,
   goalHeading,
@@ -30,9 +31,12 @@ import {
   recordPath,
   restartDismissName,
   restartNotice,
+  rowLine,
+  rowName,
   sameServerKey,
   showsProposals,
-  roundOf,
+  stateLabel,
+  stateName,
   stateOf,
   statePath,
   titleSlug,
@@ -80,23 +84,12 @@ type SessionState = "running" | "idle" | "unknown";
 type AgentStatus = { status: "needs-input" | "completed"; message?: string; at: number };
 
 type SessionRow = ModelRow & {
-  shell: string;
-  pid: number;
-  attached: boolean;
-  observers: number;
   state: SessionState;
   marks: number;
-  profile?: string;
-  /** Free-text status note set by a program or a person. */
-  note?: string;
   /** The session's latest Claude Code hook report. */
   agent?: AgentStatus;
   /** A tool call in this session is blocked on a human. */
   pendingApproval?: boolean;
-  /** When the linger clock first kept this session past a window (epoch ms). */
-  heldSince?: number;
-  /** The program that took the terminal from the shell, by name. */
-  foregroundProgram?: string;
   exited?: boolean;
   exitCode?: number;
 };
@@ -476,9 +469,13 @@ function render(): void {
     agent: agent ? { status: agent.status, message: agent.message } : undefined,
   }));
   const order = group(sessions, projects).flatMap((g) => g.rows.map((r) => r.id));
+  // The span a row prints moves once a minute at most, so it is in.
+  const now = Date.now();
+  const spans = sessions.map((s) => rowLine(s, now).since);
   const signature = JSON.stringify([
     rendered,
     order,
+    spans,
     projects,
     approvals.map((a) => a.id),
     archives.map((a) => a.id),
@@ -1475,63 +1472,26 @@ function row(s: SessionRow): HTMLElement {
   dot.className = `dot ${familyOf(stateOf(s))}`;
   dot.setAttribute("aria-hidden", "true");
 
+  // One line: name, state, place, what, how long. The model decides each
+  // field; a null one is not painted.
+  const line = rowLine(s, Date.now());
   const main = document.createElement("div");
   main.className = "main";
-
-  const top = document.createElement("div");
-  top.className = "top";
-  // The server-side name is the headline when one is set; the folder stays
-  // visible as a chip so the row still says where the shell is.
-  const headline = document.createElement("span");
-  headline.className = "folder";
-  headline.textContent = headlineOf(s);
-  headline.title = s.cwd;
+  const name = document.createElement("span");
+  name.className = "folder";
+  name.textContent = line.name;
+  name.title = s.cwd;
   const state = document.createElement("span");
   state.className = `state ${familyOf(stateOf(s))}`;
-  state.textContent = stateLabel(s);
-  top.append(headline, state);
-  if (s.name) top.append(tag(folderOf(s.cwd)));
-  if (s.profile) top.append(tag(s.profile));
-  // What holds the terminal: a pane running `claude` and a bare shell look
-  // the same otherwise. The daemon omits the field at a shell prompt.
-  if (s.foregroundProgram) {
-    const program = tag(s.foregroundProgram);
-    program.classList.add("program");
-    program.title = "Reading the terminal";
-    top.append(program);
+  state.textContent = line.state;
+  main.append(name, state);
+  if (line.place) main.append(span("place", line.place));
+  if (line.what) {
+    const what = span("what", line.what);
+    what.title = line.what;
+    main.append(what);
   }
-  const task = s.labels?.task;
-  if (task) top.append(tag(`task: ${task}`));
-  const round = roundOf(s);
-  if (round !== null) top.append(tag(`round ${round}`));
-
-  const sub = document.createElement("div");
-  sub.className = "sub";
-  sub.textContent = s.lastCommand ? `$ ${s.lastCommand}` : `${shellName(s.shell)} · ${s.cwd}`;
-  sub.title = s.cwd;
-
-  // What the agent last said (a Notification's message), shown when it is the
-  // reason the session wants attention. A note set by a person takes the line
-  // otherwise.
-  const noteText = s.agent?.message ?? s.note;
-  const note = noteText ? document.createElement("div") : null;
-  if (note && noteText) {
-    note.className = "note";
-    note.textContent = noteText;
-  }
-
-  const meta = document.createElement("div");
-  meta.className = "meta";
-  const bits: string[] = [];
-  bits.push(s.attached ? "attached" : "detached");
-  if (typeof s.heldSince === "number") bits.push(`held since ${clockTime(s.heldSince)}`);
-  if (s.observers > 0) bits.push(`${s.observers} watching`);
-  if (typeof s.lastExit === "number") bits.push(`exit ${s.lastExit}`);
-  bits.push(`pid ${s.pid}`);
-  meta.textContent = bits.join(" · ");
-
-  if (note) main.append(top, sub, note, meta);
-  else main.append(top, sub, meta);
+  if (line.since) main.append(span("since", line.since));
   link.append(dot, main);
   li.append(link);
   if (!watchOnly) li.append(rowActions(s));
@@ -1672,11 +1632,11 @@ function button(label: string, className: string, onClick: () => void): HTMLButt
   return b;
 }
 
-function tag(text: string): HTMLElement {
-  const span = document.createElement("span");
-  span.className = "tag";
-  span.textContent = text;
-  return span;
+function span(className: string, text: string): HTMLElement {
+  const el = document.createElement("span");
+  el.className = className;
+  el.textContent = text;
+  return el;
 }
 
 function openLink(id: string, text: string): HTMLAnchorElement {
@@ -1689,7 +1649,7 @@ function openLink(id: string, text: string): HTMLAnchorElement {
 }
 
 function headlineOf(s: SessionRow): string {
-  return s.name || folderOf(s.cwd);
+  return rowName(s);
 }
 
 /** The visual family (dot and label colour) of a merged state. */
@@ -1708,33 +1668,6 @@ function familyOf(state: MergedState): string {
       return "idle";
     default:
       return "unknown";
-  }
-}
-
-/** The state's name as the chips and tallies print it. */
-function stateName(state: MergedState): string {
-  switch (state) {
-    case "needs-approval":
-      return "needs approval";
-    case "needs-input":
-      return "needs input";
-    case "completed":
-      return "done";
-    case "unknown":
-      return "no integration";
-    default:
-      return state;
-  }
-}
-
-function stateLabel(s: SessionRow): string {
-  switch (stateOf(s)) {
-    case "failed":
-      return typeof s.lastExit === "number" ? `failed (${s.lastExit})` : "failed";
-    case "exited":
-      return typeof s.lastExit === "number" ? `exited (${s.lastExit})` : "exited";
-    default:
-      return stateName(stateOf(s));
   }
 }
 
@@ -1775,16 +1708,6 @@ function clockTime(epochMs: number): string {
 function pastTime(epochMs: number, format: StampFormat): string {
   if (format === "time") return clockTime(epochMs);
   return new Date(epochMs).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
-}
-
-function folderOf(cwd: string): string {
-  const trimmed = cwd.replace(/\/+$/, "");
-  const base = trimmed.slice(trimmed.lastIndexOf("/") + 1);
-  return base || cwd;
-}
-
-function shellName(shell: string): string {
-  return shell.slice(shell.lastIndexOf("/") + 1) || shell;
 }
 
 function renderError(): void {
