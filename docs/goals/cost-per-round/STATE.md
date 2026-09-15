@@ -1,17 +1,16 @@
 # STATE: cost-per-round
 
 - Status: active
-- Round: 0 of 3 in this budget (first budget)
-- Rounds total: 0
-- Last floor: green (2026-09-15, main at e3b6321: swift test 699, vitest 1310)
-- Updated: 2026-09-15, planned
+- Round: 1 of 3 in this budget (first budget)
+- Rounds total: 1
+- Last floor: green (2026-09-15, round 1 after: swift test 701, bench p95 2.51 ms, Linux green)
+- Updated: 2026-09-15, round 1 closed
 
 ## Queue
 
-1. `keep-the-join` (capability 1)
-2. `read-the-bill` (capability 2)
-3. `the-bill-in-the-record` (capability 3)
-4. `the-ledger` (capability 4)
+1. `read-the-bill` (capability 2)
+2. `the-bill-in-the-record` (capability 3)
+3. `the-ledger` (capability 4)
 
 ## Failures
 
@@ -23,7 +22,10 @@ None.
 
 ## Done
 
-None.
+- `keep-the-join` (capability 1), round 1, `b39ba30`. See
+  `rounds/001.md`. Every hook records the Claude Code session id and
+  transcript path on the session, the archive keeps them, and the row
+  exposes `agentSessionId` and `agentTranscript`.
 
 ## Direction
 
@@ -38,7 +40,9 @@ price table is added.
 
 ## Next action
 
-Round 1: `keep-the-join` from `plan.md` row 1; proof: a route test that
-posts a hook and reads `agentSessionId` and `agentTranscript` back from
-the row and from the archive, and an unchanged bench. It touches the hook
-path, so the Linux build runs before the push.
+Round 2: `read-the-bill` from `plan.md` row 2; proof: unit tests over
+three real transcript tails checked in as fixtures, one with a bill, one
+zeroed, one truncated, and a route test for `GET /api/sessions/<id>/cost`
+against a scratch daemon. The reader takes the path from
+`agentTranscript`. It opens a file, so it must run off the event loop and
+the bench must say so.
