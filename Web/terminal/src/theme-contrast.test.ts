@@ -146,7 +146,9 @@ type Blocker =
   /**
    * 11 over 4 pairs, on the danger or warning tint the attention strip paints
    * over `--ui-surface`. The lever is the tint, which no ruling has opened.
-   * Without it 1 clears and 10 fail on `--ui-surface` too.
+   * Without it 1 clears and 10 fail on `--ui-surface` too. None since
+   * `fleet-catch-up` round 4 removed the tints; the group stays so a tint
+   * that returns is named.
    */
   | "tint"
   /**
@@ -184,15 +186,18 @@ interface Below {
  * each pair says which themes its lever reaches and which fail without the
  * blocker too.
  *
- * 84 entries over 31 pairs. The list read 273 after round 1 derived it, 178
+ * 61 entries over 24 pairs. The list read 273 after round 1 derived it, 178
  * after round 2 raised the two muted tokens, 134 after round 3 lowered the
  * elevation, 110 after round 5 opened the three opacities round 3 left
  * alone (`.settings-gear` at 0.35 and 0.65 and `.keyboard-toggle` at 0.75;
  * those three pairs went whole, 24 entries, and their keys collapsed into
  * `--ui-text on --ui-bg + --ui-veil`, which already carried synthwave-84),
  * 97 after round 6 darkened `--ui-accent-soft`, and 84 after round 7 sank
- * `--ui-bg-sunken` to black (four pairs went whole). No ratio fell and no new
- * entry appeared.
+ * `--ui-bg-sunken` to black (four pairs went whole), and 61 over 24 pairs
+ * after `fleet-catch-up` round 4 took the strip's two tints, the accent-soft
+ * fill of the chip and the push switch, and the approval buttons'
+ * `--ui-surface-2` off the fleet view (seven pairs went whole, 23 entries).
+ * No ratio fell and no new entry appeared.
  */
 const KNOWN_BELOW: Record<string, Below> = {
   "--code-comment on --ui-bg-sunken": {
@@ -262,20 +267,6 @@ const KNOWN_BELOW: Record<string, Below> = {
       "synthwave-84": 4.45,
     },
   },
-  "--ui-danger on --ui-surface-2": {
-    blocker: "elevated",
-    // At --ui-bg itself the pair clears dracula; solarized-dark, nord,
-    // one-dark, gruvbox-dark, monokai and synthwave-84 fail on --ui-bg too.
-    themes: {
-      "solarized-dark": 2.79,
-      "dracula": 3.87,
-      "nord": 2.61,
-      "one-dark": 3.74,
-      "gruvbox-dark": 2.30,
-      "monokai": 3.36,
-      "synthwave-84": 3.84,
-    },
-  },
   "--ui-text on --ui-active": {
     blocker: "elevated",
     // At --ui-bg itself the pair clears solarized-dark; synthwave-84 fails on
@@ -290,15 +281,6 @@ const KNOWN_BELOW: Record<string, Below> = {
     // Only the theme's own colours could move this.
     themes: {
       "synthwave-84": 4.31,
-    },
-  },
-  "--ui-text on --ui-bg + --ui-accent-soft": {
-    blocker: "accent-soft",
-    // solarized-dark clears bare by 0.24, and no tint it can see leaves that
-    // room; synthwave-84 fails on the bare surface too.
-    themes: {
-      "solarized-dark": 4.33,
-      "synthwave-84": 3.57,
     },
   },
   "--ui-text on --ui-bg + --ui-veil": {
@@ -362,24 +344,6 @@ const KNOWN_BELOW: Record<string, Below> = {
       "synthwave-84": 3.71,
     },
   },
-  "--ui-text on color-mix(in srgb, --ui-danger 8%, --ui-surface)": {
-    blocker: "tint",
-    // solarized-dark and synthwave-84 fail on --ui-surface too; only the
-    // theme's own colours could move it.
-    themes: {
-      "solarized-dark": 4.34,
-      "synthwave-84": 3.68,
-    },
-  },
-  "--ui-text on color-mix(in srgb, --ui-warning 10%, --ui-surface)": {
-    blocker: "tint",
-    // solarized-dark and synthwave-84 fail on --ui-surface too; only the
-    // theme's own colours could move it.
-    themes: {
-      "solarized-dark": 3.96,
-      "synthwave-84": 3.10,
-    },
-  },
   "--ui-text-faint on --ui-bg-sunken": {
     blocker: "sunken",
     // The well is black; solarized-dark and synthwave-84 fail even there, so
@@ -422,16 +386,6 @@ const KNOWN_BELOW: Record<string, Below> = {
       "synthwave-84": 3.31,
     },
   },
-  "--ui-text-muted on --ui-bg + --ui-accent-soft": {
-    blocker: "accent-soft",
-    // one-dark clears bare by 0.32, and no tint it can see leaves that room;
-    // solarized-dark and synthwave-84 fail on the bare surface too.
-    themes: {
-      "solarized-dark": 3.29,
-      "one-dark": 4.23,
-      "synthwave-84": 2.74,
-    },
-  },
   "--ui-text-muted on --ui-bg + --ui-veil": {
     blocker: "bg",
     // Only the theme's own colours could move this.
@@ -469,27 +423,6 @@ const KNOWN_BELOW: Record<string, Below> = {
       "solarized-dark": 3.10,
       "one-dark": 4.11,
       "synthwave-84": 2.85,
-    },
-  },
-  "--ui-text-muted on color-mix(in srgb, --ui-danger 8%, --ui-surface)": {
-    blocker: "tint",
-    // solarized-dark, one-dark and synthwave-84 fail on --ui-surface too; only
-    // the theme's own colours could move it.
-    themes: {
-      "solarized-dark": 3.30,
-      "one-dark": 4.06,
-      "synthwave-84": 2.83,
-    },
-  },
-  "--ui-text-muted on color-mix(in srgb, --ui-warning 10%, --ui-surface)": {
-    blocker: "tint",
-    // Without the tint the pair clears github-dark-dimmed; solarized-dark,
-    // one-dark and synthwave-84 fail on --ui-surface too.
-    themes: {
-      "github-dark-dimmed": 4.39,
-      "solarized-dark": 3.00,
-      "one-dark": 3.60,
-      "synthwave-84": 2.38,
     },
   },
 };

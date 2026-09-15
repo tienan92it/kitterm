@@ -1,38 +1,36 @@
 /* Fleet view. Colours and type come from the shared token layer, so the page
-   follows the terminal theme like the rest of the chrome. Text at 11 to
-   12.5 px is --ui-text or --ui-text-muted; --ui-text-faint is for the
-   placeholder and a dot, never for a line someone reads
-   (theme-contrast.test.ts pins the ratios per bundled theme).
+   follows the terminal theme like the rest of the chrome. The page is set in
+   the terminal's own font. Text at 12 to 13 px is --ui-text or
+   --ui-text-muted; --ui-text-faint is for the placeholder and a mark, never
+   for a line someone reads (theme-contrast.test.ts pins the ratios per
+   bundled theme).
 
-   Structure carries the information: the attention strip is the one tinted
-   region on the page; a project is one bordered group; rows inside it are
-   divided by rules, not boxed. Nothing casts a
-   shadow. */
+   The surface is the terminal's. `sessions-css.test.ts` pins four absences:
+   no border-radius above 2 px, no box-shadow other than a hairline, no
+   color-mix tint behind text, and no transition. Structure carries the
+   information: a section is a hairline rule and a heading line; a row is one
+   line; a state is a one-character mark in the gutter, drawn as a shape so it
+   can wear the state's colour, with the state's word beside it in the text
+   colour (an ANSI red at 12 px sits under 3:1 on half the themes). A button
+   prints in brackets, a toggle prints a checkbox, and a link is underlined,
+   so a reader tells "does something" from "goes somewhere" without colour. */
 
 body {
   margin: 0; background: var(--ui-bg); color: var(--ui-text);
-  font: 14px/1.5 var(--font-ui);
+  font: 13px/1.5 var(--font-mono);
 }
 #sessions { max-width: 760px; margin: 0 auto; padding: 16px 16px 64px; }
-header { display: flex; align-items: center; gap: 10px; margin: 4px 0 14px; }
-h1 { font-size: 20px; margin: 0; font-weight: 600; }
-/* The inset shadow is the edge the fill used to carry on its own. Elevation
-   came down in `tokens.css` so text clears 4.5:1, which left a --ui-surface-2
-   pill at about 1.05 against the page — present in a measurement and absent to
-   the eye. A shadow, not a border: a border would add 2 px to a pill whose
-   padding is tuned, and the goal changes no layout. */
-.count {
-  background: var(--ui-surface-2); color: var(--ui-text-muted); border-radius: var(--radius-round);
-  padding: 1px 9px; font-size: 12px; font-variant-numeric: tabular-nums;
-  box-shadow: inset 0 0 0 1px var(--ui-border);
-}
-.empty { color: var(--ui-text-muted); padding: 24px 4px; }
+header { display: flex; align-items: baseline; gap: 8px; margin: 4px 0 12px; }
+h1 { font-size: 16px; margin: 0; font-weight: 600; }
+.count { color: var(--ui-text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.count::before { content: "("; }
+.count::after { content: ")"; }
+.empty { color: var(--ui-text-muted); padding: 24px 0; }
 .launch {
-  margin-left: auto; color: var(--ui-text); text-decoration: none; font-size: 12.5px;
-  background: var(--ui-surface-2); border: 1px solid var(--ui-border); border-radius: var(--radius-round);
-  padding: 3px 12px; transition: border-color .12s;
+  margin-left: auto; color: var(--ui-text-muted); font-size: 12px;
+  text-decoration: underline; text-underline-offset: 2px;
 }
-.launch:hover { border-color: var(--ui-accent); }
+.launch:hover { color: var(--ui-text); }
 
 button { font: inherit; }
 /* Read by a screen reader, drawn nowhere. */
@@ -43,59 +41,72 @@ button { font: inherit; }
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible {
   outline: 2px solid var(--ui-accent); outline-offset: 2px;
 }
+/* A text button: the word in brackets, nothing else. */
 .quiet {
   color: var(--ui-text-muted); background: none; border: none; cursor: pointer;
-  font-size: 12px; padding: 4px 8px; border-radius: var(--radius-1); min-height: var(--tap-min);
+  font-size: 12px; padding: 4px 2px; min-height: var(--tap-min); white-space: nowrap;
 }
-.quiet:hover { color: var(--ui-text); background: var(--ui-surface-2); }
-/* The hover fill alone no longer says "hovered". Elevation came down in
-   `tokens.css`, so --ui-surface-2 on the card reads 1.05 against it, and inside
-   an open `.menu`, which paints --ui-surface-2 itself, it reads 1.00. The edge
-   carries the state instead, the same edge `.count` took, and it
-   appears only while the pointer is on the button. A button, not `.quiet`:
-   `.tally.quiet` is a span, and a line of text must not outline under the
-   pointer. */
-button.quiet:hover { box-shadow: inset 0 0 0 1px var(--ui-border); }
-.quiet.danger:hover { color: var(--ui-danger); }
+.quiet::before { content: "["; }
+.quiet::after { content: "]"; }
+.quiet:hover { color: var(--ui-text); text-decoration: underline; text-underline-offset: 2px; }
+
+/* --- the gutter mark ------------------------------------------------------
+   One character in the gutter, in the state's colour: `>` for a session
+   that is working, `?` for one that waits on a person (input, an approval,
+   a proposal), `!` for one that failed, `-` for one that is quiet. The
+   glyph carries the state without the colour, and the state's own word
+   sits beside it, so a reader who does not see colour reads the same page.
+   The mark is a masked shape rather than text, which is why it can wear an
+   accent or a danger colour that would fail the contrast floor as text. */
+.mark {
+  flex: none; width: 8px; height: 13px; margin-top: .25em;
+  background: var(--ui-text-faint);
+  -webkit-mask: var(--glyph) center / contain no-repeat;
+  mask: var(--glyph) center / contain no-repeat;
+}
+.mark.running {
+  background: var(--ui-accent);
+  --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 13'><path d='M2 3.5l3.5 3L2 9.5' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+}
+.mark.attention, .mark.approval {
+  background: var(--ui-warning);
+  --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 13'><path d='M1.6 4.6A2.4 2.4 0 1 1 4 7V8.6' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round'/><path d='M4 11.2v.01' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'/></svg>");
+}
+.mark.approval { background: var(--ui-accent); }
+.mark.failed {
+  background: var(--ui-danger);
+  --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 13'><path d='M4 2.2V8.2' fill='none' stroke='black' stroke-width='1.9' stroke-linecap='round'/><path d='M4 11.2v.01' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'/></svg>");
+}
+.mark.idle, .mark.done, .mark.unknown {
+  --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 13'><path d='M1.6 6.5H6.4' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round'/></svg>");
+}
+.mark.idle, .mark.done { background: var(--ui-success); }
 
 /* --- the attention strip -------------------------------------------------
    Sticky, so the answer buttons stay under the thumb while the list scrolls.
    Capped at half the viewport and scrolls inside, so three approvals with
-   their argument blocks cannot push the cards off a phone for good. The
-   only tinted region on the page. */
+   their argument blocks cannot push the sections off a phone for good. */
 .strip {
   position: sticky; top: 0; z-index: 2;
-  background: var(--ui-bg); padding: 4px 0 8px; margin: 0 0 8px;
+  background: var(--ui-bg); padding: 2px 0 6px; margin: 0 0 6px;
   max-height: 50vh; overflow: auto;
 }
-.strip-quiet, .strip-foreman {
-  margin: 0; padding: 6px 12px; font-size: 12.5px; color: var(--ui-text-muted);
-  border-left: 3px solid var(--ui-border);
-}
-.strip-foreman { padding-top: 2px; padding-bottom: 2px; }
-.strip-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.strip-quiet, .strip-foreman { margin: 0; padding: 4px 0; font-size: 12px; color: var(--ui-text-muted); }
+.strip-list { list-style: none; margin: 0; padding: 0; }
+/* One item is one line, or two with its message: the mark in the gutter,
+   the rest in the column beside it. The kind is the mark's colour and the
+   item's first word; nothing is tinted. */
 .strip-item {
-  border-left: 3px solid var(--ui-warning);
-  background: color-mix(in srgb, var(--ui-warning) 10%, var(--ui-surface));
-  padding: 8px 12px 10px; border-radius: 0 var(--radius-2) var(--radius-2) 0;
+  display: grid; grid-template-columns: 8px 1fr; column-gap: 8px; align-items: start;
+  padding: 5px 0;
 }
-.strip-item.failed {
-  border-left-color: var(--ui-danger);
-  background: color-mix(in srgb, var(--ui-danger) 8%, var(--ui-surface));
-}
-.strip-item.approval {
-  border-left-color: var(--ui-accent);
-  background: var(--ui-accent-soft);
-}
-/* A proposal waits on a decision, not on a keystroke: the warning tint with
-   a dashed rule tells it from a pane that needs input. */
-.strip-item.proposed { border-left-style: dashed; }
-.strip-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
-.strip-what, .strip-who { font-weight: 600; font-size: 13.5px; }
+.strip-item > :not(.mark) { grid-column: 2; min-width: 0; }
+.strip-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.strip-what, .strip-who { font-weight: 600; font-size: 13px; }
 .strip-where { color: var(--ui-text-muted); font-size: 12px; }
-.strip-waited { color: var(--ui-text-muted); font-size: 11.5px; font-variant-numeric: tabular-nums; margin-left: auto; }
+.strip-waited { color: var(--ui-text-muted); font-size: 12px; font-variant-numeric: tabular-nums; margin-left: auto; }
 .strip-detail {
-  color: var(--ui-text-muted); font-family: var(--font-mono); font-size: 12.5px; margin-top: 3px;
+  color: var(--ui-text-muted); font-size: 12px; margin-top: 1px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 /* The decision line is what the human decides on: it wraps to two lines,
@@ -105,30 +116,29 @@ button.quiet:hover { box-shadow: inset 0 0 0 1px var(--ui-border); }
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
 }
 .strip-open {
-  display: inline-flex; align-items: center; min-height: var(--tap-min); margin-top: 2px; font-size: 12px;
-  color: var(--ui-text-muted); text-decoration: none; border-bottom: 1px solid var(--ui-border);
+  display: inline-flex; align-items: center; min-height: var(--tap-min); font-size: 12px;
+  color: var(--ui-text-muted); text-decoration: underline; text-underline-offset: 2px;
 }
-.strip-open:hover { color: var(--ui-text); border-bottom-color: var(--ui-accent); }
+.strip-open:hover { color: var(--ui-text); }
 .proposed-actions { display: flex; align-items: center; gap: 12px; }
 .approval-input {
-  font-family: var(--font-mono); font-size: 12.5px; color: var(--ui-text);
-  margin: 6px 0 0; white-space: pre-wrap; word-break: break-word;
+  font-size: 12px; color: var(--ui-text);
+  margin: 4px 0 0; white-space: pre-wrap; word-break: break-word;
   /* A Write's arguments are long even after the daemon's cap; keep the item
      scannable and let the pane show the rest. */
   max-height: 7.5em; overflow: auto;
 }
-.approval-actions { display: flex; gap: 8px; margin-top: 10px; }
+.approval-actions { display: flex; gap: 8px; margin-top: 4px; }
+/* The two answers, each a bracketed word that fills half the line. */
 .approval-actions button {
-  flex: 1; font-size: 13px; font-weight: 600;
-  border-radius: var(--radius-2); padding: 9px 12px; cursor: pointer;
+  flex: 1; font-size: 13px; font-weight: 600; cursor: pointer;
+  background: none; border: none; color: var(--ui-text); padding: 9px 4px;
   /* WCAG 2.2 SC 2.5.8 floor, and these are tapped on a phone in a hurry. */
   min-height: 44px;
-  border: 1px solid var(--ui-border); background: var(--ui-surface-2); color: var(--ui-text);
-  transition: border-color .12s, background .12s;
 }
-.approval-deny:hover { border-color: var(--ui-danger); color: var(--ui-danger); }
-.approval-allow { border-color: var(--ui-accent); }
-.approval-allow:hover { background: var(--ui-accent); color: var(--ui-accent-on); }
+.approval-actions button::before { content: "["; }
+.approval-actions button::after { content: "]"; }
+.approval-actions button:hover { text-decoration: underline; text-underline-offset: 2px; }
 
 /* --- the tools, under the projects ---------------------------------------
    The search, the chips and the push switch are things the reader does,
@@ -136,210 +146,195 @@ button.quiet:hover { box-shadow: inset 0 0 0 1px var(--ui-border); }
 .filters { display: flex; flex-direction: column; gap: 6px; margin: 20px 0 0; }
 .search {
   width: 100%; box-sizing: border-box; font: inherit; font-size: 13px;
+  /* On --ui-surface, not the body: the placeholder is --ui-text-faint, and
+     that pair is measured on the surface, not on --ui-bg. */
   color: var(--ui-text); background: var(--ui-surface); border: 1px solid var(--ui-border);
-  border-radius: var(--radius-2); padding: 7px 10px;
+  padding: 6px 8px;
 }
 .search::placeholder { color: var(--ui-text-faint); }
-.chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
 .chip-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-.chip-label { color: var(--ui-text-muted); font-size: 11.5px; margin-right: 2px; }
+.chip-label { color: var(--ui-text-muted); font-size: 12px; margin-right: 2px; }
+/* A toggle is a checkbox drawn in text: `[ ] done` off, `[x] done` on.
+   The box carries the state without colour; `aria-pressed` carries it to a
+   screen reader. */
 .chip {
-  background: none; color: var(--ui-text); border: 1px solid var(--ui-border);
-  border-radius: var(--radius-round); padding: 1px 9px; font-size: 11.5px; cursor: pointer;
-  min-height: var(--tap-min); transition: border-color .12s, color .12s;
+  background: none; color: var(--ui-text); border: none;
+  padding: 1px 2px; font-size: 12px; cursor: pointer; white-space: nowrap;
+  min-height: var(--tap-min);
 }
-.chip:hover { border-color: var(--ui-text-muted); }
-.chip.on { border-color: var(--ui-accent); background: var(--ui-accent-soft); }
-/* The push line: one switch under the head that subscribes this device, with
-   the reason beside it when it cannot. The switch borrows the chip's shape
-   and its two states, so its pairs are the chip's pairs; a disabled switch
-   reads muted with a dashed edge, never faded, because the ratchet measures
+.chip::before { content: "[ ] "; white-space: pre; color: var(--ui-text-muted); }
+.chip.on::before { content: "[x] "; color: var(--ui-text); }
+.chip:hover { text-decoration: underline; text-underline-offset: 2px; }
+/* The push line: one switch under the projects that subscribes this
+   device, with the reason beside it when it cannot. The switch is the
+   chip's checkbox with `aria-checked` in place of `aria-pressed`; a
+   disabled switch reads muted, never faded, because the ratchet measures
    every opacity. */
 .push[hidden] { display: none; }
 .push {
   display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
-  margin: 12px 0 0; font-size: 12.5px;
+  margin: 12px 0 0; font-size: 12px;
 }
 .push-switch {
-  display: inline-flex; align-items: center; gap: 8px;
-  background: none; color: var(--ui-text); border: 1px solid var(--ui-border);
-  border-radius: var(--radius-round); padding: 1px 10px; font-size: 12px; cursor: pointer;
-  min-height: var(--tap-min); transition: border-color .12s, color .12s;
+  display: inline-flex; align-items: center;
+  background: none; color: var(--ui-text); border: none;
+  padding: 1px 2px; font-size: 12px; cursor: pointer; white-space: nowrap;
+  min-height: var(--tap-min);
 }
-.push-switch:hover { border-color: var(--ui-text-muted); }
-.push-switch[aria-checked="true"] { border-color: var(--ui-accent); background: var(--ui-accent-soft); }
-.push-switch:disabled { color: var(--ui-text-muted); border-style: dashed; cursor: default; }
-.push-state { color: var(--ui-text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.push-switch::before { content: "[ ] "; white-space: pre; color: var(--ui-text-muted); }
+.push-switch[aria-checked="true"]::before { content: "[x] "; color: var(--ui-text); }
+.push-switch:hover { text-decoration: underline; text-underline-offset: 2px; }
+.push-switch:disabled { color: var(--ui-text-muted); cursor: default; text-decoration: none; }
+/* The checkbox says on or off; the word is for a browser with no
+   generated content. */
+.push-state { display: none; }
 .push-detail { color: var(--ui-text-muted); }
 .notice[hidden] { display: none; }
 .notice {
-  display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 6px 10px;
-  font-size: 12.5px; color: var(--ui-danger); border: 1px solid var(--ui-danger); border-radius: var(--radius-2);
+  display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 6px 8px;
+  font-size: 12px; color: var(--ui-danger); border: 1px solid var(--ui-danger);
 }
 .notice span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
 /* The restart line: the previous run died and took its sessions with it.
-   It borrows the failed strip item's shape — the danger rule and the 8%
-   danger tint — because it reports the same kind of thing, a loss that
-   already happened, and not a keystroke the human owes anyone. The text is
-   --ui-text on that tint, the pair theme-contrast.test.ts calls `tint`. */
+   It reads like a failed strip item, the danger mark in the gutter, because
+   it reports the same kind of thing: a loss that already happened. */
 .restart[hidden] { display: none; }
 .restart {
-  display: flex; align-items: center; gap: 8px; margin: 0 0 12px;
-  padding: 8px 12px; font-size: 12.5px; color: var(--ui-text);
-  border-left: 3px solid var(--ui-danger);
-  background: color-mix(in srgb, var(--ui-danger) 8%, var(--ui-surface));
-  border-radius: 0 var(--radius-2) var(--radius-2) 0;
+  display: flex; align-items: flex-start; gap: 8px; margin: 0 0 12px;
+  padding: 5px 0; font-size: 12px; color: var(--ui-text);
 }
 .restart span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
-/* --- project cards -------------------------------------------------------- */
-.cards { display: flex; flex-direction: column; gap: 14px; }
+/* --- project sections ----------------------------------------------------- */
+.cards { display: flex; flex-direction: column; border-bottom: 1px solid var(--ui-border); }
 /* The one line of counts above the projects: how many sessions are
    working, done, idle. --ui-text on the body, the page's own pair. */
-.cards .fleet { margin: 0; font-size: 12.5px; color: var(--ui-text); font-variant-numeric: tabular-nums; }
-/* No `overflow: hidden` here: it clipped the open row menu and the focus
-   outline of the last row at 390 px. The head rounds its own corners. */
-.card { border: 1px solid var(--ui-border); border-radius: var(--radius-2); background: var(--ui-surface); }
-.card-head {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
-  padding: 10px 14px; background: var(--ui-surface-2);
-  border-radius: calc(var(--radius-2) - 1px) calc(var(--radius-2) - 1px) 0 0;
-  /* The head is a --ui-surface-2 band on a --ui-surface card. The two fills
-     are about 1.05 apart since elevation came down, so the band needs a rule
-     under it. An inset shadow rather than `border-bottom`, which would move
-     every row in the card down by a pixel. */
-  box-shadow: inset 0 -1px 0 0 var(--ui-border);
-}
-.card-head:last-child { border-radius: calc(var(--radius-2) - 1px); box-shadow: none; }
-.card-title { display: flex; flex-direction: column; min-width: 0; flex: 1 1 200px; }
-.card-title h2 { font-size: 15px; font-weight: 600; margin: 0; }
-.card-root {
-  color: var(--ui-text-muted); font-family: var(--font-mono); font-size: 11px;
+.cards .fleet { margin: 0 0 8px; font-size: 12px; color: var(--ui-text); font-variant-numeric: tabular-nums; }
+/* A project is a section under a hairline rule, on the lifted surface the
+   rows share. No `overflow: hidden`: it clipped the open row menu and the
+   focus outline of the last row at 390 px. */
+.card { border-top: 1px solid var(--ui-border); background: var(--ui-surface); }
+/* One heading line: the name, "no live session" when the project owns
+   none, then the profile pick and `[new]` at the right. The root path is
+   gone; a row's place is relative to it, and the pane shows it. */
+.card .head { display: flex; align-items: center; gap: 10px; padding: 4px 12px; min-height: 36px; }
+.card .head h2 {
+  font-size: 13px; font-weight: 600; margin: 0; flex: 0 1 auto; min-width: 4em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.tallies { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ui-text); }
-.tally { display: inline-flex; align-items: center; white-space: nowrap; }
-.tally.quiet { color: var(--ui-text-muted); }
-.spawn { display: flex; align-items: center; gap: 6px; margin-left: auto; }
-.spawn-profile {
-  font: inherit; font-size: 12px; color: var(--ui-text); background: var(--ui-surface);
-  border: 1px solid var(--ui-border); border-radius: var(--radius-1); padding: 3px 6px; max-width: 140px;
+/* The tally gives way before the name does: with a profile select on a
+   phone the line is short, and the name is what the reader scans for. */
+.card .head .tally {
+  color: var(--ui-text-muted); font-size: 12px; white-space: nowrap;
+  flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+}
+/* The profile select sits beside `[new]` because the two are one action:
+   pick where, then start. It is on the page only when the daemon has
+   profiles. */
+.card .spawn { display: flex; align-items: center; gap: 6px; margin-left: auto; flex: none; }
+.card .spawn-profile {
+  font: inherit; font-size: 12px; color: var(--ui-text); background: none;
+  border: 1px solid var(--ui-border); padding: 2px 4px; max-width: 9em;
   min-height: var(--tap-min);
 }
-.spawn-button {
-  font-size: 12.5px; color: var(--ui-text); background: var(--ui-surface); cursor: pointer;
-  border: 1px solid var(--ui-border); border-radius: var(--radius-round); padding: 3px 12px;
-  min-height: var(--tap-min); transition: border-color .12s;
+.card .spawn-button {
+  font-size: 12px; color: var(--ui-text); background: none; cursor: pointer;
+  border: none; padding: 4px 2px; min-height: var(--tap-min); white-space: nowrap;
 }
-.spawn-button:hover { border-color: var(--ui-accent); }
+.card .spawn-button::before { content: "["; }
+.card .spawn-button::after { content: "]"; }
+.card .spawn-button:hover { text-decoration: underline; text-underline-offset: 2px; }
 .spawn-button:disabled { opacity: .5; cursor: progress; }
 
 /* The goal lines: under the rows, one line per goal that is not done, in
    the route's order. The title, the status word when the goal is not
    active, the round counter, then the next action cut at the line's end;
    "not written yet" after the slug of a goal whose files still hold the
-   template. On the card's --ui-surface, the rows' own surface. */
+   template. On the section's --ui-surface, the rows' own surface. */
 .card .goal-lines { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--ui-border); }
 .card .goal-line {
   display: flex; align-items: baseline; gap: 10px; min-width: 0;
-  padding: 8px 14px; font-size: 12.5px; white-space: nowrap;
+  padding: 6px 12px; font-size: 12px; white-space: nowrap;
 }
 .card .goal-line + .goal-line { padding-top: 0; }
 .card .goal-line .goal-name { flex: 0 1 auto; min-width: 8em; overflow: hidden; text-overflow: ellipsis; color: var(--ui-text); }
 .card .goal-line .goal-status, .card .goal-line .goal-round, .card .goal-line .goal-unwritten {
-  flex: none; font-size: 11.5px; color: var(--ui-text-muted);
+  flex: none; font-size: 12px; color: var(--ui-text-muted);
 }
 .card .goal-line .goal-next {
   flex: 1 1 6em; min-width: 0; overflow: hidden; text-overflow: ellipsis;
-  color: var(--ui-text-muted); font-family: var(--font-mono); font-size: 12px;
+  color: var(--ui-text-muted); font-size: 12px;
 }
-.card .goal-none { margin: 0; padding: 8px 14px; font-size: 12.5px; color: var(--ui-text-muted); border-top: 1px solid var(--ui-border); }
+.card .goal-none { margin: 0; padding: 6px 12px; font-size: 12px; color: var(--ui-text-muted); border-top: 1px solid var(--ui-border); }
 .goal-link { margin-left: auto; margin-top: 0; }
 
 /* --- rows ----------------------------------------------------------------- */
 .rows { list-style: none; margin: 0; padding: 0; }
-.row { display: flex; align-items: flex-start; gap: 4px; border-top: 1px solid var(--ui-border); padding: 0 8px 0 14px; }
-.card .rows:first-of-type .row:first-child { border-top: none; }
+.row { display: flex; align-items: flex-start; gap: 4px; border-top: 1px solid var(--ui-border); padding: 0 8px 0 12px; }
 /* 44 px tall on one line (WCAG 2.2 SC 2.5.8), through the padding. */
 .open {
-  flex: 1; min-width: 0; display: flex; gap: 12px; align-items: flex-start; text-decoration: none;
-  color: inherit; padding: 12px 0; border-radius: var(--radius-1);
+  flex: 1; min-width: 0; display: flex; gap: 8px; align-items: flex-start; text-decoration: none;
+  color: inherit; padding: 12px 0;
 }
-.open:hover .folder { color: var(--ui-accent); }
-.dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 6px; flex: none; }
-.dot.running { background: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-accent-soft); }
-.dot.idle, .dot.done { background: var(--ui-success); }
-.dot.failed { background: var(--ui-danger); }
-.dot.unknown { background: var(--ui-text-faint); }
-/* Wants the human: the loudest dot after a real failure. */
-.dot.attention { background: var(--ui-warning); box-shadow: 0 0 0 3px var(--ui-accent-soft); }
+.open:hover .folder { text-decoration: underline; text-underline-offset: 2px; }
 /* One line per row: name, state, place, what, how long. It wraps to a
    second line at 390 px, where `.what` takes the rest of the width. */
 .main { min-width: 0; flex: 1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
-.folder { font-weight: 600; font-size: 14.5px; overflow-wrap: anywhere; }
-/* The family colour is on the dot; the label prints in the text colour,
-   because an ANSI red at 11.5 px sits under 3:1 on half the themes. */
-.state { font-size: 11.5px; white-space: nowrap; color: var(--ui-text); }
+.folder { font-weight: 600; font-size: 13px; overflow-wrap: anywhere; }
+/* The family colour is on the mark; the label prints in the text colour,
+   because an ANSI red at 12 px sits under 3:1 on half the themes. */
+.state { font-size: 12px; white-space: nowrap; color: var(--ui-text); }
 .state.attention { font-weight: 600; }
-.main .place { color: var(--ui-text-muted); font-family: var(--font-mono); font-size: 12.5px; white-space: nowrap; }
+.main .place { color: var(--ui-text-muted); font-size: 12px; white-space: nowrap; }
 .main .what {
-  flex: 1 1 14em; min-width: 0; color: var(--ui-text); font-family: var(--font-mono);
-  font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  flex: 1 1 14em; min-width: 0; color: var(--ui-text);
+  font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.main .since { margin-left: auto; color: var(--ui-text-muted); font-size: 11.5px; white-space: nowrap; }
+.main .since { margin-left: auto; color: var(--ui-text-muted); font-size: 12px; white-space: nowrap; }
 
 /* Row actions: quiet text beside the row on a wide screen; on a phone, one
    menu button opens them below the row's text. */
-.actions { position: relative; flex: none; display: flex; align-items: center; padding-top: 6px; }
+.actions { position: relative; flex: none; display: flex; align-items: center; padding-top: 8px; }
 .more { display: none; }
 .menu { display: flex; align-items: center; gap: 2px; }
 @media (max-width: 600px) {
   .more {
     display: inline-flex; align-items: center; justify-content: center;
     width: 36px; min-height: 36px; font-size: 18px; line-height: 1;
-    color: var(--ui-text-muted); background: none; border: none; border-radius: var(--radius-1); cursor: pointer;
+    color: var(--ui-text-muted); background: none; border: none; cursor: pointer;
   }
-  /* Same edge as a row action, and for the same reason. It also has to hold
-     the open state: the button keeps the fill while the menu is down. */
-  .more:hover, .more[aria-expanded="true"] {
-    color: var(--ui-text); background: var(--ui-surface-2);
-    box-shadow: inset 0 0 0 1px var(--ui-border);
-  }
+  .more:hover, .more[aria-expanded="true"] { color: var(--ui-text); }
   .menu { display: none; }
+  /* The open menu is the one raised surface on the page: it must cover the
+     rows under it, so it paints --ui-surface-2 inside a hairline. */
   .menu.open {
     display: flex; flex-direction: column; align-items: stretch;
     position: absolute; right: 4px; top: 40px; z-index: 3; min-width: 140px;
-    background: var(--ui-surface-2); border: 1px solid var(--ui-border); border-radius: var(--radius-2);
+    background: var(--ui-surface-2); border: 1px solid var(--ui-border);
     padding: 4px;
   }
   .menu.open .quiet { text-align: left; min-height: 40px; font-size: 13px; }
-  .card-head { padding: 10px 12px; }
-  .spawn { margin-left: 0; width: 100%; }
-  .spawn-button { margin-left: auto; }
-  .row { padding-left: 12px; padding-right: 4px; }
-  /* Thumb targets: 32 px chips with 8 px between them. */
+  .row { padding-right: 4px; }
+  /* Thumb targets: 32 px toggles with 8 px between them. */
   .chip-group { gap: 8px; }
-  .chip { min-height: 32px; padding: 3px 12px; }
+  .chip { min-height: 32px; padding: 3px 4px; }
 }
 
 /* The folds: the done goals ("7 done") and the archived sessions, collapsed
    evidence of finished work, at the foot of its project. */
 .archived { color: var(--ui-text-muted); border-top: 1px solid var(--ui-border); }
 .archived > summary {
-  cursor: pointer; font-size: 12.5px; color: var(--ui-text-muted);
-  padding: 8px 14px; user-select: none; min-height: var(--tap-min);
+  cursor: pointer; font-size: 12px; color: var(--ui-text-muted);
+  padding: 6px 12px; user-select: none; min-height: var(--tap-min);
 }
 .archived > summary:hover { color: var(--ui-text); }
-.archived-list { list-style: none; margin: 0; padding: 0 14px 10px; display: flex; flex-direction: column; gap: 4px; }
+.archived-list { list-style: none; margin: 0; padding: 0 12px 8px; display: flex; flex-direction: column; gap: 2px; }
 .archived-list li {
   display: flex; justify-content: space-between; gap: 10px;
-  font-size: 12px; padding: 4px 0; min-width: 0;
+  font-size: 12px; padding: 2px 0; min-width: 0;
 }
 .archived-name { color: var(--ui-text); overflow-wrap: anywhere; }
 .archived-meta { color: var(--ui-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.cards > .archived { border: 1px solid var(--ui-border); border-radius: var(--radius-2); background: var(--ui-surface); }
-
-@media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; }
-}
+.cards > .archived { background: var(--ui-surface); }
