@@ -8,6 +8,7 @@ import {
   crews,
   needsYouMessage,
   filter,
+  fleetLine,
   group,
   pickForeman,
   restartDismissKey,
@@ -18,6 +19,7 @@ import {
   sortInGroup,
   spanLabel,
   stripIds,
+  stripWhere,
   stampFormat,
   stateLabel,
   stateOf,
@@ -134,13 +136,39 @@ describe("sortInGroup", () => {
     expect(sortInGroup(rows).map((r) => r.id)).toEqual(["a", "i", "f", "w"]);
   });
 
-  it("orders the rest by last output, newest first", () => {
+  it("orders the rest by state: working, done, idle, exited, no integration", () => {
+    // The idle shell printed last; the working row that went quiet is
+    // still the one the reader is waiting on, so it comes first.
     const rows = [
       state("old", "working", { lastOutputAt: 1 }),
       state("new", "idle", { lastOutputAt: 3 }),
       state("mid", "completed", { lastOutputAt: 2 }),
+      state("gone", "exited", { lastOutputAt: 4 }),
+      state("none", "unknown", { lastOutputAt: 5 }),
     ];
-    expect(sortInGroup(rows).map((r) => r.id)).toEqual(["new", "mid", "old"]);
+    expect(sortInGroup(rows).map((r) => r.id)).toEqual(["old", "mid", "new", "gone", "none"]);
+  });
+
+  it("orders rows of one state by last output, newest first", () => {
+    const rows = [
+      state("a", "working", { lastOutputAt: 1 }),
+      state("b", "working", { lastOutputAt: 3 }),
+      state("c", "idle", { lastOutputAt: 9 }),
+      state("d", "working", { lastOutputAt: 2 }),
+    ];
+    expect(sortInGroup(rows).map((r) => r.id)).toEqual(["b", "d", "a", "c"]);
+  });
+
+  it("puts the foreman first among the rows that need nobody, whatever its state", () => {
+    const rows = [
+      state("w", "working", { lastOutputAt: 9 }),
+      state("f", "completed", { labels: { crew: "foreman" }, lastOutputAt: 1 }),
+      state("i", "needs-input", { lastOutputAt: 2 }),
+    ];
+    expect(sortInGroup(rows).map((r) => r.id)).toEqual(["i", "f", "w"]);
+    // A foreman that needs the human is an attention row like any other.
+    const asks = state("f", "needs-input", { labels: { crew: "foreman" } });
+    expect(sortInGroup([state("w", "working"), asks]).map((r) => r.id)).toEqual(["f", "w"]);
   });
 
   it("is stable and puts rows with no output last", () => {
@@ -555,5 +583,38 @@ describe("spanLabel", () => {
     expect(spanLabel(23 * 3_600_000 + 59 * 60_000)).toBe("23h");
     expect(spanLabel(24 * 3_600_000)).toBe("1d");
     expect(spanLabel(-5_000)).toBe("now");
+  });
+});
+
+describe("stripWhere", () => {
+  it("prints the project only when the row's name does not say it", () => {
+    const nnt = { id: "nnt", name: "NgheNhanTrading", root: "/w/NgheNhanTrading", registered: true };
+    // Named after its folder, which is the project's name: the word once.
+    expect(stripWhere({ id: "a", cwd: "/w/NgheNhanTrading", project: nnt })).toBeNull();
+    expect(stripWhere({ id: "a", cwd: "/w/NgheNhanTrading", name: "NgheNhanTrading", project: nnt })).toBeNull();
+    // A named row, or one in a subfolder, still needs the project.
+    expect(stripWhere({ id: "a", cwd: "/w/NgheNhanTrading", name: "foreman", project: nnt })).toBe("NgheNhanTrading");
+    expect(stripWhere({ id: "a", cwd: "/w/NgheNhanTrading/docs", project: nnt })).toBe("NgheNhanTrading");
+  });
+
+  it("prints nothing for a row outside every project, which its folder names", () => {
+    expect(stripWhere({ id: "a", cwd: "/Users/antran/Workspace" })).toBeNull();
+    expect(stripWhere({ id: "a", cwd: "/Users/antran/Workspace", name: "Workspace" })).toBeNull();
+  });
+});
+
+describe("fleetLine", () => {
+  it("counts the working rows even at zero, and the rest only when there are any", () => {
+    // The corpus fixture's rows once the strip has taken its four.
+    const listed = [
+      state("foreman", "completed", { labels: { crew: "foreman" } }),
+      state("postman", "idle"),
+      state("nnt-idle", "idle"),
+    ];
+    expect(fleetLine(listed)).toBe("0 working · 1 done · 2 idle");
+    expect(fleetLine([])).toBe("0 working");
+    expect(fleetLine([state("a", "working"), state("b", "working"), state("c", "exited"), state("d", "unknown")])).toBe(
+      "2 working · 1 exited · 1 no integration",
+    );
   });
 });

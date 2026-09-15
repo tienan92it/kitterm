@@ -12,10 +12,12 @@ import {
   crews as crewsOf,
   dismissKey,
   dismissName,
+  doneLabel,
   filter as applyFilter,
+  fleetLine,
   focusKey,
   folderOf,
-  goalBlocks,
+  goalLines,
   goalTitle,
   group,
   knowledgeUrl,
@@ -36,14 +38,14 @@ import {
   stateLabel,
   stateName,
   stateOf,
-  titleSlug,
+  stripWhere,
   tally,
   withProposed,
   type Approval,
   type AttentionItem,
   type DaemonStarted,
   type Filter,
-  type GoalBlock,
+  type GoalLine,
   type Group,
   type KnowledgeAnswer,
   type KnowledgeSummary,
@@ -68,9 +70,12 @@ import { findThemeById } from "./themes";
  * and `/api/archives`, plus `/api/projects/<id>/knowledge` for each
  * registered project, and links each row back to `/?session=<id>`.
  *
- * Three layers at one URL: the attention strip, one card per project, and
- * the rows inside a card. The pure model (`sessions-model.ts`) decides what
- * goes where; this file only paints it.
+ * The page reads top to bottom in the order a returning reader needs: the
+ * title, what needs them (the strip), what broke (the failed items and the
+ * restart line), one line of counts, then one card per project with its
+ * rows, its open goals and its folds. The tools, the search, the chips and
+ * the push switch, sit under the projects. The pure model
+ * (`sessions-model.ts`) decides what goes where; this file only paints it.
  *
  * Deliberately its own page, not the terminal: `/` stays "open a tab, get a
  * shell".
@@ -388,15 +393,13 @@ function knowledgeEntries(): { project: ProjectRef; summary: KnowledgeSummary }[
 }
 
 // --- layout skeleton --------------------------------------------------------
-// The page has four fixed regions. Each poll replaces the children of the
-// ones that changed; the search box lives in `filters` and is built once, so
-// a repaint never steals the caret from under a typing thumb.
+// The page has fixed regions. Each poll replaces the children of the ones
+// that changed; the search box lives in `filters` and is built once, so a
+// repaint never steals the caret from under a typing thumb.
 
 const strip = document.createElement("section");
 strip.className = "strip";
 strip.setAttribute("aria-label", "Needs you");
-const pinned = document.createElement("section");
-pinned.className = "pinned";
 const filters = document.createElement("section");
 filters.className = "filters";
 filters.setAttribute("aria-label", "Filters");
@@ -453,7 +456,9 @@ let skeletonMounted = false;
 function mountSkeleton(): void {
   if (!root || skeletonMounted) return;
   skeletonMounted = true;
-  root.replaceChildren(header(), pushLine, announce, strip, pinned, filters, noticeLine, restartLine, cards);
+  // Status first, tools last: the search, the chips and the push switch are
+  // things the reader does, not things the reader came to learn.
+  root.replaceChildren(header(), announce, strip, noticeLine, restartLine, cards, filters, pushLine);
 }
 
 function render(): void {
@@ -501,12 +506,13 @@ function paint(): void {
   mountSkeleton();
   const active = document.activeElement;
   const focusKey = active instanceof HTMLElement ? active.dataset.focus : undefined;
-  const { foreman, rest } = pickForeman(sessions);
+  const { foreman } = pickForeman(sessions);
   const proposed = proposedItems(knowledgeEntries(), dismissed);
   const items: StripItem[] = withProposed(attention(sessions, approvals), proposed);
   // What the strip shows, the cards do not list again (`cardRows`); the
-  // chips and the search reach only what the cards list.
-  const listed = cardRows(rest, items);
+  // chips and the search reach only what the cards list. The foreman is a
+  // row of its own project, first among them (`sortInGroup`).
+  const listed = cardRows(sessions, items);
 
   // Title badge: how many items want the human right now, so a phone's tab
   // or home-screen label says "come back" without a push notification.
@@ -521,13 +527,12 @@ function paint(): void {
   badge.setAttribute("aria-label", `${sessions.length} sessions`);
 
   strip.replaceChildren(...stripContent(items, foreman !== null));
-  pinned.replaceChildren(...(foreman ? [foremanRow(foreman)] : []));
   chips.replaceChildren(...chipGroups(listed));
   noticeLine.hidden = notice === null;
   noticeLine.replaceChildren(...(notice === null ? [] : [noticeContent(notice)]));
   paintRestart();
   paintPush();
-  cards.replaceChildren(...cardList(listed, rest, proposed));
+  cards.replaceChildren(fleetCounts(listed), ...cardList(listed, sessions, proposed));
   if (focusKey) restoreFocus(focusKey);
 }
 
@@ -858,7 +863,12 @@ function stripItem(item: StripItem): HTMLElement {
     return li;
   }
   const row = item.row;
-  li.append(stripTop(item.kind === "needs-input" ? "needs input" : stateLabel(row), headlineOf(row), placeOf(row)));
+  const top = stripTop(item.kind === "needs-input" ? "needs input" : stateLabel(row), headlineOf(row), stripWhere(row));
+  // How long it has waited, or how long ago it failed: the row's own span,
+  // since the last output (`rowLine`).
+  const since = rowLine(row, Date.now()).since;
+  if (since) top.append(span("strip-waited", since));
+  li.append(top);
   const detail = row.agent?.message ?? (row.lastCommand ? `$ ${row.lastCommand}` : null);
   if (detail) {
     const line = document.createElement("div");
@@ -876,7 +886,7 @@ function stripItem(item: StripItem): HTMLElement {
 function approvalContent(approval: Approval, row: SessionRow | null): DocumentFragment {
   const fragment = document.createDocumentFragment();
   const who = row ? headlineOf(row) : (approval.session?.slice(0, 8) ?? "");
-  const top = stripTop(`approve ${approval.tool}`, who, row ? placeOf(row) : "");
+  const top = stripTop(`approve ${approval.tool}`, who, row ? stripWhere(row) : null);
   const waited = document.createElement("span");
   waited.className = "strip-waited";
   waited.textContent = waitedLabel(approval.waitingMs);
@@ -942,26 +952,14 @@ function proposedContent(item: ProposedItem): DocumentFragment {
   return fragment;
 }
 
-/** The first line of a strip item: what, who, where. */
-function stripTop(what: string, who: string, where: string): HTMLElement {
+/** The first line of a strip item: what, who, and where when the name
+ * does not say it (`stripWhere`). */
+function stripTop(what: string, who: string, where: string | null): HTMLElement {
   const top = document.createElement("div");
   top.className = "strip-top";
-  for (const [className, text] of [
-    ["strip-what", what],
-    ["strip-who", who],
-    ["strip-where", where],
-  ] as const) {
-    const span = document.createElement("span");
-    span.className = className;
-    span.textContent = text;
-    top.append(span);
-  }
+  top.append(span("strip-what", what), span("strip-who", who));
+  if (where) top.append(span("strip-where", where));
   return top;
-}
-
-/** The project's name, else the folder: where a row is, in one word. */
-function placeOf(row: SessionRow): string {
-  return row.project?.name ?? folderOf(row.cwd);
 }
 
 /** Post one decision. The agent is unblocked by the daemon's response to its
@@ -988,19 +986,16 @@ async function decide(id: string, decision: "allow" | "deny"): Promise<void> {
   }
 }
 
-// --- the foreman ------------------------------------------------------------
+// --- the fleet line ---------------------------------------------------------
 
-function foremanRow(foreman: SessionRow): HTMLElement {
-  const box = document.createElement("div");
-  box.className = "foreman";
-  const label = document.createElement("h2");
-  label.className = "foreman-label";
-  label.textContent = "Foreman";
-  const list = document.createElement("ul");
-  list.className = "rows";
-  list.append(row(foreman));
-  box.append(label, list);
-  return box;
+/** The one line above the projects: how many sessions are working, and
+ * how many are done, idle or gone (`fleetLine`), over the rows the projects
+ * list. The strip's sessions are counted in the strip. */
+function fleetCounts(rows: SessionRow[]): HTMLElement {
+  const line = document.createElement("p");
+  line.className = "fleet";
+  line.textContent = fleetLine(rows);
+  return line;
 }
 
 // --- filters ----------------------------------------------------------------
@@ -1146,8 +1141,8 @@ function currentFilter(): Filter {
 // --- project cards ----------------------------------------------------------
 
 /** The cards: `rows` is what they list (the strip's sessions left out),
- * `owned` is every session outside the foreman's pane, so a card can tell
- * a project with no session from one whose sessions are all in the strip. */
+ * `owned` is every session, so a card can tell a project with no session
+ * from one whose sessions are all in the strip. */
 function cardList(rows: SessionRow[], owned: SessionRow[], proposed: ProposedItem[]): Node[] {
   const shown = applyFilter(rows, currentFilter());
   const groups = group(shown, projects);
@@ -1184,6 +1179,13 @@ function archivesFor(key: string): ArchivedRow[] {
   return archives.filter((a) => (a.project?.id ?? NO_PROJECT) === key);
 }
 
+/**
+ * One project, top to bottom: the head (the name, the root, the spawn
+ * control), its rows, one line per goal that is not done, the done goals
+ * folded, and the archives folded. The rows come before the goals because
+ * a running session is what the reader can act on now; a goal's next
+ * action is what the foreman does next.
+ */
 function card(g: Group<SessionRow>, archived: ArchivedRow[], owned: number, proposed: ProposedItem[]): HTMLElement {
   const section = document.createElement("section");
   section.className = "card";
@@ -1204,134 +1206,110 @@ function card(g: Group<SessionRow>, archived: ArchivedRow[], owned: number, prop
     title.append(path);
   }
   head.append(title);
-
-  // The count is over the rows the card lists. A session in the strip is
-  // counted there, under its project's name, and not here again.
-  const counts = document.createElement("div");
-  counts.className = "tallies";
-  const t = tally(g.rows);
-  for (const state of STATE_ORDER) {
-    const n = t[state] ?? 0;
-    if (n === 0) continue;
-    const item = document.createElement("span");
-    item.className = `tally ${familyOf(state)}`;
-    const dot = document.createElement("span");
-    dot.className = `dot ${familyOf(state)}`;
-    item.append(dot, document.createTextNode(`${n} ${stateName(state)}`));
-    counts.append(item);
-  }
+  // The counts live on the fleet line above the projects; the rows say
+  // their own state. A project with no session at all says so, once.
   if (owned === 0) {
+    const counts = document.createElement("div");
+    counts.className = "tallies";
     const none = document.createElement("span");
     none.className = "tally quiet";
     none.textContent = "no live session";
     counts.append(none);
+    head.append(counts);
   }
-  head.append(counts);
   if (!watchOnly && g.project?.root) head.append(spawnControls(g.project));
-  const entry = g.project ? knowledge.get(g.project.id) : undefined;
-  // One block per goal of the package, in the route's order. A package
-  // with no goal folder (an empty `goals`, not the null of a 404) says so,
-  // since the foreman skips such a project and the card must show why.
-  if (g.project) for (const block of goalBlocks(entry?.goals)) head.append(goalSection(g.project, block, proposed));
-  if (g.project && entry?.goals?.length === 0) {
-    const none = document.createElement("span");
-    none.className = "tally quiet goal-none";
-    none.textContent = "no goal folder";
-    head.append(none);
-  }
   section.append(head);
 
   if (g.rows.length > 0) {
-    // One list in `sortInGroup`'s order: attention first, then the newest
-    // output. No `goal:` or `crew:` sub-header; a row's name and state say
-    // what those said.
+    // One list in `sortInGroup`'s order: the foreman, then by state, then
+    // the newest output. No `goal:` or `crew:` sub-header; a row's name and
+    // state say what those said.
     const list = document.createElement("ul");
     list.className = "rows";
     for (const r of g.rows) list.append(row(r));
     section.append(list);
   }
+  const entry = g.project ? knowledge.get(g.project.id) : undefined;
+  if (g.project) {
+    const lines = goalLines(entry?.goals);
+    if (lines.open.length > 0) {
+      const list = document.createElement("ul");
+      list.className = "goal-lines";
+      for (const line of lines.open) list.append(goalLineItem(g.project, line));
+      section.append(list);
+    }
+    if (lines.done.length > 0) section.append(doneFold(g.project, lines.done, proposed));
+    // A package with no goal folder (an empty `goals`, not the null of a
+    // 404) says so, since the foreman skips such a project and the card
+    // must show why.
+    if (entry?.goals?.length === 0) {
+      const none = document.createElement("p");
+      none.className = "goal-none";
+      none.textContent = "no goal folder";
+      section.append(none);
+    }
+  }
   if (archived.length > 0) section.append(archivedFold(g.key, archived));
   return section;
 }
 
-/** One goal of the project's knowledge package: a section under the
- * card's heading, named by the goal's title. Expanded (`active`): the
- * title with the slug beside it and the latest record on the first line,
- * then a definition list with `Round` (the counter, the status, the last
- * floor) and `Next` (the next action); the terms are visually hidden, so
- * a screen reader gets them and a sighted reader gets the position and
- * the weight. One line (`waiting`, `stopped`, `done`): the title, the
- * status word, and the record. A proposal lives in the strip, with its
- * record link, so the card carries no proposals chip and drops the record
- * link while the strip shows it (`cardRecord`). Every value comes from
- * `STATE.md` and `goal.md` as the daemon parsed them. */
-function goalSection(project: ProjectRef, block: GoalBlock, proposed: ProposedItem[]): HTMLElement {
-  const { summary, expanded } = block;
-  const goal = goalTitle(summary);
-  const box = document.createElement("section");
-  box.className = expanded ? "goal" : "goal brief";
-  const top = document.createElement("div");
-  top.className = "goal-top";
-  const title = document.createElement("h3");
-  title.className = "goal-title";
-  // The section is named by its own heading, so a screen reader hears the
-  // title once, not "Goal X, region; X, heading". Both ids are slugs.
-  title.id = `goal-${project.id}-${summary.slug ?? "goal"}`;
-  box.setAttribute("aria-labelledby", title.id);
-  title.textContent = goal;
-  const slug = expanded ? titleSlug(summary) : null;
-  if (slug !== null) {
-    // The slug maps the block to its `goal: <slug>` rule and label.
-    const mark = document.createElement("span");
-    mark.className = "goal-slug";
-    mark.textContent = slug;
-    title.append(" ", mark);
+/** One goal that is not done, on one line: the title, the status word
+ * when it is not active, the round counter, and the next action cut at
+ * the line's end. A goal whose files still hold the template reads "not
+ * written yet" after its slug. No floor word, no slug, no record link:
+ * the record is history, and the done fold and the strip's proposal carry
+ * it (`goalLine`). */
+function goalLineItem(project: ProjectRef, line: GoalLine): HTMLElement {
+  const li = document.createElement("li");
+  li.className = "goal-line";
+  li.setAttribute("aria-label", `${line.title} in ${project.name}`);
+  li.append(span("goal-name", line.title));
+  if (line.unwritten) {
+    li.append(span("goal-unwritten", "not written yet"));
+    return li;
   }
-  top.append(title);
-  if (!expanded && summary.status) {
-    const status = document.createElement("span");
-    status.className = "goal-status";
-    status.textContent = summary.status;
-    top.append(status);
+  if (line.status) li.append(span("goal-status", line.status));
+  if (line.round) li.append(span("goal-round", line.round));
+  if (line.next) {
+    const next = span("goal-next", line.next);
+    next.title = line.next;
+    li.append(next);
   }
-  const record = cardRecord(project.id, summary, proposed);
-  if (record !== null) {
-    const link = knowledgeLink(project.id, record, `record ${recordLabel(record)}`, "card-knowledge");
-    link.classList.add("goal-link");
-    link.setAttribute("aria-label", recordName(record, project.name, goal));
-    top.append(link);
-  }
-  box.append(top);
-  if (!expanded) return box;
+  return li;
+}
 
-  const facts = document.createElement("dl");
-  facts.className = "goal-facts";
-  const term = (name: string): HTMLElement => {
-    const dt = document.createElement("dt");
-    dt.className = "sr-only";
-    dt.textContent = name;
-    return dt;
-  };
-  const bits: string[] = [];
-  if (typeof summary.round === "number") {
-    bits.push(typeof summary.budget === "number" ? `round ${summary.round} of ${summary.budget}` : `round ${summary.round}`);
+/** The done goals behind one line, "7 done": each with its title and its
+ * record link, unless the strip carries the record already
+ * (`cardRecord`). Folded, because a done goal is history. */
+function doneFold(project: ProjectRef, done: KnowledgeSummary[], proposed: ProposedItem[]): HTMLElement {
+  const key = `done:${project.id}`;
+  const details = document.createElement("details");
+  details.className = "archived done";
+  details.open = archivedOpen.has(key);
+  details.addEventListener("toggle", () => {
+    if (details.open) archivedOpen.add(key);
+    else archivedOpen.delete(key);
+  });
+  const summary = document.createElement("summary");
+  summary.textContent = doneLabel(done.length);
+  summary.dataset.focus = `archived:${key}`;
+  details.append(summary);
+  const ul = document.createElement("ul");
+  ul.className = "archived-list";
+  for (const goal of done) {
+    const li = document.createElement("li");
+    li.append(span("archived-name", goalTitle(goal)));
+    const record = cardRecord(project.id, goal, proposed);
+    if (record !== null) {
+      const link = knowledgeLink(project.id, record, `record ${recordLabel(record)}`, "card-knowledge");
+      link.classList.add("goal-link");
+      link.setAttribute("aria-label", recordName(record, project.name, goalTitle(goal)));
+      li.append(link);
+    }
+    ul.append(li);
   }
-  if (summary.status) bits.push(summary.status);
-  if (summary.lastFloor) bits.push(`floor ${summary.lastFloor}`);
-  if (bits.length > 0) {
-    const meta = document.createElement("dd");
-    meta.className = "goal-meta";
-    meta.textContent = bits.join(" · ");
-    facts.append(term("Round"), meta);
-  }
-  if (summary.nextAction) {
-    const next = document.createElement("dd");
-    next.className = "goal-next";
-    next.textContent = `next: ${summary.nextAction}`;
-    facts.append(term("Next"), next);
-  }
-  if (facts.childElementCount > 0) box.append(facts);
-  return box;
+  details.append(ul);
+  return details;
 }
 
 /** A link to one file of a project's package, opened in a new tab. Keyed
