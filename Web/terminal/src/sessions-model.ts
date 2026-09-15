@@ -41,6 +41,10 @@ export type ModelRow = {
   orchestrated?: boolean;
   project?: ProjectRef;
   lastOutputAt?: number;
+  /** Free-text status note set by a program or a person (`post_note`). */
+  note?: string;
+  /** The session's latest Claude Code hook report; the row reads the message. */
+  agent?: { message?: string };
 };
 
 export type Approval = {
@@ -574,6 +578,104 @@ export function withProposed<R extends ModelRow>(
   const at = items.findIndex((item) => item.kind === "failed");
   if (at < 0) return [...items, ...proposed];
   return [...items.slice(0, at), ...proposed, ...items.slice(at)];
+}
+
+// --- a session row -----------------------------------------------------------
+
+/** What one row prints, in order: the name, the state word, where the shell
+ * is when the name does not say, what it is doing, and how long. A null
+ * field is not printed. */
+export type RowLine = {
+  name: string;
+  state: string;
+  place: string | null;
+  what: string | null;
+  since: string | null;
+};
+
+/** The last segment of a path: the folder a shell sits in. */
+export function folderOf(cwd: string): string {
+  const trimmed = cwd.replace(/\/+$/, "");
+  const base = trimmed.slice(trimmed.lastIndexOf("/") + 1);
+  return base || cwd;
+}
+
+/** The state's name as the chips and the tallies print it. */
+export function stateName(state: MergedState): string {
+  switch (state) {
+    case "needs-approval":
+      return "needs approval";
+    case "needs-input":
+      return "needs input";
+    case "completed":
+      return "done";
+    case "unknown":
+      return "no integration";
+    default:
+      return state;
+  }
+}
+
+/** The state word of a row: the name, with the exit code in brackets when
+ * the last command failed or the shell exited with one, so `failed (1)`
+ * says the number once and `exit 0` is never printed. */
+export function stateLabel(row: ModelRow): string {
+  const state = stateOf(row);
+  const word = stateName(state);
+  if (state !== "failed" && state !== "exited") return word;
+  const code = row.lastExit;
+  return typeof code === "number" && code !== 0 ? `${word} (${code})` : word;
+}
+
+/** Where a shell is, once: the path under the project root, else the
+ * folder; null at the root itself, which the card above already names. */
+function whereOf(row: ModelRow): string | null {
+  const root = (row.project?.root ?? "").replace(/\/+$/, "");
+  const cwd = row.cwd.replace(/\/+$/, "");
+  if (root && cwd === root) return null;
+  if (root && cwd.startsWith(root + "/")) return cwd.slice(root.length + 1);
+  return folderOf(cwd);
+}
+
+/** What a row is called: its name, else where it is (`docs/postman` under
+ * the project root, the folder otherwise). The same text names the row's
+ * buttons, so a list of Kill buttons reads apart. */
+export function rowName(row: ModelRow): string {
+  return row.name || whereOf(row) || folderOf(row.cwd);
+}
+
+/** A span in one unit, for a reader who wants the magnitude: `now` under a
+ * minute, then minutes, hours, and days, each rounded down. No seconds, so
+ * a row that is alive repaints once a minute at most. */
+export function spanLabel(ms: number): string {
+  const minutes = Math.floor(Math.max(0, ms) / 60_000);
+  if (minutes < 1) return "now";
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+/**
+ * The one line a session row prints, read at `now`.
+ *
+ * `what` is the agent's message, else the note a program or a person set,
+ * else the last command, else nothing. `since` measures from the last
+ * output, because that is when the row's state began: the prompt that
+ * waits, the command that failed, the shell that went quiet; a working row
+ * reads `now` while it is alive and grows when it stalls. `place` shows
+ * only for a named row away from the project root, because an unnamed row
+ * carries the path as its name and the card names the root.
+ */
+export function rowLine(row: ModelRow, now: number): RowLine {
+  const command = row.lastCommand ? `$ ${row.lastCommand}` : null;
+  return {
+    name: rowName(row),
+    state: stateLabel(row),
+    place: row.name ? whereOf(row) : null,
+    what: row.agent?.message ?? row.note ?? command,
+    since: typeof row.lastOutputAt === "number" ? spanLabel(now - row.lastOutputAt) : null,
+  };
 }
 
 // --- the restart line -------------------------------------------------------

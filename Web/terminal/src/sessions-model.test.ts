@@ -12,8 +12,12 @@ import {
   restartDismissKey,
   restartDismissName,
   restartNotice,
+  rowLine,
+  rowName,
   sortInGroup,
+  spanLabel,
   stampFormat,
+  stateLabel,
   stateOf,
   tally,
   type Approval,
@@ -388,5 +392,116 @@ describe("the restart line", () => {
 
   it("names its Dismiss button apart from the other Dismiss buttons", () => {
     expect(restartDismissName()).toBe("Dismiss the restart notice");
+  });
+});
+
+describe("rowLine", () => {
+  const now = new Date(2026, 8, 15, 16, 7).getTime();
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const at = (ago: number): number => now - ago;
+  const inKitterm = (extra: Partial<ModelRow>): ModelRow => row("r", { project: kitterm, ...extra });
+
+  it("prints an idle shell at the project root as its folder, the state and the span", () => {
+    expect(rowLine(inKitterm({ mergedState: "idle", lastExit: 0, lastOutputAt: at(2 * hour) }), now)).toEqual({
+      name: "kitterm",
+      state: "idle",
+      place: null,
+      what: null,
+      since: "2h",
+    });
+  });
+
+  it("prints a working agent with its message, alive now", () => {
+    const working = inKitterm({
+      name: "crew",
+      mergedState: "working",
+      lastCommand: "claude",
+      agent: { message: "Running the floor" },
+      lastOutputAt: at(20_000),
+    });
+    expect(rowLine(working, now)).toEqual({
+      name: "crew",
+      state: "working",
+      place: null,
+      what: "Running the floor",
+      since: "now",
+    });
+  });
+
+  it("prints a failed command with the exit code in the state word only", () => {
+    const failed = inKitterm({ mergedState: "failed", lastExit: 1, lastCommand: "swift test", lastOutputAt: at(90 * minute) });
+    expect(rowLine(failed, now)).toEqual({
+      name: "kitterm",
+      state: "failed (1)",
+      place: null,
+      what: "$ swift test",
+      since: "1h",
+    });
+  });
+
+  it("prints a named session in a subfolder with the path under the root, once", () => {
+    const named = inKitterm({ name: "postman", cwd: "/w/kitterm/docs/postman", mergedState: "idle", lastExit: 0, lastOutputAt: at(3 * 24 * hour) });
+    expect(rowLine(named, now)).toEqual({
+      name: "postman",
+      state: "idle",
+      place: "docs/postman",
+      what: null,
+      since: "3d",
+    });
+  });
+
+  it("names an unnamed session in a subfolder by the path under the root, with no place", () => {
+    const line = rowLine(inKitterm({ cwd: "/w/kitterm/docs/postman", mergedState: "idle" }), now);
+    expect(line.name).toBe("docs/postman");
+    expect(line.place).toBeNull();
+  });
+
+  it("falls back to the folder outside every project, and away from the root", () => {
+    expect(rowName(row("r", { cwd: "/home/me/scratch" }))).toBe("scratch");
+    expect(rowLine(row("r", { name: "spike", cwd: "/home/me/scratch" }), now).place).toBe("scratch");
+    expect(rowLine(inKitterm({ name: "spike", cwd: "/elsewhere/tool" }), now).place).toBe("tool");
+    expect(rowLine(inKitterm({ name: "spike", cwd: "/w/kitterm/" }), now).place).toBeNull();
+  });
+
+  it("prefers the agent's message, then the note, then the last command", () => {
+    const base = { lastCommand: "make", note: "Waiting on the human." };
+    expect(rowLine(row("r", { ...base, agent: { message: "Done." } }), now).what).toBe("Done.");
+    expect(rowLine(row("r", base), now).what).toBe("Waiting on the human.");
+    expect(rowLine(row("r", { lastCommand: "make" }), now).what).toBe("$ make");
+    expect(rowLine(row("r"), now).what).toBeNull();
+  });
+
+  it("prints no span without a last output", () => {
+    expect(rowLine(row("r", { mergedState: "idle" }), now).since).toBeNull();
+  });
+});
+
+describe("stateLabel", () => {
+  it("keeps the exit code only when it is not zero", () => {
+    expect(stateLabel(row("r", { mergedState: "failed", lastExit: 1 }))).toBe("failed (1)");
+    expect(stateLabel(row("r", { mergedState: "failed" }))).toBe("failed");
+    expect(stateLabel(row("r", { mergedState: "exited", lastExit: 130 }))).toBe("exited (130)");
+    expect(stateLabel(row("r", { mergedState: "exited", lastExit: 0 }))).toBe("exited");
+    expect(stateLabel(row("r", { mergedState: "idle", lastExit: 0 }))).toBe("idle");
+  });
+
+  it("prints the merged state's name otherwise", () => {
+    expect(stateLabel(row("r", { mergedState: "needs-input" }))).toBe("needs input");
+    expect(stateLabel(row("r", { mergedState: "completed" }))).toBe("done");
+    expect(stateLabel(row("r"))).toBe("no integration");
+  });
+});
+
+describe("spanLabel", () => {
+  it("rounds down to one unit, with no seconds", () => {
+    expect(spanLabel(0)).toBe("now");
+    expect(spanLabel(59_999)).toBe("now");
+    expect(spanLabel(60_000)).toBe("1m");
+    expect(spanLabel(59 * 60_000 + 59_000)).toBe("59m");
+    expect(spanLabel(60 * 60_000)).toBe("1h");
+    expect(spanLabel(23 * 3_600_000 + 59 * 60_000)).toBe("23h");
+    expect(spanLabel(24 * 3_600_000)).toBe("1d");
+    expect(spanLabel(-5_000)).toBe("now");
   });
 });
