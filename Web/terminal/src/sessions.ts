@@ -22,7 +22,9 @@ import {
   needsYouMessage,
   NO_PROJECT,
   pickForeman,
+  proposalsName,
   proposedItems,
+  proposedLabel,
   pushToggle,
   recordLabel,
   recordName,
@@ -905,22 +907,29 @@ function approvalContent(approval: Approval, row: SessionRow | null): DocumentFr
   return fragment;
 }
 
-/** A round record that ends in `propose`: the goal, the project, the
- * decision line, and the record itself through the knowledge route. */
+/** A goal whose `STATE.md` lists proposals: how many, the goal, the
+ * project, the record's decision line when it proposes, and the record
+ * itself through the knowledge route, else the `STATE.md` the proposals
+ * wait in. The one place on the page a proposal appears. */
 function proposedContent(item: ProposedItem): DocumentFragment {
   const fragment = document.createDocumentFragment();
   const goal = goalTitle(item.summary);
-  fragment.append(stripTop("proposed", goal, item.project.name));
-  if (item.summary.lastDecision) {
+  fragment.append(stripTop(proposedLabel(item.count), goal, item.project.name));
+  if (item.decision) {
     const line = document.createElement("div");
     line.className = "strip-detail decision";
-    line.textContent = item.summary.lastDecision;
+    line.textContent = item.decision;
     fragment.append(line);
   }
   const actions = document.createElement("div");
   actions.className = "proposed-actions";
-  const open = knowledgeLink(item.project.id, item.path, `Open record ${recordLabel(item.path)}`, "strip-knowledge");
-  open.setAttribute("aria-label", recordName(item.path, item.project.name, goal));
+  const open = item.record
+    ? knowledgeLink(item.project.id, item.record, `Open record ${recordLabel(item.record)}`, "strip-knowledge")
+    : knowledgeLink(item.project.id, item.path, "Open STATE.md", "strip-knowledge");
+  open.setAttribute(
+    "aria-label",
+    item.record ? recordName(item.record, item.project.name, goal) : proposalsName(item.count, item.project.name, goal),
+  );
   actions.append(open);
   // Read it, decided in STATE.md: the item leaves the strip and the count
   // until the goal's next round.

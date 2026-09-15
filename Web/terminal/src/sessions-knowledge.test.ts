@@ -11,12 +11,15 @@ import {
   goalTitle,
   hasKnowledge,
   knowledgeUrl,
+  proposalsName,
   proposedItems,
+  proposedLabel,
   recordLabel,
   recordName,
   recordPath,
   roundOf,
   roundPath,
+  statePath,
   titleSlug,
   withProposed,
   type KnowledgeSummary,
@@ -152,29 +155,60 @@ describe("recordPath", () => {
 });
 
 describe("proposedItems", () => {
-  it("lists a project whose latest round record proposes", () => {
-    const proposing: KnowledgeSummary = { ...summary, lastRound: 3, lastDecision: "propose (`plan.md`: x)" };
+  const proposing: KnowledgeSummary = { ...summary, lastRound: 3, proposals: 1, lastDecision: "propose (`plan.md`: x)" };
+
+  it("lists a goal whose STATE.md counts proposals, with the record and the decision line", () => {
     const items = proposedItems([
       { project: kitterm, summary },
       { project: other, summary: proposing },
     ]);
-    expect(items).toEqual([{ kind: "proposed", project: other, summary: proposing, round: 3, path: "rounds/003.md" }]);
+    expect(items).toEqual([{
+      kind: "proposed", project: other, summary: proposing, round: 3, count: 1,
+      record: "rounds/003.md", path: "rounds/003.md", decision: "propose (`plan.md`: x)",
+    }]);
+  });
+
+  it("lists a goal with three proposals in STATE.md and a decision of done, once", () => {
+    // foreman-harness round 4: the record closes with `done`; the foreman
+    // wrote the proposal into STATE.md at close.
+    const stateOnly: KnowledgeSummary = {
+      project: "kitterm", slug: "foreman-harness", goal: "the foreman's own tools stop lying to it",
+      status: "waiting", round: 4, budget: 6, proposals: 3, lastRound: 4,
+      lastRecord: "foreman-harness/rounds/004.md", lastDecision: "done.",
+    };
+    const items = proposedItems([{ project: kitterm, summary: stateOnly }]);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ count: 3, round: 4, record: "foreman-harness/rounds/004.md", decision: null });
+    expect(items[0].path).toBe("foreman-harness/rounds/004.md");
+  });
+
+  it("links STATE.md itself for a goal with proposals and no round record yet", () => {
+    const fresh: KnowledgeSummary = { project: "kitterm", slug: "fresh", status: "active", round: 0, proposals: 2 };
+    const items = proposedItems([{ project: kitterm, summary: fresh }]);
+    expect(items[0]).toMatchObject({ count: 2, round: 0, record: null, path: "fresh/STATE.md", decision: null });
   });
 
   it("links the record by the name the daemon read, rounds/7.md included", () => {
-    const seven: KnowledgeSummary = { ...summary, lastRound: 7, lastRecord: "rounds/7.md", lastDecision: "propose (x)" };
+    const seven: KnowledgeSummary = { ...proposing, lastRound: 7, lastRecord: "rounds/7.md" };
     expect(proposedItems([{ project: other, summary: seven }])[0].path).toBe("rounds/7.md");
   });
 
-  it("matches the decision word alone, in any case, after blanks", () => {
-    const loud: KnowledgeSummary = { ...summary, lastDecision: "  Propose: something" };
-    expect(proposedItems([{ project: kitterm, summary: loud }])).toHaveLength(1);
-    const done: KnowledgeSummary = { ...summary, lastDecision: "done. propose (x) later" };
-    expect(proposedItems([{ project: kitterm, summary: done }])).toEqual([]);
+  it("takes the decision as the text only when it proposes, in any case, after blanks", () => {
+    const loud: KnowledgeSummary = { ...proposing, lastDecision: "  Propose: something" };
+    expect(proposedItems([{ project: kitterm, summary: loud }])[0].decision).toBe("Propose: something");
+    const done: KnowledgeSummary = { ...proposing, lastDecision: "done. propose (x) later" };
+    expect(proposedItems([{ project: kitterm, summary: done }])[0].decision).toBeNull();
+  });
+
+  it("yields nothing for a goal whose STATE.md lists no proposal, whatever the decision says", () => {
+    // The human pruned STATE.md: the record still proposes, the item leaves.
+    expect(proposedItems([{ project: kitterm, summary: { ...proposing, proposals: 0 } }])).toEqual([]);
+    expect(proposedItems([{ project: kitterm, summary: { ...proposing, proposals: undefined } }])).toEqual([]);
+    expect(proposedItems([{ project: kitterm, summary: { project: "kitterm", lastDecision: "propose" } }])).toEqual([]);
+    expect(proposedItems([])).toEqual([]);
   });
 
   it("leaves out a dismissed round and keeps the goal's next one", () => {
-    const proposing: KnowledgeSummary = { ...summary, lastRound: 3, lastDecision: "propose (x)" };
     const dismissed = new Set([dismissKey("kitterm", "projects-and-knowledge", 3)]);
     expect(dismissKey("kitterm", "projects-and-knowledge", 3)).toBe("kitterm:projects-and-knowledge:3");
     expect(proposedItems([{ project: kitterm, summary: proposing }], dismissed)).toEqual([]);
@@ -184,33 +218,37 @@ describe("proposedItems", () => {
   });
 
   it("lists every proposing goal of one project and dismisses them one by one", () => {
-    const first: KnowledgeSummary = { ...summary, lastRound: 3, lastDecision: "propose (x)" };
     const second: KnowledgeSummary = {
-      project: "kitterm", slug: "goal-folders", status: "waiting", lastRound: 3,
+      project: "kitterm", slug: "goal-folders", status: "waiting", lastRound: 3, proposals: 2,
       lastRecord: "goal-folders/rounds/003.md", lastDecision: "propose (`LOOP.md`: y)",
     };
     const quiet: KnowledgeSummary = { project: "kitterm", slug: "done-goal", status: "done", lastRound: 8, lastDecision: "done." };
-    const entries = [first, second, quiet].map((goal) => ({ project: kitterm, summary: goal }));
-    expect(proposedItems(entries).map((item) => [item.summary.slug, item.path])).toEqual([
-      ["projects-and-knowledge", "rounds/003.md"],
-      ["goal-folders", "goal-folders/rounds/003.md"],
+    const entries = [proposing, second, quiet].map((goal) => ({ project: kitterm, summary: goal }));
+    expect(proposedItems(entries).map((item) => [item.summary.slug, item.count, item.path])).toEqual([
+      ["projects-and-knowledge", 1, "rounds/003.md"],
+      ["goal-folders", 2, "goal-folders/rounds/003.md"],
     ]);
     // The same round number on another goal is another key.
     const dismissed = new Set([dismissKey("kitterm", "goal-folders", 3)]);
     expect(proposedItems(entries, dismissed).map((item) => item.summary.slug)).toEqual(["projects-and-knowledge"]);
     expect(dismissKey("kitterm", "", 3)).toBe("kitterm::3");
-    expect(proposedItems([{ project: kitterm, summary: { ...first, slug: undefined } }], new Set(["kitterm::3"]))).toEqual([]);
+    expect(proposedItems([{ project: kitterm, summary: { ...proposing, slug: undefined } }], new Set(["kitterm::3"]))).toEqual([]);
   });
 
-  it("yields nothing without a round record or a decision", () => {
-    expect(proposedItems([{ project: kitterm, summary: { project: "kitterm", lastDecision: "propose" } }])).toEqual([]);
-    expect(proposedItems([{ project: kitterm, summary: { project: "kitterm", lastRound: 1 } }])).toEqual([]);
-    expect(proposedItems([])).toEqual([]);
+  it("names the count in one word and the STATE.md link by whose it is", () => {
+    expect(proposedLabel(1)).toBe("1 proposal");
+    expect(proposedLabel(3)).toBe("3 proposals");
+    expect(statePath(summary)).toBe("projects-and-knowledge/STATE.md");
+    expect(statePath({ project: "kitterm" })).toBe("STATE.md");
+    expect(proposalsName(12, "kitterm")).toBe("12 proposals waiting on the human in STATE.md of kitterm");
+    expect(proposalsName(1, "kitterm", "one folder per goal")).toBe(
+      "1 proposal waiting on the human in STATE.md of one folder per goal in kitterm",
+    );
   });
 });
 
 describe("withProposed", () => {
-  const proposing: KnowledgeSummary = { ...summary, lastRound: 3, lastDecision: "propose (x)" };
+  const proposing: KnowledgeSummary = { ...summary, lastRound: 3, proposals: 1, lastDecision: "propose (x)" };
   const proposed = proposedItems([{ project: kitterm, summary: proposing }]);
 
   it("puts a proposal after the approvals and needs-input rows and before the failed ones", () => {
@@ -251,10 +289,11 @@ describe("the record names", () => {
 });
 
 describe("cardRecord", () => {
-  const proposing: KnowledgeSummary = { ...summary, lastRound: 3, lastDecision: "propose (x)" };
+  const proposing: KnowledgeSummary = { ...summary, lastRound: 3, proposals: 1, lastDecision: "propose (x)" };
+  // Proposals in STATE.md alone: the decision reads done, the item still shows.
   const also: KnowledgeSummary = {
-    project: "kitterm", slug: "goal-folders", status: "waiting", lastRound: 3,
-    lastRecord: "goal-folders/rounds/003.md", lastDecision: "propose (y)",
+    project: "kitterm", slug: "goal-folders", status: "waiting", lastRound: 3, proposals: 2,
+    lastRecord: "goal-folders/rounds/003.md", lastDecision: "done.",
   };
   const entries = [proposing, also].map((goal) => ({ project: kitterm, summary: goal }));
 
