@@ -1,16 +1,15 @@
 # STATE: cost-per-round
 
 - Status: active
-- Round: 1 of 3 in this budget (first budget)
-- Rounds total: 1
-- Last floor: green (2026-09-15, round 1 after: swift test 701, bench p95 2.51 ms, Linux green)
-- Updated: 2026-09-15, round 1 closed
+- Round: 2 of 3 in this budget (first budget)
+- Rounds total: 2
+- Last floor: green (2026-09-15, round 2 after: swift test 714, bench p95 2.61 ms, Linux green)
+- Updated: 2026-09-15, round 2 closed
 
 ## Queue
 
-1. `read-the-bill` (capability 2)
-2. `the-bill-in-the-record` (capability 3)
-3. `the-ledger` (capability 4)
+1. `the-bill-in-the-record` (capability 3)
+2. `the-ledger` (capability 4)
 
 ## Failures
 
@@ -26,6 +25,10 @@ None.
   `rounds/001.md`. Every hook records the Claude Code session id and
   transcript path on the session, the archive keeps them, and the row
   exposes `agentSessionId` and `agentTranscript`.
+- `read-the-bill` (capability 2), round 2, `0476af1`. See
+  `rounds/002.md`. `GET /api/sessions/<id>/cost` reads the transcript's
+  last line in one 64 KiB `pread` off the event loop. The foreman read a
+  real bill through it: fleet-catch-up round 1 cost $7.14.
 
 ## Direction
 
@@ -40,9 +43,17 @@ price table is added.
 
 ## Next action
 
-Round 2: `read-the-bill` from `plan.md` row 2; proof: unit tests over
-three real transcript tails checked in as fixtures, one with a bill, one
-zeroed, one truncated, and a route test for `GET /api/sessions/<id>/cost`
-against a scratch daemon. The reader takes the path from
-`agentTranscript`. It opens a file, so it must run off the event loop and
-the bench must say so.
+Round 3: `the-bill-in-the-record` from `plan.md` row 3. `LOOP.md`'s round
+record gains a `- Cost:` line under the header, "One round" step 4 tells
+the foreman to read `/api/sessions/<id>/cost` at collect time and write
+it, and the skill, the template and the embedded copies carry the same
+rule under the sentence check from `foreman-harness` round 5. Proof:
+`GoalsLayoutDocsTests` gains the sentence over all five sources.
+
+One fact for capability 4 from round 2's real bill: `totalLinesAdded`
+reads 0 on a round that changed four files, because crews edit through
+heredocs. Files changed come from `git diff`, not from the bill.
+
+`docs/goals/LOOP.md` is the foreman's file, so round 3 delivers its
+change as one command with a scratch-tree proof, the way `foreman-harness`
+rounds 4 and 5 did.
