@@ -1,15 +1,14 @@
 # STATE: cost-per-round
 
 - Status: active
-- Round: 2 of 3 in this budget (first budget)
-- Rounds total: 2
-- Last floor: green (2026-09-15, round 2 after: swift test 714, bench p95 2.61 ms, Linux green)
-- Updated: 2026-09-15, round 2 closed
+- Round: 3 of 3 in this budget (first budget)
+- Rounds total: 3
+- Last floor: green (2026-09-15, round 3 after the foreman's command: swift test 714)
+- Updated: 2026-09-15, round 3 closed
 
 ## Queue
 
-1. `the-bill-in-the-record` (capability 3)
-2. `the-ledger` (capability 4)
+1. `the-ledger` (capability 4)
 
 ## Failures
 
@@ -17,7 +16,10 @@ None.
 
 ## Proposals waiting on the human
 
-None.
+- None that block. Round 3 found that Collect tells the foreman to read
+  the live cost route for a bill that exists only after the session is
+  archived. The foreman folds the fix into round 4 rather than wait:
+  archive, then read the bill through the archive's transcript path.
 
 ## Done
 
@@ -29,6 +31,9 @@ None.
   `rounds/002.md`. `GET /api/sessions/<id>/cost` reads the transcript's
   last line in one 64 KiB `pread` off the event loop. The foreman read a
   real bill through it: fleet-catch-up round 1 cost $7.14.
+- `the-bill-in-the-record` (capability 3), round 3, `3c26f67` plus the
+  foreman's commit. See `rounds/003.md`, which carries the first
+  `Cost:` line: $4.74 · 3331k in (97% cached) · 36k out · 0h 10m.
 
 ## Direction
 
@@ -43,17 +48,19 @@ price table is added.
 
 ## Next action
 
-Round 3: `the-bill-in-the-record` from `plan.md` row 3. `LOOP.md`'s round
-record gains a `- Cost:` line under the header, "One round" step 4 tells
-the foreman to read `/api/sessions/<id>/cost` at collect time and write
-it, and the skill, the template and the embedded copies carry the same
-rule under the sentence check from `foreman-harness` round 5. Proof:
-`GoalsLayoutDocsTests` gains the sentence over all five sources.
+Round 4: `the-ledger` from `plan.md` row 4, the last capability. `kitterm
+goal cost <root> [<slug>]` reads every round record's `Sessions:` and
+`Cost:` lines and prints per goal and per round: dollars, tokens by kind,
+cache-read share, wall-clock, tests added, files changed, decision, and
+the merged PR. Totals per goal; rounds without a `Cost:` line print a
+dash and a footer counts them. `--json` gives the same.
 
-One fact for capability 4 from round 2's real bill: `totalLinesAdded`
-reads 0 on a round that changed four files, because crews edit through
-heredocs. Files changed come from `git diff`, not from the bill.
+Two things from round 3. The bill exists only after the session is
+archived, so the ledger reads it through the archive's `agentTranscript`
+path, and round 4 also serves `GET /api/archives/<id>/cost` so the
+foreman can read a bill at collect time after archiving; the Collect
+sentence in `LOOP.md` then changes to "archive, then read", delivered as
+a command. And `totalLinesAdded` reads 0 on rounds that edit through
+heredocs, so files changed come from `git diff`, as the plan says.
 
-`docs/goals/LOOP.md` is the foreman's file, so round 3 delivers its
-change as one command with a scratch-tree proof, the way `foreman-harness`
-rounds 4 and 5 did.
+The budget is spent after round 4, so the goal closes or waits then.

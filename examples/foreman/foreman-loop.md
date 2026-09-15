@@ -267,7 +267,9 @@ case: it spends the budget and it gets a record.
    round's decision stays `done`.
 
    Collect the visible proof the crew posted: a screenshot path, a test
-   name, a URL.
+   name, a URL. Read `GET /api/sessions/<id>/cost` for every session the
+   record's `Sessions:` line names and write one `- Cost:` line per
+   session, in that order, under the record's header.
 
 5. **Classify the largest gap.** One class per round: `world` (the
    environment, the daemon build, the toolchain), `domain` (the product's
@@ -426,6 +428,7 @@ one file per round, never rewritten after the round ends.
 - Started: <ISO date>  Ended: <ISO date>
 - Sessions: <id>, <id>   Archives: <id>
 - Base: <git sha>   Result: <git sha or PR #>
+- Cost: $D · Nk in (C% cached) · Nk out · Hh Mm
 
 ## Prompt
 <the request sent, verbatim or a path to it>
@@ -448,6 +451,16 @@ done | failed | propose (<path>: <what and why>)
 ## Reflection
 <what cost time that a rule or a check could prevent>
 ```
+
+On the `Cost:` line, `$D` is `totalCostUSD` rounded to the cent; `Nk in`
+is `inputTokens` plus `cacheCreationInputTokens` plus
+`cacheReadInputTokens`, summed over every model in `modelUsage`; `C%
+cached` is the summed `cacheReadInputTokens` over `in`, rounded to a
+whole percent; `Nk out` is `outputTokens`; each token count is rounded to
+whole thousands; `Hh Mm` is `totalDuration` rounded to whole minutes.
+When `GET /api/sessions/<id>/cost` answers `hasBill: false` or 404, the
+line reads `- Cost: none recorded (<reason>)` with the reason the route
+gave.
 
 A review crew or a triage session that you delegate inside a round posts its
 findings with `post_note`. You copy them into the round record under

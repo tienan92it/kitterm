@@ -122,6 +122,37 @@ final class GoalsLayoutDocsTests: XCTestCase {
             "a review session and a helper count toward the cap of three",
             "A review session and a crew's helper count toward the cap of three."
         ),
+        (
+            "the round record carries a `- Cost:` line under its header",
+            "- Cost: $D · Nk in (C% cached) · Nk out · Hh Mm"
+        ),
+        (
+            "the foreman reads the cost route at collect time and writes one `- Cost:` line per session",
+            """
+            Read `GET /api/sessions/<id>/cost` for every session the record's
+            `Sessions:` line names and write one `- Cost:` line per session, in
+            that order, under the record's header.
+            """
+        ),
+        (
+            "the `Cost:` line's numbers have one definition and one rounding",
+            """
+            On the `Cost:` line, `$D` is `totalCostUSD` rounded to the cent; `Nk in`
+            is `inputTokens` plus `cacheCreationInputTokens` plus
+            `cacheReadInputTokens`, summed over every model in `modelUsage`; `C%
+            cached` is the summed `cacheReadInputTokens` over `in`, rounded to a
+            whole percent; `Nk out` is `outputTokens`; each token count is rounded to
+            whole thousands; `Hh Mm` is `totalDuration` rounded to whole minutes.
+            """
+        ),
+        (
+            "a session without a bill is `none recorded` with the route's reason",
+            """
+            When `GET /api/sessions/<id>/cost` answers `hasBill: false` or 404, the
+            line reads `- Cost: none recorded (<reason>)` with the reason the route
+            gave.
+            """
+        ),
     ]
 
     /// A wording a round replaced. It names a tier or a label that the rule

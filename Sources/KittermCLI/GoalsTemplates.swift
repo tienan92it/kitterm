@@ -129,7 +129,10 @@ enum GoalsTemplates {
            `needs-input` and `needs-approval` to the human, never answer for them.
         4. **Collect.** On `completed`, read the last command output and the screen.
            Run the floor again. Read the diff. Collect the visible proof the crew
-           posted with `post_note`: a screenshot path, a test name, a URL.
+           posted with `post_note`: a screenshot path, a test name, a URL. Read
+           `GET /api/sessions/<id>/cost` for every session the record's
+           `Sessions:` line names and write one `- Cost:` line per session, in
+           that order, under the record's header.
         5. **Classify the largest gap.** One class per round:
            - **world**: the environment, the build, the toolchain.
            - **domain**: the product's own logic.
@@ -253,6 +256,7 @@ enum GoalsTemplates {
         - Started: <ISO date>  Ended: <ISO date>
         - Sessions: <id>, <id>   Archives: <id>
         - Base: <git sha>   Result: <git sha or PR #>
+        - Cost: $D · Nk in (C% cached) · Nk out · Hh Mm
 
         ## Prompt
         <the request sent, verbatim or a path to it>
@@ -275,6 +279,16 @@ enum GoalsTemplates {
         ## Reflection
         <what cost time that a rule or a check could prevent>
         ```
+
+        On the `Cost:` line, `$D` is `totalCostUSD` rounded to the cent; `Nk in`
+        is `inputTokens` plus `cacheCreationInputTokens` plus
+        `cacheReadInputTokens`, summed over every model in `modelUsage`; `C%
+        cached` is the summed `cacheReadInputTokens` over `in`, rounded to a
+        whole percent; `Nk out` is `outputTokens`; each token count is rounded to
+        whole thousands; `Hh Mm` is `totalDuration` rounded to whole minutes.
+        When `GET /api/sessions/<id>/cost` answers `hasBill: false` or 404, the
+        line reads `- Cost: none recorded (<reason>)` with the reason the route
+        gave.
 
         ## Labels
 
