@@ -48,7 +48,9 @@ final class TakeoverStateTests: XCTestCase {
                     agentStatus: .init(report: "working", message: nil, at: 1_700_000_000_800),
                     recorder: .init(path: "/tmp/x.cast", startedAt: 1_699_999_999_000),
                     logStore: .init(path: "/tmp/x.log", fileBase: 100, streamEnd: 1000),
-                    heldSince: 1_700_000_000_000
+                    heldSince: 1_700_000_000_000,
+                    agentSessionID: "e89e7ec8-1111-4c0e-9a3b-000000000001",
+                    agentTranscript: "/Users/someone/.claude/projects/-tmp/e89e7ec8.jsonl"
                 ),
             ]
         )
@@ -198,6 +200,8 @@ final class TakeoverStateTests: XCTestCase {
         XCTAssertEqual(session.logHead, 1000)
         XCTAssertEqual(session.commandsSnapshot().first?.index, 4)
         XCTAssertEqual(session.agentStatus?.report, .working)
+        XCTAssertEqual(session.agentJoin?.sessionID, "e89e7ec8-1111-4c0e-9a3b-000000000001")
+        XCTAssertEqual(session.agentJoin?.transcriptPath, "/Users/someone/.claude/projects/-tmp/e89e7ec8.jsonl")
         let tail = session.outputRange(from: 995, to: 1000, maxBytes: 64)
         XCTAssertEqual(tail.data, Data("hello".utf8))
         XCTAssertFalse(tail.pruned)

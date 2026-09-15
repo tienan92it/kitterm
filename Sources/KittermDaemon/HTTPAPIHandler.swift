@@ -724,6 +724,14 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             if let message = agent.message { status["message"] = message }
             item["agent"] = status
         }
+        // The Claude Code session that ran here, from its hooks: the id and
+        // the transcript's path, as the hook gave them. A reader joins the
+        // kitterm session to its bill by them; the daemon never opens the
+        // file. Absent, both, on a session that never ran `claude`.
+        if let join = summary.agentJoin {
+            item["agentSessionId"] = join.sessionID
+            item["agentTranscript"] = join.transcriptPath
+        }
         if summary.exited {
             // Kept only so its records can still be read.
             item["exited"] = true
@@ -1228,7 +1236,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 marks: marks,
                 outputBase: range.start,
                 outputPruned: range.pruned,
-                outputBytes: range.data.count
+                outputBytes: range.data.count,
+                agentSessionID: session.agentJoin?.sessionID,
+                agentTranscript: session.agentJoin?.transcriptPath
             )
             // Serialize before the next await: only `Data` crosses onto the
             // archive queue, so the [String: Any] arrays never leave here.
@@ -2611,6 +2621,13 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         head: HTTPRequestHead,
         context: ChannelHandlerContext
     ) {
+        // Every hook, blocking or not, names the Claude Code session it came
+        // from and where its transcript is. Keep both on the session, so the
+        // shell that ran `claude` can be joined to the transcript's bill
+        // later. Stored, never opened: this is the event loop.
+        if let session, let join = AgentJoin.parse(event) {
+            session.recordAgentJoin(join)
+        }
         guard name == "PermissionRequest" else {
             // A non-blocking event: record what it says about the agent, then
             // answer `{}` at once because nothing waits on it. `PreToolUse`

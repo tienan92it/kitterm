@@ -158,6 +158,12 @@ public struct TakeoverState: Codable, Equatable, Sendable {
         /// Epoch milliseconds; when the linger clock first held the session
         /// because it was working (ADR 0002).
         public var heldSince: Int64?
+        /// The Claude Code session id and transcript path the hooks carried
+        /// (`AgentJoin`), so the successor can still bill the session. Both
+        /// or neither. Optional in the file, so a format 1 state written
+        /// before them still loads.
+        public var agentSessionID: String?
+        public var agentTranscript: String?
 
         public init(
             fd: Int32?,
@@ -186,7 +192,9 @@ public struct TakeoverState: Codable, Equatable, Sendable {
             agentStatus: AgentStatusRecord?,
             recorder: RecorderState?,
             logStore: LogStoreState?,
-            heldSince: Int64?
+            heldSince: Int64?,
+            agentSessionID: String? = nil,
+            agentTranscript: String? = nil
         ) {
             self.fd = fd
             self.sessionID = sessionID
@@ -215,6 +223,8 @@ public struct TakeoverState: Codable, Equatable, Sendable {
             self.recorder = recorder
             self.logStore = logStore
             self.heldSince = heldSince
+            self.agentSessionID = agentSessionID
+            self.agentTranscript = agentTranscript
         }
     }
 

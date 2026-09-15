@@ -216,6 +216,9 @@ public actor SessionRegistry {
         public let lastOutputAt: Date?
         /// The latest Claude Code hook report, if any.
         public let agentStatus: AgentStatus?
+        /// The Claude Code session that ran here (`session_id` and
+        /// `transcript_path` from its hooks), if any.
+        public let agentJoin: AgentJoin?
         /// The shell has exited; the session is kept only so its records can
         /// still be read, and it cannot be attached to.
         public let exited: Bool
@@ -272,6 +275,7 @@ public actor SessionRegistry {
             marks: session.marksSnapshot(),
             lastOutputAt: session.lastOutputAt,
             agentStatus: session.agentStatus,
+            agentJoin: session.agentJoin,
             exited: !session.isRunning,
             exitCode: session.exitCode,
             cols: size.cols,

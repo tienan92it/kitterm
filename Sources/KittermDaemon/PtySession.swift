@@ -114,6 +114,9 @@ public final class PtySession: @unchecked Sendable {
     /// The latest Claude Code hook report (`AgentStatus`); nil for a session
     /// whose agent has never reported.
     private var agentStatusStorage: AgentStatus?
+    /// The Claude Code session id and transcript path the hooks carry
+    /// (`AgentJoin`); nil for a session that never ran `claude`.
+    private var agentJoinStorage: AgentJoin?
     /// Pushes a rename to the attached controller so an open tab follows a
     /// foreman's rename without a reload. Set at attach, cleared at detach.
     private var onTitle: ((String) -> Void)?
@@ -257,6 +260,9 @@ public final class PtySession: @unchecked Sendable {
         )
         self.lastOutputAtStorage = state.lastOutputAt.map { Date(timeIntervalSince1970: Double($0) / 1000) }
         self.agentStatusStorage = state.agentStatus?.status
+        if let sessionID = state.agentSessionID, let path = state.agentTranscript {
+            self.agentJoinStorage = AgentJoin(sessionID: sessionID, transcriptPath: path)
+        }
         // A shell the old process had already seen exit is a record, not a
         // terminal: no fd to read, no child to wait for.
         if let fd = state.fd, !state.terminated, !state.exitNotified {
@@ -323,7 +329,9 @@ public final class PtySession: @unchecked Sendable {
                     agentStatus: agentStatusStorage.map(TakeoverState.AgentStatusRecord.init),
                     recorder: nil,
                     logStore: nil,
-                    heldSince: heldSince.map { Int64($0.timeIntervalSince1970 * 1000) }
+                    heldSince: heldSince.map { Int64($0.timeIntervalSince1970 * 1000) },
+                    agentSessionID: agentJoinStorage?.sessionID,
+                    agentTranscript: agentJoinStorage?.transcriptPath
                 ),
                 ring: log.retainedBytes(),
                 recorder: recorder,
@@ -1552,6 +1560,22 @@ public final class PtySession: @unchecked Sendable {
             let previous = agentStatusStorage
             agentStatusStorage = AgentStatus(report: report, message: message, at: Date())
             return previous?.report != report || previous?.message != message
+        }
+    }
+
+    /// The Claude Code session that ran here, if a hook has named one.
+    public var agentJoin: AgentJoin? {
+        stateLock.withLock { agentJoinStorage }
+    }
+
+    /// Record the `session_id` and `transcript_path` a hook carried. Every
+    /// hook carries them, so this runs once per hook, and the latest wins:
+    /// a second `claude` in the same shell replaces the first. A repeat is a
+    /// lock and two string compares; nothing is emitted, because the join is
+    /// a fact for a later reader, not a transition the feed should hear.
+    public func recordAgentJoin(_ join: AgentJoin) {
+        stateLock.withLock {
+            if agentJoinStorage != join { agentJoinStorage = join }
         }
     }
 
