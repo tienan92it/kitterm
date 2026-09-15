@@ -1,17 +1,16 @@
 # STATE: fleet-catch-up
 
 - Status: active
-- Round: 0 of 3 in this budget (first budget)
-- Rounds total: 0
-- Last floor: green (2026-09-15, main at e3b6321: vitest 1310 in 34 files)
-- Updated: 2026-09-15, planned
+- Round: 1 of 3 in this budget (first budget)
+- Rounds total: 1
+- Last floor: green (2026-09-15, round 1 after: vitest 1321 in 34 files)
+- Updated: 2026-09-15, round 1 closed
 
 ## Queue
 
-1. `a-row-is-one-line` (capability 1)
-2. `each-fact-once` (capability 2)
-3. `catch-up-first` (capability 3)
-4. `the-terminal-surface` (capability 4)
+1. `each-fact-once` (capability 2)
+2. `catch-up-first` (capability 3)
+3. `the-terminal-surface` (capability 4)
 
 ## Failures
 
@@ -23,7 +22,9 @@ None.
 
 ## Done
 
-None.
+- `a-row-is-one-line` (capability 1), round 1, `f38dea5`. See
+  `rounds/001.md`. A row is dot, name, state, what, since; `pid`,
+  `exit 0`, `attached`, the shell, the tags and the root path are gone.
 
 ## Direction
 
@@ -37,7 +38,9 @@ and 4 before either merges.
 
 ## Next action
 
-Round 1: `a-row-is-one-line` from `plan.md` row 1; proof: a vitest over
-the row model for four session shapes, and the 390 px screenshot of the
-corpus fixture with each row on one or two lines. Capability 4 is
-independent and may run alongside it.
+Round 2: `each-fact-once` from `plan.md` row 2; proof: a vitest that no
+session id appears in both the strip model and the card model, and that
+the proposal model yields one item per proposal; the screenshot shows
+the four fixture sessions once each. Capability 4 is independent and may
+run alongside it, but it touches `sessions.css`, which capability 2 also
+touches, so it waits for 2 to land.
