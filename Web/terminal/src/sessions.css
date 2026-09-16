@@ -140,35 +140,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .approval-actions button::after { content: "]"; }
 .approval-actions button:hover { text-decoration: underline; text-underline-offset: 2px; }
 
-/* --- the tools, under the projects ---------------------------------------
-   The search, the chips and the push switch are things the reader does,
-   not things the reader came to learn, so they sit under the projects. */
-.filters { display: flex; flex-direction: column; gap: 6px; margin: 20px 0 0; }
-.search {
-  width: 100%; box-sizing: border-box; font: inherit; font-size: 13px;
-  /* On --ui-surface, not the body: the placeholder is --ui-text-faint, and
-     that pair is measured on the surface, not on --ui-bg. */
-  color: var(--ui-text); background: var(--ui-surface); border: 1px solid var(--ui-border);
-  padding: 6px 8px;
-}
-.search::placeholder { color: var(--ui-text-faint); }
-.chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
-.chip-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-.chip-label { color: var(--ui-text-muted); font-size: 12px; margin-right: 2px; }
-/* A toggle is a checkbox drawn in text: `[ ] done` off, `[x] done` on.
-   The box carries the state without colour; `aria-pressed` carries it to a
-   screen reader. */
-.chip {
-  background: none; color: var(--ui-text); border: none;
-  padding: 1px 2px; font-size: 12px; cursor: pointer; white-space: nowrap;
-  min-height: var(--tap-min);
-}
-.chip::before { content: "[ ] "; white-space: pre; color: var(--ui-text-muted); }
-.chip.on::before { content: "[x] "; color: var(--ui-text); }
-.chip:hover { text-decoration: underline; text-underline-offset: 2px; }
+/* --- the push line, under the sections -----------------------------------
+   The one tool on the page: a thing the reader does, not a thing the
+   reader came to learn, so it sits under the work. */
 /* The push line: one switch under the projects that subscribes this
-   device, with the reason beside it when it cannot. The switch is the
-   chip's checkbox with `aria-checked` in place of `aria-pressed`; a
+   device, with the reason beside it when it cannot. The switch is a
+   checkbox drawn in text, `[ ]` off and `[x]` on, with `aria-checked`; a
    disabled switch reads muted, never faded, because the ratchet measures
    every opacity. */
 .push[hidden] { display: none; }
@@ -207,8 +184,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .restart span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
-/* --- project sections ----------------------------------------------------- */
+/* --- the three levels ------------------------------------------------------
+   A workspace is a section under a hairline with one heading line and the
+   shells that sit in its directory; its projects are set in by
+   `NESTED_INDENT_PX` (the model counts the same 16 px off their heading
+   line), so the tree reads by indent, as `tree` prints one. A workspace of
+   one project shows no heading: that project is a top-level section. */
 .cards { display: flex; flex-direction: column; border-bottom: 1px solid var(--ui-border); }
+.workspace { border-top: 1px solid var(--ui-border); background: var(--ui-surface); }
+.workspace > .head { display: flex; align-items: center; padding: 4px 12px; min-height: 36px; }
+.workspace .nested { padding-left: 16px; }
+.workspace .nested .card:first-child { border-top: none; }
+.workspace > .rows + .nested, .workspace > .archived + .nested { border-top: 1px solid var(--ui-border); }
 /* The one line of counts above the projects: how many sessions are
    working, done, idle. --ui-text on the body, the page's own pair. */
 .cards .fleet { margin: 0 0 8px; font-size: 12px; color: var(--ui-text); font-variant-numeric: tabular-nums; }
@@ -225,7 +212,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 /* The name never shrinks and never clips: it is what the reader scans for.
    A name wider than the line breaks inside its own box, and `[new]` wraps
    under it. */
-.card .head h2 { font-size: 13px; font-weight: 600; margin: 0; flex: none; max-width: 100%; overflow-wrap: anywhere; }
+.card .head .name, .workspace > .head .name { font-size: 13px; font-weight: 600; margin: 0; flex: none; max-width: 100%; overflow-wrap: anywhere; }
 /* The count takes what the name and the controls leave, so it never pushes
    `[new]` to a second line. On a phone `headingLine` drops it whole
    (`gives-way`) rather than cut it; the ellipsis is for a face wider than
@@ -254,17 +241,24 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .card .spawn-button:hover { text-decoration: underline; text-underline-offset: 2px; }
 .spawn-button:disabled { opacity: .5; cursor: progress; }
 
-/* The goal lines: under the rows, one line per goal that is not done, in
-   the route's order. The title, the status word when the goal is not
-   active, the round counter, then the next action cut at the line's end;
-   "not written yet" after the slug of a goal whose files still hold the
-   template. On the section's --ui-surface, the rows' own surface. */
-.card .goal-lines { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--ui-border); }
+/* The goals by state: a bucket label, `1 working` or `2 pending`, then one
+   line per goal in the route's order. The title, the status word when the
+   goal is not active, the round counter, then the next action cut at the
+   line's end; "not written yet" after the slug of a goal whose files still
+   hold the template. A working goal's crew rows sit under its line, set in
+   by 12 px. The done goals are a fold. On the section's --ui-surface, the
+   rows' own surface. */
+.card .bucket {
+  margin: 0; padding: 6px 12px 0; font-size: 12px; font-weight: 400;
+  color: var(--ui-text-muted); border-top: 1px solid var(--ui-border);
+}
+.card .goal-lines { list-style: none; margin: 0; padding: 0; }
+.card .goal { min-width: 0; }
 .card .goal-line {
   display: flex; align-items: baseline; gap: 10px; min-width: 0;
   padding: 6px 12px; font-size: 12px; white-space: nowrap;
 }
-.card .goal-line + .goal-line { padding-top: 0; }
+.card .goal .rows { padding-left: 12px; }
 .card .goal-line .goal-name { flex: 0 1 auto; min-width: 8em; overflow: hidden; text-overflow: ellipsis; color: var(--ui-text); }
 .card .goal-line .goal-status, .card .goal-line .goal-round, .card .goal-line .goal-unwritten {
   flex: none; font-size: 12px; color: var(--ui-text-muted);
@@ -328,9 +322,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
      name stays whole and `[new]` stays on the line. */
   .card .head .gives-way { display: none; }
   .card .spawn-profile.short { width: calc(5ch + var(--profile-chrome)); }
-  /* Thumb targets: 32 px toggles with 8 px between them. */
-  .chip-group { gap: 8px; }
-  .chip { min-height: 32px; padding: 3px 4px; }
 }
 
 /* The folds: the done goals ("7 done") and the archived sessions, collapsed

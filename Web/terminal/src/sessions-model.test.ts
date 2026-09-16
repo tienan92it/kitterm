@@ -7,7 +7,6 @@ import {
   cardRows,
   crews,
   needsYouMessage,
-  filter,
   fleetLine,
   group,
   pickForeman,
@@ -180,60 +179,6 @@ describe("sortInGroup", () => {
     const rows = [state("a", "working", { lastOutputAt: 1 }), state("b", "failed")];
     sortInGroup(rows);
     expect(rows.map((r) => r.id)).toEqual(["a", "b"]);
-  });
-});
-
-describe("filter", () => {
-  const human = row("h", { project: kitterm, mergedState: "idle", lastCommand: "git status" });
-  const crew = row("c", {
-    project: kitterm,
-    mergedState: "working",
-    orchestrated: true,
-    labels: { crew: "demo" },
-    name: "crew one",
-  });
-  const loose = row("l", { cwd: "/tmp/scratch", mergedState: "failed" });
-  const all = [human, crew, loose];
-
-  it("returns nothing for no rows", () => {
-    expect(filter([], { states: ["working"] })).toEqual([]);
-  });
-
-  it("keeps every row when no criterion is set", () => {
-    expect(filter(all, {})).toEqual(all);
-    expect(filter(all, { states: [], projects: [], crews: [], query: "" })).toEqual(all);
-  });
-
-  it("filters by state", () => {
-    expect(filter(all, { states: ["failed", "working"] }).map((r) => r.id)).toEqual(["c", "l"]);
-  });
-
-  it("filters by project, with \"\" for the rows outside every project", () => {
-    expect(filter(all, { projects: ["p-kitterm"] }).map((r) => r.id)).toEqual(["h", "c"]);
-    expect(filter(all, { projects: [""] }).map((r) => r.id)).toEqual(["l"]);
-  });
-
-  it("filters by crew label", () => {
-    expect(filter(all, { crews: ["demo"] }).map((r) => r.id)).toEqual(["c"]);
-    expect(filter(all, { crews: ["other"] })).toEqual([]);
-  });
-
-  it("reads orchestrated for human or crew", () => {
-    expect(filter(all, { kind: "crew" }).map((r) => r.id)).toEqual(["c"]);
-    expect(filter(all, { kind: "human" }).map((r) => r.id)).toEqual(["h", "l"]);
-  });
-
-  it("matches the query against name, cwd, and last command, ignoring case", () => {
-    expect(filter(all, { query: "ONE" }).map((r) => r.id)).toEqual(["c"]);
-    expect(filter(all, { query: "scratch" }).map((r) => r.id)).toEqual(["l"]);
-    expect(filter(all, { query: "git st" }).map((r) => r.id)).toEqual(["h"]);
-    expect(filter(all, { query: "  " })).toEqual(all);
-    expect(filter(all, { query: "nothing here" })).toEqual([]);
-  });
-
-  it("combines criteria", () => {
-    expect(filter(all, { projects: ["p-kitterm"], kind: "human" }).map((r) => r.id)).toEqual(["h"]);
-    expect(filter(all, { projects: ["p-kitterm"], states: ["failed"] })).toEqual([]);
   });
 });
 

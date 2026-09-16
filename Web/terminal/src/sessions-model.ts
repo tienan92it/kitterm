@@ -67,17 +67,6 @@ export type Group<R extends ModelRow> = {
   sections: CrewSection<R>[];
 };
 
-export type Kind = "human" | "crew";
-
-export type Filter = {
-  states?: MergedState[];
-  /** Project ids; "" selects the rows outside every project. */
-  projects?: string[];
-  crews?: string[];
-  kind?: Kind;
-  query?: string;
-};
-
 export type AttentionItem<R extends ModelRow> =
   | { kind: "approval"; approval: Approval; row: R | null }
   | { kind: "needs-input"; row: R }
@@ -304,36 +293,6 @@ export function group<R extends ModelRow>(rows: R[], projects: ProjectSummary[])
     });
   }
   return groups;
-}
-
-/** Case-insensitive substring match over the name, the cwd, and the last
- * command. An empty or blank query matches every row. */
-function matchesQuery(row: ModelRow, query: string): boolean {
-  const needle = query.trim().toLowerCase();
-  if (needle === "") return true;
-  const haystack = [row.name ?? "", row.cwd, row.lastCommand ?? ""];
-  return haystack.some((text) => text.toLowerCase().includes(needle));
-}
-
-/** Keep the rows that pass every set criterion. An empty list or an absent
- * field does not restrict. `kind` reads `orchestrated`: a crew row is one a
- * program made; a human row is one a person opened. */
-export function filter<R extends ModelRow>(rows: R[], criteria: Filter): R[] {
-  const states = criteria.states ?? [];
-  const projects = criteria.projects ?? [];
-  const crews = criteria.crews ?? [];
-  return rows.filter((row) => {
-    if (states.length > 0 && !states.includes(stateOf(row))) return false;
-    if (projects.length > 0 && !projects.includes(row.project?.id ?? NO_PROJECT)) return false;
-    if (crews.length > 0) {
-      const crew = crewOf(row);
-      if (crew === null || !crews.includes(crew)) return false;
-    }
-    if (criteria.kind === "crew" && !row.orchestrated) return false;
-    if (criteria.kind === "human" && row.orchestrated) return false;
-    if (!matchesQuery(row, criteria.query ?? "")) return false;
-    return true;
-  });
 }
 
 /**
@@ -700,7 +659,7 @@ export function folderOf(cwd: string): string {
   return base || cwd;
 }
 
-/** The state's name as the chips and the tallies print it. */
+/** The state's name as the fleet line prints it. */
 export function stateName(state: MergedState): string {
   switch (state) {
     case "needs-approval":
@@ -727,10 +686,11 @@ export function stateLabel(row: ModelRow): string {
   return typeof code === "number" && code !== 0 ? `${word} (${code})` : word;
 }
 
-/** Where a shell is, once: the path under the project root, else the
- * folder; null at the root itself, which the card above already names. */
-function whereOf(row: ModelRow): string | null {
-  const root = (row.project?.root ?? "").replace(/\/+$/, "");
+/** Where a shell is, once: the path under `base`, the directory the heading
+ * above names (the project root unless given), else the folder; null at
+ * `base` itself, which the heading already names. */
+function whereOf(row: ModelRow, base: string | undefined = row.project?.root): string | null {
+  const root = (base ?? "").replace(/\/+$/, "");
   const cwd = row.cwd.replace(/\/+$/, "");
   if (root && cwd === root) return null;
   if (root && cwd.startsWith(root + "/")) return cwd.slice(root.length + 1);
@@ -764,15 +724,17 @@ export function spanLabel(ms: number): string {
  * output, because that is when the row's state began: the prompt that
  * waits, the command that failed, the shell that went quiet; a working row
  * reads `now` while it is alive and grows when it stalls. `place` shows
- * only for a named row away from the project root, because an unnamed row
- * carries the path as its name and the card names the root.
+ * only for a named row away from `base`, the directory the heading above
+ * names: the project root, or the workspace directory for a row outside
+ * every project that a workspace lists; an unnamed row carries the path
+ * as its name and the heading names the base.
  */
-export function rowLine(row: ModelRow, now: number): RowLine {
+export function rowLine(row: ModelRow, now: number, base: string | undefined = row.project?.root): RowLine {
   const command = row.lastCommand ? `$ ${row.lastCommand}` : null;
   return {
     name: rowName(row),
     state: stateLabel(row),
-    place: row.name ? whereOf(row) : null,
+    place: row.name ? whereOf(row, base) : null,
     what: row.agent?.message ?? row.note ?? command,
     since: typeof row.lastOutputAt === "number" ? spanLabel(now - row.lastOutputAt) : null,
   };
@@ -1054,6 +1016,9 @@ export type HeadingInput = {
    * has no profiles, so the line holds `[new]` alone; null for a client
    * that may not spawn. */
   profiles: string[] | null;
+  /** What the line loses to its level: `NESTED_INDENT_PX` for a project
+   * under a workspace heading, 0 or absent at the top level. */
+  indent?: number;
 };
 
 /** The select at its natural width, capped at `PROFILE_WHOLE_CELLS`, or at
@@ -1075,6 +1040,9 @@ export type HeadingLine = {
 
 /** 390 less the page's 16 px gutters and the head's 12 px padding. */
 export const HEADING_LINE_PX = 334;
+/** What a project under a workspace heading is set in from the workspace's
+ * edge: `.workspace .nested` in the sheet. Two mono cells at 13 px. */
+export const NESTED_INDENT_PX = 16;
 const HEADING_SLACK_PX = 4;
 /** A mono cell, as a fraction of the font size. */
 const CELL_EM = 0.6;
@@ -1093,13 +1061,14 @@ export const PROFILE_SHORT_CELLS = 5;
 
 export function headingLine(input: HeadingInput): HeadingLine {
   const { name, tally, profiles } = input;
+  const indent = input.indent ?? 0;
   const canSpawn = profiles !== null;
   const wholeCells = Math.min(PROFILE_WHOLE_CELLS, Math.max(0, ...(profiles ?? []).map((p) => p.length)));
   const shortCells = Math.min(PROFILE_SHORT_CELLS, wholeCells);
   const cells = (n: number, font: number): number => n * font * CELL_EM;
 
   const width = (count: string | null, profile: ProfileWidth | null): number => {
-    let px = cells(name.length, NAME_FONT_PX);
+    let px = indent + cells(name.length, NAME_FONT_PX);
     if (count) px += HEAD_GAP_PX + cells(count.length, TEXT_FONT_PX);
     if (canSpawn) {
       px += HEAD_GAP_PX + NEW_PX;
@@ -1119,4 +1088,246 @@ export function headingLine(input: HeadingInput): HeadingLine {
     if (px <= HEADING_LINE_PX - HEADING_SLACK_PX) return { name, tally: count, profile, px, fits: true };
   }
   return { name, tally: null, profile: null, px: width(null, null), fits: false };
+}
+
+// --- the three levels ---------------------------------------------------------
+
+/**
+ * A heading on the page: a workspace or a project. `name` is what the line
+ * prints. `path` is the directory the heading stands for, the workspace
+ * directory or the project root, and null for the rows outside every
+ * project. A later capability keys a cost and a cache share on `path` and
+ * adds them as fields beside `name`; the painter prints them after the name
+ * on the same line, and a goal's own number sits on its `GoalLine` beside
+ * `round`.
+ */
+export type Heading = { name: string; path: string | null };
+
+/** The three buckets a project's goals sort into. */
+export type GoalState = "working" | "pending" | "done";
+
+/** One goal being worked: its line, then the listed rows that carry its
+ * `goal:` label, in `sortInGroup`'s order. */
+export type GoalEntry<R extends ModelRow> = { line: GoalLine; rows: R[] };
+
+/** A project's goals by state, each bucket in the route's order. */
+export type GoalBuckets<R extends ModelRow> = {
+  working: GoalEntry<R>[];
+  pending: GoalLine[];
+  done: KnowledgeSummary[];
+};
+
+/** The line a project prints in place of its goals when it has none to
+ * sort, or null when it has goals or the page cannot know. */
+export type NoGoals = "no goal folder" | "not registered" | null;
+
+export type ProjectSection<R extends ModelRow> = {
+  /** The group's key: the project id, or `NO_PROJECT`. */
+  key: string;
+  heading: Heading;
+  project: ProjectRef | null;
+  /** The listed rows under no goal, in `sortInGroup`'s order. */
+  rows: R[];
+  /** Every session the project owns, the strip's included; 0 prints
+   * "no live session" on the heading. */
+  owned: number;
+  goals: GoalBuckets<R>;
+  noGoals: NoGoals;
+};
+
+export type WorkspaceSection<R extends ModelRow> = {
+  /** The workspace's heading, or null when it holds one project, which then
+   * stands at the top level with no heading over it. */
+  heading: Heading | null;
+  /** The listed rows outside every project whose shell sits in the
+   * workspace directory, under the heading and above the projects; empty
+   * without a heading. */
+  rows: R[];
+  projects: ProjectSection<R>[];
+};
+
+/** The workspace a project root sits in: its parent directory. Null for a
+ * project with no root, or a root with no parent. */
+export function workspaceOf(root: string | undefined): string | null {
+  const trimmed = (root ?? "").replace(/\/+$/, "");
+  const cut = trimmed.lastIndexOf("/");
+  if (cut <= 0) return null;
+  return trimmed.slice(0, cut);
+}
+
+/**
+ * The headed workspace a shell outside every project belongs to: the one of
+ * `headed` whose directory is the cwd or holds it; the deepest when two do.
+ * Null when none does, which sends the row to the "No project" section.
+ */
+export function workspaceHome(cwd: string, headed: readonly string[]): string | null {
+  const path = cwd.replace(/\/+$/, "");
+  let home: string | null = null;
+  for (const dir of headed) {
+    if (path !== dir && !path.startsWith(dir + "/")) continue;
+    if (home === null || dir.length > home.length) home = dir;
+  }
+  return home;
+}
+
+/**
+ * The goals of one project in three buckets. A goal is working when a live
+ * session of the project carries its slug in a `goal:` label, whatever its
+ * status word says: `active` only means runnable, and a goal can be active
+ * with no round open. Done is `status: done`, and wins over a lingering
+ * label, because the status word is the human's and the loop never opens a
+ * round on a done goal. Pending is the rest: active with no crew, waiting,
+ * stopped. `owned` is every session the project owns, so a crew that sits
+ * in the strip still holds its goal at working; `listed` is what the
+ * section prints, so the crew's row nests under the goal only when the
+ * strip does not carry it.
+ */
+export function goalBuckets<R extends ModelRow>(
+  goals: KnowledgeSummary[] | null | undefined,
+  listed: R[],
+  owned: R[],
+): GoalBuckets<R> {
+  const live = new Set<string>();
+  for (const row of owned) {
+    const goal = goalOf(row);
+    if (goal !== null) live.add(goal);
+  }
+  const lines = goalLines(goals);
+  const working: GoalEntry<R>[] = [];
+  const pending: GoalLine[] = [];
+  for (const line of lines.open) {
+    const slug = line.summary.slug;
+    if (slug !== undefined && live.has(slug)) {
+      working.push({ line, rows: sortInGroup(listed.filter((row) => goalOf(row) === slug)) });
+    } else {
+      pending.push(line);
+    }
+  }
+  return { working, pending, done: lines.done };
+}
+
+/** The label over a bucket: `1 working`, `2 pending`, `10 done`. */
+export function bucketLabel(state: GoalState, count: number): string {
+  return `${count} ${state}`;
+}
+
+/**
+ * What a project prints in place of its goal buckets when it has none.
+ * "no goal folder" for a registered project whose package holds no goal:
+ * the foreman skips it, and `kitterm goal new` is the remedy. "not
+ * registered" for a discovered checkout: the page cannot read its goals
+ * because `GET /api/projects/<id>/knowledge` answers 404 for it, and
+ * `kitterm project add` is the remedy. The two absences differ in what the
+ * reader does next, so they print apart. Null while the goals are unknown,
+ * for a registered package the daemon has not answered yet, and for the
+ * rows outside every project.
+ */
+export function noGoalsLine(project: ProjectRef | null, goals: KnowledgeSummary[] | null | undefined): NoGoals {
+  if (project === null) return null;
+  if (!project.registered) return "not registered";
+  return goals?.length === 0 ? "no goal folder" : null;
+}
+
+/** The name of the section for the rows outside every project. */
+export const NO_PROJECT_NAME = "No project";
+
+function projectSection<R extends ModelRow>(
+  g: Group<R>,
+  owned: R[],
+  goals: KnowledgeSummary[] | null | undefined,
+): ProjectSection<R> {
+  const buckets = goalBuckets(goals, g.rows, owned);
+  const nested = new Set(buckets.working.flatMap((entry) => entry.rows.map((row) => row.id)));
+  return {
+    key: g.key,
+    heading: { name: g.project?.name ?? NO_PROJECT_NAME, path: g.project?.root ?? null },
+    project: g.project,
+    rows: g.rows.filter((row) => !nested.has(row.id)),
+    owned: owned.length,
+    goals: buckets,
+    noGoals: noGoalsLine(g.project, goals),
+  };
+}
+
+/**
+ * The page's three levels over `group`'s projects: a workspace, its
+ * projects, and each project's goals by state.
+ *
+ * A workspace is the parent directory of a project root, named by that
+ * directory's own name, because it is the one name the human gave it. A
+ * workspace that holds one project shows no heading, because a heading
+ * over a single child says nothing the child's name does not, and the
+ * degenerate case would print "Workspace" over `kitterm`; that project
+ * stands at the top level. Workspaces and lone projects share one name
+ * order, and the projects inside a workspace keep `group`'s.
+ *
+ * A row outside every project goes where its shell sits: under the heading
+ * of the workspace whose directory is or holds its cwd, above that
+ * workspace's projects, because the foreman for a workspace runs in the
+ * workspace directory and a reader looks for it there. Every other one
+ * goes to a last "No project" section, which is a lone project section
+ * with no `project`, and which exists only when it has a row to list.
+ *
+ * `listed` is what the sections print; `owned` is every session, so a
+ * project whose sessions are all in the strip still counts them and a
+ * crew in the strip still holds its goal at working. `goalsOf` answers a
+ * project's knowledge, null or undefined when the page has none.
+ */
+export function levels<R extends ModelRow>(
+  listed: R[],
+  owned: R[],
+  projects: ProjectSummary[],
+  goalsOf: (projectId: string) => KnowledgeSummary[] | null | undefined,
+): WorkspaceSection<R>[] {
+  const shown = group(listed, projects);
+  const ownedBy = new Map(group(owned, projects).map((g) => [g.key, g.rows] as const));
+  const byWorkspace = new Map<string, Group<R>[]>();
+  const lone: Group<R>[] = [];
+  let loose: Group<R> | null = null;
+  for (const g of shown) {
+    if (g.project === null) {
+      loose = g;
+      continue;
+    }
+    const dir = workspaceOf(g.project.root);
+    if (dir === null) {
+      lone.push(g);
+      continue;
+    }
+    const list = byWorkspace.get(dir) ?? [];
+    list.push(g);
+    byWorkspace.set(dir, list);
+  }
+  const headed = [...byWorkspace].filter(([, list]) => list.length > 1).map(([dir]) => dir);
+  const homes = new Map<string, R[]>(headed.map((dir) => [dir, []]));
+  const noProject: R[] = [];
+  for (const row of loose?.rows ?? []) {
+    const home = workspaceHome(row.cwd, headed);
+    if (home === null) noProject.push(row);
+    else homes.get(home)!.push(row);
+  }
+  const ownedLoose = (ownedBy.get(NO_PROJECT) ?? []).filter((row) => workspaceHome(row.cwd, headed) === null);
+
+  const section = (g: Group<R>): ProjectSection<R> =>
+    projectSection(g, ownedBy.get(g.key) ?? [], g.project ? goalsOf(g.project.id) : null);
+  const sections: WorkspaceSection<R>[] = [];
+  for (const [dir, list] of byWorkspace) {
+    if (list.length > 1) {
+      sections.push({
+        heading: { name: folderOf(dir), path: dir },
+        rows: sortInGroup(homes.get(dir) ?? []),
+        projects: list.map(section),
+      });
+    } else {
+      sections.push({ heading: null, rows: [], projects: [section(list[0])] });
+    }
+  }
+  for (const g of lone) sections.push({ heading: null, rows: [], projects: [section(g)] });
+  const nameOf = (s: WorkspaceSection<R>): string => (s.heading ?? s.projects[0].heading).name.toLowerCase();
+  sections.sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
+  if (loose !== null && noProject.length > 0) {
+    const none = projectSection({ ...loose, rows: sortInGroup(noProject) }, ownedLoose, null);
+    sections.push({ heading: null, rows: [], projects: [none] });
+  }
+  return sections;
 }
