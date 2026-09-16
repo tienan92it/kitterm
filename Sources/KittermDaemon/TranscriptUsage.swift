@@ -213,11 +213,22 @@ public struct TranscriptUsage: Equatable, Sendable {
             if n == 0 { return }
             carry.append(contentsOf: buffer[0..<n])
             var start = carry.startIndex
-            while let newline = carry[start...].firstIndex(of: UInt8(ascii: "\n")) {
+            while let newline = newlineIndex(in: carry, from: start) {
                 body(carry[start..<newline])
                 start = newline + 1
             }
             carry.removeSubrange(carry.startIndex..<start)
+        }
+    }
+
+    /// `memchr`, because a Swift loop over 380 MB of transcript is the
+    /// scan's whole cost in a debug build and a good part of it in release.
+    private static func newlineIndex(in bytes: [UInt8], from start: Int) -> Int? {
+        bytes.withUnsafeBufferPointer { buffer -> Int? in
+            guard start < buffer.count, let base = buffer.baseAddress,
+                  let hit = memchr(base + start, Int32(UInt8(ascii: "\n")), buffer.count - start)
+            else { return nil }
+            return UnsafeRawPointer(hit) - UnsafeRawPointer(base)
         }
     }
 
@@ -227,6 +238,15 @@ public struct TranscriptUsage: Equatable, Sendable {
 
     private mutating func take(_ line: ArraySlice<UInt8>, zone: TimeZone, seen: inout Set<String>) {
         guard Self.contains(line, Self.assistantGate) else { return }
+        // The fast path: the three fields the count needs, cut out of the
+        // line by position and decoded alone, so the decoder never sees a
+        // tool result. The session id and the cwd are taken once per file
+        // from a full decode, and any line the fast path cannot vouch for
+        // gets the full decode too.
+        if sessionId != nil, cwd != nil, let turn = Self.extract(line) {
+            count(turn, zone: zone, seen: &seen)
+            return
+        }
         guard let object = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
               object["type"] as? String == "assistant"
         else {
@@ -238,22 +258,107 @@ public struct TranscriptUsage: Equatable, Sendable {
         guard let message = object["message"] as? [String: Any],
               let usage = message["usage"] as? [String: Any]
         else { return }
-        // One request, several lines: the first one counts.
         let request = (object["requestId"] as? String) ?? (message["id"] as? String) ?? (object["uuid"] as? String) ?? ""
-        guard !request.isEmpty, !seen.contains(request) else { return }
-        guard let stamp = object["timestamp"] as? String, let instant = Self.parseUTC(stamp) else {
+        count(Turn(request: request, timestamp: object["timestamp"] as? String ?? "", usage: usage), zone: zone, seen: &seen)
+    }
+
+    struct Turn {
+        var request: String
+        var timestamp: String
+        var usage: [String: Any]
+    }
+
+    private mutating func count(_ turn: Turn, zone: TimeZone, seen: inout Set<String>) {
+        // One request, several lines: the first one counts.
+        guard !turn.request.isEmpty, !seen.contains(turn.request) else { return }
+        guard let instant = Self.parseUTC(turn.timestamp) else {
             skippedLines += 1
             return
         }
-        seen.insert(request)
+        seen.insert(turn.request)
         let counts = TokenCounts(
-            input: usage["input_tokens"] as? Int ?? 0,
-            output: usage["output_tokens"] as? Int ?? 0,
-            cacheCreation: usage["cache_creation_input_tokens"] as? Int ?? 0,
-            cacheRead: usage["cache_read_input_tokens"] as? Int ?? 0,
+            input: turn.usage["input_tokens"] as? Int ?? 0,
+            output: turn.usage["output_tokens"] as? Int ?? 0,
+            cacheCreation: turn.usage["cache_creation_input_tokens"] as? Int ?? 0,
+            cacheRead: turn.usage["cache_read_input_tokens"] as? Int ?? 0,
             requests: 1
         )
         days[DayKey(instant, in: zone).description, default: .zero] += counts
+    }
+
+    private static let timestampKey = Array(#""timestamp":""#.utf8)
+    private static let requestKey = Array(#""requestId":""#.utf8)
+    private static let usageKey = Array(#""usage":{"#.utf8)
+
+    /// The request id, the timestamp and the `usage` object of an assistant
+    /// line, by position. Each is the *last* occurrence in the line: the
+    /// line's own fields follow `message`, and a tool call inside `message`
+    /// can quote anything, including another transcript's lines. Nil when
+    /// any piece is missing or does not decode, and the caller falls back
+    /// to a full decode of the line.
+    static func extract(_ line: ArraySlice<UInt8>) -> Turn? {
+        guard let timestamp = lastString(after: timestampKey, in: line),
+              let request = lastString(after: requestKey, in: line),
+              let usageStart = lastIndex(of: usageKey, in: line),
+              let usageEnd = objectEnd(from: usageStart + usageKey.count - 1, in: line),
+              let usage = try? JSONSerialization.jsonObject(with: Data(line[(usageStart + usageKey.count - 1)...usageEnd])) as? [String: Any]
+        else { return nil }
+        return Turn(request: request, timestamp: timestamp, usage: usage)
+    }
+
+    /// The string value after the last `key` in `line`, up to the next `"`.
+    /// Nil when the value holds an escape, which the fields this reads never
+    /// do; the slow path decodes it then.
+    private static func lastString(after key: [UInt8], in line: ArraySlice<UInt8>) -> String? {
+        guard let start = lastIndex(of: key, in: line) else { return nil }
+        let valueStart = start + key.count
+        guard valueStart < line.endIndex, let end = line[valueStart...].firstIndex(of: UInt8(ascii: "\"")) else { return nil }
+        let value = line[valueStart..<end]
+        guard !value.contains(UInt8(ascii: "\\")) else { return nil }
+        return String(decoding: value, as: UTF8.self)
+    }
+
+    /// The index of the last occurrence of `needle` in `line`.
+    private static func lastIndex(of needle: [UInt8], in line: ArraySlice<UInt8>) -> Int? {
+        var found: Int?
+        var from = line.startIndex
+        while from + needle.count <= line.endIndex {
+            let hit: Int? = line[from...].withUnsafeBufferPointer { haystack in
+                needle.withUnsafeBufferPointer { pattern -> Int? in
+                    guard let base = haystack.baseAddress,
+                          let at = memmem(base, haystack.count, pattern.baseAddress, pattern.count)
+                    else { return nil }
+                    return from + (UnsafeRawPointer(at) - UnsafeRawPointer(base))
+                }
+            }
+            guard let hit else { break }
+            found = hit
+            from = hit + 1
+        }
+        return found
+    }
+
+    /// The index of the `}` that closes the object opened at `open`,
+    /// skipping strings. Nil when the line ends first.
+    private static func objectEnd(from open: Int, in line: ArraySlice<UInt8>) -> Int? {
+        var depth = 0
+        var inString = false
+        var index = open
+        while index < line.endIndex {
+            let byte = line[index]
+            if inString {
+                if byte == UInt8(ascii: "\\") { index += 1 } else if byte == UInt8(ascii: "\"") { inString = false }
+            } else if byte == UInt8(ascii: "\"") {
+                inString = true
+            } else if byte == UInt8(ascii: "{") {
+                depth += 1
+            } else if byte == UInt8(ascii: "}") {
+                depth -= 1
+                if depth == 0 { return index }
+            }
+            index += 1
+        }
+        return nil
     }
 
     private static func contains(_ line: ArraySlice<UInt8>, _ needle: [UInt8]) -> Bool {

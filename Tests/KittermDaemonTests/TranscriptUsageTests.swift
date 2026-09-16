@@ -142,6 +142,42 @@ final class TranscriptUsageTests: XCTestCase {
         XCTAssertEqual(usage.skippedLines, 0)
     }
 
+    /// `no-thinking.jsonl` is the real tail of a $2.86 transcript whose
+    /// model lines predate `thinkingTokens`. Five such bills, $221 in all,
+    /// read as `costStateMalformed` before this; a count that is absent is
+    /// zero, not a malformed bill.
+    func testABillWhoseModelsLackThinkingTokensIsABill() throws {
+        guard case .bill(let bill) = TranscriptBill.read(path: TranscriptBillTests.fixture("no-thinking.jsonl")) else {
+            return XCTFail("\(TranscriptBill.read(path: TranscriptBillTests.fixture("no-thinking.jsonl")))")
+        }
+        XCTAssertEqual(bill.totalCostUSD, 2.855057, accuracy: 1e-6)
+        XCTAssertEqual(bill.modelUsage.count, 2)
+        for usage in bill.modelUsage.values { XCTAssertEqual(usage.thinkingTokens, 0) }
+        let usage = TranscriptUsage.read(path: TranscriptBillTests.fixture("no-thinking.jsonl"), zone: Self.saigon)
+        XCTAssertEqual(usage.totalCostUSD ?? 0, 2.855057, accuracy: 1e-6)
+    }
+
+    /// The fast path and the full decode agree, and a tool call that quotes
+    /// another line's fields does not fool the fast path: the line's own
+    /// fields come last.
+    func testTheFastPathReadsTheLinesOwnFieldsNotAQuotedLines() throws {
+        let quoted = #"{\"timestamp\":\"2020-01-01T00:00:00.000Z\",\"requestId\":\"req_quoted\",\"usage\":{\"input_tokens\":999}}"#
+        let line = #"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"echo '\#(quoted)'"}}],"usage":{"input_tokens":3,"cache_creation_input_tokens":40,"cache_read_input_tokens":500,"output_tokens":7,"cache_creation":{"ephemeral_1h_input_tokens":40}}},"requestId":"req_real","timestamp":"2026-09-10T03:00:00.000Z","cwd":"/x","sessionId":"s"}"#
+        let turn = try XCTUnwrap(TranscriptUsage.extract(ArraySlice(Array(line.utf8))))
+        XCTAssertEqual(turn.request, "req_real")
+        XCTAssertEqual(turn.timestamp, "2026-09-10T03:00:00.000Z")
+        XCTAssertEqual(turn.usage["input_tokens"] as? Int, 3)
+        XCTAssertEqual(turn.usage["cache_read_input_tokens"] as? Int, 500)
+        XCTAssertEqual((turn.usage["cache_creation"] as? [String: Any])?["ephemeral_1h_input_tokens"] as? Int, 40)
+
+        let file = scratch.appendingPathComponent("fast.jsonl")
+        try (line + "\n" + line + "\n").write(to: file, atomically: true, encoding: .utf8)
+        let usage = TranscriptUsage.read(path: file.path, zone: Self.utc)
+        XCTAssertEqual(usage.days["2026-09-10"], TokenCounts(input: 3, output: 7, cacheCreation: 40, cacheRead: 500, requests: 1))
+        XCTAssertEqual(usage.cwd, "/x")
+        XCTAssertEqual(usage.sessionId, "s")
+    }
+
     /// A subagent's turns are on the parent's bill, so they are read into
     /// the parent, on their own day.
     func testSubagentTurnsCountForTheParent() throws {

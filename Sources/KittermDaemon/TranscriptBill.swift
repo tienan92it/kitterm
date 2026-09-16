@@ -38,6 +38,10 @@ public struct TranscriptBill: Codable, Equatable, Sendable {
     public struct ModelUsage: Codable, Equatable, Sendable {
         public var inputTokens: Int
         public var outputTokens: Int
+        /// Absent on a transcript written before Claude Code counted
+        /// thinking tokens per model (five real bills, $221, on
+        /// 2026-09-16), and zero then: a model line with no count is not
+        /// a malformed bill.
         public var thinkingTokens: Int
         public var cacheReadInputTokens: Int
         public var cacheCreationInputTokens: Int
@@ -57,6 +61,17 @@ public struct TranscriptBill: Codable, Equatable, Sendable {
             self.cacheCreationInputTokens = cacheCreationInputTokens
             self.webSearchRequests = webSearchRequests
             self.costUSD = costUSD
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            inputTokens = try container.decode(Int.self, forKey: .inputTokens)
+            outputTokens = try container.decode(Int.self, forKey: .outputTokens)
+            thinkingTokens = try container.decodeIfPresent(Int.self, forKey: .thinkingTokens) ?? 0
+            cacheReadInputTokens = try container.decode(Int.self, forKey: .cacheReadInputTokens)
+            cacheCreationInputTokens = try container.decode(Int.self, forKey: .cacheCreationInputTokens)
+            webSearchRequests = try container.decodeIfPresent(Int.self, forKey: .webSearchRequests)
+            costUSD = try container.decode(Double.self, forKey: .costUSD)
         }
     }
 
