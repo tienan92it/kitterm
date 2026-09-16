@@ -1,14 +1,14 @@
 # STATE: cost-per-round
 
-- Status: active
-- Round: 3 of 3 in this budget (first budget)
-- Rounds total: 3
-- Last floor: green (2026-09-15, round 3 after the foreman's command: swift test 714)
-- Updated: 2026-09-15, round 3 closed
+- Status: done
+- Round: 4 of 3 in this budget (first budget)
+- Rounds total: 4
+- Last floor: green (2026-09-16, round 4 after the foreman's command: swift test 726, bench p95 2.57 ms, Linux green)
+- Updated: 2026-09-16, done
 
 ## Queue
 
-1. `the-ledger` (capability 4)
+Empty. All four capabilities in `plan.md` are done.
 
 ## Failures
 
@@ -16,10 +16,11 @@ None.
 
 ## Proposals waiting on the human
 
-- None that block. Round 3 found that Collect tells the foreman to read
-  the live cost route for a bill that exists only after the session is
-  archived. The foreman folds the fix into round 4 rather than wait:
-  archive, then read the bill through the archive's transcript path.
+- Two from round 4, for a later budget. Print `totalAPIDuration` beside
+  the wall-clock in the ledger, because `totalDuration` counts the time a
+  session was open and an overnight round read as seventeen hours. And
+  have the foreman write the PR number into a record's `Result:` line
+  after the merge, so the ledger's `PR` column fills.
 
 ## Done
 
@@ -34,6 +35,10 @@ None.
 - `the-bill-in-the-record` (capability 3), round 3, `3c26f67` plus the
   foreman's commit. See `rounds/003.md`, which carries the first
   `Cost:` line: $4.74 · 3331k in (97% cached) · 36k out · 0h 10m.
+- `the-ledger` (capability 4), round 4, `100a760` plus the foreman's
+  commit. See `rounds/004.md`. `kitterm goal cost` prints the ledger from
+  the archive's transcript or the record's line; Collect now reads
+  "archive, then read"; the corpus table was re-aligned to match.
 
 ## Direction
 
@@ -48,19 +53,24 @@ price table is added.
 
 ## Next action
 
-Round 4: `the-ledger` from `plan.md` row 4, the last capability. `kitterm
-goal cost <root> [<slug>]` reads every round record's `Sessions:` and
-`Cost:` lines and prints per goal and per round: dollars, tokens by kind,
-cache-read share, wall-clock, tests added, files changed, decision, and
-the merged PR. Totals per goal; rounds without a `Cost:` line print a
-dash and a footer counts them. `--json` gives the same.
+None. The goal is done. All five completion conditions hold:
 
-Two things from round 3. The bill exists only after the session is
-archived, so the ledger reads it through the archive's `agentTranscript`
-path, and round 4 also serves `GET /api/archives/<id>/cost` so the
-foreman can read a bill at collect time after archiving; the Collect
-sentence in `LOOP.md` then changes to "archive, then read", delivered as
-a command. And `totalLinesAdded` reads 0 on rounds that edit through
-heredocs, so files changed come from `git diff`, as the plan says.
+1. A session that ran `claude` carries `agentSessionId` and
+   `agentTranscript` on the row, in the archive, and through a takeover.
+2. `GET /api/sessions/<id>/cost` and `GET /api/archives/<id>/cost` serve
+   the bill from the transcript's last line, unrounded, and say "no bill
+   yet" with a reason rather than zeros.
+3. Every round record written after round 3 carries a `Cost:` line, and
+   `LOOP.md` says to archive the session and then read it.
+4. `kitterm goal cost <root>` prints the ledger per goal and per round,
+   with the cache-read share of input, and `--json` carries the exact
+   numbers.
+5. `main` is green after the merge.
 
-The budget is spent after round 4, so the goal closes or waits then.
+The join is recorded only by a daemon that carries round 1, so bills
+start accumulating on their own once v0.29.0 is released and the daemon
+upgraded. Until then the foreman back-fills the `Cost:` line from the
+worktree's transcript, which is unique per round.
+
+Four rounds cost $32.95. To reopen, set `Status: active` with a new
+budget and queue.
