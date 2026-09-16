@@ -447,9 +447,15 @@ final class GoalCostTests: XCTestCase {
         }
         let lines = try run(["cost", root.path, "cost-per-round"])
         XCTAssertEqual(lines.first?.hasPrefix("cost-per-round "), true, lines.joined(separator: "\n"))
+        // A smoke test over the live package, which changes with every round:
+        // the row exists and carries the bill the record names, and nothing
+        // about column widths or the footer count, since a wider value in a
+        // later round or a back-filled line moves both. The fixture tests
+        // above pin the exact table.
         let third = try XCTUnwrap(lines.first { $0.hasPrefix("  003 the-bill-in-the-record") }, lines.joined(separator: "\n"))
-        XCTAssertTrue(third.contains(" 4.74   3.33M     97%    36.0k 10m00 "), third)
-        XCTAssertTrue(lines.contains("  2 rounds predate the bill and are not counted."), lines.joined(separator: "\n"))
+        XCTAssertTrue(third.contains("4.74"), third)
+        XCTAssertTrue(third.contains("97%"), third)
+        XCTAssertTrue(lines.contains { $0.hasPrefix("  total ") }, lines.joined(separator: "\n"))
 
         let all = try run(["cost", root.path])
         XCTAssertGreaterThan(all.count, lines.count, "every goal of the package")
