@@ -212,8 +212,9 @@ final class StatuslineInstallTests: XCTestCase {
         input.fileHandleForWriting.write(Data(stdin.utf8))
         try input.fileHandleForWriting.close()
         let data = output.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return (process.terminationStatus, String(decoding: data, as: UTF8.self))
+        let text = String(decoding: data, as: UTF8.self)
+        waitForExit(of: process, output: text)
+        return (process.terminationStatus, text)
     }
 
     /// A TCP listener on a free loopback port that answers one request with

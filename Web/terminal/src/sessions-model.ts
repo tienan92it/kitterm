@@ -1415,6 +1415,8 @@ export function receiptStands(sent: ReplySent | undefined, row: ModelRow): boole
  * `Answer foreman`, the same headline its buttons carry. */
 export function replyName(row: ModelRow): string {
   return `Answer ${rowName(row)}`;
+}
+
 // --- the quota bars ----------------------------------------------------------
 
 /** One window as `GET /api/usage/limits` serves it, with the statusline's
