@@ -1,18 +1,16 @@
 # STATE: workspace-ledger
 
 - Status: active
-- Round: 1 of 3 in this budget (first budget)
-- Rounds total: 1
-- Last floor: green (2026-09-16, round 1 after: vitest 1233 in 37 files)
-- Updated: 2026-09-16, round 1 closed
+- Round: 2 of 3 in this budget (first budget)
+- Rounds total: 2
+- Last floor: green (2026-09-16, round 2 after: swift test 755, vitest 1233, bench p95 2.85 ms, Linux green)
+- Updated: 2026-09-16, round 2 closed
 
 ## Queue
 
-1. `daily-rollup` (capability 4), running now, taken out of order because
-   capability 5 needs it.
-2. `answer-from-the-page` (capability 2)
-3. `capture-the-quota` (capability 3)
-4. `the-numbers-on-the-page` (capability 5)
+1. `answer-from-the-page` (capability 2), running now.
+2. `capture-the-quota` (capability 3)
+3. `the-numbers-on-the-page` (capability 5)
 
 ## Failures
 
@@ -30,6 +28,11 @@ None.
   `rounds/001.md`. Workspace, project, goal state; a heading only over
   two or more projects; working read from a live `goal:` label; the
   filter feature gone symbol by symbol. 390 px height 1400 to 1159.
+- `daily-rollup` (capability 4), round 2, `ac379ff`. See `rounds/002.md`.
+  The daemon keys its rollup on the transcript and sums days at serve
+  time, so a refresh is idempotent and a day whose source is gone
+  survives. Full scan 2.5 s over 382 MB, no-change 19 ms. It also fixed
+  a decoder bug that had been hiding $221.14 from the cost routes.
 
 ## Direction
 
@@ -46,11 +49,21 @@ transcripts after 30 days, so a 90-day chart needs the daemon to keep its
 own rollup, which is why that is its own capability before the page can
 draw one.
 
+2026-09-16: the human told the foreman to stay inside kitterm. Another
+workspace has its own foreman and this one does not act there or report
+its items.
+
 ## Next action
 
-Capability 4, `daily-rollup`, is running as round 2. When it lands,
-capability 5 can read its route.
+Capability 2, `answer-from-the-page`, is running as round 3. Then
+capability 3, `capture-the-quota`, and last capability 5,
+`the-numbers-on-the-page`, which reads round 2's route.
 
-One item for capability 5, from round 1: at 390 px the goal line cuts its
-next action to "Roun…" because the title, the round and the next action
-share one line. Fix that before hanging a cost on it.
+Three things capability 5 must take from the earlier rounds. The corpus
+fixture says `kitterm` is $699.93; the route says **$850.51**, because
+the research counted the main directory alone and `ProjectStore` folds
+the worktrees in. The route is right and the fixture's figure is the one
+to update. The last 30 days hold $329.67 apportioned across midnight
+over 28 sessions, so the panel must say that rather than imply a
+measurement. And at 390 px the goal line already cuts its next action to
+"Roun…", so that line needs fixing before a cost is hung on it.
