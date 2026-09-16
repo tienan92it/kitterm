@@ -110,6 +110,15 @@ export type KnowledgeSummary = {
   lastRecord?: string;
   /** The first line of the latest round record's `## Decision` section. */
   lastDecision?: string;
+  /** The sum of the goal's records' `- Cost:` lines, dollars at the full
+   * API rate; absent when no record carries one. From a daemon since
+   * capability 5 of `workspace-ledger`. */
+  costUSD?: number;
+  /** The summed `in` tokens of those lines: input, cache creation and
+   * cache read together. */
+  inTokens?: number;
+  /** The cache-read part of `inTokens`. */
+  cacheReadTokens?: number;
 };
 
 /** One goal that is not done, as its project prints it on one line: the
@@ -1567,4 +1576,338 @@ export function quotaPanel(limits: UsageLimits | null | undefined, now: number):
   });
   const note = stale ? `${age}; open a Claude Code session to refresh it.` : age;
   return { bars, note };
+}
+
+// --- the numbers on the page --------------------------------------------------
+
+/** The token counts of `GET /api/usage/daily`, per day, per project and
+ * over the range: the four kinds Claude Code bills, and the requests. */
+export type UsageTokens = {
+  input: number;
+  output: number;
+  cacheCreation: number;
+  cacheRead: number;
+  requests: number;
+};
+
+/** Cost and tokens for one day or one project. `costUSD` is the dollars
+ * attributed; `apportionedUSD` is the part of it that came from a session
+ * spanning midnight and was split by token share. `unbilledSessions` had
+ * turns and no bill yet. */
+export type UsageBucket = {
+  costUSD: number;
+  apportionedUSD: number;
+  tokens: UsageTokens;
+  sessions: number;
+  unbilledSessions: number;
+};
+
+export type UsageProject = UsageBucket & { id: string; name: string; root: string; registered: boolean };
+
+export type UsageDay = UsageBucket & { day: string; projects: UsageProject[] };
+
+/** The route's answer: one entry per day in the range, zero-filled, the
+ * totals, and the totals per project over the range. */
+export type UsageDaily = {
+  ok: boolean;
+  timeZone: string;
+  from: string;
+  to: string;
+  /** Epoch milliseconds of the rollup's last refresh; 0 before the first. */
+  refreshedAt: number;
+  recordedSessions: number;
+  days: UsageDay[];
+  totals: UsageBucket;
+  projects: UsageProject[];
+};
+
+/** What the panel plots: dollars, or tokens of every kind. */
+export type UsageMode = "cost" | "tokens";
+/** The ranges the panel offers, in days, today included. */
+export type UsageSpan = 7 | 30 | 90;
+export const USAGE_SPANS: readonly UsageSpan[] = [7, 30, 90];
+export const USAGE_MODES: readonly UsageMode[] = ["cost", "tokens"];
+
+/** The reader's choice of mode and span, kept in `localStorage`. */
+export type UsageChoice = { mode: UsageMode; span: UsageSpan };
+export const USAGE_DEFAULT: UsageChoice = { mode: "cost", span: 30 };
+
+/** The choice read back from storage: the default for anything that is not
+ * one of the offered values, so a stale or hand-edited entry cannot ask the
+ * route for a range it refuses. */
+export function readUsageChoice(raw: string | null | undefined): UsageChoice {
+  if (!raw) return USAGE_DEFAULT;
+  try {
+    const parsed = JSON.parse(raw) as Partial<Record<keyof UsageChoice, unknown>>;
+    const mode = USAGE_MODES.find((m) => m === parsed.mode) ?? USAGE_DEFAULT.mode;
+    const span = USAGE_SPANS.find((s) => s === parsed.span) ?? USAGE_DEFAULT.span;
+    return { mode, span };
+  } catch {
+    return USAGE_DEFAULT;
+  }
+}
+
+/** `YYYY-MM-DD` of an epoch in the browser's own zone. The rollup's day is
+ * the daemon's zone; a phone in another zone asks for a range a day off,
+ * and the panel prints the days the route answered, not the ones asked. */
+export function dayKey(epochMs: number): string {
+  const d = new Date(epochMs);
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** The inclusive range for a span ending today: 7 is today and the six
+ * days before it. Stepped in local noon-to-noon days, so a daylight-saving
+ * change inside the span does not lose a day. */
+export function usageRange(span: UsageSpan, now: number): { from: string; to: string } {
+  const to = new Date(now);
+  const from = new Date(to.getFullYear(), to.getMonth(), to.getDate() - (span - 1), 12);
+  return { from: dayKey(from.getTime()), to: dayKey(now) };
+}
+
+/** `$1,084.03`: two decimals, thousands grouped, never rounded to a whole
+ * dollar, because a goal's round can cost cents. */
+export function dollars(usd: number): string {
+  const fixed = Math.abs(usd).toFixed(2);
+  const [whole, cents] = fixed.split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${usd < 0 ? "-" : ""}$${grouped}.${cents}`;
+}
+
+/** Whole units under a thousand, one decimal of `k` under a million, two
+ * decimals of `M` under a billion, two of `B` above: `0`, `17.7k`,
+ * `1.10M`, `2.31B`. The shape `kitterm goal cost` prints. */
+export function tokenCount(count: number): string {
+  if (count >= 1_000_000_000) return `${(count / 1_000_000_000).toFixed(2)}B`;
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(2)}M`;
+  if (count >= 1000) return `${(count / 1000).toFixed(1)}k`;
+  return String(Math.round(count));
+}
+
+/** Every kind, the number the tokens series plots. */
+export function totalTokens(t: UsageTokens): number {
+  return t.input + t.output + t.cacheCreation + t.cacheRead;
+}
+
+/** Input, cache creation and cache read together: the `in` of the ledger,
+ * the tokens the model was given. */
+export function inTokens(t: UsageTokens): number {
+  return t.input + t.cacheCreation + t.cacheRead;
+}
+
+/** The cache-read share of the input, 0 to 1; null when nothing was read,
+ * so a heading with no tokens prints no share rather than `0%`. */
+export function cacheShare(cacheRead: number, input: number): number | null {
+  return input > 0 ? cacheRead / input : null;
+}
+
+/** `91% cached`, or null for no share. */
+export function cachedLabel(share: number | null): string | null {
+  return share === null ? null : `${Math.round(share * 100)}% cached`;
+}
+
+/** What a heading prints after its name: the dollars, then the cache share
+ * when there is one, `$850.51 · 91% cached`. `$0.00` for a heading the
+ * report priced at nothing, because "nothing" is an answer and an absent
+ * number would read as "not loaded". */
+export function costLabel(bucket: UsageBucket | null): string {
+  if (bucket === null) return dollars(0);
+  const cached = cachedLabel(cacheShare(bucket.tokens.cacheRead, inTokens(bucket.tokens)));
+  return cached === null ? dollars(bucket.costUSD) : `${dollars(bucket.costUSD)} · ${cached}`;
+}
+
+const ZERO_TOKENS: UsageTokens = { input: 0, output: 0, cacheCreation: 0, cacheRead: 0, requests: 0 };
+
+function addBuckets(a: UsageBucket, b: UsageBucket): UsageBucket {
+  return {
+    costUSD: a.costUSD + b.costUSD,
+    apportionedUSD: a.apportionedUSD + b.apportionedUSD,
+    tokens: {
+      input: a.tokens.input + b.tokens.input,
+      output: a.tokens.output + b.tokens.output,
+      cacheCreation: a.tokens.cacheCreation + b.tokens.cacheCreation,
+      cacheRead: a.tokens.cacheRead + b.tokens.cacheRead,
+      requests: a.tokens.requests + b.tokens.requests,
+    },
+    // A session on two projects is not a thing, so the counts add.
+    sessions: a.sessions + b.sessions,
+    unbilledSessions: a.unbilledSessions + b.unbilledSessions,
+  };
+}
+
+/** The range's bucket for one project root, or null when the report names
+ * none: the rollup keys a session on the root its cwd resolved to, which is
+ * the registered root or the checkout, the same `root` the page's project
+ * carries, so the match is by root. */
+export function projectUsage(report: UsageDaily | null | undefined, root: string | null | undefined): UsageBucket | null {
+  if (!report || !root) return null;
+  const trimmed = root.replace(/\/+$/, "");
+  return report.projects.find((p) => p.root.replace(/\/+$/, "") === trimmed) ?? null;
+}
+
+/**
+ * The range's bucket for a workspace directory: every project bucket whose
+ * root the directory is or holds, by the rule that homes a loose shell
+ * (`workspaceHome`, the deepest of `headed`), summed. That takes in the
+ * projects on the page, a checkout under the directory the page does not
+ * list, and the sessions that ran in the directory itself, which is where
+ * the workspace's foreman sits. Null when the report names nothing there.
+ */
+export function workspaceUsage(
+  report: UsageDaily | null | undefined,
+  dir: string | null | undefined,
+  headed: readonly string[],
+): UsageBucket | null {
+  if (!report || !dir) return null;
+  let sum: UsageBucket | null = null;
+  for (const p of report.projects) {
+    if (workspaceHome(p.root, headed) !== dir) continue;
+    sum = sum === null ? { ...p, tokens: { ...p.tokens } } : addBuckets(sum, p);
+  }
+  return sum;
+}
+
+/** What a goal prints beside its round: the sum of its records' `Cost:`
+ * lines with the cache share, `$12.34 · 88% cached`, from the fields the
+ * knowledge route adds; null for a goal whose records carry no line, which
+ * is a goal that predates the bill, not a free one. */
+export function goalCost(summary: Pick<KnowledgeSummary, "costUSD" | "inTokens" | "cacheReadTokens">): string | null {
+  if (typeof summary.costUSD !== "number") return null;
+  const cached = cachedLabel(cacheShare(summary.cacheReadTokens ?? 0, summary.inTokens ?? 0));
+  return cached === null ? dollars(summary.costUSD) : `${dollars(summary.costUSD)} · ${cached}`;
+}
+
+/** One toggle of the panel: what it prints, whether it is the choice, and
+ * the name a screen reader gets. */
+export type UsageToggle = { label: string; checked: boolean; name: string };
+
+/** The usage panel as the page prints it. `series` is one number per day
+ * in the route's order, dollars or tokens by `mode`; `days` the matching
+ * day keys; `peak` the largest, for the chart's scale and its caption. */
+export type UsagePanel = {
+  mode: UsageMode;
+  span: UsageSpan;
+  /** `Usage · last 30 days`. */
+  title: string;
+  /** `$1,084.03`, or `312.4M` in tokens mode. */
+  headline: string;
+  /** What the headline is: the full API rate, or tokens of every kind. */
+  qualifier: string;
+  /** `17 Aug to 16 Sep`, the days the route answered. */
+  range: string;
+  series: number[];
+  days: string[];
+  peak: { day: string; value: number } | null;
+  /** True when the range holds no session: the chart is an empty axis. */
+  empty: boolean;
+  /** What the numbers are made of: the apportioned part and the sessions
+   * without a bill, or that neither applies. */
+  note: string;
+  /** How old the rollup is, `rollup refreshed 4m ago`, or that it has not. */
+  age: string;
+  modes: UsageToggle[];
+  spans: UsageToggle[];
+};
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** `16 Sep` from `2026-09-16`; the key itself when it is not a day. */
+export function dayLabel(key: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+  if (!m) return key;
+  return `${Number(m[3])} ${MONTHS[Number(m[2]) - 1] ?? m[2]}`;
+}
+
+/** The chart's value for one day: dollars or every token. */
+export function usageValue(bucket: UsageBucket, mode: UsageMode): number {
+  return mode === "cost" ? bucket.costUSD : totalTokens(bucket.tokens);
+}
+
+/** The value as the chart's caption prints it: `$99.95` or `48.2M`. */
+export function usageAmount(value: number, mode: UsageMode): string {
+  return mode === "cost" ? dollars(value) : tokenCount(value);
+}
+
+function plural(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/** The note under the chart, so the numbers say what they are made of. */
+export function usageNote(totals: UsageBucket, mode: UsageMode): string {
+  const parts: string[] = [];
+  if (mode === "cost" && totals.apportionedUSD > 0) {
+    parts.push(`${dollars(totals.apportionedUSD)} of it is apportioned across midnight by token share, not measured`);
+  }
+  if (totals.unbilledSessions > 0) {
+    parts.push(
+      mode === "cost"
+        ? `${plural(totals.unbilledSessions, "session has", "sessions have")} no bill yet, so their tokens are in and their dollars are not`
+        : `${plural(totals.unbilledSessions, "session has", "sessions have")} no bill yet; their tokens are counted`,
+    );
+  }
+  if (parts.length === 0) {
+    return mode === "cost"
+      ? "Every dollar is a session's own bill on the day it ran."
+      : "Every session in the range has its bill.";
+  }
+  return parts.join("; ") + ".";
+}
+
+/**
+ * The usage panel from the route's answer, or null when the page has none
+ * to draw: a watch token, which the daemon refuses, a daemon too old to
+ * have the route, or one built without a rollup.
+ *
+ * The headline is the range's total, marked as the full API rate, because
+ * `totalCostUSD` is priced at the pay-as-you-go rate whatever the plan;
+ * on a subscription it is what the work would have cost, not what was
+ * paid. The series is the route's days in its order, zero-filled, so a
+ * silent day is a gap the reader sees. An empty range draws the axis and
+ * says so. The note names the apportioned part and the unbilled sessions,
+ * so nothing on the panel reads as a measurement that is not one.
+ */
+export function usagePanel(
+  report: UsageDaily | null | undefined,
+  choice: UsageChoice,
+  now: number,
+): UsagePanel | null {
+  if (!report || !report.ok) return null;
+  const { mode, span } = choice;
+  const days = report.days.map((d) => d.day);
+  const series = report.days.map((d) => usageValue(d, mode));
+  let peak: UsagePanel["peak"] = null;
+  series.forEach((value, i) => {
+    if (value > 0 && (peak === null || value > peak.value)) peak = { day: days[i], value };
+  });
+  const totals = report.totals ?? { costUSD: 0, apportionedUSD: 0, tokens: ZERO_TOKENS, sessions: 0, unbilledSessions: 0 };
+  const empty = totals.sessions === 0;
+  const from = days[0] ?? report.from;
+  const to = days[days.length - 1] ?? report.to;
+  const range = from === to ? dayLabel(from) : `${dayLabel(from)} to ${dayLabel(to)}`;
+  const age = report.refreshedAt > 0
+    ? `rollup refreshed ${spanLabel(now - report.refreshedAt) === "now" ? "just now" : `${spanLabel(now - report.refreshedAt)} ago`}`
+    : "the rollup has not refreshed yet";
+  return {
+    mode,
+    span,
+    title: `Usage · last ${span} days`,
+    headline: mode === "cost" ? dollars(totals.costUSD) : tokenCount(totalTokens(totals.tokens)),
+    qualifier: mode === "cost" ? "if billed at full API rate" : "tokens, every kind, input and output and cache",
+    range,
+    series,
+    days,
+    peak,
+    empty,
+    note: empty ? `No usage recorded from ${range}.` : usageNote(totals, mode),
+    age,
+    modes: USAGE_MODES.map((m) => ({ label: m, checked: m === mode, name: m === "cost" ? "Show cost" : "Show tokens" })),
+    spans: USAGE_SPANS.map((s) => ({ label: `${s}d`, checked: s === span, name: `Show the last ${s} days` })),
+  };
+}
+
+/** The chart's name for a screen reader: the range, the peak, the shape. */
+export function usageChartName(panel: UsagePanel): string {
+  if (panel.empty || panel.peak === null) return `No ${panel.mode === "cost" ? "cost" : "tokens"} per day, ${panel.range}.`;
+  const unit = panel.mode === "cost" ? "Cost" : "Tokens";
+  return `${unit} per day, ${panel.range}; the most on ${dayLabel(panel.peak.day)}, ${usageAmount(panel.peak.value, panel.mode)}.`;
 }

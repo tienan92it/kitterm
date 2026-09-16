@@ -184,6 +184,44 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .restart span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
+/* --- the usage panel ----------------------------------------------------------
+   The range's total at the full API rate, the two toggle groups, one bar
+   per day, the axis, then what the numbers are made of. On the body like
+   the quota under it, in the page's 12 and 13 px. The chart is an SVG of
+   rects in currentColor, so it draws in the text colour on the body, the
+   page's own pair, and adds no surface. A toggle is a radio that prints
+   `[ ]` or `[x]` before its word, the push switch's checkbox, so it reads
+   as a control without colour; the chosen one wears the text colour and
+   the rest the muted one. */
+.usage[hidden] { display: none; }
+.usage { margin: 0 0 12px; font-size: 12px; color: var(--ui-text); }
+.usage-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; }
+.usage-title { font-size: 13px; font-weight: 600; margin: 0; flex: 1 1 auto; }
+.usage-toggles { display: flex; align-items: center; gap: 8px; }
+.usage-toggle {
+  display: inline-flex; align-items: center;
+  background: none; color: var(--ui-text-muted); border: none;
+  padding: 1px 2px; font-size: 12px; cursor: pointer; white-space: nowrap;
+  min-height: var(--tap-min);
+}
+.usage-toggle::before { content: "[ ] "; white-space: pre; }
+.usage-toggle[aria-checked="true"] { color: var(--ui-text); }
+.usage-toggle[aria-checked="true"]::before { content: "[x] "; }
+.usage-toggle:hover { text-decoration: underline; text-underline-offset: 2px; color: var(--ui-text); }
+.usage-headline { margin: 2px 0 6px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.usage-amount { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.usage-qualifier { color: var(--ui-text-muted); }
+/* One bar a day, the day's share of the tallest, on a hairline base. */
+.usage-chart { display: block; width: 100%; height: 40px; color: var(--ui-text); border-bottom: 1px solid var(--ui-border); }
+.usage-chart rect { fill: currentColor; }
+.usage-axis {
+  display: flex; justify-content: space-between; gap: 8px; margin: 2px 0 0;
+  color: var(--ui-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.usage-peak { flex: 1 1 auto; text-align: center; overflow: hidden; text-overflow: ellipsis; }
+.usage-note { margin: 6px 0 0; color: var(--ui-text-muted); overflow-wrap: anywhere; }
+.usage-age { margin: 2px 0 0; color: var(--ui-text-muted); }
+
 /* --- the quota -------------------------------------------------------------
    One line per window the statusline last reported: the label, a bar,
    the number, the countdown; then one line saying how old the reading is.
@@ -249,6 +287,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
    A name wider than the line breaks inside its own box, and `[new]` wraps
    under it. */
 .card .head .name, .workspace > .head .name { font-size: 13px; font-weight: 600; margin: 0; flex: none; max-width: 100%; overflow-wrap: anywhere; }
+/* What the range cost under this heading, after the name in the heading's
+   own box: `$850.51 · 91% cached`, muted and unbolded, so the name is what
+   the eye scans for and the number is what it reads next. On a phone it is
+   a line of its own under the name (below), because `headingLine` already
+   gives the count and the select away to keep the name and `[new]` on one
+   line, and there is no room left for a number. */
+.card .head .cost, .workspace > .head .cost {
+  color: var(--ui-text-muted); font-size: 12px; font-weight: 400;
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+}
 /* The count takes what the name and the controls leave, so it never pushes
    `[new]` to a second line. On a phone `headingLine` drops it whole
    (`gives-way`) rather than cut it; the ellipsis is for a face wider than
@@ -290,17 +338,21 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .card .goal-lines { list-style: none; margin: 0; padding: 0; }
 .card .goal { min-width: 0; }
+/* Two lines: the title, the status word, the round and the cost; then the
+   next action alone, cut at the line's end. The next action used to share
+   the first line and read "Roun…" at 390 px. */
 .card .goal-line {
-  display: flex; align-items: baseline; gap: 10px; min-width: 0;
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0;
   padding: 6px 12px; font-size: 12px; white-space: nowrap;
 }
 .card .goal .rows { padding-left: 12px; }
 .card .goal-line .goal-name { flex: 0 1 auto; min-width: 8em; overflow: hidden; text-overflow: ellipsis; color: var(--ui-text); }
-.card .goal-line .goal-status, .card .goal-line .goal-round, .card .goal-line .goal-unwritten {
+.card .goal-line .goal-status, .card .goal-line .goal-round, .card .goal-line .goal-unwritten, .card .goal-line .goal-cost {
   flex: none; font-size: 12px; color: var(--ui-text-muted);
 }
+.card .goal-line .goal-cost { font-variant-numeric: tabular-nums; }
 .card .goal-line .goal-next {
-  flex: 1 1 6em; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  flex: 1 1 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis;
   color: var(--ui-text-muted); font-size: 12px;
 }
 .card .goal-none { margin: 0; padding: 6px 12px; font-size: 12px; color: var(--ui-text-muted); border-top: 1px solid var(--ui-border); }
@@ -392,6 +444,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
      name stays whole and `[new]` stays on the line. */
   .card .head .gives-way { display: none; }
   .card .spawn-profile.short { width: calc(5ch + var(--profile-chrome)); }
+  .card .head .cost, .workspace > .head .cost { display: block; }
+  /* The goal's title takes the first line whole and wraps rather than
+     cuts; the round and the cost share the second, the next action the
+     third. At 390 px a title of fifty characters is wider than the line,
+     and the title is what the reader scans for. */
+  .card .goal-line .goal-name { flex: 1 1 100%; white-space: normal; overflow-wrap: anywhere; }
 }
 
 /* The folds: the done goals ("7 done") and the archived sessions, collapsed

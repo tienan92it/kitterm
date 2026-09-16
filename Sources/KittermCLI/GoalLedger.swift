@@ -68,9 +68,6 @@ enum GoalLedger {
     /// so that a word like `deadbeef` is not taken for one.
     private static let shaPattern = regex("\\b(?=[0-9a-f]*[0-9])[0-9a-f]{7,40}\\b")
     private static let prPattern = regex("#([0-9]+)\\b")
-    private static let costPattern = regex(
-        "^- Cost: \\$([0-9]+(?:\\.[0-9]+)?) · ([0-9]+)k in \\(([0-9]+)% cached\\) · ([0-9]+)k out · ([0-9]+)h ([0-9]+)m"
-    )
     private static let newTestsPattern = regex("\\b([0-9]+) new\\b")
     private static let headingPattern = regex("^# Round ([0-9]+): (.+)$")
 
@@ -144,12 +141,12 @@ enum GoalLedger {
                 record.pr = matches(prPattern, in: parts[1]).first.flatMap { Int($0[1]) }
             }
         } else if line.hasPrefix("- Cost:") {
-            if let cost = matches(costPattern, in: line).first,
-               let dollars = Double(cost[1]), let inK = Int(cost[2]), let percent = Int(cost[3]),
-               let outK = Int(cost[4]), let hours = Int(cost[5]), let minutes = Int(cost[6]) {
+            // The daemon's parser, so the route's goal total and this
+            // table read one shape.
+            if let cost = KnowledgeSummary.costLine(line) {
                 record.costLines.append(CostLine(
-                    costUSD: dollars, inTokens: inK * 1000, cachedPercent: percent,
-                    outTokens: outK * 1000, durationMs: (hours * 60 + minutes) * 60_000
+                    costUSD: cost.costUSD, inTokens: cost.inTokens, cachedPercent: cost.cachedPercent,
+                    outTokens: cost.outTokens, durationMs: cost.durationMs
                 ))
             } else {
                 record.costLines.append(nil)

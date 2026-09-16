@@ -110,6 +110,14 @@ decision moves to `docs/adr/`.
 
 ## Crew pane
 
+- Two concurrent `Bash` calls in one crew turn share one shell and one
+  cwd. A `cd` in the first moves the second, and round 5 lost a
+  `git add AGENTS.md` to "pathspec did not match". Use an absolute path
+  or `git -C <root>`. (2026-09-16, workspace-ledger round 5)
+- `node -e "import('./stub.mjs')"` starts the listener and never returns.
+  Syntax-check a module with `node --check`.
+  (2026-09-16, workspace-ledger round 5)
+
 - A scratch `CLAUDE_CONFIG_DIR` reads "Not logged in": the keychain entry
   is keyed by the config directory. A live check keeps the human's own
   directory and overrides the run with `claude --settings <file>`.
@@ -232,6 +240,14 @@ decision moves to `docs/adr/`.
   Chrome and Firefox; the routes serve `text/plain`. (2026-09-09, round 7)
 
 ## Foreman
+
+- Write the `- Cost:` line at collect, or the goal prices at nothing. The
+  daily rollup keys on the directory a transcript ran in; a goal is a set
+  of round records, not a directory. The line in each record is the only
+  join between the two, so a goal whose records carry no line shows no
+  cost on the page. The foreman had written none for `workspace-ledger`;
+  the four lines were back-filled in `9e38335` and the goal then read
+  $55.58. (2026-09-16, workspace-ledger round 5)
 
 - A crew branches from `origin/main`, never from another goal's branch.
   Round 3 branched from `d7439ce` on the capability 1 branch; capability

@@ -142,10 +142,12 @@ public enum KnowledgeFile {
     /// `STATE.md` is not a regular file there (missing, a symlink, a FIFO),
     /// so the folder is not a goal. Every file is opened relative to
     /// `folder`, never by a walk from the root: per goal folder the cost is
-    /// the folder's own open plus at most four `openat` (`STATE.md`,
-    /// `goal.md`, `rounds/`, the latest record), three `fstat`, three reads,
-    /// and one `readdir` of `rounds/`. A `STATE.md` over `maxBytes` is a
-    /// goal with no fields, the same as a record over the cap.
+    /// the folder's own open, three `openat` (`STATE.md`, `goal.md`,
+    /// `rounds/`), one `readdir` of `rounds/`, and one `openat`, `fstat`
+    /// and read per `rounds/<N>.md`, because the goal's cost is the sum of
+    /// every record's `- Cost:` line. `LOOP.md` keeps a round record small
+    /// and a goal's rounds few. A `STATE.md` over `maxBytes` is a goal with
+    /// no fields, the same as a record over the cap, which counts no cost.
     private static func summary(folder: Int32) -> KnowledgeSummary? {
         let state: String?
         do { state = try text(at: folder, "STATE.md") } catch { return nil }
@@ -156,12 +158,20 @@ public enum KnowledgeFile {
         // describes and the file the card links to.
         var record: String?
         var latestRound: String?
+        var records: [String] = []
         if let rounds = try? openComponent(at: folder, "rounds", directory: true) {
             defer { close(rounds) }
-            record = KnowledgeSummary.latestRecordName(entries(of: rounds))
-            latestRound = record.flatMap { (try? text(at: rounds, $0)) ?? nil }
+            let names = entries(of: rounds).filter { KnowledgeSummary.roundNumber($0) != nil }.sorted()
+            record = KnowledgeSummary.latestRecordName(names)
+            for name in names {
+                guard let text = (try? text(at: rounds, name)) ?? nil else { continue }
+                records.append(text)
+                if name == record { latestRound = text }
+            }
         }
-        return KnowledgeSummary.parse(state: state, goal: goal, latestRecord: record, latestRound: latestRound)
+        var summary = KnowledgeSummary.parse(state: state, goal: goal, latestRecord: record, latestRound: latestRound)
+        summary.sumCosts(records: records)
+        return summary
     }
 
     // MARK: - the jail

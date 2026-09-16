@@ -11,6 +11,8 @@ import {
   bucketLabel,
   cardRecord,
   cardRows,
+  costLabel,
+  dayLabel,
   dismissKey,
   dismissName,
   doneLabel,
@@ -18,6 +20,7 @@ import {
   focusKey,
   folderOf,
   headingLine,
+  goalCost,
   goalTitle,
   group,
   knowledgeUrl,
@@ -29,7 +32,9 @@ import {
   proposalsName,
   proposedItems,
   proposedLabel,
+  projectUsage,
   pushToggle,
+  readUsageChoice,
   receiptStands,
   recordLabel,
   recordName,
@@ -43,8 +48,13 @@ import {
   stateLabel,
   stateOf,
   stripWhere,
+  usageAmount,
+  usageChartName,
+  usagePanel,
+  usageRange,
   withProposed,
   workspaceHome,
+  workspaceUsage,
   type Approval,
   type AttentionItem,
   type DaemonStarted,
@@ -67,7 +77,10 @@ import {
   quotaPanel,
   type QuotaPanel,
   type StampFormat,
+  type UsageChoice,
+  type UsageDaily,
   type UsageLimits,
+  type UsagePanel,
   type WorkspaceSection,
 } from "./sessions-model";
 import { loadSettings } from "./settings-store";
@@ -79,17 +92,21 @@ import { findThemeById } from "./themes";
  * first, and the actions a supervisor takes from a phone — answer, spawn,
  * archive, kill, and answer a foreman or a crew by typing a line under its
  * row, which `POST /api/sessions/<id>/input?enter=1` types into its pane
- * (`replyControl` decides when the field sends). Polls `/api/projects`, `/api/sessions`, `/api/approvals`
- * and `/api/archives`, plus `/api/projects/<id>/knowledge` for each
- * registered project, and links each row back to `/?session=<id>`.
+ * (`replyControl` decides when the field sends). Polls `/api/projects`, `/api/sessions`, `/api/approvals`,
+ * `/api/archives` and `/api/usage/limits`, plus `/api/projects/<id>/knowledge` for each
+ * registered project and `/api/usage/daily` for the chosen range, and links
+ * each row back to `/?session=<id>`.
  *
  * The page reads top to bottom in the order a returning reader needs: the
  * title, what needs them (the strip), what broke (the failed items and the
- * restart line), one line of counts, then the work in three levels: a
- * workspace, its projects, and each project's goals by state (working,
- * pending, done). There is no search and no filter; the grouping is the
- * navigation. The push switch sits under the sections. The pure model
- * (`sessions-model.ts`) decides what goes where; this file only paints it.
+ * restart line), the usage panel (the range's total at the full API rate,
+ * the per-day chart, the quota bars), one line of counts, then the work in
+ * three levels: a workspace, its projects, and each project's goals by
+ * state (working, pending, done), each heading with what it cost and how
+ * much of its input came from cache. There is no search and no filter; the
+ * grouping is the navigation. The push switch sits under the sections. The
+ * pure model (`sessions-model.ts`) decides what goes where; this file only
+ * paints it.
  *
  * Deliberately its own page, not the terminal: `/` stays "open a tab, get a
  * shell".
@@ -211,10 +228,63 @@ let restartDismissed: Set<string> = loadDismissed(RESTART_DISMISSED_KEY);
  * previous run's summary on it. Null until the feed answers, and on a daemon
  * whose ring no longer holds the event. */
 let started: DaemonStarted | null = null;
+/** The daily rollup for the chosen range (`GET /api/usage/daily`), or null
+ * when the daemon refused or has no route: a watch token sees no numbers. */
+let usage: UsageDaily | null = null;
+/** The reader's mode and span, kept across loads like the dismissals. */
+const USAGE_KEY = "kitterm.sessions.usage";
+let usageChoice: UsageChoice = readUsageChoice(readStorage(USAGE_KEY));
+/** The range last asked for and when, so the rollup, which refreshes every
+ * five minutes, is asked every `USAGE_REFRESH_MS` and at once on a toggle
+ * rather than on every 2 s poll: a 90-day answer is tens of kilobytes. */
+let usageAsked = "";
+let usageAskedAt = 0;
+const USAGE_REFRESH_MS = 30_000;
 /** The newest quota reading the daemon holds (`GET /api/usage/limits`), or
  * null when the route did not answer: a daemon too old to have it, or a
  * watch token, which it refuses. */
 let limits: UsageLimits | null = null;
+
+/** One key of `localStorage`, or null where storage is blocked or empty. */
+function readStorage(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function setUsageChoice(change: Partial<UsageChoice>): void {
+  usageChoice = { ...usageChoice, ...change };
+  try {
+    localStorage.setItem(USAGE_KEY, JSON.stringify(usageChoice));
+  } catch {
+    // Storage blocked: the choice lives for this page only.
+  }
+  // A new span is a new range: ask the route now, then repaint.
+  usageAsked = "";
+  lastSignature = "";
+  void fetchUsage(Date.now()).then(render);
+}
+
+/** Ask the route for the chosen range when the range changed or the last
+ * answer is `USAGE_REFRESH_MS` old. A 403 (watch), a 404 (old daemon) or a
+ * 503 (no rollup) leaves `usage` null, so the panel and every heading's
+ * number stay off the page rather than on it as zeros. */
+async function fetchUsage(now: number): Promise<void> {
+  const { from, to } = usageRange(usageChoice.span, now);
+  const query = `from=${from}&to=${to}`;
+  if (query === usageAsked && now - usageAskedAt < USAGE_REFRESH_MS) return;
+  usageAsked = query;
+  usageAskedAt = now;
+  try {
+    const res = await fetch(`/api/usage/daily?${query}`, { headers: { accept: "application/json" } });
+    usage = res.ok ? ((await res.json()) as UsageDaily) : null;
+  } catch {
+    // A failed request keeps the last answer; the next poll asks again.
+    usageAsked = "";
+  }
+}
 
 function loadDismissed(storageKey: string): Set<string> {
   try {
@@ -292,6 +362,7 @@ async function poll(): Promise<void> {
     // client's 403 leaves the panel off the page rather than on it empty.
     limits = limitsRes.ok ? ((await limitsRes.json()) as UsageLimits) : null;
     sessions = data.sessions ?? [];
+    await fetchUsage(Date.now());
     failedPolls = 0;
     render();
   } catch {
@@ -414,6 +485,11 @@ restartLine.setAttribute("role", "status");
  * countdown, and one line saying how old the reading is or why there is
  * none (`quotaPanel`). Above the fleet line, because it is the one number
  * that decides whether more work can start. Hidden for a watch client. */
+const usageBlock = document.createElement("section");
+usageBlock.className = "usage";
+usageBlock.hidden = true;
+usageBlock.setAttribute("aria-label", "Usage");
+let usagePainted = "";
 const quotaBlock = document.createElement("section");
 quotaBlock.className = "quota";
 quotaBlock.hidden = true;
@@ -430,7 +506,7 @@ function mountSkeleton(): void {
   skeletonMounted = true;
   // Status first, the push switch last: it is a thing the reader does, not
   // a thing the reader came to learn.
-  root.replaceChildren(header(), announce, strip, noticeLine, restartLine, quotaBlock, cards, pushLine);
+  root.replaceChildren(header(), announce, strip, noticeLine, restartLine, usageBlock, quotaBlock, cards, pushLine);
 }
 
 function render(): void {
@@ -446,8 +522,10 @@ function render(): void {
   // The span a row prints moves once a minute at most, so it is in.
   const now = Date.now();
   const spans = sessions.map((s) => rowLine(s, now).since);
-  // The quota's text moves once a minute at most, like a row's span.
+  // The quota's text moves once a minute at most, like a row's span; the
+  // usage panel's age line too, and its numbers when the rollup refreshes.
   const quota = quotaPanel(limits, now);
+  const panel = usagePanel(usage, usageChoice, now);
   const signature = JSON.stringify([
     rendered,
     order,
@@ -467,6 +545,7 @@ function render(): void {
     // `rendered`, so the receipt's standing is in.
     sessions.map((s) => receiptStands(sent.get(s.id), s)),
     quota,
+    panel,
   ]);
   if (signature === lastSignature) return;
   lastSignature = signature;
@@ -509,6 +588,7 @@ function paint(): void {
   noticeLine.hidden = notice === null;
   noticeLine.replaceChildren(...(notice === null ? [] : [noticeContent(notice)]));
   paintRestart();
+  paintUsage(usagePanel(usage, usageChoice, Date.now()));
   paintQuota(quotaPanel(limits, Date.now()));
   paintPush();
   cards.replaceChildren(fleetCounts(listed), ...sectionList(listed, sessions, proposed));
@@ -583,6 +663,101 @@ function restartContent(text: string, key: string): DocumentFragment {
 }
 
 // --- push notifications -----------------------------------------------------
+
+/** Show, hide, or leave the usage panel; rebuilt only when its content
+ * changes, so a toggle a keyboard user sits on survives the polls. */
+function paintUsage(panel: UsagePanel | null): void {
+  const signature = JSON.stringify(panel);
+  if (signature === usagePainted) return;
+  usagePainted = signature;
+  usageBlock.hidden = panel === null;
+  usageBlock.replaceChildren(...(panel === null ? [] : usageContent(panel)));
+}
+
+/**
+ * The panel: the title line with the two toggle groups, the headline and
+ * what it is, the chart, its axis, then the note and the rollup's age.
+ * The chart is one bar per day in an SVG, `currentColor` on the body, so
+ * it adds no colour pair; a silent day is a gap. It is hidden from a
+ * screen reader behind one sentence (`usageChartName`), and each bar
+ * carries its day and amount as a tooltip. A toggle prints `[ ]`/`[x]`
+ * like the push switch and is a radio to a screen reader.
+ */
+function usageContent(panel: UsagePanel): Node[] {
+  const head = document.createElement("div");
+  head.className = "usage-head";
+  const title = document.createElement("h2");
+  title.className = "usage-title";
+  title.textContent = panel.title;
+  head.append(title, usageToggles("mode", panel), usageToggles("span", panel));
+
+  const headline = document.createElement("p");
+  headline.className = "usage-headline";
+  const amount = span("usage-amount", panel.headline);
+  const qualifier = span("usage-qualifier", panel.qualifier);
+  headline.append(amount, " ", qualifier);
+
+  const chart = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  chart.setAttribute("class", "usage-chart");
+  chart.setAttribute("role", "img");
+  chart.setAttribute("aria-label", usageChartName(panel));
+  chart.setAttribute("preserveAspectRatio", "none");
+  const n = Math.max(1, panel.series.length);
+  chart.setAttribute("viewBox", `0 0 ${n} 100`);
+  const top = panel.peak?.value ?? 0;
+  panel.series.forEach((value, i) => {
+    if (value <= 0 || top <= 0) return;
+    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    const height = Math.max(1, (value / top) * 100);
+    rect.setAttribute("x", `${i + 0.1}`);
+    rect.setAttribute("width", "0.8");
+    rect.setAttribute("y", `${100 - height}`);
+    rect.setAttribute("height", `${height}`);
+    const tip = document.createElementNS("http://www.w3.org/2000/svg", "title");
+    tip.textContent = `${panel.days[i]}: ${usageAmount(value, panel.mode)}`;
+    rect.append(tip);
+    chart.append(rect);
+  });
+
+  const axis = document.createElement("p");
+  axis.className = "usage-axis";
+  axis.append(span("usage-from", panel.days[0] ? dayLabel(panel.days[0]) : ""));
+  if (panel.peak) axis.append(span("usage-peak", `most ${usageAmount(panel.peak.value, panel.mode)} on ${dayLabel(panel.peak.day)}`));
+  axis.append(span("usage-to", panel.days.length > 1 ? dayLabel(panel.days[panel.days.length - 1]) : ""));
+
+  const note = document.createElement("p");
+  note.className = "usage-note";
+  note.textContent = panel.note;
+  const age = document.createElement("p");
+  age.className = "usage-age";
+  age.textContent = panel.age;
+  return [head, headline, chart, axis, note, age];
+}
+
+/** One radio group of the panel: cost or tokens, 7, 30 or 90 days. */
+function usageToggles(kind: "mode" | "span", panel: UsagePanel): HTMLElement {
+  const group = document.createElement("div");
+  group.className = "usage-toggles";
+  group.setAttribute("role", "radiogroup");
+  group.setAttribute("aria-label", kind === "mode" ? "Plot" : "Range");
+  for (const toggle of kind === "mode" ? panel.modes : panel.spans) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "usage-toggle";
+    b.setAttribute("role", "radio");
+    b.setAttribute("aria-checked", String(toggle.checked));
+    b.setAttribute("aria-label", toggle.name);
+    b.textContent = toggle.label;
+    b.dataset.focus = focusKey("usage", kind, toggle.label);
+    b.addEventListener("click", () => {
+      if (toggle.checked) return;
+      if (kind === "mode") setUsageChoice({ mode: toggle.label as UsageChoice["mode"] });
+      else setUsageChoice({ span: Number(toggle.label.replace(/d$/, "")) as UsageChoice["span"] });
+    });
+    group.append(b);
+  }
+  return group;
+}
 
 /** Show, hide, or leave the quota block; rebuilt only when its text
  * changes, so the bars do not flicker on every poll. */
@@ -1103,7 +1278,7 @@ function workspace(s: WorkspaceSection<SessionRow>, headed: string[], proposed: 
   section.setAttribute("aria-label", heading.name);
   const head = document.createElement("div");
   head.className = "head";
-  head.append(headingName(heading, 2));
+  head.append(headingName(heading, 2, usage ? costLabel(workspaceUsage(usage, heading.path, headed)) : null));
   section.append(head);
   if (s.rows.length > 0) section.append(rowList(s.rows, heading.path ?? undefined));
   const archived = archivesOf(NO_PROJECT, headed, heading.path);
@@ -1116,13 +1291,21 @@ function workspace(s: WorkspaceSection<SessionRow>, headed: string[], proposed: 
 }
 
 /** The heading's name as an `h2` or `h3`, with the directory it stands for
- * as its tooltip. A cost, once a capability has one, prints after the name
- * on this line. */
-function headingName(heading: Heading, level: 2 | 3): HTMLElement {
+ * as its tooltip, and after it what the range cost there with the cache
+ * share, `$850.51 · 91% cached` (`costLabel`), when the rollup answered.
+ * The two are one heading, so a reader who moves by heading hears the
+ * number with the name; the sheet puts the cost on its own line under the
+ * name on a phone, where the heading line has no room left. */
+function headingName(heading: Heading, level: 2 | 3, cost: string | null): HTMLElement {
   const h = document.createElement(`h${level}`);
   h.className = "name";
   h.textContent = heading.name;
   if (heading.path) h.title = heading.path;
+  if (cost !== null) {
+    const c = span("cost", cost);
+    c.title = `${heading.name}: what the range cost here, at the full API rate, and the cache-read share of its input`;
+    h.append(" ", c);
+  }
   return h;
 }
 
@@ -1145,7 +1328,7 @@ function card(p: ProjectSection<SessionRow>, archived: ArchivedRow[], proposed: 
 
   const head = document.createElement("div");
   head.className = "head";
-  head.append(headingName(p.heading, level));
+  head.append(headingName(p.heading, level, usage && p.project ? costLabel(projectUsage(usage, p.project.root)) : null));
   // The counts live on the fleet line above the projects; the rows say
   // their own state. A project with no session at all says so, once.
   // `headingLine` decides what gives way on a phone; the sheet applies it
@@ -1216,12 +1399,13 @@ function goalList(project: ProjectRef, entries: GoalEntry<SessionRow>[]): HTMLEl
   return list;
 }
 
-/** One goal that is not done, on one line: the title, the status word
- * when it is not active, the round counter, and the next action cut at
- * the line's end. A goal whose files still hold the template reads "not
- * written yet" after its slug. No floor word, no slug, no record link:
- * the record is history, and the done fold and the strip's proposal carry
- * it (`goalLine`). */
+/** One goal that is not done, on two lines: the title, the status word
+ * when it is not active, the round counter and what its rounds cost
+ * (`goalCost`); then the next action on its own line, cut at the line's
+ * end, because on one line with the rest it read "Roun…" at 390 px. A
+ * goal whose files still hold the template reads "not written yet" after
+ * its slug. No floor word, no slug, no record link: the record is history,
+ * and the done fold and the strip's proposal carry it (`goalLine`). */
 function goalLineItem(line: GoalLine): HTMLElement {
   const li = document.createElement("div");
   li.className = "goal-line";
@@ -1232,6 +1416,12 @@ function goalLineItem(line: GoalLine): HTMLElement {
   }
   if (line.status) li.append(span("goal-status", line.status));
   if (line.round) li.append(span("goal-round", line.round));
+  const cost = goalCost(line.summary);
+  if (cost !== null) {
+    const c = span("goal-cost", cost);
+    c.title = "the sum of this goal's round records' Cost lines, at the full API rate, and the cache-read share";
+    li.append(c);
+  }
   if (line.next) {
     const next = span("goal-next", line.next);
     next.title = line.next;

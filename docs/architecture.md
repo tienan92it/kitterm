@@ -221,6 +221,41 @@ keeps a stale reading's bars with the fill muted, draws a window past its reset 
 and says in words when no reading has ever arrived. Full grade only on both routes, like
 the bill and the rollup.
 
+### The numbers on the page
+
+The fleet view puts the rollup where the reader holds the work. Above the quota sits
+one panel: the range's total, marked `if billed at full API rate` because
+`totalCostUSD` is the pay-as-you-go price on any plan and a subscriber pays a flat fee,
+one bar per day, and two radio groups, cost or tokens and 7, 30 or 90 days, whose
+choice the browser keeps. Under the bars the panel says what the numbers are made of:
+the part apportioned across midnight by token share, which is not a measurement, and
+the sessions that have turns and no bill yet, whose tokens are in and whose dollars are
+not. An empty range draws its axis and says so. The page asks the route every thirty
+seconds and at once on a toggle, because a 90-day answer with its per-project split is
+tens of kilobytes and the rollup itself refreshes every five minutes.
+
+Every workspace, project and goal heading then carries its own number. A project's is
+the range's bucket at its root, which is the root the rollup resolved each transcript's
+cwd to, worktrees folded in; a workspace's is the sum over every bucket whose root its
+directory is or holds, by the rule that homes a loose shell, so the foreman's own
+sessions in the workspace directory count toward the workspace. The share beside the
+dollars is cache reads over input, the ledger's `cached` column. A heading the report
+does not name prints `$0.00`, because "nothing" is an answer and an absent number
+would read as "not loaded"; every number is absent together for a watch token, which
+the route refuses.
+
+A goal's number has a different source, because the rollup keys on a transcript's cwd
+and a goal is a set of round records. `KnowledgeSummary` sums the `- Cost:` line of
+every `rounds/<N>.md` in the goal folder, the line `LOOP.md` defines and the foreman
+writes from `GET /api/archives/<id>/cost`, and serves `costUSD`, `inTokens` and
+`cacheReadTokens` beside the goal's other fields. The three are absent when no record
+carries a line, so a goal that predates the bill prints nothing rather than a zero.
+`kitterm goal cost` reads the same line through the same parser, and prefers the
+archived transcript where one still exists, so its total can differ from the page's by
+the line's rounding to cents and whole thousands. The knowledge route answers at watch
+grade, and so does the record file that holds the line; the summed number adds nothing
+a watch reader could not already open.
+
 ## Security model
 
 kitterm has no multi-user model. It serves shells as the user who runs it. Anyone who
