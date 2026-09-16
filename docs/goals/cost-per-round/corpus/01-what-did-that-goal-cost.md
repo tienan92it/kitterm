@@ -1,6 +1,7 @@
 # Request 01: what did that goal cost
 
-Approved 2026-09-15. Frozen.
+Approved 2026-09-15. Frozen. Table columns re-aligned 2026-09-16 to the
+command's right-aligned output; the numbers did not change.
 
 ## Fixture
 
@@ -23,10 +24,10 @@ A person runs `kitterm goal cost <root> example`.
 A monospace table with one row per round and a totals row:
 
 ```
-example                        $      in     cached    out   wall  tests  files  decision      PR
+example                         $      in  cached      out  wall tests  files   decision      PR
   001 send-on-transition     2.64   1.10M     93%    17.7k  5m48   +28     12   done         #12
-  002 the-toggle             0.41       0      —        0   0m00    +0      3   failed        —
-  003 subscriptions             —       —      —        —      —    +20      7   done         #9
+  002 the-toggle             0.41       0       —        0  0m00    +0      3   failed         —
+  003 subscriptions             —       —       —        —     —   +20      7   done          #9
   total                      3.05   1.10M     93%    17.7k  5m48   +48     22
   1 round predates the bill and is not counted.
 ```

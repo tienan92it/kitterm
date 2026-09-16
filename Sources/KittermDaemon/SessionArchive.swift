@@ -14,8 +14,8 @@ import Foundation
 /// on-disk contract, the same discipline the live-upgrade handoff uses.
 public enum SessionArchive {
     /// File I/O runs here, never on the event loop — the `SessionLogStore`
-    /// pattern.
-    private static let queue = DispatchQueue(label: "kitterm.archive")
+    /// pattern. The archive cost route reads `archive.json` on it too.
+    static let queue = DispatchQueue(label: "kitterm.archive")
 
     public static let formatVersion = 1
 
@@ -179,6 +179,32 @@ public enum SessionArchive {
                 .appendingPathComponent("archive.json")
             completion(try? Data(contentsOf: file))
         }
+    }
+
+    /// The Claude Code join an archive keeps (`agentSessionId` and
+    /// `agentTranscript`), or nil when the archive is missing, unreadable, or
+    /// has no join. A synchronous read of one small `archive.json`, for the
+    /// ledger in the CLI, which has no event loop, and for the archive cost
+    /// route, which calls it on the archive queue.
+    public static func agentJoin(of id: UUID) -> AgentJoin? {
+        let file = DaemonPaths.archiveDirectory
+            .appendingPathComponent(id.uuidString, isDirectory: true)
+            .appendingPathComponent("archive.json")
+        guard let data = try? Data(contentsOf: file),
+              let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let sessionID = json["agentSessionId"] as? String,
+              let transcript = json["agentTranscript"] as? String
+        else { return nil }
+        return AgentJoin(sessionID: sessionID, transcriptPath: transcript)
+    }
+
+    /// Whether `archive.json` exists for `id`. Synchronous, for the archive
+    /// cost route to tell "no such archive" from "no transcript".
+    public static func exists(_ id: UUID) -> Bool {
+        let file = DaemonPaths.archiveDirectory
+            .appendingPathComponent(id.uuidString, isDirectory: true)
+            .appendingPathComponent("archive.json")
+        return FileManager.default.fileExists(atPath: file.path)
     }
 
     /// One archive's captured output bytes, or nil. On the archive queue.

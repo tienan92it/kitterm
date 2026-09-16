@@ -366,6 +366,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             serveArchiveList(head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/archives/") && path.hasSuffix("/output"):
             serveArchiveOutput(path: path, head: head, context: context)
+        case (.GET, _) where path.hasPrefix("/api/archives/") && path.hasSuffix("/cost"):
+            serveArchiveCost(path: path, grade: grade, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/archives/"):
             serveArchiveDetail(path: path, head: head, context: context)
         case (.DELETE, _) where path.hasPrefix("/api/archives/"):
@@ -847,6 +849,77 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 return
             }
             guard let join = summary.agentJoin else {
+                self.writeJSON(
+                    status: .notFound,
+                    body: #"{"ok":false,"error":"no transcript"}"#,
+                    context: bound.value, version: head.version, keepAlive: false
+                )
+                return
+            }
+            let transcript = join.transcriptPath
+            let read = loop.makePromise(of: TranscriptBill.Outcome.self)
+            TranscriptBill.queue.async { read.succeed(TranscriptBill.read(path: transcript)) }
+            read.futureResult.whenSuccess { outcome in
+                let (status, body) = Self.costBody(outcome, join: join)
+                self.writeJSON(
+                    status: status, body: body,
+                    context: bound.value, version: head.version,
+                    keepAlive: status == .ok && head.isKeepAlive
+                )
+            }
+        }
+    }
+
+    /// `GET /api/archives/<uuid>/cost` — the bill of an archived session, the
+    /// same shape as `GET /api/sessions/<uuid>/cost`, read through the join
+    /// the archive keeps (`agentSessionId`, `agentTranscript`).
+    ///
+    /// This is the route a foreman reads at collect time: Claude Code writes
+    /// the `cost-state` line when it exits, archiving the session is what
+    /// ends it, and the live route answers 404 once the session is archived.
+    /// So the order is archive, then read here.
+    ///
+    /// Full grade only, like the session route. 404 `no such archive` when
+    /// there is no `archive.json`, 404 `no transcript` when the archive has
+    /// no join, 404 `transcript not found` when the recorded path does not
+    /// open. The archive file is read on the archive queue and the
+    /// transcript on `TranscriptBill.queue`; the loop pays for an encode.
+    private func serveArchiveCost(
+        path: String,
+        grade: TokenGrade,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let components = path.split(separator: "/")
+        // ["api", "archives", "<uuid>", "cost"]
+        guard components.count == 4, let id = UUID(uuidString: String(components[2])) else {
+            notFound(context: context, version: head.version)
+            return
+        }
+        let loop = context.eventLoop
+        let bound = NIOLoopBound(context, eventLoop: loop)
+        let lookup = loop.makePromise(of: (exists: Bool, join: AgentJoin?).self)
+        SessionArchive.queue.async {
+            lookup.succeed((SessionArchive.exists(id), SessionArchive.agentJoin(of: id)))
+        }
+        lookup.futureResult.whenSuccess { archive in
+            guard archive.exists else {
+                self.writeJSON(
+                    status: .notFound,
+                    body: #"{"ok":false,"error":"no such archive"}"#,
+                    context: bound.value, version: head.version, keepAlive: false
+                )
+                return
+            }
+            guard let join = archive.join else {
                 self.writeJSON(
                     status: .notFound,
                     body: #"{"ok":false,"error":"no transcript"}"#,

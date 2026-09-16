@@ -153,6 +153,17 @@ true statement and zeros would be a false one. A `cost-state` line with no model
 of zero, and answers as one. Full grade only: the bill is what a watch token exists to
 withhold.
 
+The bill exists only after the session ends, because Claude Code writes `cost-state` at
+exit, and archiving a session is what ends it. So the route a foreman reads at collect
+time is `GET /api/archives/<id>/cost`, the same shape, read through the join the archive
+keeps: archive, then read. `kitterm goal cost <path> [<slug>]` reads the same way for a
+whole knowledge package (`GoalLedger`): for every session a round record names, the
+archive's transcript when it reads as a bill, else the record's own `Cost:` line, and
+prints per round the dollars, the tokens, the cache-read share of input, the wall-clock,
+the tests added, the files changed from `git diff`, the decision and the PR, with totals
+per goal. The transcript is exact and the line is rounded, so `--json` carries the
+transcript's field names wherever one was read.
+
 ## Security model
 
 kitterm has no multi-user model. It serves shells as the user who runs it. Anyone who
