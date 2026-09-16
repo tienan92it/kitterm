@@ -168,6 +168,12 @@ decision moves to `docs/adr/`.
 
 ## Fleet view
 
+- A text field under 16 px makes iOS Safari zoom the page on focus, and
+  it stays zoomed after blur. The page's other text is 12 and 13 px, so
+  `.reply-input` carries 16 px alone. The alternative, a viewport
+  `maximum-scale=1`, stops pinch-zoom for every reader on every browser
+  and is rejected. (2026-09-16, workspace-ledger round 3)
+
 - A test that builds its fixtures from the current clock proves only what
   is true today. Round 3 shipped a restart line that printed a bare
   "10:35 PM", with a green suite and a real `kill -9` behind it, because
@@ -210,6 +216,14 @@ decision moves to `docs/adr/`.
   Chrome and Firefox; the routes serve `text/plain`. (2026-09-09, round 7)
 
 ## Foreman
+
+- A crew branches from `origin/main`, never from another goal's branch.
+  Round 3 branched from `d7439ce` on the capability 1 branch; capability
+  1 then merged to `main` as a squash, so the rebase hit an add/add
+  conflict on the whole goal package and the round's five-file diff had
+  to be re-applied onto `main` on a fresh branch. When an item needs
+  another branch's code, the foreman merges that branch first.
+  (2026-09-16, workspace-ledger round 3)
 
 - Gate a merge on the check's conclusion, never on `mergeable`. On
   2026-09-16 the foreman's merge script waited for `mergeable` to read

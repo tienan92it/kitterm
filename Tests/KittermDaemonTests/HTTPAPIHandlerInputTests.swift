@@ -11,10 +11,10 @@ import XCTest
 /// so no event-loop task has to run — this exercises the `--agent-control` gate
 /// and the request-body guards in isolation from a live session.
 final class HTTPAPIHandlerInputTests: XCTestCase {
-    private func makeChannel(agentControl: Bool) throws -> EmbeddedChannel {
+    private func makeChannel(agentControl: Bool, policy: AccessPolicy = .loopbackOnly) throws -> EmbeddedChannel {
         let handler = HTTPAPIHandler(
             registry: SessionRegistry(),
-            policy: .loopbackOnly,
+            policy: policy,
             agentControl: agentControl,
             staticRoot: nil
         )
@@ -29,10 +29,11 @@ final class HTTPAPIHandlerInputTests: XCTestCase {
     private func post(
         _ channel: EmbeddedChannel,
         uri: String,
-        body: [UInt8]?
+        body: [UInt8]?,
+        host: String = "127.0.0.1"
     ) throws -> (status: HTTPResponseStatus, body: String) {
         var headers = HTTPHeaders()
-        headers.add(name: "Host", value: "127.0.0.1")
+        headers.add(name: "Host", value: host)
         let head = HTTPRequestHead(version: .http1_1, method: .POST, uri: uri, headers: headers)
         try channel.writeInbound(HTTPServerRequestPart.head(head))
         if let body {
@@ -71,6 +72,45 @@ final class HTTPAPIHandlerInputTests: XCTestCase {
         XCTAssertTrue(
             response.body.contains("--agent-control"),
             "403 should name the flag, got: \(response.body)"
+        )
+    }
+
+    /// The first of the two refusals the fleet view's reply field can meet:
+    /// a watch token. It is refused before the `--agent-control` gate, with
+    /// the reason the page prints, and the same request with the full token
+    /// gets past the grade check. Driven as a request naming a trusted host,
+    /// because loopback is unconditionally full-grade.
+    func testWatchGradeReturns403BeforeTheFlag() throws {
+        let watch = "ktw_" + String(repeating: "e", count: 32)
+        let full = String(repeating: "f", count: 32)
+        let policy = AccessPolicy.proxied(token: full, watchToken: watch, trustedHosts: ["box.example.test"])
+        let channel = try makeChannel(agentControl: true, policy: policy)
+        defer { _ = try? channel.finish() }
+        let path = validInputPath()
+
+        let denied = try post(channel, uri: "\(path)?enter=1&token=\(watch)", body: Array("yes".utf8), host: "box.example.test")
+        XCTAssertEqual(denied.status, .forbidden, denied.body)
+        XCTAssertTrue(denied.body.contains("watch-only token"), "403 should name the grade, got: \(denied.body)")
+        XCTAssertFalse(denied.body.contains("--agent-control"), "the grade is refused before the flag: \(denied.body)")
+
+        // The full token passes the grade and the flag: the same request with
+        // an empty body reaches the body guard, which answers synchronously.
+        let admitted = try post(channel, uri: "\(path)?token=\(full)", body: nil, host: "box.example.test")
+        XCTAssertEqual(admitted.status, .badRequest, admitted.body)
+        XCTAssertTrue(admitted.body.contains("empty body"), admitted.body)
+    }
+
+    /// The second refusal: the daemon runs without `--agent-control`. The
+    /// body names the flag, which is what the reply field holds every
+    /// control with once it has seen it.
+    func testDisabledNamesTheFlagWithEnter() throws {
+        let channel = try makeChannel(agentControl: false)
+        defer { _ = try? channel.finish() }
+        let response = try post(channel, uri: "\(validInputPath())?enter=1", body: Array("yes".utf8))
+        XCTAssertEqual(response.status, .forbidden)
+        XCTAssertEqual(
+            response.body,
+            #"{"ok":false,"error":"agent control disabled; start the daemon with --agent-control"}"#
         )
     }
 

@@ -1,16 +1,15 @@
 # STATE: workspace-ledger
 
 - Status: active
-- Round: 2 of 3 in this budget (first budget)
-- Rounds total: 2
-- Last floor: green (2026-09-16, round 2 after: swift test 755, vitest 1233, bench p95 2.85 ms, Linux green)
-- Updated: 2026-09-16, round 2 closed
+- Round: 3 of 3 in this budget (first budget)
+- Rounds total: 3
+- Last floor: green (2026-09-16, round 3 after: swift test 757, vitest 1249, bench p95 2.83 ms, Linux green)
+- Updated: 2026-09-16, round 3 closed
 
 ## Queue
 
-1. `answer-from-the-page` (capability 2), running now.
-2. `capture-the-quota` (capability 3)
-3. `the-numbers-on-the-page` (capability 5)
+1. `capture-the-quota` (capability 3), running now as round 4.
+2. `the-numbers-on-the-page` (capability 5)
 
 ## Failures
 
@@ -24,6 +23,13 @@ None.
 
 ## Done
 
+- `answer-from-the-page` (capability 2), round 3, PR #121. See
+  `rounds/003.md`. A row whose agent holds the tty takes a line and posts
+  it to `POST /api/sessions/<id>/input?enter=1`; a needs-input row
+  carries the field in the strip. The send is withheld mid-turn with the
+  reason in place of `[send]`, never queued. Proved live: a line typed on
+  the page at 390 px reached a `claude` pane on a scratch daemon, which
+  answered `PONG`. 390 px height 1326, unchanged.
 - `three-levels-no-filters` (capability 1), round 1, `259e38e`. See
   `rounds/001.md`. Workspace, project, goal state; a heading only over
   two or more projects; working read from a live `goal:` label; the
@@ -55,9 +61,12 @@ its items.
 
 ## Next action
 
-Capability 2, `answer-from-the-page`, is running as round 3. Then
-capability 3, `capture-the-quota`, and last capability 5,
-`the-numbers-on-the-page`, which reads round 2's route.
+The first budget is spent at round 3. The human's standing direction is
+to run the remaining capabilities to the end, so the goal continues into
+a second budget rather than waiting.
+
+Capability 3, `capture-the-quota`, is running as round 4. Then capability
+5, `the-numbers-on-the-page`, which reads round 2's route.
 
 Three things capability 5 must take from the earlier rounds. The corpus
 fixture says `kitterm` is $699.93; the route says **$850.51**, because
