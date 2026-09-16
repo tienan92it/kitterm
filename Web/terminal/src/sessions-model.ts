@@ -1415,4 +1415,154 @@ export function receiptStands(sent: ReplySent | undefined, row: ModelRow): boole
  * `Answer foreman`, the same headline its buttons carry. */
 export function replyName(row: ModelRow): string {
   return `Answer ${rowName(row)}`;
+// --- the quota bars ----------------------------------------------------------
+
+/** One window as `GET /api/usage/limits` serves it, with the statusline's
+ * own field names: `used_percentage` of the window spent, `resets_at` in
+ * epoch seconds. */
+export type LimitWindow = { used_percentage: number; resets_at: number };
+
+/** The route's answer. `rateLimits` and the age fields are present only
+ * with a reading; `stale` is the daemon's call, past an hour. */
+export type UsageLimits = {
+  ok: boolean;
+  hasReading: boolean;
+  receivedAt?: number;
+  ageSeconds?: number;
+  stale?: boolean;
+  rateLimits?: Record<string, LimitWindow>;
+};
+
+/** How many cells a bar has. Twenty is 5% a cell, and the number beside
+ * the bar carries the rest; at 12 px it leaves room for the label and the
+ * countdown on one 390 px line. */
+export const QUOTA_CELLS = 20;
+
+/** The windows in the order the page lists them; any other key follows,
+ * by name, with its key as its label. */
+const QUOTA_ORDER = ["five_hour", "seven_day", "spend_limit"];
+const QUOTA_LABELS: Record<string, string> = {
+  five_hour: "Session (5h)",
+  seven_day: "Weekly",
+  spend_limit: "Spend limit",
+};
+
+export type QuotaState = "fresh" | "stale" | "reset";
+
+/** One bar: the label, the cells, the number, and the countdown, each a
+ * string the page prints as is. `filled` is how many of `QUOTA_CELLS` are
+ * full, so the page can colour the fill apart from the track. */
+export type QuotaBar = {
+  key: string;
+  label: string;
+  filled: number;
+  /** `#####···············`, `QUOTA_CELLS` long, without the brackets. */
+  cells: string;
+  /** `24%`, or `reset` once `resets_at` has passed. */
+  percent: string;
+  /** `resets 49m`, or `12m ago` once the window has reset. */
+  reset: string;
+  state: QuotaState;
+};
+
+/** What the panel shows: the bars, and one line under them. The line
+ * says how old the reading is, or why there is no bar. */
+export type QuotaPanel = { bars: QuotaBar[]; note: string };
+
+/** The label for a window key: the three the statusline sends by name,
+ * any other by its key with the underscores opened. */
+export function quotaLabel(key: string): string {
+  return QUOTA_LABELS[key] ?? key.replace(/_/g, " ");
+}
+
+/** The cells for a percentage, rounded to the nearest cell and clamped to
+ * the bar: `#` for a full cell, `·` for an empty one. */
+export function quotaCells(percent: number, cells: number = QUOTA_CELLS): { filled: number; cells: string } {
+  const clamped = Math.min(100, Math.max(0, Number.isFinite(percent) ? percent : 0));
+  const filled = Math.round((clamped / 100) * cells);
+  return { filled, cells: "#".repeat(filled) + "·".repeat(cells - filled) };
+}
+
+/** A span ahead in its two largest units: `49m`, `3h 12m`, `1d 14h`; under
+ * a minute reads `<1m`. Rounded down, so the countdown never promises a
+ * reset that has not come. */
+export function countdown(ms: number): string {
+  const minutes = Math.floor(Math.max(0, ms) / 60_000);
+  if (minutes < 1) return "<1m";
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return minutes % 60 === 0 ? `${hours}h` : `${hours}h ${minutes % 60}m`;
+  const days = Math.floor(hours / 24);
+  return hours % 24 === 0 ? `${days}d` : `${days}d ${hours % 24}h`;
+}
+
+/** The reading's age as the note prints it: `read just now` under a
+ * minute, then `read 4m ago`, `read 3h ago`, `read 2d ago`. */
+export function quotaAge(receivedAt: number, now: number): string {
+  const span = spanLabel(now - receivedAt);
+  return span === "now" ? "read just now" : `read ${span} ago`;
+}
+
+/**
+ * The quota panel, read at `now`, or null when the page has nothing to
+ * draw: no answer from the route (a daemon too old to have it, or a watch
+ * token, which the daemon refuses).
+ *
+ * A daemon never given a reading says so in words, and names the command
+ * that teaches the statusline to post one. A reading with no window says
+ * that too: Claude Code gives an API-key account none, and a session none
+ * before its first response. A window whose `resets_at` has passed draws
+ * an empty bar and says `reset`, because the number it carried is about a
+ * window that no longer exists; the statusline drops such a window on its
+ * next render, and the bar goes with it. A stale reading keeps its bars,
+ * and the note says how old they are, because a bar from three hours ago
+ * is still the account's last known state while the note stands beside it.
+ */
+export function quotaPanel(limits: UsageLimits | null | undefined, now: number): QuotaPanel | null {
+  if (!limits || !limits.ok) return null;
+  if (!limits.hasReading || typeof limits.receivedAt !== "number") {
+    return {
+      bars: [],
+      note: "No quota reading yet. Run kitterm statusline install, then open a Claude Code session; its statusline posts one.",
+    };
+  }
+  const age = quotaAge(limits.receivedAt, now);
+  const windows = Object.entries(limits.rateLimits ?? {});
+  if (windows.length === 0) {
+    return {
+      bars: [],
+      note: `The last reading, ${age.replace(/^read /, "")}, carried no quota window: an API-key account, or a session before its first response.`,
+    };
+  }
+  const rank = (key: string): number => {
+    const at = QUOTA_ORDER.indexOf(key);
+    return at === -1 ? QUOTA_ORDER.length : at;
+  };
+  windows.sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b));
+  const stale = limits.stale === true;
+  const bars = windows.map(([key, window]): QuotaBar => {
+    const resetAt = window.resets_at * 1000;
+    if (resetAt <= now) {
+      return {
+        key,
+        label: quotaLabel(key),
+        filled: 0,
+        cells: "·".repeat(QUOTA_CELLS),
+        percent: "reset",
+        reset: `${countdown(now - resetAt)} ago`,
+        state: "reset",
+      };
+    }
+    const percent = Math.round(Math.min(999, Math.max(0, window.used_percentage)));
+    return {
+      key,
+      label: quotaLabel(key),
+      ...quotaCells(window.used_percentage),
+      percent: `${percent}%`,
+      reset: `resets ${countdown(resetAt - now)}`,
+      state: stale ? "stale" : "fresh",
+    };
+  });
+  const note = stale ? `${age}; open a Claude Code session to refresh it.` : age;
+  return { bars, note };
 }

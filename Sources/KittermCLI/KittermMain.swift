@@ -71,6 +71,8 @@ enum KittermMain {
                 try GoalCommand.run(args.dropFirst())
             case "skills":
                 try SkillsCommand.run(args.dropFirst())
+            case "statusline":
+                try StatuslineCommand.run(args.dropFirst())
             case "identity":
                 try SigningIdentity.command(args.dropFirst())
             case "version", "--version", "-v":
@@ -196,6 +198,10 @@ enum KittermMain {
                                       # the ledger: dollars, tokens, wall-clock per round
               kitterm skills install [--dir DIR] | list
                                       # write the foreman skills into ~/.claude/skills
+              kitterm statusline install [--dir DIR] | print
+                                      # wrap the Claude Code statusline so it posts
+                                      # the quota to the daemon; --dir is the
+                                      # Claude config dir, default ~/.claude
               kitterm identity [status|setup|sign]
               kitterm version
 

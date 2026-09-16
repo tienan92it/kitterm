@@ -64,7 +64,10 @@ import {
   type PushFacts,
   type PushSupport,
   type PushToggle,
+  quotaPanel,
+  type QuotaPanel,
   type StampFormat,
+  type UsageLimits,
   type WorkspaceSection,
 } from "./sessions-model";
 import { loadSettings } from "./settings-store";
@@ -208,6 +211,10 @@ let restartDismissed: Set<string> = loadDismissed(RESTART_DISMISSED_KEY);
  * previous run's summary on it. Null until the feed answers, and on a daemon
  * whose ring no longer holds the event. */
 let started: DaemonStarted | null = null;
+/** The newest quota reading the daemon holds (`GET /api/usage/limits`), or
+ * null when the route did not answer: a daemon too old to have it, or a
+ * watch token, which it refuses. */
+let limits: UsageLimits | null = null;
 
 function loadDismissed(storageKey: string): Set<string> {
   try {
@@ -260,11 +267,12 @@ async function poll(): Promise<void> {
   inFlight = true;
   try {
     const headers = { accept: "application/json" };
-    const [sessionsRes, projectsRes, approvalsRes, archivesRes] = await Promise.all([
+    const [sessionsRes, projectsRes, approvalsRes, archivesRes, limitsRes] = await Promise.all([
       fetch("/api/sessions", { headers }),
       fetch("/api/projects", { headers }),
       fetch("/api/approvals", { headers }),
       fetch("/api/archives", { headers }),
+      fetch("/api/usage/limits", { headers }),
     ]);
     if (!sessionsRes.ok) throw new Error(String(sessionsRes.status));
     const data = (await sessionsRes.json()) as { ok: boolean; sessions: SessionRow[] };
@@ -280,6 +288,9 @@ async function poll(): Promise<void> {
     archives = archivesRes.ok
       ? (((await archivesRes.json()) as { archives?: ArchivedRow[] }).archives ?? [])
       : [];
+    // The quota is the account's accounting: full grade only, so a watch
+    // client's 403 leaves the panel off the page rather than on it empty.
+    limits = limitsRes.ok ? ((await limitsRes.json()) as UsageLimits) : null;
     sessions = data.sessions ?? [];
     failedPolls = 0;
     render();
@@ -399,6 +410,15 @@ const restartLine = document.createElement("p");
 restartLine.className = "restart";
 restartLine.hidden = true;
 restartLine.setAttribute("role", "status");
+/** The quota: one bar per window the statusline last reported, with its
+ * countdown, and one line saying how old the reading is or why there is
+ * none (`quotaPanel`). Above the fleet line, because it is the one number
+ * that decides whether more work can start. Hidden for a watch client. */
+const quotaBlock = document.createElement("section");
+quotaBlock.className = "quota";
+quotaBlock.hidden = true;
+quotaBlock.setAttribute("aria-label", "Quota");
+let quotaPainted = "";
 /** The text on the line right now, so an unchanged line is left alone. */
 let restartPainted = "";
 const cards = document.createElement("div");
@@ -410,7 +430,7 @@ function mountSkeleton(): void {
   skeletonMounted = true;
   // Status first, the push switch last: it is a thing the reader does, not
   // a thing the reader came to learn.
-  root.replaceChildren(header(), announce, strip, noticeLine, restartLine, cards, pushLine);
+  root.replaceChildren(header(), announce, strip, noticeLine, restartLine, quotaBlock, cards, pushLine);
 }
 
 function render(): void {
@@ -426,6 +446,8 @@ function render(): void {
   // The span a row prints moves once a minute at most, so it is in.
   const now = Date.now();
   const spans = sessions.map((s) => rowLine(s, now).since);
+  // The quota's text moves once a minute at most, like a row's span.
+  const quota = quotaPanel(limits, now);
   const signature = JSON.stringify([
     rendered,
     order,
@@ -444,6 +466,7 @@ function render(): void {
     // A receipt goes when the agent reports again; that report is out of
     // `rendered`, so the receipt's standing is in.
     sessions.map((s) => receiptStands(sent.get(s.id), s)),
+    quota,
   ]);
   if (signature === lastSignature) return;
   lastSignature = signature;
@@ -486,6 +509,7 @@ function paint(): void {
   noticeLine.hidden = notice === null;
   noticeLine.replaceChildren(...(notice === null ? [] : [noticeContent(notice)]));
   paintRestart();
+  paintQuota(quotaPanel(limits, Date.now()));
   paintPush();
   cards.replaceChildren(fleetCounts(listed), ...sectionList(listed, sessions, proposed));
   if (focusKey) restoreFocus(focusKey);
@@ -559,6 +583,60 @@ function restartContent(text: string, key: string): DocumentFragment {
 }
 
 // --- push notifications -----------------------------------------------------
+
+/** Show, hide, or leave the quota block; rebuilt only when its text
+ * changes, so the bars do not flicker on every poll. */
+function paintQuota(panel: QuotaPanel | null): void {
+  const signature = JSON.stringify(panel);
+  if (signature === quotaPainted) return;
+  quotaPainted = signature;
+  quotaBlock.hidden = panel === null;
+  quotaBlock.replaceChildren(...(panel === null ? [] : quotaContent(panel)));
+}
+
+/** One line per bar, then the note. The bar is the terminal's own:
+ * `[#####···············]`, the fill and the track two runs of text so the
+ * fill can wear the text colour and the track the muted one; the cells
+ * are hidden from a screen reader, which gets the label, the number and
+ * the countdown as words. */
+function quotaContent(panel: QuotaPanel): Node[] {
+  const nodes: Node[] = [];
+  if (panel.bars.length > 0) {
+    const list = document.createElement("ul");
+    list.className = "quota-bars";
+    for (const bar of panel.bars) {
+      const item = document.createElement("li");
+      item.className = `quota-bar ${bar.state}`;
+      const label = document.createElement("span");
+      label.className = "quota-label";
+      label.textContent = bar.label;
+      const cells = document.createElement("span");
+      cells.className = "quota-cells";
+      cells.setAttribute("aria-hidden", "true");
+      const fill = document.createElement("span");
+      fill.className = "quota-fill";
+      fill.textContent = bar.cells.slice(0, bar.filled);
+      const track = document.createElement("span");
+      track.className = "quota-track";
+      track.textContent = bar.cells.slice(bar.filled);
+      cells.append("[", fill, track, "]");
+      const percent = document.createElement("span");
+      percent.className = "quota-percent";
+      percent.textContent = bar.percent;
+      const reset = document.createElement("span");
+      reset.className = "quota-reset";
+      reset.textContent = bar.reset;
+      item.append(label, cells, percent, reset);
+      list.append(item);
+    }
+    nodes.push(list);
+  }
+  const note = document.createElement("p");
+  note.className = "quota-note";
+  note.textContent = panel.note;
+  nodes.push(note);
+  return nodes;
+}
 
 /** What the page knows about push, less `watchOnly`, which `fetchProfiles`
  * owns and `paintPush` reads at paint time. */

@@ -127,6 +127,13 @@ public enum DaemonPaths: Sendable {
         stateDirectory.appendingPathComponent("usage-daily.json")
     }
 
+    /// The newest quota reading a Claude Code statusline posted
+    /// (`UsageLimitsStore`), `0600`, kept so a restart does not turn "read
+    /// four minutes ago" into "never read".
+    public static var usageLimitsFile: URL {
+        stateDirectory.appendingPathComponent("usage-limits.json")
+    }
+
     /// The daemon's VAPID key pair (`VAPIDKeys`), `0600`, in its own file
     /// because it is a daemon secret and `push.json` holds only what the
     /// browser handed the page. Generated once; every phone's subscription

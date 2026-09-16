@@ -55,6 +55,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// The daily cost and token rollup behind `GET /api/usage/daily`; nil
     /// in a handler built without one, where the route answers 503.
     private let usageRollup: UsageRollup?
+    /// The newest quota reading behind `POST` and `GET /api/usage/limits`;
+    /// nil in a handler built without one, where the routes answer 503.
+    private let usageLimits: UsageLimitsStore?
     private var pendingHead: HTTPRequestHead?
     /// Accumulated request body, capped at `maxInputBytes`; only the input
     /// route reads it. `bodyOverflow` trips once the cap is exceeded so a large
@@ -82,7 +85,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         pushSubscriptions: PushSubscriptionStore? = nil,
         pushNotifier: PushNotifier? = nil,
         vapidKeys: VAPIDKeys? = nil,
-        usageRollup: UsageRollup? = nil
+        usageRollup: UsageRollup? = nil,
+        usageLimits: UsageLimitsStore? = nil
     ) {
         self.registry = registry
         self.projects = projects
@@ -101,6 +105,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.pushNotifier = pushNotifier
         self.vapidKeys = vapidKeys
         self.usageRollup = usageRollup
+        self.usageLimits = usageLimits
     }
 
     /// Put a fresh upgrade handler back in front of us so the *next* request on
@@ -373,6 +378,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             serveArchiveOutput(path: path, head: head, context: context)
         case (.GET, "/api/usage/daily"):
             serveUsageDaily(grade: grade, head: head, context: context)
+        case (.GET, "/api/usage/limits"):
+            serveUsageLimits(grade: grade, head: head, context: context)
+        case (.POST, "/api/usage/limits"):
+            serveUsageLimitsPost(body: body, bodyOverflow: bodyOverflow, grade: grade, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/archives/") && path.hasSuffix("/cost"):
             serveArchiveCost(path: path, grade: grade, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/archives/"):
@@ -1024,6 +1033,132 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 context: bound.value, version: head.version, keepAlive: head.isKeepAlive
             )
         }
+    }
+
+    /// `POST /api/usage/limits` — take the `rate_limits` object a Claude
+    /// Code statusline render was given (`UsageLimits`), and keep it as the
+    /// newest reading. The body is that object alone, as `jq -c
+    /// '.rate_limits'` prints it; the installed statusline wrapper posts it
+    /// in the background, so this route must never be slow and never holds
+    /// anything. Answers `{ok, receivedAt, windows}`.
+    ///
+    /// Full grade only: a loopback caller is full grade unconditionally,
+    /// which is what the statusline is, and a watch token has no business
+    /// telling the daemon what the account has spent.
+    private func serveUsageLimitsPost(
+        body: Data, bodyOverflow: Bool, grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext
+    ) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let store = usageLimits else {
+            writeJSON(
+                status: .serviceUnavailable,
+                body: #"{"ok":false,"error":"usage limits unavailable"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        if bodyOverflow || body.count > UsageLimits.maxBodyBytes {
+            writeJSON(
+                status: .payloadTooLarge,
+                body: #"{"ok":false,"error":"body too large"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] else {
+            badRequest("body must be the rate_limits object", head: head, context: context)
+            return
+        }
+        let reading: UsageLimits
+        switch UsageLimits.parse(json) {
+        case .success(let parsed): reading = parsed
+        case .failure(let invalid):
+            badRequest(invalid.reason, head: head, context: context)
+            return
+        }
+        let loop = context.eventLoop
+        let bound = NIOLoopBound(context, eventLoop: loop)
+        let done = loop.makePromise(of: Void.self)
+        UsageLimitsStore.queue.async {
+            store.record(reading)
+            done.succeed(())
+        }
+        done.futureResult.whenSuccess {
+            self.writeJSON(
+                status: .ok,
+                body: #"{"ok":true,"receivedAt":\#(reading.receivedAt),"windows":\#(reading.rateLimits.count)}"#,
+                context: bound.value, version: head.version, keepAlive: head.isKeepAlive
+            )
+        }
+    }
+
+    /// `GET /api/usage/limits` — the newest reading and its age:
+    /// `{ok, hasReading, receivedAt?, ageSeconds?, stale?, rateLimits?}`.
+    /// `rateLimits` is the object as it was posted, with the statusline's
+    /// own field names, so a page reads what the statusline read. A daemon
+    /// that was never given one answers `hasReading: false` and nothing
+    /// else, which is a plain answer and not an error: the route exists and
+    /// the page says so in words. `stale` is `ageSeconds` past
+    /// `UsageLimits.staleAfterSeconds`; the page decides what to draw.
+    ///
+    /// Full grade only, like the cost routes and the rollup: the quota is
+    /// the account's accounting, the class of thing a watch token exists to
+    /// withhold, and it names how much of the human's plan is spent.
+    private func serveUsageLimits(grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let store = usageLimits else {
+            writeJSON(
+                status: .serviceUnavailable,
+                body: #"{"ok":false,"error":"usage limits unavailable"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        writeJSON(
+            status: .ok, body: Self.usageLimitsBody(store.reading, now: Date()),
+            context: context, version: head.version, keepAlive: head.isKeepAlive
+        )
+    }
+
+    private struct LimitsResponse: Encodable {
+        let ok = true
+        let hasReading: Bool
+        let receivedAt: Int64?
+        let ageSeconds: Int?
+        let stale: Bool?
+        let rateLimits: [String: UsageLimits.Window]?
+    }
+
+    static func usageLimitsBody(_ reading: UsageLimits?, now: Date) -> String {
+        let response: LimitsResponse
+        if let reading {
+            response = LimitsResponse(
+                hasReading: true, receivedAt: reading.receivedAt, ageSeconds: reading.age(now: now),
+                stale: reading.isStale(now: now), rateLimits: reading.rateLimits
+            )
+        } else {
+            response = LimitsResponse(hasReading: false, receivedAt: nil, ageSeconds: nil, stale: nil, rateLimits: nil)
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(response), let body = String(data: data, encoding: .utf8) else {
+            return #"{"ok":false,"error":"encoding failed"}"#
+        }
+        return body
     }
 
     static func usageDailyBody(_ report: UsageRollup.DailyReport) -> String {
