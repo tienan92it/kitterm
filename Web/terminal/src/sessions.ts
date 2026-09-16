@@ -29,6 +29,7 @@ import {
   NESTED_INDENT_PX,
   NO_PROJECT,
   pickForeman,
+  lineProposals,
   proposalsName,
   proposedItems,
   proposedLabel,
@@ -69,6 +70,7 @@ import {
   type ProjectRef,
   type ProjectSection,
   type ProjectSummary,
+  type LineProposals,
   type ProposedItem,
   type ReplySent,
   type PushFacts,
@@ -1348,9 +1350,9 @@ function card(p: ProjectSection<SessionRow>, archived: ArchivedRow[], proposed: 
   if (p.rows.length > 0) section.append(rowList(p.rows));
   if (p.project) {
     const { working, pending, done } = p.goals;
-    if (working.length > 0) section.append(bucket("working", working.length, level), goalList(p.project, working));
+    if (working.length > 0) section.append(bucket("working", working.length, level), goalList(p.project, working, proposed));
     if (pending.length > 0) {
-      section.append(bucket("pending", pending.length, level), goalList(p.project, pending.map((line) => ({ line, rows: [] }))));
+      section.append(bucket("pending", pending.length, level), goalList(p.project, pending.map((line) => ({ line, rows: [] })), proposed));
     }
     if (done.length > 0) section.append(doneFold(p.project, done, proposed));
   }
@@ -1384,15 +1386,16 @@ function bucket(state: "working" | "pending", count: number, level: 2 | 3): HTML
 }
 
 /** The goals of one bucket: each its line, then the rows that carry its
- * label, set in under it. */
-function goalList(project: ProjectRef, entries: GoalEntry<SessionRow>[]): HTMLElement {
+ * label, set in under it. `proposed` is what the strip carries, so a line
+ * knows whether to carry its own proposals (`lineProposals`). */
+function goalList(project: ProjectRef, entries: GoalEntry<SessionRow>[], proposed: ProposedItem[]): HTMLElement {
   const list = document.createElement("ul");
   list.className = "goal-lines";
   for (const entry of entries) {
     const li = document.createElement("li");
     li.className = "goal";
     li.setAttribute("aria-label", `${entry.line.title} in ${project.name}`);
-    li.append(goalLineItem(entry.line));
+    li.append(goalLineItem(entry.line, project, proposed));
     if (entry.rows.length > 0) li.append(rowList(entry.rows));
     list.append(li);
   }
@@ -1405,8 +1408,11 @@ function goalList(project: ProjectRef, entries: GoalEntry<SessionRow>[]): HTMLEl
  * end, because on one line with the rest it read "Roun…" at 390 px. A
  * goal whose files still hold the template reads "not written yet" after
  * its slug. No floor word, no slug, no record link: the record is history,
- * and the done fold and the strip's proposal carry it (`goalLine`). */
-function goalLineItem(line: GoalLine): HTMLElement {
+ * and the done fold and the strip's proposal carry it (`goalLine`). The
+ * proposals `STATE.md` lists stand at the line's end only when the strip
+ * does not carry them: a stopped goal's, or a dismissed item's
+ * (`lineProposals`). */
+function goalLineItem(line: GoalLine, project: ProjectRef, proposed: ProposedItem[]): HTMLElement {
   const li = document.createElement("div");
   li.className = "goal-line";
   li.append(span("goal-name", line.title));
@@ -1422,6 +1428,8 @@ function goalLineItem(line: GoalLine): HTMLElement {
     c.title = "the sum of this goal's round records' Cost lines, at the full API rate, and the cache-read share";
     li.append(c);
   }
+  const waiting = lineProposals(project.id, line.summary, proposed);
+  if (waiting) li.append(proposalsLink(project, line.summary, waiting, true));
   if (line.next) {
     const next = span("goal-next", line.next);
     next.title = line.next;
@@ -1430,9 +1438,10 @@ function goalLineItem(line: GoalLine): HTMLElement {
   return li;
 }
 
-/** The done goals behind one line, "7 done": each with its title and its
- * record link, unless the strip carries the record already
- * (`cardRecord`). Folded, because a done goal is history. */
+/** The done goals behind one line, "7 done": each with its title, the
+ * proposals its `STATE.md` still lists (`lineProposals`; a done goal's are
+ * never in the strip), and its record link, unless the strip carries the
+ * record already (`cardRecord`). Folded, because a done goal is history. */
 function doneFold(project: ProjectRef, done: KnowledgeSummary[], proposed: ProposedItem[]): HTMLElement {
   const key = `done:${project.id}`;
   const details = document.createElement("details");
@@ -1451,6 +1460,8 @@ function doneFold(project: ProjectRef, done: KnowledgeSummary[], proposed: Propo
   for (const goal of done) {
     const li = document.createElement("li");
     li.append(span("archived-name", goalTitle(goal)));
+    const waiting = lineProposals(project.id, goal, proposed);
+    if (waiting) li.append(proposalsLink(project, goal, waiting, false));
     const record = cardRecord(project.id, goal, proposed);
     if (record !== null) {
       const link = knowledgeLink(project.id, record, `record ${recordLabel(record)}`, "card-knowledge");
@@ -1462,6 +1473,18 @@ function doneFold(project: ProjectRef, done: KnowledgeSummary[], proposed: Propo
   }
   details.append(ul);
   return details;
+}
+
+/** The proposals a goal's line carries when the strip does not
+ * (`lineProposals`): the count, `2 proposals`, linking the `STATE.md` they
+ * wait in, named like the strip's own link. `edge` sets it at the line's
+ * right end, where the done fold's record link sits; in the fold the
+ * record link takes that place and this one stands before it. */
+function proposalsLink(project: ProjectRef, goal: KnowledgeSummary, waiting: LineProposals, edge: boolean): HTMLAnchorElement {
+  const link = knowledgeLink(project.id, waiting.path, proposedLabel(waiting.count), "card-knowledge");
+  if (edge) link.classList.add("goal-link");
+  link.setAttribute("aria-label", proposalsName(waiting.count, project.name, goalTitle(goal)));
+  return link;
 }
 
 /** A link to one file of a project's package, opened in a new tab. Keyed
