@@ -9,7 +9,7 @@ round record; it does not edit it.
 | Check | Command | Pass condition |
 |---|---|---|
 | Swift tests | `swift test` | exit 0, 726 tests at the start |
-| Web | `Web/terminal: tsc --noEmit && vite build && vitest run` | exit 0, 1328 at the start |
+| Web | `Web/terminal: tsc --noEmit && vite build && vitest run` | exit 0, 1214 at the start |
 | Bench | `swift run KittermBench interactive-echo` | p95 under 50 ms |
 | Linux build | the `facts.md` pipe into `swift:6.1` | `Build complete`, 0 errors |
 
