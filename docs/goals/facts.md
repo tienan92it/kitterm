@@ -211,6 +211,17 @@ decision moves to `docs/adr/`.
 
 ## Foreman
 
+- Gate a merge on the check's conclusion, never on `mergeable`. On
+  2026-09-16 the foreman's merge script waited for `mergeable` to read
+  `MERGEABLE` and merged #113 while its test job read `fail`, because
+  the repository has no branch protection and `mergeable` only means the
+  branches combine. `gh pr checks <n>` must show every job `pass` before
+  `gh pr merge`. The red test was a live-repository assertion that broke
+  the moment `main` moved; it is a smoke test now.
+  (2026-09-16, `cost-per-round` round 4)
+- A test that pins the real `docs/goals/` output breaks on the next round
+  record. The fixture pins the exact table; the live repository gets a
+  smoke test. (2026-09-16, `cost-per-round` round 4)
 - A plan row that names a token must name everything the token paints. On
   2026-09-11 a row called `--ui-bg-sunken` "the file preview's
   background"; it also paints `.extra-keys`, `.file-picker-header`,
