@@ -54,7 +54,7 @@ final class GoalCostTests: XCTestCase {
         process.standardError = FileHandle.nullDevice
         try process.run()
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+        waitForExit(of: process, output: String(decoding: data, as: UTF8.self))
         XCTAssertEqual(process.terminationStatus, 0, "git \(arguments)")
         return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
     }

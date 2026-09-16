@@ -189,7 +189,7 @@ final class PreviousRunReportTests: XCTestCase {
         let killed = try XCTUnwrap(LastRunStore.read(recordFile))
 
         XCTAssertEqual(kill(first.pid, SIGKILL), 0)
-        first.process.waitUntilExit()
+        waitForExit(of: first.process)
         XCTAssertNil(
             try XCTUnwrap(LastRunStore.read(recordFile)).endedAt,
             "the kill left no ending; that absence is what the next run reports"
@@ -231,7 +231,7 @@ final class PreviousRunReportTests: XCTestCase {
         XCTAssertEqual(spawned.status, 201, spawned.body)
 
         XCTAssertEqual(kill(first.pid, SIGTERM), 0)
-        first.process.waitUntilExit()
+        waitForExit(of: first.process)
         let stopped = try XCTUnwrap(LastRunStore.read(recordFile))
         XCTAssertEqual(stopped.reason, .stopped)
 
@@ -308,7 +308,7 @@ final class PreviousRunReportTests: XCTestCase {
     private func stop(_ daemon: Daemon) {
         guard daemon.process.isRunning else { return }
         kill(daemon.pid, SIGTERM)
-        daemon.process.waitUntilExit()
+        waitForExit(of: daemon.process)
     }
 
     /// The `server.log` every run of this test's daemons appends to.

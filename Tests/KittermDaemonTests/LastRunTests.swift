@@ -245,7 +245,7 @@ final class LastRunTests: XCTestCase {
         defer {
             if daemon.isRunning {
                 kill(daemon.processIdentifier, SIGKILL)
-                daemon.waitUntilExit()
+                waitForExit(of: daemon)
             }
         }
 
@@ -257,7 +257,7 @@ final class LastRunTests: XCTestCase {
         XCTAssertNil(live.endedAt, "a running daemon's record has no ending")
 
         XCTAssertEqual(kill(pid, SIGKILL), 0)
-        daemon.waitUntilExit()
+        waitForExit(of: daemon)
 
         let record = try XCTUnwrap(LastRunStore.read(file))
         XCTAssertEqual(record.pid, pid)

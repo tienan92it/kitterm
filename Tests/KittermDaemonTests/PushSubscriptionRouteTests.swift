@@ -223,7 +223,7 @@ final class PushSubscriptionRouteTests: XCTestCase {
         XCTAssertEqual(mode & 0o777, 0o600)
 
         XCTAssertEqual(kill(first.pid, SIGTERM), 0)
-        first.process.waitUntilExit()
+        waitForExit(of: first.process)
 
         let second = try startDaemon()
         defer { stop(second) }
@@ -353,7 +353,7 @@ final class PushSubscriptionRouteTests: XCTestCase {
     private func stop(_ daemon: Daemon) {
         guard daemon.process.isRunning else { return }
         kill(daemon.pid, SIGTERM)
-        daemon.process.waitUntilExit()
+        waitForExit(of: daemon.process)
     }
 
     private func isHealthy(port: Int) async -> Bool {

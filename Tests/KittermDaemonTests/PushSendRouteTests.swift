@@ -370,7 +370,7 @@ final class PushSendRouteTests: XCTestCase {
     private func stop(_ daemon: Daemon) {
         guard daemon.process.isRunning else { return }
         kill(daemon.pid, SIGTERM)
-        daemon.process.waitUntilExit()
+        waitForExit(of: daemon.process)
     }
 
     private func isHealthy(port: Int) async -> Bool {

@@ -114,14 +114,14 @@ final class PidAfterBindTests: XCTestCase {
         process.standardError = pipe
         try process.run()
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+        waitForExit(of: process, output: String(decoding: data, as: UTF8.self))
         return (process.terminationStatus, String(decoding: data, as: UTF8.self))
     }
 
     private func stop(_ daemon: Daemon) {
         guard daemon.process.isRunning else { return }
         kill(daemon.pid, SIGTERM)
-        daemon.process.waitUntilExit()
+        waitForExit(of: daemon.process)
     }
 
     private func read(_ file: URL) -> String? {
