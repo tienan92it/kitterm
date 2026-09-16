@@ -7,22 +7,22 @@ import {
   applicationServerKey,
   approvalName,
   attention,
+  bucketLabel,
   cardRecord,
   cardRows,
-  crews as crewsOf,
   dismissKey,
   dismissName,
   doneLabel,
-  filter as applyFilter,
   fleetLine,
   focusKey,
   folderOf,
-  goalLines,
   headingLine,
   goalTitle,
   group,
   knowledgeUrl,
+  levels,
   needsYouMessage,
+  NESTED_INDENT_PX,
   NO_PROJECT,
   pickForeman,
   proposalsName,
@@ -37,29 +37,30 @@ import {
   rowName,
   sameServerKey,
   stateLabel,
-  stateName,
   stateOf,
   stripWhere,
-  tally,
   withProposed,
+  workspaceHome,
   type Approval,
   type AttentionItem,
   type DaemonStarted,
-  type Filter,
+  type GoalEntry,
   type GoalLine,
-  type Group,
+  type Heading,
   type KnowledgeAnswer,
   type KnowledgeSummary,
   type MergedState,
   type ModelRow,
   type ProfileWidth,
   type ProjectRef,
+  type ProjectSection,
   type ProjectSummary,
   type ProposedItem,
   type PushFacts,
   type PushSupport,
   type PushToggle,
   type StampFormat,
+  type WorkspaceSection,
 } from "./sessions-model";
 import { loadSettings } from "./settings-store";
 import { applyThemeTokens } from "./theme-tokens";
@@ -74,9 +75,10 @@ import { findThemeById } from "./themes";
  *
  * The page reads top to bottom in the order a returning reader needs: the
  * title, what needs them (the strip), what broke (the failed items and the
- * restart line), one line of counts, then one card per project with its
- * rows, its open goals and its folds. The tools, the search, the chips and
- * the push switch, sit under the projects. The pure model
+ * restart line), one line of counts, then the work in three levels: a
+ * workspace, its projects, and each project's goals by state (working,
+ * pending, done). There is no search and no filter; the grouping is the
+ * navigation. The push switch sits under the sections. The pure model
  * (`sessions-model.ts`) decides what goes where; this file only paints it.
  *
  * Deliberately its own page, not the terminal: `/` stays "open a tab, get a
@@ -110,8 +112,6 @@ type ArchivedRow = {
   project?: ProjectRef;
 };
 
-type Kind = "human" | "crew";
-
 /** What the strip lists: the model's attention items plus a proposal that
  * waits on the human in a project's knowledge package. */
 type StripItem = AttentionItem<SessionRow> | ProposedItem;
@@ -127,19 +127,8 @@ type KnowledgeEntry = {
   missesLeft: number;
 };
 
-/** The chip and search choice. Kept in `sessionStorage` so a reload on the
- * same tab keeps the view; a new tab starts clean. */
-type Choice = {
-  states: MergedState[];
-  projects: string[];
-  crews: string[];
-  kind: Kind | null;
-  query: string;
-};
-
 const POLL_MS = 2000;
 const KNOWLEDGE_RETRY_POLLS = 30;
-const CHOICE_KEY = "kitterm.sessions.filter";
 /** The proposals the human dismissed, `dismissKey`s in `localStorage`, so
  * a read proposal stays out of the strip and the title count across reloads
  * until the project's next round. */
@@ -149,16 +138,6 @@ const DISMISSED_KEY = "kitterm.sessions.dismissed";
  * so one list does not have to hold two kinds of entry. A dismissal keys on
  * the epoch, so it dies with the run it answers. */
 const RESTART_DISMISSED_KEY = "kitterm.sessions.restart-dismissed";
-const STATE_ORDER: MergedState[] = [
-  "needs-approval",
-  "needs-input",
-  "failed",
-  "working",
-  "completed",
-  "idle",
-  "exited",
-  "unknown",
-];
 
 const settings = loadSettings();
 const activeTheme = findThemeById(settings.themeId);
@@ -205,25 +184,6 @@ const spawnProfile = new Map<string, string>();
 /** The knowledge summary of each registered project, by id, with the ETag
  * the daemon gave it: an unchanged package answers 304 and repaints nothing. */
 const knowledge = new Map<string, KnowledgeEntry>();
-let choice: Choice = loadChoice();
-
-function loadChoice(): Choice {
-  const empty: Choice = { states: [], projects: [], crews: [], kind: null, query: "" };
-  try {
-    const raw = sessionStorage.getItem(CHOICE_KEY);
-    if (!raw) return empty;
-    const parsed = JSON.parse(raw) as Partial<Choice>;
-    return {
-      states: Array.isArray(parsed.states) ? parsed.states : [],
-      projects: Array.isArray(parsed.projects) ? parsed.projects : [],
-      crews: Array.isArray(parsed.crews) ? parsed.crews : [],
-      kind: parsed.kind === "human" || parsed.kind === "crew" ? parsed.kind : null,
-      query: typeof parsed.query === "string" ? parsed.query : "",
-    };
-  } catch {
-    return empty;
-  }
-}
 
 let dismissed: Set<string> = loadDismissed(DISMISSED_KEY);
 let restartDismissed: Set<string> = loadDismissed(RESTART_DISMISSED_KEY);
@@ -259,14 +219,6 @@ function dismissRestart(key: string): void {
   restartDismissed.add(key);
   saveDismissed(RESTART_DISMISSED_KEY, restartDismissed);
   render();
-}
-
-function saveChoice(): void {
-  try {
-    sessionStorage.setItem(CHOICE_KEY, JSON.stringify(choice));
-  } catch {
-    // Storage full or blocked: the choice still applies for this page life.
-  }
 }
 
 async function fetchProfiles(): Promise<void> {
@@ -396,30 +348,11 @@ function knowledgeEntries(): { project: ProjectRef; summary: KnowledgeSummary }[
 
 // --- layout skeleton --------------------------------------------------------
 // The page has fixed regions. Each poll replaces the children of the ones
-// that changed; the search box lives in `filters` and is built once, so a
-// repaint never steals the caret from under a typing thumb.
+// that changed.
 
 const strip = document.createElement("section");
 strip.className = "strip";
 strip.setAttribute("aria-label", "Needs you");
-const filters = document.createElement("section");
-filters.className = "filters";
-filters.setAttribute("aria-label", "Filters");
-const chips = document.createElement("div");
-chips.className = "chips";
-const search = document.createElement("input");
-search.type = "search";
-search.className = "search";
-search.placeholder = "Search name, folder, or command";
-search.setAttribute("aria-label", "Search sessions");
-search.autocomplete = "off";
-search.value = choice.query;
-search.addEventListener("input", () => {
-  choice = { ...choice, query: search.value };
-  saveChoice();
-  paint();
-});
-filters.append(search, chips);
 const noticeLine = document.createElement("p");
 noticeLine.className = "notice";
 noticeLine.hidden = true;
@@ -458,9 +391,9 @@ let skeletonMounted = false;
 function mountSkeleton(): void {
   if (!root || skeletonMounted) return;
   skeletonMounted = true;
-  // Status first, tools last: the search, the chips and the push switch are
-  // things the reader does, not things the reader came to learn.
-  root.replaceChildren(header(), announce, strip, noticeLine, restartLine, cards, filters, pushLine);
+  // Status first, the push switch last: it is a thing the reader does, not
+  // a thing the reader came to learn.
+  root.replaceChildren(header(), announce, strip, noticeLine, restartLine, cards, pushLine);
 }
 
 function render(): void {
@@ -496,10 +429,10 @@ function render(): void {
   paint();
 }
 
-/** Paint from the current snapshot and choice. Called by `render` when the
- * snapshot changed and by the chips when the choice changed.
+/** Paint from the current snapshot. Called by `render` when the snapshot
+ * changed.
  *
- * Every control carries a `data-focus` key (row id and action, chip, spawn
+ * Every control carries a `data-focus` key (row id and action, fold, spawn
  * control, approval button), so the control that had focus before the four
  * regions were rebuilt gets it back by key afterwards. Without this a poll
  * that repainted while a keyboard user sat on Kill sent focus to `body`. */
@@ -511,9 +444,9 @@ function paint(): void {
   const { foreman } = pickForeman(sessions);
   const proposed = proposedItems(knowledgeEntries(), dismissed);
   const items: StripItem[] = withProposed(attention(sessions, approvals), proposed);
-  // What the strip shows, the cards do not list again (`cardRows`); the
-  // chips and the search reach only what the cards list. The foreman is a
-  // row of its own project, first among them (`sortInGroup`).
+  // What the strip shows, the sections do not list again (`cardRows`). The
+  // foreman is a row of its own project or workspace, first among them
+  // (`sortInGroup`).
   const listed = cardRows(sessions, items);
 
   // Title badge: how many items want the human right now, so a phone's tab
@@ -529,19 +462,18 @@ function paint(): void {
   badge.setAttribute("aria-label", `${sessions.length} sessions`);
 
   strip.replaceChildren(...stripContent(items, foreman !== null));
-  chips.replaceChildren(...chipGroups(listed));
   noticeLine.hidden = notice === null;
   noticeLine.replaceChildren(...(notice === null ? [] : [noticeContent(notice)]));
   paintRestart();
   paintPush();
-  cards.replaceChildren(fleetCounts(listed), ...cardList(listed, sessions, proposed));
+  cards.replaceChildren(fleetCounts(listed), ...sectionList(listed, sessions, proposed));
   if (focusKey) restoreFocus(focusKey);
 }
 
 function restoreFocus(key: string): void {
   const target = root?.querySelector<HTMLElement>(`[data-focus="${CSS.escape(key)}"]`);
-  // The control is gone when its row was ended or its chip left the page;
-  // focus then stays where the browser put it.
+  // The control is gone when its row was ended; focus then stays where the
+  // browser put it.
   target?.focus({ preventScroll: true });
 }
 
@@ -1003,254 +935,182 @@ function fleetCounts(rows: SessionRow[]): HTMLElement {
   return line;
 }
 
-// --- filters ----------------------------------------------------------------
+// --- the three levels -------------------------------------------------------
 
-function chipGroups(rows: SessionRow[]): Node[] {
+/** The sections under the fleet line: `rows` is what they list (the strip's
+ * sessions left out), `owned` is every session, so a project can tell no
+ * session from sessions that are all in the strip. `levels` decides the
+ * tree; this paints one workspace section or one lone project per entry,
+ * then homes the archives whose section is not on the page. */
+function sectionList(rows: SessionRow[], owned: SessionRow[], proposed: ProposedItem[]): Node[] {
+  const sections = levels(rows, owned, projects, (id) => knowledge.get(id)?.goals);
+  const headed = sections.flatMap((s) => (s.heading?.path ? [s.heading.path] : []));
   const nodes: Node[] = [];
-  const present = tally(rows);
-  const stateChips = STATE_ORDER.filter((s) => (present[s] ?? 0) > 0 || choice.states.includes(s)).map(
-    (state) =>
-      chip(stateName(state), `state:${state}`, choice.states.includes(state), () => {
-        choice = { ...choice, states: toggle(choice.states, state) };
-        commitChoice();
-      }),
-  );
-  if (stateChips.length > 0) nodes.push(chipGroup("State", stateChips));
-
-  const projectChips: HTMLElement[] = [];
-  const knownIds = new Set<string>();
-  const listed = [...projects].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
-  for (const project of listed) {
-    knownIds.add(project.id);
-    projectChips.push(projectChip(project.id, project.name));
-  }
-  for (const row of rows) {
-    if (row.project && !knownIds.has(row.project.id)) {
-      knownIds.add(row.project.id);
-      projectChips.push(projectChip(row.project.id, row.project.name));
+  const homed = new Set<string>();
+  for (const s of sections) {
+    if (s.heading === null) {
+      const p = s.projects[0];
+      homed.add(p.key);
+      nodes.push(card(p, archivesOf(p.key, headed, null), proposed, 2));
+      continue;
     }
-  }
-  if (rows.some((row) => !row.project) || choice.projects.includes(NO_PROJECT)) {
-    knownIds.add(NO_PROJECT);
-    projectChips.push(projectChip(NO_PROJECT, "no project"));
-  }
-  // A chosen id whose project left the page still gets a chip, so the
-  // filter that hides every card is visible and can be turned off.
-  for (const id of choice.projects) if (!knownIds.has(id)) projectChips.push(projectChip(id, id));
-  if (projectChips.length > 1 || choice.projects.length > 0) nodes.push(chipGroup("Project", projectChips));
-
-  const crewNames = crewsOf(rows);
-  for (const crew of choice.crews) if (!crewNames.includes(crew)) crewNames.push(crew);
-  if (crewNames.length > 0) {
-    nodes.push(
-      chipGroup(
-        "Crew",
-        crewNames.map((crew) =>
-          chip(`crew: ${crew}`, `crew:${crew}`, choice.crews.includes(crew), () => {
-            choice = { ...choice, crews: toggle(choice.crews, crew) };
-            commitChoice();
-          }),
-        ),
-      ),
-    );
-  }
-
-  const kinds: Kind[] = ["human", "crew"];
-  nodes.push(
-    chipGroup(
-      "Made by",
-      kinds.map((kind) =>
-        chip(kind === "human" ? "a person" : "a program", `kind:${kind}`, choice.kind === kind, () => {
-          choice = { ...choice, kind: choice.kind === kind ? null : kind };
-          commitChoice();
-        }),
-      ),
-    ),
-  );
-
-  if (isNarrowed()) {
-    const clear = button("Clear filters", "quiet", () => {
-      choice = { states: [], projects: [], crews: [], kind: null, query: "" };
-      search.value = "";
-      commitChoice();
-    });
-    clear.dataset.focus = "clear-filters";
-    nodes.push(clear);
-  }
-  return nodes;
-}
-
-function projectChip(id: string, name: string): HTMLElement {
-  return chip(name, `project:${id}`, choice.projects.includes(id), () => {
-    choice = { ...choice, projects: toggle(choice.projects, id) };
-    commitChoice();
-  });
-}
-
-function chipGroup(label: string, items: HTMLElement[]): HTMLElement {
-  const box = document.createElement("div");
-  box.className = "chip-group";
-  box.setAttribute("role", "group");
-  const name = document.createElement("span");
-  name.className = "chip-label";
-  name.id = `chips-${label.toLowerCase().replace(/\W+/g, "-")}`;
-  name.textContent = label;
-  // Named by the visible word, so a screen reader says it once.
-  box.setAttribute("aria-labelledby", name.id);
-  box.append(name, ...items);
-  return box;
-}
-
-/** One filter chip. `key` names it across repaints, so the chip a keyboard
- * user toggled keeps focus after the rebuild. */
-function chip(label: string, key: string, on: boolean, onToggle: () => void): HTMLElement {
-  const b = document.createElement("button");
-  b.type = "button";
-  b.className = on ? "chip on" : "chip";
-  b.setAttribute("aria-pressed", on ? "true" : "false");
-  b.dataset.focus = `chip:${key}`;
-  b.textContent = label;
-  b.addEventListener("click", onToggle);
-  return b;
-}
-
-function toggle<T>(list: T[], value: T): T[] {
-  return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
-}
-
-function commitChoice(): void {
-  saveChoice();
-  paint();
-}
-
-function isNarrowed(): boolean {
-  return (
-    choice.states.length > 0 ||
-    choice.projects.length > 0 ||
-    choice.crews.length > 0 ||
-    choice.kind !== null ||
-    choice.query.trim() !== ""
-  );
-}
-
-function currentFilter(): Filter {
-  return {
-    states: choice.states,
-    projects: choice.projects,
-    crews: choice.crews,
-    kind: choice.kind ?? undefined,
-    query: choice.query,
-  };
-}
-
-// --- project cards ----------------------------------------------------------
-
-/** The cards: `rows` is what they list (the strip's sessions left out),
- * `owned` is every session, so a card can tell a project with no session
- * from one whose sessions are all in the strip. */
-function cardList(rows: SessionRow[], owned: SessionRow[], proposed: ProposedItem[]): Node[] {
-  const shown = applyFilter(rows, currentFilter());
-  const groups = group(shown, projects);
-  const ownedCount = new Map(group(owned, projects).map((g) => [g.key, g.rows.length]));
-  const narrowed = isNarrowed();
-  const nodes: Node[] = [];
-  for (const g of groups) {
-    // A registered project with no session is a card only on the full view;
-    // a narrowed view lists what matched and nothing else.
-    if (narrowed && g.rows.length === 0) continue;
-    if (choice.projects.length > 0 && !choice.projects.includes(g.key)) continue;
-    nodes.push(card(g, archivesFor(g.key), ownedCount.get(g.key) ?? 0, proposed));
+    for (const p of s.projects) homed.add(p.key);
+    nodes.push(workspace(s, headed, proposed));
   }
   if (nodes.length === 0) {
     const empty = document.createElement("p");
     empty.className = "empty";
-    empty.textContent = narrowed
-      ? "No session matches these filters."
-      : watchOnly
-        ? "No live sessions to watch."
-        : "No live sessions. Open a shell to start one.";
+    empty.textContent = watchOnly ? "No live sessions to watch." : "No live sessions. Open a shell to start one.";
     nodes.push(empty);
   }
-  // Archives whose project card is not on the page still need a home.
-  if (!narrowed) {
-    const homed = new Set(groups.map((g) => g.key));
-    const orphaned = archives.filter((a) => !homed.has(a.project?.id ?? NO_PROJECT));
-    if (orphaned.length > 0) nodes.push(archivedFold("__orphaned", orphaned));
-  }
+  // Archives whose section is not on the page still need a home: a project
+  // the daemon no longer lists, or shells outside every project when no
+  // "No project" section and no workspace holds them.
+  const orphaned = archives.filter((a) => {
+    const key = a.project?.id ?? NO_PROJECT;
+    if (key !== NO_PROJECT) return !homed.has(key);
+    return workspaceHome(a.cwd ?? "", headed) === null && !homed.has(NO_PROJECT);
+  });
+  if (orphaned.length > 0) nodes.push(archivedFold("__orphaned", orphaned));
   return nodes;
 }
 
-function archivesFor(key: string): ArchivedRow[] {
-  return archives.filter((a) => (a.project?.id ?? NO_PROJECT) === key);
+/** The archives of one section: a project's by its id; for the shells
+ * outside every project, the ones whose cwd `home` holds (a headed
+ * workspace directory), or the ones no headed workspace holds when `home`
+ * is null, the same rule `levels` applies to the live rows. */
+function archivesOf(key: string, headed: string[], home: string | null): ArchivedRow[] {
+  return archives.filter((a) => {
+    if ((a.project?.id ?? NO_PROJECT) !== key) return false;
+    if (key !== NO_PROJECT) return true;
+    return workspaceHome(a.cwd ?? "", headed) === home;
+  });
+}
+
+/**
+ * One workspace: its heading line, the shells that sit in its directory
+ * outside every project, its archives, then its projects set in by
+ * `NESTED_INDENT_PX`. The heading is a level-2 heading and the projects
+ * under it level 3, so a reader who moves by heading gets the tree.
+ */
+function workspace(s: WorkspaceSection<SessionRow>, headed: string[], proposed: ProposedItem[]): HTMLElement {
+  const heading = s.heading!;
+  const section = document.createElement("section");
+  section.className = "workspace";
+  section.setAttribute("aria-label", heading.name);
+  const head = document.createElement("div");
+  head.className = "head";
+  head.append(headingName(heading, 2));
+  section.append(head);
+  if (s.rows.length > 0) section.append(rowList(s.rows, heading.path ?? undefined));
+  const archived = archivesOf(NO_PROJECT, headed, heading.path);
+  if (archived.length > 0) section.append(archivedFold(`workspace:${heading.path}`, archived));
+  const nested = document.createElement("div");
+  nested.className = "nested";
+  for (const p of s.projects) nested.append(card(p, archivesOf(p.key, headed, null), proposed, 3));
+  section.append(nested);
+  return section;
+}
+
+/** The heading's name as an `h2` or `h3`, with the directory it stands for
+ * as its tooltip. A cost, once a capability has one, prints after the name
+ * on this line. */
+function headingName(heading: Heading, level: 2 | 3): HTMLElement {
+  const h = document.createElement(`h${level}`);
+  h.className = "name";
+  h.textContent = heading.name;
+  if (heading.path) h.title = heading.path;
+  return h;
 }
 
 /**
  * One project, top to bottom: one heading line (the name, "no live
- * session" when it owns none, the spawn control), its rows, one line per
- * goal that is not done, the done goals folded, and the archives folded.
- * The root path is not printed: a row's place is relative to it, and the
- * pane shows it; the heading carries it as a tooltip. The rows come before
- * the goals because a running session is what the reader can act on now;
- * a goal's next action is what the foreman does next.
+ * session" when it owns none, the spawn control), its rows under no goal,
+ * then its goals by state: the working ones each with the crew's row
+ * beneath, the pending ones, the done ones folded, or the one line that
+ * says why there are none; then the archives folded. The root path is not
+ * printed: a row's place is relative to it, and the pane shows it; the
+ * heading carries it as a tooltip. The rows come before the goals because
+ * a running session is what the reader can act on now; a goal's next
+ * action is what the foreman does next. `level` is the heading's: 2 at the
+ * top, 3 under a workspace, where `NESTED_INDENT_PX` comes off the line.
  */
-function card(g: Group<SessionRow>, archived: ArchivedRow[], owned: number, proposed: ProposedItem[]): HTMLElement {
+function card(p: ProjectSection<SessionRow>, archived: ArchivedRow[], proposed: ProposedItem[], level: 2 | 3): HTMLElement {
   const section = document.createElement("section");
   section.className = "card";
-  section.setAttribute("aria-label", g.project?.name ?? "No project");
+  section.setAttribute("aria-label", p.heading.name);
 
   const head = document.createElement("div");
   head.className = "head";
-  const name = document.createElement("h2");
-  const nameText = g.project?.name ?? "No project";
-  name.textContent = nameText;
-  if (g.project?.root) name.title = g.project.root;
-  head.append(name);
+  head.append(headingName(p.heading, level));
   // The counts live on the fleet line above the projects; the rows say
   // their own state. A project with no session at all says so, once.
   // `headingLine` decides what gives way on a phone; the sheet applies it
   // under its phone media query, so a wider screen shows everything.
-  const tallyText = owned === 0 ? "no live session" : null;
-  const spawnIn = !watchOnly && g.project?.root ? g.project : null;
+  const tallyText = p.owned === 0 ? "no live session" : null;
+  const spawnIn = !watchOnly && p.project?.root ? p.project : null;
   const line = headingLine({
-    name: nameText,
+    name: p.heading.name,
     tally: tallyText,
-    profiles: spawnIn ? [LOCAL_SHELL, ...profiles.map((p) => p.name)] : null,
+    profiles: spawnIn ? [LOCAL_SHELL, ...profiles.map((pr) => pr.name)] : null,
+    indent: level === 3 ? NESTED_INDENT_PX : 0,
   });
   if (tallyText) head.append(span(line.tally ? "tally" : "tally gives-way", tallyText));
   if (spawnIn) head.append(spawnControls(spawnIn, line.profile));
   section.append(head);
 
-  if (g.rows.length > 0) {
-    // One list in `sortInGroup`'s order: the foreman, then by state, then
-    // the newest output. No `goal:` or `crew:` sub-header; a row's name and
-    // state say what those said.
-    const list = document.createElement("ul");
-    list.className = "rows";
-    for (const r of g.rows) list.append(row(r));
-    section.append(list);
-  }
-  const entry = g.project ? knowledge.get(g.project.id) : undefined;
-  if (g.project) {
-    const lines = goalLines(entry?.goals);
-    if (lines.open.length > 0) {
-      const list = document.createElement("ul");
-      list.className = "goal-lines";
-      for (const line of lines.open) list.append(goalLineItem(g.project, line));
-      section.append(list);
+  if (p.rows.length > 0) section.append(rowList(p.rows));
+  if (p.project) {
+    const { working, pending, done } = p.goals;
+    if (working.length > 0) section.append(bucket("working", working.length, level), goalList(p.project, working));
+    if (pending.length > 0) {
+      section.append(bucket("pending", pending.length, level), goalList(p.project, pending.map((line) => ({ line, rows: [] }))));
     }
-    if (lines.done.length > 0) section.append(doneFold(g.project, lines.done, proposed));
-    // A package with no goal folder (an empty `goals`, not the null of a
-    // 404) says so, since the foreman skips such a project and the card
-    // must show why.
-    if (entry?.goals?.length === 0) {
-      const none = document.createElement("p");
-      none.className = "goal-none";
-      none.textContent = "no goal folder";
-      section.append(none);
-    }
+    if (done.length > 0) section.append(doneFold(p.project, done, proposed));
   }
-  if (archived.length > 0) section.append(archivedFold(g.key, archived));
+  if (p.noGoals) {
+    const none = document.createElement("p");
+    none.className = "goal-none";
+    none.textContent = p.noGoals;
+    section.append(none);
+  }
+  if (archived.length > 0) section.append(archivedFold(p.key, archived));
   return section;
+}
+
+/** One list of rows in the model's order. `base` is the directory the
+ * heading above names when it is not the rows' project root: a workspace
+ * directory, for the shells it lists outside every project. */
+function rowList(rows: SessionRow[], base?: string): HTMLElement {
+  const list = document.createElement("ul");
+  list.className = "rows";
+  for (const r of rows) list.append(row(r, base));
+  return list;
+}
+
+/** The label over a bucket of goals, one heading level under the project's:
+ * `1 working`, `2 pending`. The done bucket is a fold instead (`doneFold`). */
+function bucket(state: "working" | "pending", count: number, level: 2 | 3): HTMLElement {
+  const h = document.createElement(`h${level + 1}`);
+  h.className = "bucket";
+  h.textContent = bucketLabel(state, count);
+  return h;
+}
+
+/** The goals of one bucket: each its line, then the rows that carry its
+ * label, set in under it. */
+function goalList(project: ProjectRef, entries: GoalEntry<SessionRow>[]): HTMLElement {
+  const list = document.createElement("ul");
+  list.className = "goal-lines";
+  for (const entry of entries) {
+    const li = document.createElement("li");
+    li.className = "goal";
+    li.setAttribute("aria-label", `${entry.line.title} in ${project.name}`);
+    li.append(goalLineItem(entry.line));
+    if (entry.rows.length > 0) li.append(rowList(entry.rows));
+    list.append(li);
+  }
+  return list;
 }
 
 /** One goal that is not done, on one line: the title, the status word
@@ -1259,10 +1119,9 @@ function card(g: Group<SessionRow>, archived: ArchivedRow[], owned: number, prop
  * written yet" after its slug. No floor word, no slug, no record link:
  * the record is history, and the done fold and the strip's proposal carry
  * it (`goalLine`). */
-function goalLineItem(project: ProjectRef, line: GoalLine): HTMLElement {
-  const li = document.createElement("li");
+function goalLineItem(line: GoalLine): HTMLElement {
+  const li = document.createElement("div");
   li.className = "goal-line";
-  li.setAttribute("aria-label", `${line.title} in ${project.name}`);
   li.append(span("goal-name", line.title));
   if (line.unwritten) {
     li.append(span("goal-unwritten", "not written yet"));
@@ -1432,7 +1291,7 @@ function archivedFold(key: string, list: ArchivedRow[]): HTMLElement {
 
 // --- rows -------------------------------------------------------------------
 
-function row(s: SessionRow): HTMLElement {
+function row(s: SessionRow, base?: string): HTMLElement {
   const li = document.createElement("li");
   li.className = "row";
 
@@ -1446,7 +1305,7 @@ function row(s: SessionRow): HTMLElement {
 
   // One line: name, state, place, what, how long. The model decides each
   // field; a null one is not painted.
-  const line = rowLine(s, Date.now());
+  const line = rowLine(s, Date.now(), base ?? s.project?.root);
   const main = document.createElement("div");
   main.className = "main";
   const name = document.createElement("span");
