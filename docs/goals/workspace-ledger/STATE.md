@@ -1,19 +1,14 @@
 # STATE: workspace-ledger
 
-- Status: active
-- Round: 2 of 3 in this budget (second budget)
-- Rounds total: 5
-- Last floor: green (2026-09-16, round 5 after: swift test 780, vitest 1273, bench p95 2.68 ms, Linux green)
-- Updated: 2026-09-16, round 5 closed
+- Status: waiting
+- Round: 3 of 3 in this budget (second budget)
+- Rounds total: 6
+- Last floor: green (2026-09-16, round 6 after: swift test 780, vitest 1286 in 41 files; no `Sources/` change, so no Linux build and no bench)
+- Updated: 2026-09-16, round 6 closed
 
 ## Queue
 
-1. `the-strip-holds-only-what-needs-you` (capability 6, proposed by
-   round 5). Eleven proposals from goals that are `done` stand above the
-   usage panel and above the work on the live page. A returning reader
-   meets a screen of items that no longer need them. Corpus request `01`
-   says the strip is "as today", so round 5 left it; the human charters
-   this item or drops it.
+Empty.
 
 ## Failures
 
@@ -29,11 +24,18 @@ None.
 - `plan.md` row 5 says "sparkline". Round 5 shipped one SVG bar a day, so
   a silent day is a visible gap and the chart adds no colour pair for the
   ratchet to measure. The plan is the human's to change.
-- Capability 6, the strip item in the queue above, needs the human to
-  charter it: it changes what corpus request `01` calls "as today".
+- `corpus/01-where-did-it-go.md` item 1 says the strip is "as today".
+  Round 6 changed it: the strip now holds only a live goal's proposals.
+  The corpus is Frozen and the human updates the line.
+- `plan.md` has no row for capability 6. Round 6's record offers one.
 
 ## Done
 
+- `the-strip-holds-only-what-needs-you` (capability 6), round 6, PR #124.
+  See `rounds/006.md`. A proposal on a `done` or `stopped` goal leaves
+  the strip and stands on the goal's own line, where its count links
+  `STATE.md`. Measured on the real tree: 12 strip items to 2, the 390 px
+  page 1720 px to 1238, the strip ending at 282 instead of 764.
 - `the-numbers-on-the-page` (capability 5), round 5, PR #123. See
   `rounds/005.md`. Every workspace, project and goal heading carries its
   dollars and its cache share; the panel shows the total, one bar a day,
@@ -87,14 +89,17 @@ its items.
 
 ## Next action
 
-All five planned capabilities are done and merged. The goal's completion
-condition holds on `main` once PR #123 merges: the page groups by
-workspace, project and goal state with no filters; a foreman or crew row
-takes a typed answer; `GET /api/usage/limits` serves the newest quota
-reading with its age; the daemon keeps a daily rollup that outlives the
-30-day transcript retention; and every heading carries its cost and cache
-share beside the panel.
+None until the human answers. The second budget is spent at round 6, so
+the goal is `waiting`.
 
-Round 5 found one defect outside its item and it is the queue's only
-entry: the strip shows eleven proposals from goals that are `done`. The
-human charters capability 6 or sets the goal to `done`.
+The foreman recommends **done**. All six conditions in `goal.md` hold on
+`main`: the page groups by workspace, project and goal state with no
+filters; a foreman or crew row takes a typed answer; `GET
+/api/usage/limits` serves the newest quota reading with its age; the
+daemon keeps a daily rollup that outlives the 30-day transcript
+retention; every heading carries its cost and cache share beside the
+panel; and `main` is green after every merge.
+
+Two proposals wait on the human, both listed above, and neither blocks
+anything. The human sets `Status: done`, or reopens the goal with
+`Status: active` and a new queue.

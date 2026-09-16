@@ -192,6 +192,14 @@ decision moves to `docs/adr/`.
 
 ## Fleet view
 
+- Photograph a page that lists the repository's own records against the
+  real records at least once a goal, not only against a fixture. Every
+  test drove two or three goals; the page only failed with eleven, and
+  twelve proposal lines from closed goals held the first screen for four
+  rounds before round 5's live screenshot showed them. A fixture proves
+  the rule; the real tree proves the page.
+  (2026-09-16, workspace-ledger round 6)
+
 - A text field under 16 px makes iOS Safari zoom the page on focus, and
   it stays zoomed after blur. The page's other text is 12 and 13 px, so
   `.reply-input` carries 16 px alone. The alternative, a viewport
