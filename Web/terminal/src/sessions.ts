@@ -18,6 +18,7 @@ import {
   focusKey,
   folderOf,
   goalLines,
+  headingLine,
   goalTitle,
   group,
   knowledgeUrl,
@@ -51,6 +52,7 @@ import {
   type KnowledgeSummary,
   type MergedState,
   type ModelRow,
+  type ProfileWidth,
   type ProjectRef,
   type ProjectSummary,
   type ProposedItem,
@@ -1199,13 +1201,23 @@ function card(g: Group<SessionRow>, archived: ArchivedRow[], owned: number, prop
   const head = document.createElement("div");
   head.className = "head";
   const name = document.createElement("h2");
-  name.textContent = g.project?.name ?? "No project";
+  const nameText = g.project?.name ?? "No project";
+  name.textContent = nameText;
   if (g.project?.root) name.title = g.project.root;
   head.append(name);
   // The counts live on the fleet line above the projects; the rows say
   // their own state. A project with no session at all says so, once.
-  if (owned === 0) head.append(span("tally", "no live session"));
-  if (!watchOnly && g.project?.root) head.append(spawnControls(g.project));
+  // `headingLine` decides what gives way on a phone; the sheet applies it
+  // under its phone media query, so a wider screen shows everything.
+  const tallyText = owned === 0 ? "no live session" : null;
+  const spawnIn = !watchOnly && g.project?.root ? g.project : null;
+  const line = headingLine({
+    name: nameText,
+    tally: tallyText,
+    profiles: spawnIn ? [LOCAL_SHELL, ...profiles.map((p) => p.name)] : null,
+  });
+  if (tallyText) head.append(span(line.tally ? "tally" : "tally gives-way", tallyText));
+  if (spawnIn) head.append(spawnControls(spawnIn, line.profile));
   section.append(head);
 
   if (g.rows.length > 0) {
@@ -1318,20 +1330,24 @@ function knowledgeLink(
   return a;
 }
 
+/** The select's default option: no profile, a plain shell. */
+const LOCAL_SHELL = "local shell";
+
 /** Spawn a session in this project's root: a plain shell, or one of the
- * named profiles when the daemon has any. */
-function spawnControls(project: ProjectRef): HTMLElement {
+ * named profiles when the daemon has any. `width` is `headingLine`'s
+ * decision for the select on a phone: whole, short, or gone. */
+function spawnControls(project: ProjectRef, width: ProfileWidth | null): HTMLElement {
   const box = document.createElement("div");
   box.className = "spawn";
   let select: HTMLSelectElement | null = null;
   if (profiles.length > 0) {
     select = document.createElement("select");
-    select.className = "spawn-profile";
+    select.className = width === "whole" ? "spawn-profile" : width === "short" ? "spawn-profile short" : "spawn-profile gives-way";
     select.setAttribute("aria-label", `Profile for the new session in ${project.name}`);
     select.dataset.focus = `spawn:${project.id}:profile`;
     const local = document.createElement("option");
     local.value = "";
-    local.textContent = "local shell";
+    local.textContent = LOCAL_SHELL;
     select.append(local);
     for (const p of profiles) {
       const option = document.createElement("option");

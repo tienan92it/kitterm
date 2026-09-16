@@ -1016,3 +1016,107 @@ export function sameServerKey(held: ArrayBuffer | null | undefined, key: Uint8Ar
   for (let i = 0; i < key.length; i++) if (bytes[i] !== key[i]) return false;
   return true;
 }
+
+// --- the card heading ---------------------------------------------------------
+
+/**
+ * The heading line of a project card on a phone: the name, "no live
+ * session" when the card lists no row, the profile select, and `[new]`.
+ * The four do not fit one 390 px line beside a real name and a real
+ * profile: whole, they leave 47 px for the name, six characters, and every
+ * registered project is longer. So the line gives way, in this order:
+ *
+ * 1. The count drops. The rows under the heading say what is live and the
+ *    fleet line above the cards says the total; a count cut to "no live …"
+ *    says less than nothing, so it goes whole or not at all.
+ * 2. The select shrinks to `PROFILE_SHORT_CELLS`. Its label is a hint of
+ *    the pick; the aria-label and the opened list carry every label whole.
+ *    Five cells show every bundled profile name (`box`, `zbox`, `ubash`)
+ *    and the first word of "local shell".
+ * 3. The select drops. `[new]` still starts a local shell; a profile pick
+ *    waits for a wider screen.
+ * 4. The name and `[new]` stay. The name never shrinks and never clips. A
+ *    name wider than the line less `[new]`, 36 characters, breaks inside
+ *    its own box and `[new]` wraps under it; `fits` is false then.
+ *
+ * The widths are arithmetic over the sheet's sizes, not a measurement: a
+ * mono cell is 0.6 em (Menlo, SF Mono, Monaco and Courier New agree within
+ * 1%), the name is 13 px and the rest 12 px, and the line is 390 px less
+ * the page's 16 px gutters and the head's 12 px padding, with 4 px of
+ * slack for a wider face. `sessions.css` applies the result under its
+ * phone media query; a wider screen holds everything.
+ */
+export type HeadingInput = {
+  name: string;
+  /** "no live session" when the card lists no row; null otherwise. */
+  tally: string | null;
+  /** The select's option labels, the default first; `[]` when the daemon
+   * has no profiles, so the line holds `[new]` alone; null for a client
+   * that may not spawn. */
+  profiles: string[] | null;
+};
+
+/** The select at its natural width, capped at `PROFILE_WHOLE_CELLS`, or at
+ * `PROFILE_SHORT_CELLS`. */
+export type ProfileWidth = "whole" | "short";
+
+export type HeadingLine = {
+  /** The project's name, whole. */
+  name: string;
+  /** The count, whole, or null when it gives way. */
+  tally: string | null;
+  /** The select's width, or null when it gives way or the line has none. */
+  profile: ProfileWidth | null;
+  /** The line's width by the arithmetic above, in px. */
+  px: number;
+  /** False only when the name and `[new]` alone are wider than the line. */
+  fits: boolean;
+};
+
+/** 390 less the page's 16 px gutters and the head's 12 px padding. */
+export const HEADING_LINE_PX = 334;
+const HEADING_SLACK_PX = 4;
+/** A mono cell, as a fraction of the font size. */
+const CELL_EM = 0.6;
+const NAME_FONT_PX = 13;
+const TEXT_FONT_PX = 12;
+/** `.card .head { gap }` and `.card .spawn { gap }`. */
+const HEAD_GAP_PX = 10;
+const SPAWN_GAP_PX = 6;
+/** `[new]`: five cells and 2 px of padding each side. */
+const NEW_PX = 5 * TEXT_FONT_PX * CELL_EM + 4;
+/** The select's padding, border and arrow: `--profile-chrome` in the sheet. */
+export const PROFILE_CHROME_PX = 30;
+/** The select's cap, the width of "local shell". */
+export const PROFILE_WHOLE_CELLS = 11;
+export const PROFILE_SHORT_CELLS = 5;
+
+export function headingLine(input: HeadingInput): HeadingLine {
+  const { name, tally, profiles } = input;
+  const canSpawn = profiles !== null;
+  const wholeCells = Math.min(PROFILE_WHOLE_CELLS, Math.max(0, ...(profiles ?? []).map((p) => p.length)));
+  const shortCells = Math.min(PROFILE_SHORT_CELLS, wholeCells);
+  const cells = (n: number, font: number): number => n * font * CELL_EM;
+
+  const width = (count: string | null, profile: ProfileWidth | null): number => {
+    let px = cells(name.length, NAME_FONT_PX);
+    if (count) px += HEAD_GAP_PX + cells(count.length, TEXT_FONT_PX);
+    if (canSpawn) {
+      px += HEAD_GAP_PX + NEW_PX;
+      if (profile) px += cells(profile === "whole" ? wholeCells : shortCells, TEXT_FONT_PX) + PROFILE_CHROME_PX + SPAWN_GAP_PX;
+    }
+    return px;
+  };
+
+  // The shapes in the order they are preferred; the first that fits wins.
+  const shapes: Array<[string | null, ProfileWidth | null]> = [];
+  const withSelect: Array<ProfileWidth | null> = wholeCells > 0 ? ["whole", "short", null] : [null];
+  if (tally) shapes.push([tally, withSelect[0]]);
+  for (const profile of withSelect) shapes.push([null, profile]);
+
+  for (const [count, profile] of shapes) {
+    const px = width(count, profile);
+    if (px <= HEADING_LINE_PX - HEADING_SLACK_PX) return { name, tally: count, profile, px, fits: true };
+  }
+  return { name, tally: null, profile: null, px: width(null, null), fits: false };
+}
