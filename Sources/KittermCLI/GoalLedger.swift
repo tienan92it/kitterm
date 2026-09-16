@@ -317,8 +317,15 @@ enum GoalLedger {
     }
 
     /// Minutes and seconds, `5m48`, from milliseconds rounded to the second.
+    /// Minutes and seconds under an hour, hours and minutes at or over one.
+    /// A round that sat open overnight printed `1013m00` before this rolled,
+    /// which is both unreadable and wider than its column.
     static func wall(_ milliseconds: Int) -> String {
         let seconds = Int((Double(milliseconds) / 1000).rounded())
+        if seconds >= 3600 {
+            let minutes = Int((Double(seconds) / 60).rounded())
+            return String(format: "%dh%02d", minutes / 60, minutes % 60)
+        }
         return String(format: "%dm%02d", seconds / 60, seconds % 60)
     }
 
