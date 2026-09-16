@@ -110,15 +110,24 @@ public struct UsageLimits: Codable, Equatable, Sendable {
         }
     }
 
-    /// `JSONSerialization` hands back `NSNumber` for every number; a JSON
-    /// `true` is an `NSNumber` too, and is refused because a boolean is not
-    /// a percentage.
+    /// A JSON number, refusing a JSON boolean: a `true` is not a percentage.
+    /// Darwin's `JSONSerialization` hands back an `NSNumber` for both and
+    /// only CoreFoundation tells them apart; Linux's hands back a `Bool`,
+    /// and has no CoreFoundation, which the Linux build caught.
     private static func number(_ value: Any?) -> Double? {
         guard let value else { return nil }
+        #if canImport(Darwin)
         if let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() {
             return number.doubleValue
         }
         return nil
+        #else
+        if value is Bool { return nil }
+        if let number = value as? NSNumber { return number.doubleValue }
+        if let double = value as? Double { return double }
+        if let int = value as? Int { return Double(int) }
+        return nil
+        #endif
     }
 
     /// Seconds since the reading, never negative.
