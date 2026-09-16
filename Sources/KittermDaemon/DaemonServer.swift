@@ -217,6 +217,9 @@ public final class DaemonServer: @unchecked Sendable {
             projects: .shared
         )
         self.usageRollup = usageRollup
+        // The newest quota reading a statusline posted, read back from
+        // `usage-limits.json` so its age is true after a restart.
+        let usageLimits = UsageLimitsStore(file: DaemonPaths.usageLimitsFile)
         let observed = group.next().makePromise(of: Void.self)
         observed.completeWithTask { await registry.setObserver(pushNotifier) }
         try observed.futureResult.wait()
@@ -360,7 +363,8 @@ public final class DaemonServer: @unchecked Sendable {
                         pushSubscriptions: pushSubscriptions,
                         pushNotifier: pushNotifier,
                         vapidKeys: vapidKeys,
-                        usageRollup: usageRollup
+                        usageRollup: usageRollup,
+                        usageLimits: usageLimits
                     )
                     connections.track(channel)
                     let upgradeConfig = NIOHTTPServerUpgradeConfiguration(

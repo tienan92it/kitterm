@@ -184,6 +184,42 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .restart span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
+/* --- the quota -------------------------------------------------------------
+   One line per window the statusline last reported: the label, a bar,
+   the number, the countdown; then one line saying how old the reading is.
+   The bar is a row of twenty cells in the terminal's own idiom,
+   `[#####···············]`, not a filled track: the page is set in the
+   terminal's font, every control prints in brackets, and a bar of cells
+   is how apt and cargo draw progress in that surface. It is text, so it
+   is exact at 5 % a cell with the number beside it, it copies as text, it
+   needs no new surface and so adds no contrast pair, and it cannot become
+   a pill. The fill wears the text colour and the track the muted one, so
+   the shape carries the value without colour. On the body, like the
+   restart line above it. */
+.quota[hidden] { display: none; }
+.quota { margin: 0 0 12px; font-size: 12px; color: var(--ui-text); }
+.quota-bars { list-style: none; margin: 0; padding: 0; }
+/* One line per window on a wide screen. At 390 px the four parts do not
+   fit one line at twenty cells, so a window takes two: the label and the
+   countdown, then the bar and the number, each pair on its own row of a
+   two-column grid; the DOM order stays label, bar, number, countdown, which
+   is what a screen reader hears. */
+.quota-bar { display: flex; align-items: baseline; gap: 8px; padding: 2px 0; white-space: nowrap; }
+.quota-label { flex: none; min-width: 12ch; }
+.quota-cells { flex: none; color: var(--ui-text-muted); }
+.quota-fill { color: var(--ui-text); }
+.quota-bar.stale .quota-fill { color: var(--ui-text-muted); }
+.quota-percent { flex: none; min-width: 5ch; text-align: right; font-variant-numeric: tabular-nums; }
+.quota-reset { color: var(--ui-text-muted); font-variant-numeric: tabular-nums; }
+@media (max-width: 600px) {
+  .quota-bar { display: grid; grid-template-columns: 1fr auto; column-gap: 8px; padding: 4px 0; }
+  .quota-label { grid-column: 1; grid-row: 1; }
+  .quota-reset { grid-column: 2; grid-row: 1; text-align: right; }
+  .quota-cells { grid-column: 1; grid-row: 2; }
+  .quota-percent { grid-column: 2; grid-row: 2; }
+}
+.quota-note { margin: 2px 0 0; color: var(--ui-text-muted); overflow-wrap: anywhere; }
+
 /* --- the three levels ------------------------------------------------------
    A workspace is a section under a hairline with one heading line and the
    shells that sit in its directory; its projects are set in by

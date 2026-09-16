@@ -189,6 +189,38 @@ turn in UTC and an evening's work in `+07` would otherwise land on tomorrow. Tok
 from every assistant line, each `requestId` counted once, because one request is written
 as several lines carrying the same `usage`. Full grade only, like the bill.
 
+### The quota
+
+The quota is not on disk anywhere. Claude Code hands its statusline script a JSON
+object on stdin at every render, and that object carries `rate_limits`: `five_hour`,
+`seven_day` and `spend_limit`, each with a `used_percentage` and an epoch-seconds
+`resets_at`, present only for a Pro or Max subscriber, only after the session's first
+API response, and dropped once its own reset passes. Nothing else ever sees it, and
+there is no per-model field, so the account page's per-model row cannot be built here.
+
+So the daemon is given it. `kitterm statusline install` writes a wrapper,
+`<claude dir>/kitterm-statusline.sh`, and points `settings.json`'s `statusLine.command`
+at it, keeping every other key. The wrapper reads stdin once, posts the `rate_limits`
+object to `POST /api/usage/limits` in the background with a two-second cap and every
+descriptor closed, only when the object changed since the last post or a minute passed,
+and skips the post when the daemon's port file is absent, `jq` is missing, or the render
+carries no `rate_limits`. Then it hands the same stdin to the command that was configured
+before, on a marked line a reinstall reads back, so the human's own statusline is never
+opened and never lost. The prompt does not wait: the script exits before the connection
+opens, with the daemon up or down.
+
+`UsageLimitsStore` keeps the newest reading, whichever session posted it, because the
+quota is one account's, and writes it to `~/.kitterm/usage-limits.json` so a restart does
+not turn "read four minutes ago" into "never read". `GET /api/usage/limits` serves the
+object as posted with `ageSeconds`, and `stale` past an hour: a statusline renders only
+while a session is active, so a reading ages whenever the human is away from every pane,
+stays exact while no other device spends the same account, and goes wrong silently when
+one does; an hour is a fifth of the shortest window. The page draws one bar per window
+as twenty text cells with the countdown to its reset, prints the age under the bars,
+keeps a stale reading's bars with the fill muted, draws a window past its reset empty,
+and says in words when no reading has ever arrived. Full grade only on both routes, like
+the bill and the rollup.
+
 ## Security model
 
 kitterm has no multi-user model. It serves shells as the user who runs it. Anyone who
@@ -463,6 +495,7 @@ State lives in `~/.kitterm/`. The default port is 3418.
 ├── push.json                 Web Push subscriptions, one per browser endpoint (0600)
 ├── usage-daily.json          the daily cost and token rollup, one record per transcript
 │                             read, kept after Claude Code deletes the transcript (0600)
+├── usage-limits.json         the newest quota reading a statusline posted (0600)
 ├── vapid.json                the VAPID key pair every subscription is bound to (0600)
 ├── takeover/                 live-upgrade handoff, between execv and adoption
 └── web-root                  the web bundle the running daemon pinned
