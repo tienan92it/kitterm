@@ -569,10 +569,26 @@ export function dismissKey(projectId: string, slug: string, round: number): stri
   return `${projectId}:${slug}:${round}`;
 }
 
+/** Is the goal closed: its status is `done` or `stopped`, the two words
+ * `LOOP.md` never schedules again. A closed goal's proposals block no
+ * round, so the strip does not carry them; the goal's own line does
+ * (`lineProposals`). A `waiting` goal is open: it waits for the human's
+ * direction, and its proposals are what the human decides on. A summary
+ * with no status word is open too, so a daemon that sends none loses
+ * nothing. */
+export function isClosed(summary: KnowledgeSummary): boolean {
+  const word = statusWord(summary.status);
+  return word === "done" || word === "stopped";
+}
+
 /**
- * One attention item per goal whose `STATE.md` counts proposals waiting on
- * the human, in the order given (one entry per goal of each project, the
- * route's order), less the ones in `dismissed` (keys from `dismissKey`).
+ * One attention item per open goal whose `STATE.md` counts proposals
+ * waiting on the human, in the order given (one entry per goal of each
+ * project, the route's order), less the ones in `dismissed` (keys from
+ * `dismissKey`) and less every closed goal (`isClosed`): the strip holds
+ * only what still needs the human, and a done or stopped goal has no round
+ * for a proposal to block. Its count stands on the goal's own line instead
+ * (`lineProposals`).
  *
  * The count is the trigger, because `STATE.md` is the foreman's source of
  * truth: it writes a proposal there at close, and the record's decision
@@ -590,6 +606,7 @@ export function proposedItems(
   for (const { project, summary } of entries) {
     const count = summary.proposals ?? 0;
     if (count <= 0) continue;
+    if (isClosed(summary)) continue;
     const round = summary.lastRound ?? summary.round ?? 0;
     if (dismissed.has(dismissKey(project.id, summary.slug ?? "", round))) continue;
     const record = recordPath(summary);
@@ -652,6 +669,26 @@ export function cardRecord(projectId: string, summary: KnowledgeSummary, propose
     (item) => item.project.id === projectId && item.summary.slug === summary.slug && item.record === path,
   );
   return inStrip ? null : path;
+}
+
+/** What a goal's own line says about its proposals when the strip does
+ * not: how many `STATE.md` lists, and the `STATE.md` they wait in. */
+export type LineProposals = { count: number; path: string };
+
+/**
+ * The proposals a goal's own line carries: the count and the `STATE.md`
+ * path when `STATE.md` lists any and the strip does not show them, because
+ * the goal is closed (`isClosed`) or the human dismissed the item. Null
+ * when the goal lists none or the strip carries them: a proposal appears
+ * in the strip or on the goal's line, never in both places. The count is
+ * `STATE.md`'s bullet count whole; the page has no per-proposal state, so
+ * a proposal stands until the human prunes its bullet.
+ */
+export function lineProposals(projectId: string, summary: KnowledgeSummary, proposed: ProposedItem[]): LineProposals | null {
+  const count = summary.proposals ?? 0;
+  if (count <= 0) return null;
+  const inStrip = proposed.some((item) => item.project.id === projectId && item.summary.slug === summary.slug);
+  return inStrip ? null : { count, path: statePath(summary) };
 }
 
 // --- a session row -----------------------------------------------------------
