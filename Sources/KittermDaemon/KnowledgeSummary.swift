@@ -38,6 +38,19 @@ public struct KnowledgeSummary: Equatable, Sendable {
     public var lastRecord: String?
     /// The first line of the latest round record's `## Decision` section.
     public var lastDecision: String?
+    /// The sum of every `- Cost:` line over the goal's round records, in
+    /// dollars at the full API rate, as `LOOP.md` defines the line; absent
+    /// when no record carries one. The fleet view prints it beside the
+    /// goal. `kitterm goal cost` reads the archived transcript where one
+    /// still exists, so its total can differ from this by the line's
+    /// rounding.
+    public var costUSD: Double?
+    /// The summed `Nk in` of those lines, in tokens: input, cache creation
+    /// and cache read together.
+    public var inTokens: Int?
+    /// The cache-read part of `inTokens`, each line's `in` times its
+    /// `C% cached`, so the page can print the share.
+    public var cacheReadTokens: Int?
 
     public static let nextActionCap = 512
     public static let lineCap = 256
@@ -129,6 +142,9 @@ public struct KnowledgeSummary: Equatable, Sendable {
         if let lastRound { item["lastRound"] = lastRound }
         if let lastRecord { item["lastRecord"] = lastRecord }
         if let lastDecision { item["lastDecision"] = lastDecision }
+        if let costUSD { item["costUSD"] = costUSD }
+        if let inTokens { item["inTokens"] = inTokens }
+        if let cacheReadTokens { item["cacheReadTokens"] = cacheReadTokens }
         return item
     }
 
@@ -144,6 +160,83 @@ public struct KnowledgeSummary: Equatable, Sendable {
     public static func roundFileName(_ number: Int) -> String {
         let digits = String(number)
         return String(repeating: "0", count: max(0, 3 - digits.count)) + digits + ".md"
+    }
+
+    // MARK: - the Cost line
+
+    /// One `- Cost: $D · Nk in (C% cached) · Nk out · Hh Mm` line of a
+    /// round record, as `LOOP.md` defines it, with the tokens scaled back
+    /// to units. `GoalLedger` reads the same line through `costLine`, so the
+    /// CLI and the route agree on the shape.
+    public struct RecordCost: Equatable, Sendable {
+        public var costUSD: Double
+        public var inTokens: Int
+        public var cachedPercent: Int
+        public var outTokens: Int
+        public var durationMs: Int
+
+        public init(costUSD: Double, inTokens: Int, cachedPercent: Int, outTokens: Int, durationMs: Int) {
+            self.costUSD = costUSD
+            self.inTokens = inTokens
+            self.cachedPercent = cachedPercent
+            self.outTokens = outTokens
+            self.durationMs = durationMs
+        }
+
+        /// `inTokens` times the percent, rounded: the cache-read tokens the
+        /// line stands for, in one unit with a transcript's exact count.
+        public var cacheReadTokens: Int {
+            Int((Double(inTokens) * Double(cachedPercent) / 100).rounded())
+        }
+    }
+
+    private static let costLinePattern: NSRegularExpression = {
+        // The pattern is a literal; a typo is a programming error.
+        try! NSRegularExpression(
+            pattern: "^- Cost: \\$([0-9]+(?:\\.[0-9]+)?) · ([0-9]+)k in \\(([0-9]+)% cached\\) · ([0-9]+)k out · ([0-9]+)h ([0-9]+)m"
+        )
+    }()
+
+    /// Parse one line of a record. Nil for a line that is not a `- Cost:`
+    /// line, for `- Cost: none recorded (<reason>)`, and for a malformed one.
+    public static func costLine(_ line: String) -> RecordCost? {
+        let text = line.hasSuffix("\r") ? String(line.dropLast()) : line
+        guard text.hasPrefix("- Cost:") else { return nil }
+        let whole = NSRange(text.startIndex..., in: text)
+        guard let match = costLinePattern.firstMatch(in: text, range: whole) else { return nil }
+        func group(_ index: Int) -> String {
+            Range(match.range(at: index), in: text).map { String(text[$0]) } ?? ""
+        }
+        guard let dollars = Double(group(1)), let inK = Int(group(2)), let percent = Int(group(3)),
+              let outK = Int(group(4)), let hours = Int(group(5)), let minutes = Int(group(6))
+        else { return nil }
+        return RecordCost(
+            costUSD: dollars, inTokens: inK * 1000, cachedPercent: percent,
+            outTokens: outK * 1000, durationMs: (hours * 60 + minutes) * 60_000
+        )
+    }
+
+    /// Every `- Cost:` line in a record's header, the lines before its
+    /// first `## ` heading, in order. A `none recorded` line is skipped.
+    public static func costLines(_ record: String) -> [RecordCost] {
+        var costs: [RecordCost] = []
+        for line in lines(record) {
+            if line.hasPrefix("## ") { break }
+            if let cost = costLine(String(line)) { costs.append(cost) }
+        }
+        return costs
+    }
+
+    /// Sum the `- Cost:` lines of every record given into `costUSD`,
+    /// `inTokens` and `cacheReadTokens`. The three stay absent when no
+    /// record carries a line, so a goal that predates the bill prints no
+    /// number rather than a zero.
+    public mutating func sumCosts(records: [String]) {
+        let costs = records.flatMap(Self.costLines)
+        guard !costs.isEmpty else { return }
+        costUSD = costs.reduce(0) { $0 + $1.costUSD }
+        inTokens = costs.reduce(0) { $0 + $1.inTokens }
+        cacheReadTokens = costs.reduce(0) { $0 + $1.cacheReadTokens }
     }
 
     // MARK: - pieces
