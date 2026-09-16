@@ -420,7 +420,13 @@ final class GoalCostTests: XCTestCase {
         XCTAssertEqual(GoalLedger.tokens(6_066_000), "6.07M")
         XCTAssertEqual(GoalLedger.wall(347686), "5m48")
         XCTAssertEqual(GoalLedger.wall(0), "0m00")
-        XCTAssertEqual(GoalLedger.wall(32_860_487), "547m40")
+        // Under an hour reads as minutes and seconds; at or over one it rolls
+        // to hours and minutes. This case used to read "547m40", which is both
+        // unreadable and wider than the column it sits in.
+        XCTAssertEqual(GoalLedger.wall(3_599_000), "59m59")
+        XCTAssertEqual(GoalLedger.wall(3_600_000), "1h00")
+        XCTAssertEqual(GoalLedger.wall(32_860_487), "9h08")
+        XCTAssertEqual(GoalLedger.wall(60_780_000), "16h53")
         XCTAssertEqual(GoalLedger.cached(read: 1_022_235, of: 1_100_502), "93%")
         XCTAssertEqual(GoalLedger.cached(read: 0, of: 0), "—")
     }
