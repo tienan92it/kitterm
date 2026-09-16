@@ -1,18 +1,18 @@
 # STATE: workspace-ledger
 
 - Status: active
-- Round: 0 of 3 in this budget (first budget)
-- Rounds total: 0
-- Last floor: green (2026-09-16, main at aa7c956: swift test 729, vitest 1222)
-- Updated: 2026-09-16, planned
+- Round: 1 of 3 in this budget (first budget)
+- Rounds total: 1
+- Last floor: green (2026-09-16, round 1 after: vitest 1233 in 37 files)
+- Updated: 2026-09-16, round 1 closed
 
 ## Queue
 
-1. `three-levels-no-filters` (capability 1)
+1. `daily-rollup` (capability 4), running now, taken out of order because
+   capability 5 needs it.
 2. `answer-from-the-page` (capability 2)
 3. `capture-the-quota` (capability 3)
-4. `daily-rollup` (capability 4)
-5. `the-numbers-on-the-page` (capability 5)
+4. `the-numbers-on-the-page` (capability 5)
 
 ## Failures
 
@@ -20,11 +20,16 @@ None.
 
 ## Proposals waiting on the human
 
-None.
+- `AGENTS.md`'s fleet-view paragraph still describes the filters and the
+  tools row, which round 1 removed. Capability 5 rewrites it when the
+  page stops changing shape. Not blocking.
 
 ## Done
 
-None.
+- `three-levels-no-filters` (capability 1), round 1, `259e38e`. See
+  `rounds/001.md`. Workspace, project, goal state; a heading only over
+  two or more projects; working read from a live `goal:` label; the
+  filter feature gone symbol by symbol. 390 px height 1400 to 1159.
 
 ## Direction
 
@@ -43,7 +48,9 @@ draw one.
 
 ## Next action
 
-Round 1: `three-levels-no-filters` from `plan.md` row 1. It is the
-foundation: every later capability hangs its numbers on the headings it
-creates. Capabilities 2 and 3 are independent of it and may run beside
-it; 4 must land before 5.
+Capability 4, `daily-rollup`, is running as round 2. When it lands,
+capability 5 can read its route.
+
+One item for capability 5, from round 1: at 390 px the goal line cuts its
+next action to "Roun…" because the title, the round and the next action
+share one line. Fix that before hanging a cost on it.
