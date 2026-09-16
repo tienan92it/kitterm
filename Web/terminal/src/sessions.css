@@ -218,25 +218,31 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .card { border-top: 1px solid var(--ui-border); background: var(--ui-surface); }
 /* One heading line: the name, "no live session" when the project owns
    none, then the profile pick and `[new]` at the right. The root path is
-   gone; a row's place is relative to it, and the pane shows it. */
-.card .head { display: flex; align-items: center; gap: 10px; padding: 4px 12px; min-height: 36px; }
-.card .head h2 {
-  font-size: 13px; font-weight: 600; margin: 0; flex: 0 1 auto; min-width: 4em;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-/* The tally gives way before the name does: with a profile select on a
-   phone the line is short, and the name is what the reader scans for. */
+   gone; a row's place is relative to it, and the pane shows it. The line
+   wraps only when the name alone is wider than it: `headingLine` keeps
+   every shorter name on one line by giving the count and the select away. */
+.card .head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 4px 12px; min-height: 36px; }
+/* The name never shrinks and never clips: it is what the reader scans for.
+   A name wider than the line breaks inside its own box, and `[new]` wraps
+   under it. */
+.card .head h2 { font-size: 13px; font-weight: 600; margin: 0; flex: none; max-width: 100%; overflow-wrap: anywhere; }
+/* The count takes what the name and the controls leave, so it never pushes
+   `[new]` to a second line. On a phone `headingLine` drops it whole
+   (`gives-way`) rather than cut it; the ellipsis is for a face wider than
+   the model's 0.6 em cell. */
 .card .head .tally {
   color: var(--ui-text-muted); font-size: 12px; white-space: nowrap;
-  flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis;
 }
 /* The profile select sits beside `[new]` because the two are one action:
    pick where, then start. It is on the page only when the daemon has
-   profiles. */
+   profiles. Its width is its label plus `--profile-chrome`, the padding,
+   the border and the arrow; `headingLine` counts the same cells. */
 .card .spawn { display: flex; align-items: center; gap: 6px; margin-left: auto; flex: none; }
 .card .spawn-profile {
+  --profile-chrome: 30px;
   font: inherit; font-size: 12px; color: var(--ui-text); background: none;
-  border: 1px solid var(--ui-border); padding: 2px 4px; max-width: 9em;
+  border: 1px solid var(--ui-border); padding: 2px 4px; max-width: calc(11ch + var(--profile-chrome));
   min-height: var(--tap-min);
 }
 .card .spawn-button {
@@ -317,6 +323,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   }
   .menu.open .quiet { text-align: left; min-height: 40px; font-size: 13px; }
   .row { padding-right: 4px; }
+  /* The heading gives way as `headingLine` decided for 390 px: the count
+     and the select drop, or the select shrinks to five cells, so that the
+     name stays whole and `[new]` stays on the line. */
+  .card .head .gives-way { display: none; }
+  .card .spawn-profile.short { width: calc(5ch + var(--profile-chrome)); }
   /* Thumb targets: 32 px toggles with 8 px between them. */
   .chip-group { gap: 8px; }
   .chip { min-height: 32px; padding: 3px 4px; }
