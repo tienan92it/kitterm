@@ -121,6 +121,12 @@ public enum DaemonPaths: Sendable {
         stateDirectory.appendingPathComponent("push.json")
     }
 
+    /// The daily cost and token rollup (`UsageRollup`), `0600`, one record
+    /// per Claude Code transcript read, kept after the transcript is gone.
+    public static var usageRollupFile: URL {
+        stateDirectory.appendingPathComponent("usage-daily.json")
+    }
+
     /// The daemon's VAPID key pair (`VAPIDKeys`), `0600`, in its own file
     /// because it is a daemon secret and `push.json` holds only what the
     /// browser handed the page. Generated once; every phone's subscription

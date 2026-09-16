@@ -164,6 +164,31 @@ the tests added, the files changed from `git diff`, the decision and the PR, wit
 per goal. The transcript is exact and the line is rounded, so `--json` carries the
 transcript's field names wherever one was read.
 
+### The rollup
+
+Claude Code deletes a transcript thirty days after its last write, and every dollar and
+token the dashboard could show lives in those transcripts. So the daemon keeps a daily
+rollup of its own, `~/.kitterm/usage-daily.json`, and `GET /api/usage/daily?from=&to=`
+serves any range from it, one zero-filled entry per day with a per-project split.
+
+`UsageRollup` refreshes on start and every five minutes, on its own queue and never on
+the event loop: one listing per project directory under `~/.claude/projects/`, one `stat`
+per transcript, and a full read only of a file whose size or mtime changed. The file is
+keyed by transcript, not by day: a record holds what `TranscriptUsage` read from one
+session — the bill's total, the project its cwd resolved to, and tokens per day — and a
+day is a sum over the records at serve time. That is what makes the rollup never lose a
+day: a refresh replaces only the records of transcripts it can still see, a record whose
+transcript is gone is never visited, and nothing subtracts.
+
+Dollars are the transcript's own `totalCostUSD`, never priced from a table. A session
+inside one day puts its whole bill on that day, exact. A session across midnight is split
+by each day's share of the session's tokens, which is an apportionment and not a
+measurement, and the route reports that part of each day's cost as `apportionedUSD`. The
+day is the daemon's local zone, named in the answer, because the transcript stamps every
+turn in UTC and an evening's work in `+07` would otherwise land on tomorrow. Tokens come
+from every assistant line, each `requestId` counted once, because one request is written
+as several lines carrying the same `usage`. Full grade only, like the bill.
+
 ## Security model
 
 kitterm has no multi-user model. It serves shells as the user who runs it. Anyone who
@@ -436,6 +461,8 @@ State lives in `~/.kitterm/`. The default port is 3418.
 ├── respawn.json              names and labels of live sessions, for a respawn
 ├── last-run.json             how the last run ended, or nothing where its end should be
 ├── push.json                 Web Push subscriptions, one per browser endpoint (0600)
+├── usage-daily.json          the daily cost and token rollup, one record per transcript
+│                             read, kept after Claude Code deletes the transcript (0600)
 ├── vapid.json                the VAPID key pair every subscription is bound to (0600)
 ├── takeover/                 live-upgrade handoff, between execv and adoption
 └── web-root                  the web bundle the running daemon pinned
