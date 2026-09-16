@@ -49,7 +49,7 @@ final class LiveTakeoverTests: XCTestCase {
     override func tearDownWithError() throws {
         if let daemon, daemon.isRunning {
             daemon.terminate()
-            daemon.waitUntilExit()
+            waitForExit(of: daemon)
         }
         if let stateDir {
             if let log = try? String(contentsOf: stateDir.appendingPathComponent("server.log"), encoding: .utf8),
