@@ -325,8 +325,8 @@ public struct TranscriptUsage: Equatable, Sendable {
         while from + needle.count <= line.endIndex {
             let hit: Int? = line[from...].withUnsafeBufferPointer { haystack in
                 needle.withUnsafeBufferPointer { pattern -> Int? in
-                    guard let base = haystack.baseAddress,
-                          let at = memmem(base, haystack.count, pattern.baseAddress, pattern.count)
+                    guard let base = haystack.baseAddress, let pat = pattern.baseAddress,
+                          let at = memmem(base, haystack.count, pat, pattern.count)
                     else { return nil }
                     return from + (UnsafeRawPointer(at) - UnsafeRawPointer(base))
                 }
@@ -365,7 +365,9 @@ public struct TranscriptUsage: Equatable, Sendable {
         guard line.count >= needle.count else { return false }
         return line.withUnsafeBufferPointer { haystack in
             needle.withUnsafeBufferPointer { pattern in
-                memmem(haystack.baseAddress, haystack.count, pattern.baseAddress, pattern.count) != nil
+                // Glibc's `memmem` takes non-optional pointers; Darwin's does not care.
+                guard let hay = haystack.baseAddress, let pat = pattern.baseAddress else { return false }
+                return memmem(hay, haystack.count, pat, pattern.count) != nil
             }
         }
     }
