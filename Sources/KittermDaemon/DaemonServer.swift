@@ -85,6 +85,9 @@ public final class DaemonServer: @unchecked Sendable {
     private let lastRun: LastRunStore?
     /// The cadence that keeps `aliveAt` and `sessions` current.
     private var lastRunTask: RepeatedTask?
+    /// The daily cost and token rollup, refreshed on its own queue from
+    /// `start()` until `stop()` or the handoff.
+    private var usageRollup: UsageRollup?
 
     /// The sessions and the feed of a quiesced server, so the same process
     /// can serve again from them when its `exec` returned
@@ -205,6 +208,15 @@ public final class DaemonServer: @unchecked Sendable {
         // approvals; the registry hands it command ends and removals, so it
         // is set on the registry before any session can be admitted.
         let pushNotifier = PushNotifier(store: pushSubscriptions, keys: vapidKeys, registry: registry)
+        // The daily rollup, read back from `usage-daily.json` so a day whose
+        // transcript Claude Code has since deleted is still known, and
+        // refreshed on start and every five minutes on its own queue.
+        let usageRollup = UsageRollup(
+            file: DaemonPaths.usageRollupFile,
+            transcriptsRoot: UsageRollup.defaultTranscriptsRoot,
+            projects: .shared
+        )
+        self.usageRollup = usageRollup
         let observed = group.next().makePromise(of: Void.self)
         observed.completeWithTask { await registry.setObserver(pushNotifier) }
         try observed.futureResult.wait()
@@ -347,7 +359,8 @@ public final class DaemonServer: @unchecked Sendable {
                         takeover: takeover,
                         pushSubscriptions: pushSubscriptions,
                         pushNotifier: pushNotifier,
-                        vapidKeys: vapidKeys
+                        vapidKeys: vapidKeys,
+                        usageRollup: usageRollup
                     )
                     connections.track(channel)
                     let upgradeConfig = NIOHTTPServerUpgradeConfiguration(
@@ -434,6 +447,7 @@ public final class DaemonServer: @unchecked Sendable {
         }
 
         startLastRunRefresh()
+        usageRollup.start()
     }
 
     /// Why a bind failed, in words. `IOError.localizedDescription` is the
@@ -522,6 +536,7 @@ public final class DaemonServer: @unchecked Sendable {
         let loop = group.next()
         lastRunTask?.cancel()
         lastRunTask = nil
+        usageRollup?.stop()
         // Listeners first, so nothing new arrives while the rest drains.
         for channel in channels { try? channel.close().wait() }
         channels.removeAll()
@@ -602,6 +617,7 @@ public final class DaemonServer: @unchecked Sendable {
         let loop = group.next()
         lastRunTask?.cancel()
         lastRunTask = nil
+        usageRollup?.stop()
         // Count before the shells go, so the record says what the run held,
         // and record the ending first: this path runs from the SIGTERM
         // handler, which calls `exit(0)` the moment it returns.

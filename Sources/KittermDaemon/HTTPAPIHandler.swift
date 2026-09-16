@@ -52,6 +52,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// subscribes with; nil in a handler built without one, where the
     /// route answers 503.
     private let vapidKeys: VAPIDKeys?
+    /// The daily cost and token rollup behind `GET /api/usage/daily`; nil
+    /// in a handler built without one, where the route answers 503.
+    private let usageRollup: UsageRollup?
     private var pendingHead: HTTPRequestHead?
     /// Accumulated request body, capped at `maxInputBytes`; only the input
     /// route reads it. `bodyOverflow` trips once the cap is exceeded so a large
@@ -78,7 +81,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         projects: ProjectStore = .shared,
         pushSubscriptions: PushSubscriptionStore? = nil,
         pushNotifier: PushNotifier? = nil,
-        vapidKeys: VAPIDKeys? = nil
+        vapidKeys: VAPIDKeys? = nil,
+        usageRollup: UsageRollup? = nil
     ) {
         self.registry = registry
         self.projects = projects
@@ -96,6 +100,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.pushSubscriptions = pushSubscriptions
         self.pushNotifier = pushNotifier
         self.vapidKeys = vapidKeys
+        self.usageRollup = usageRollup
     }
 
     /// Put a fresh upgrade handler back in front of us so the *next* request on
@@ -366,6 +371,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             serveArchiveList(head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/archives/") && path.hasSuffix("/output"):
             serveArchiveOutput(path: path, head: head, context: context)
+        case (.GET, "/api/usage/daily"):
+            serveUsageDaily(grade: grade, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/archives/") && path.hasSuffix("/cost"):
             serveArchiveCost(path: path, grade: grade, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/archives/"):
@@ -939,6 +946,95 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 )
             }
         }
+    }
+
+    /// `GET /api/usage/daily?from=YYYY-MM-DD&to=YYYY-MM-DD` — cost and
+    /// tokens per day from the rollup the daemon keeps (`UsageRollup`), one
+    /// entry per day in the range, zero-filled, with a per-project split
+    /// inside each day and totals per project over the range. Both bounds
+    /// are inclusive days in the rollup's own zone, which the answer names
+    /// as `timeZone`; `to` defaults to today and `from` to 29 days before
+    /// `to`; a range over `UsageRollup.maxRangeDays` is a 400.
+    ///
+    /// `costUSD` on a day is the dollars attributed to it; `apportionedUSD`
+    /// is the part of that which came from a session spanning more than
+    /// one day and was split by token share, so a page can say which
+    /// numbers are a measurement and which are an apportionment.
+    /// `unbilledSessions` had turns that day and no `cost-state` line yet,
+    /// so their tokens are in and their dollars are not.
+    ///
+    /// Full grade only, like the cost routes: the accounting is what a
+    /// watch token exists to withhold. The sum runs on `UsageRollup.queue`
+    /// and comes back through `NIOLoopBound`; the loop pays for the encode.
+    private func serveUsageDaily(grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let rollup = usageRollup else {
+            writeJSON(
+                status: .serviceUnavailable,
+                body: #"{"ok":false,"error":"usage rollup unavailable"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let today = DayKey(Date(), in: rollup.timeZone)
+        let to: DayKey
+        if let text = DaemonServer.queryValue("to", fromRequestURI: head.uri) {
+            guard let parsed = DayKey(text) else {
+                badRequest("to must be a day, YYYY-MM-DD", head: head, context: context)
+                return
+            }
+            to = parsed
+        } else {
+            to = today
+        }
+        let from: DayKey
+        if let text = DaemonServer.queryValue("from", fromRequestURI: head.uri) {
+            guard let parsed = DayKey(text) else {
+                badRequest("from must be a day, YYYY-MM-DD", head: head, context: context)
+                return
+            }
+            from = parsed
+        } else {
+            from = to.advanced(by: -29)
+        }
+        guard from <= to else {
+            badRequest("from must not be after to", head: head, context: context)
+            return
+        }
+        guard to.number - from.number < UsageRollup.maxRangeDays else {
+            badRequest("range must be at most \(UsageRollup.maxRangeDays) days", head: head, context: context)
+            return
+        }
+        let loop = context.eventLoop
+        let bound = NIOLoopBound(context, eventLoop: loop)
+        let summed = loop.makePromise(of: String.self)
+        UsageRollup.queue.async {
+            summed.succeed(Self.usageDailyBody(rollup.daily(from: from, to: to)))
+        }
+        summed.futureResult.whenSuccess { body in
+            self.writeJSON(
+                status: .ok, body: body,
+                context: bound.value, version: head.version, keepAlive: head.isKeepAlive
+            )
+        }
+    }
+
+    static func usageDailyBody(_ report: UsageRollup.DailyReport) -> String {
+        let encoder = JSONEncoder()
+        // Project roots keep their slashes; sorted keys so the body reads
+        // the same on every run.
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(report), let body = String(data: data, encoding: .utf8) else {
+            return #"{"ok":false,"error":"encoding failed"}"#
+        }
+        return body
     }
 
     /// The response of the cost route: the transcript's own field names,
