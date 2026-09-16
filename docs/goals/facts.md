@@ -18,6 +18,13 @@ decision moves to `docs/adr/`.
   was one annotation. A round that touches `Sources/` and skips the Linux
   build should say so and expect that class of failure.
   (2026-09-11, `agent-push` round 2)
+- Run the Linux build as soon as a `Sources/` change compiles, not after
+  the rest of the floor. Two rounds have now lost time to a Linux-only
+  failure found after every macOS check was green, and the class is the
+  same both times: an API that macOS Foundation carries and Linux
+  Foundation does not. Round 4 hit `CFGetTypeID`; the fix was
+  `#if canImport(Darwin)` with `is Bool` on the Linux path.
+  (2026-09-16, workspace-ledger round 4)
 - The Linux build runs locally without a bind mount, which is what
   colima's dead sshfs rules out. Pipe the tree in:
   `git ls-files -z | tar -c --null -T - -f - | docker run -i --rm -v
@@ -102,6 +109,15 @@ decision moves to `docs/adr/`.
   event `epoch`; verified again on 2026-09-08 with v0.23.0. (2026-09-07)
 
 ## Crew pane
+
+- A scratch `CLAUDE_CONFIG_DIR` reads "Not logged in": the keychain entry
+  is keyed by the config directory. A live check keeps the human's own
+  directory and overrides the run with `claude --settings <file>`.
+  (2026-09-16, workspace-ledger round 4)
+- `disableAllHooks: true` also stops the `statusLine` command, so a run
+  with it set produces zero renders. Without it, the human's global Stop
+  hook fires to 3418 even from a scratch daemon's session.
+  (2026-09-16, workspace-ledger round 4)
 
 - A headless browser will not show a notification permission prompt, and
   `pushManager.subscribe` hangs on it forever. Grant the permission on the

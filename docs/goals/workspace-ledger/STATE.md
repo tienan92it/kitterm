@@ -1,15 +1,14 @@
 # STATE: workspace-ledger
 
 - Status: active
-- Round: 3 of 3 in this budget (first budget)
-- Rounds total: 3
-- Last floor: green (2026-09-16, round 3 after: swift test 757, vitest 1249, bench p95 2.83 ms, Linux green)
-- Updated: 2026-09-16, round 3 closed
+- Round: 1 of 3 in this budget (second budget)
+- Rounds total: 4
+- Last floor: green (2026-09-16, round 4 after: swift test 773, vitest 1260, bench p95 2.56 ms, Linux green)
+- Updated: 2026-09-16, round 4 closed
 
 ## Queue
 
-1. `capture-the-quota` (capability 3), running now as round 4.
-2. `the-numbers-on-the-page` (capability 5)
+1. `the-numbers-on-the-page` (capability 5)
 
 ## Failures
 
@@ -23,6 +22,13 @@ None.
 
 ## Done
 
+- `capture-the-quota` (capability 3), round 4, PR #122. See
+  `rounds/004.md`. A statusline render posts the `rate_limits` object it
+  is given; the daemon keeps the newest and serves it with its age. The
+  page draws one text-cell bar per window with the reset countdown, and
+  says when it has never been given a reading. Proved with a real
+  reading: five-hour 34%, seven-day 36%, captured from a throwaway
+  `claude` on scratch daemon 3944.
 - `answer-from-the-page` (capability 2), round 3, PR #121. See
   `rounds/003.md`. A row whose agent holds the tty takes a line and posts
   it to `POST /api/sessions/<id>/input?enter=1`; a needs-input row
@@ -61,12 +67,10 @@ its items.
 
 ## Next action
 
-The first budget is spent at round 3. The human's standing direction is
-to run the remaining capabilities to the end, so the goal continues into
-a second budget rather than waiting.
-
-Capability 3, `capture-the-quota`, is running as round 4. Then capability
-5, `the-numbers-on-the-page`, which reads round 2's route.
+Round 5, `the-numbers-on-the-page`, the last capability. It reads round
+2's `GET /api/usage/daily` route and hangs a cost and a cache share on
+every workspace, project and goal heading, and draws the panel with the
+headline total, the per-day series and the toggles.
 
 Three things capability 5 must take from the earlier rounds. The corpus
 fixture says `kitterm` is $699.93; the route says **$850.51**, because
