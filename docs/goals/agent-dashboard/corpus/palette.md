@@ -68,7 +68,64 @@ Signal the cyan accent sits 46° from the success green; in Phosphor the
 accent *is* green and success has to move to cyan, which inverts a
 mapping every reader already knows.
 
-## The decision: the brand green, brightened
+## The decision: the Coolors palette
+
+The human linked
+`coolors.co/palette/264653-2a9d8f-e9c46a-f4a261-e76f51` and it is
+applied. Five swatches, and the mapping is measured rather than guessed.
+
+| Swatch | Role | Why |
+|---|---|---|
+| `#2a9d8f` persian green | `accent` — working, bars | the one cool hue; 96° from needs-you and 148° from failed |
+| `#e9c46a` saffron | `warning` — needs you | |
+| `#e76f51` burnt sienna | `danger` — failed | |
+| `#264653` charcoal | `border` — every hairline | too light to be a ground: 1.88 against a near-black |
+| `#f4a261` sandy brown | **unused** | 23° from failed and 29° from needs-you, so it cannot be a fourth state |
+
+### Separation, measured in OKLCh
+
+Earlier rounds measured hue in HSV, which is not perceptual and which
+understated some gaps. OKLCh is the right space and these are its
+numbers:
+
+| Pair | Hue gap | Lightness gap |
+|---|---:|---:|
+| accent ↔ needs you | 96° | 20.4 |
+| accent ↔ failed | 148° | 4.8 |
+| needs you ↔ failed | **52°** | 15.6 |
+
+The closest pair is 52° and it carries a 15.6-point lightness gap with
+it, so the two warm marks separate on two axes rather than one.
+
+### The ground
+
+Charcoal cannot be the page ground — it measures 1.88 against
+`#0d1117`, which is to say it *is* a mid tone. It takes the hairline
+instead, which is what a 0.044-chroma slate is for. The ground is a
+darkened version of it, `#0e1a20`, so the page keeps the palette's
+slate-teal cast rather than reverting to a neutral black.
+
+| Token | Dark | Light |
+|---|---|---|
+| `bg` | `#0e1a20` | `#ffffff` |
+| `surface` | `#14242c` | `#f4f7f7` |
+| `border` | `#264653` | `#cfdcdf` |
+| `text` | `#e8eef0` | `#1b2a30` |
+| `muted` | `#a7b8bf` | `#4a5c63` |
+| `faint` | `#82969e` | `#5d7078` |
+| `accent` | `#2a9d8f` | `#1d7268` |
+| `warning` | `#e9c46a` | `#8a6415` |
+| `danger` | `#e76f51` | `#b0472c` |
+
+Twelve pairs measured in each theme, on the ground and on the surface:
+zero failures. The lowest is the accent on the surface at 4.79, well
+above the 3.0 a state mark needs.
+
+**The brand tie is broken and the human should know.** `site/index.html`
+still sets `--accent: #3fb950`. This palette is not kitterm's green and
+does not claim to be.
+
+## Superseded: the brand green, brightened
 
 The human said the green still looked wrong. Measuring twelve greens in
 OKLCh says why, and the answer is not the hue.
