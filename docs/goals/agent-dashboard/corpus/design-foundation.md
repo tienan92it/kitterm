@@ -12,7 +12,8 @@ number in them is read from the live daemon on 2026-09-17:
 | `Dashboard 390` | the same page on a phone, 44 px lines, facts dropped, the yield block kept |
 | `Foundation` | the space scale, the type scale, the state marks, the two densities, the model naming rule |
 | `Anatomy of a line` | the line's six cells and the order its facts drop in |
-| `Value groupings` | the `VALUE` panel at each of its four groupings, with real rows |
+| `Value groupings` | the `WHERE` panel at each of its four groupings, with real rows |
+| `Palettes` | the same strip in Signal, Flux and Phosphor, with the spinner candidates below |
 
 Exports of the four frames sit beside this file as `01-*.png`. A written
 specimen of the same contract, with the before-image and the
@@ -46,13 +47,18 @@ Five, in order. When two conflict, the earlier one wins.
    gradient, no icon font.
 
    **One thing moves, and only one.** The mark on a line whose agent
-   holds the tty turns through the ten braille frames
-   `⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏` at 80 ms a frame — the terminal's own spinner,
-   and the one Claude Code already turns in the pane. It is a character
-   cycle, not a CSS transition, so it costs no layout and it reads at a
-   glance from across a room. Everything else is still: no fade, no
-   slide, no transition on a colour or a size. Under
-   `prefers-reduced-motion` the cycle stops and the mark rests on `⠿`.
+   holds the tty turns, at 90 ms a frame. It is a character cycle, not a
+   CSS transition, so it costs no layout and it reads at a glance from
+   across a room. Everything else is still: no fade, no slide, no
+   transition on a colour or a size. Under `prefers-reduced-motion` the
+   cycle stops and the mark rests full.
+
+   **The glyph is measured, not assumed.** A missing glyph renders as a
+   box, which is worse than no animation, and braille is not in every
+   monospace face. The page tries three cycles in order and takes the
+   first whose advance width matches the mark column: braille
+   `⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏`, which matches the pane; quadrant `◐ ◓ ◑ ◒`;
+   then the block ramp `▁ ▃ ▅ ▇`, which the chart already proves.
 5. **Colour marks state and nothing else.** Text is one of three greys.
    The four semantic colours appear on the one-character mark at the
    start of a line, and nowhere else.
@@ -202,14 +208,26 @@ Every interactive target below 768 px is 44 px tall. Above it, 28 px.
 
 ### Colour
 
-No new colour. Four semantic tokens already exist and already pass the
-contrast ratchet on every bundled theme:
+**The page inherits the ground and owns the accents.** `bg`, `surface`,
+`border` and the three text greys keep deriving from the terminal's
+theme, so the page sits in its world and a light terminal still works.
+The four colours that carry meaning are the page's own constants,
+chosen for hue separation rather than inherited by accident.
 
-`--ui-accent` working · `--ui-warning` needs you · `--ui-danger` failed ·
-`--ui-success` done.
+`corpus/palette.md` holds the measurements and three candidates. The
+recommendation is **Flux**, pending the human's pick:
+
+| Role | Flux | Why |
+|---|---|---|
+| `--ui-accent` working, bars | `#a78bfa` violet | 97° from its nearest state hue, so it never reads as one |
+| `--ui-success` done | `#34d399` | |
+| `--ui-warning` needs you | `#fbbf24` | |
+| `--ui-danger` failed | `#f87171` | |
 
 They paint the mark glyph. They never paint text, a background, or a
-border.
+border. The lowest ratio any pair reaches on any bundled theme is 5.06,
+against 4.18 for the palette the page has today, so the ratchet gains no
+`KNOWN_BELOW` entry.
 
 ## The frame
 
