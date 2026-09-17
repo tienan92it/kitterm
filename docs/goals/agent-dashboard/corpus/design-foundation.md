@@ -2,9 +2,26 @@
 
 Approved by: pending. Frozen once approved.
 
-A visual specimen of this file, with every scale and component drawn on
-the product's own ground and every number read from the live daemon:
+The design is drawn in Pencil. Save the open document as
+`corpus/dashboard.pen` beside this file; it holds four frames, and every
+number in them is read from the live daemon on 2026-09-17:
+
+| Frame | What it shows |
+|---|---|
+| `Dashboard 1200` | the whole page at desktop width, 28 px lines |
+| `Dashboard 390` | the same page on a phone, 44 px lines, facts dropped |
+| `Foundation` | the space scale, the type scale, the state marks, the two densities |
+| `Anatomy of a line` | the line's six cells and the order its facts drop in |
+
+Exports of the four frames sit beside this file as `01-*.png`. A written
+specimen of the same contract, with the before-image and the
+measurements, is published at
 https://claude.ai/code/artifact/31ebf9e5-f5eb-403c-945c-af04c28bebcf
+
+The Pencil document defines the tokens as document variables, so a round
+reads them from the file rather than from this prose: ten colours on a
+`theme` axis with `dark` and `light`, five space steps, three type sizes,
+two line heights, and the mono family.
 
 This file is the contract between the design and every round that
 implements it. A round does not invent a token, a size, or a class
