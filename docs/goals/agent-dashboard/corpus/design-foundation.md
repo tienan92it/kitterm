@@ -2,6 +2,10 @@
 
 Approved by: pending. Frozen once approved.
 
+A visual specimen of this file, with every scale and component drawn on
+the product's own ground and every number read from the live daemon:
+https://claude.ai/code/artifact/31ebf9e5-f5eb-403c-945c-af04c28bebcf
+
 This file is the contract between the design and every round that
 implements it. A round does not invent a token, a size, or a class
 prefix. It uses what is here, or it proposes a change in its record.
