@@ -225,8 +225,8 @@ recommendation is **Flux**, pending the human's pick:
 | `--ui-danger` failed | `#f87171` | |
 
 They paint the mark glyph. They never paint text, a background, or a
-border. The lowest ratio any pair reaches on any bundled theme is 5.06,
-against 4.18 for the palette the page has today, so the ratchet gains no
+border. The lowest ratio any pair reaches on any bundled theme is 5.20,
+against 4.18 for the palette the page had, so the ratchet gains no
 `KNOWN_BELOW` entry.
 
 ## The frame
@@ -266,6 +266,12 @@ as a dashboard rather than as five lists.
 | `VALUE` | a grouping selector, then one row per group: name, bar, spend, unit count, unit cost |
 | `MODELS` | one bar per model, scaled to spend, with the spend and the session count |
 | `LEAKS` | one line per leak, marked |
+
+**A panel's note is one line, and it names a fact.** Not a paragraph,
+not a caveat with a reason attached. `$1,446.00 apportioned across
+midnight`, `85% names no round, so it cannot be valued`, `a crew is 31%
+cheaper an API hour`. The reasoning lives in `corpus/valuemaxxing.md`
+and in the round records; the page carries the number.
 
 ### The VALUE panel groups by the same levels as the tree
 

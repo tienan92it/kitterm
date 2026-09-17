@@ -70,10 +70,33 @@ mapping every reader already knows.
 
 ## The decision
 
-**Flux, under rule C.** The human picked it on 2026-09-17, and every
-frame in `dashboard.pen` is re-tinted: the document variables now hold
-Flux, and each frame draws from them, so the re-tint was one edit rather
-than six.
+**Carbon, under rule C.** The human ruled out violet on 2026-09-17, so
+Flux is not taken despite the best numbers, and Carbon is the pick.
+
+**Excluding violet, the accent had to be cyan or blue.** It has to stay
+clear of green, amber and red, which leaves one band of the wheel. Four
+candidates were measured inside it:
+
+| | Accent | Ground | Closest hue pair | Accent to nearest state | Lowest contrast |
+|---|---|---|---|---|---|
+| **Carbon** | `#22d3ee` cyan | `#0a0a0b` true black | 46° | 46° | **5.20** |
+| Ink | `#60a5fa` azure | `#0a1020` navy | 52° | 55° | 5.20 |
+| Dune | `#2dd4bf` teal | `#12100e` warm black | **27°** | 89° | 5.06 |
+| Phosphor | `#7bff9e` green | `#080a09` | 39° | 52° | 5.04 |
+
+**Dune is rejected on a number**: its warning orange sits 27° from its
+danger red, and two marks a reader cannot tell apart is a worse failure
+than any ratio.
+
+**Ink has the better separation and Carbon is taken anyway.** Ink's
+azure is 213°, one degree from the blue the page already had, so it
+would read as the same palette on a slightly different ground. Carbon's
+cyan on a true-black ground is the visible change the human asked for,
+and 46° is the same separation Signal would have given.
+
+Every frame in `dashboard.pen` is re-tinted: the document variables hold
+Carbon and each frame draws from them, so the re-tint was one edit
+rather than six.
 
 - Violet is the widest hue any accent can take from green, amber and
   red at once, so it never competes with a state.
@@ -85,27 +108,27 @@ than six.
 **Phosphor** was the boldest and is not taken. Its cost was real:
 success stops being green.
 
-## Flux, as shipped
+## Carbon, as shipped
 
 Two themes, both measured. Every text pair clears 4.5 and every state
 pair clears 3.0, on the ground and on the surface.
 
 | Token | Dark | Light |
 |---|---|---|
-| `bg` | `#0c0c12` | `#fbfbfe` |
-| `surface` | `#14141d` | `#f2f2f8` |
-| `border` | `#23232f` | `#dcdce8` |
-| `text` | `#eaeaf2` | `#17171f` |
-| `muted` | `#b0b0c0` | `#4d4d61` |
-| `faint` | `#81819a` | `#68687f` |
-| `accent` | `#a78bfa` | `#6d3ee8` |
-| `success` | `#34d399` | `#047857` |
-| `warning` | `#fbbf24` | `#a35a00` |
-| `danger` | `#f87171` | `#c81e34` |
+| `bg` | `#0a0a0b` | `#fcfcfd` |
+| `surface` | `#111113` | `#f4f4f6` |
+| `border` | `#1f1f23` | `#e0e1e4` |
+| `text` | `#e9eaec` | `#16171a` |
+| `muted` | `#aeb0b6` | `#4b4d55` |
+| `faint` | `#7e8189` | `#63666e` |
+| `accent` | `#22d3ee` | `#0e7490` |
+| `success` | `#4ade80` | `#15803d` |
+| `warning` | `#fbbf24` | `#9a6400` |
+| `danger` | `#fb7185` | `#be123c` |
 
-One value moved after the first measurement: `faint` on `surface` in
-light read 4.37, under the 4.5 a text pair needs, so it darkened from
-`#6f6f88` to `#68687f` and reads 4.86.
+Fourteen pairs measured in each theme, on the ground and on the surface.
+Zero failures: every text pair clears 4.5 and every state pair clears
+3.0.
 
 Under rule C the product keeps deriving `bg`, `surface`, `border` and
 the three greys from the terminal's theme. The table's ground values are
