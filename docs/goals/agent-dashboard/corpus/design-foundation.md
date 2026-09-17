@@ -211,6 +211,13 @@ fixed, because the cells are fixed.
 The usage series and the quota bars, side by side above 768 px, stacked
 below it. Both are the `meter` and `series` components.
 
+### Then the yield
+
+What the range's spend bought, and where the dollar went. One `yield`
+block of counts and unit costs, then one `split` row per role and per
+model. `corpus/valuemaxxing.md` holds the measurements and the reason
+each row is there.
+
 ### Then the tree
 
 The whole fleet, four levels, one line each. This is the page's body and
@@ -222,7 +229,7 @@ Archived sessions and done goals, closed.
 
 ## Components
 
-Nine. Nothing else is added without a change to this file. Every class
+Ten. Nothing else is added without a change to this file. Every class
 name carries its component's prefix, which replaces the 100 ad-hoc names
 the page has today with about 30.
 
@@ -233,7 +240,8 @@ the page has today with about 30.
 | Series | `series-` | one bar a day, with an axis and a headline |
 | Tree | `tree-` | the nested disclosure holding every level |
 | Line | `line-` | one row: mark, name, facts, time, actions |
-| Split | `split-` | one row per model: name, spend, cache share |
+| Split | `split-` | one row per model or role: name, bar, spend, rate |
+| Yield | `yield-` | what the range's spend bought: a count, a unit, a unit cost |
 | Fold | `fold-` | a closed group with a count |
 | Tag | `tag-` | a bracketed word: `[new]`, `[done]`, `[PR #118]` |
 | Note | `note-` | a paragraph of explanation under a block |
@@ -250,9 +258,15 @@ Every level of the tree is one `line`. Its cells, in order:
 - **mark**: one character, coloured by state, or blank.
 - **indent**: `--space-3` per level below the top.
 - **name**: the only cell that grows, and the only one that truncates.
-- **facts**: state word, cost, model, cache share, round counter. Each
-  drops from the right as the line narrows, in that order, so the state
-  word is the last fact to go and the model goes before the cost.
+- **facts**: state word, cost, model, round counter. Each drops from the
+  right as the line narrows, in that order, so the state word is the
+  last fact to go and the model goes before the cost.
+
+  **The cache share is not a fact column.** It sat on every heading and
+  `corpus/valuemaxxing.md` measured it at 95–99% on every session over
+  $5 but three. A constant carries no information. It appears only when
+  a project or a goal falls below 95%, as one exception line under the
+  leaks block.
 - **time**: relative, always the same width.
 - **actions**: `[new]`, the `…` menu, or nothing.
 

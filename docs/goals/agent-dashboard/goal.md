@@ -4,7 +4,8 @@
 
 A person opens `/sessions` and reads the state of their whole fleet in
 one screen: how many agents are working, how many wait for them, what
-the work is costing, and how much quota is left. Below that, the same
+the work is costing, how much quota is left, and what that spend
+bought. Below that, the same
 fleet in four levels — workspace, project, goal, task — one line each,
 so the reader can follow a workspace down to the task an agent is
 running right now, and read which model that agent is running on. The
@@ -38,7 +39,7 @@ components, colour on the state mark alone.
 
 ## Completion condition
 
-All eight hold on a build from `main`:
+All nine hold on a build from `main`:
 
 1. The top band is one fixed-height row of four counts — agents working,
    items needing a person, spend over the chosen range, quota used — and
@@ -58,7 +59,12 @@ All eight hold on a build from `main`:
 7. A session running an agent shows its model as a fact on its line, and
    the meters carry one row per model with its spend and its cache
    share. A model with no reading prints nothing rather than a guess.
-8. The floor is green and `main` is green after the merge.
+8. The page shows what the range's spend bought — merged pull requests,
+   merged lines, releases and hours of model time, each with its unit
+   cost — and where the dollar went, one row per role and per model. It
+   says in the same breath that a line and a PR are proxies, not value.
+   It invents no rate for the human's time.
+9. The floor is green and `main` is green after the merge.
 
 The floor (`swift test`, the web suite with the contrast ratchet,
 `KittermBench interactive-echo` under 50 ms p95, and the Linux build) is

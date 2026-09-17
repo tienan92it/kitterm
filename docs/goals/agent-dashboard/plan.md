@@ -48,7 +48,7 @@ content, so a reader never learns where to look.
 
 ## Capability order
 
-Six capabilities. Each ships as one PR. Each names the check that
+Seven capabilities. Each ships as one PR. Each names the check that
 proves it.
 
 | # | Capability | Proof |
@@ -61,12 +61,16 @@ proves it.
 
 | 6 | **Every agent says its model.** A session's model comes from the last `"model"` field in its `agentTranscript` and rides on the session payload. `UsageRollup` keeps the `modelUsage` map that `TranscriptBill` already reads, and `GET /api/usage/daily` answers a per-model split for the range. The line carries the model as a fact; the meters carry one `split` row per model with its spend and cache share. | Swift tests over the reader: a transcript whose last assistant line names a model, one with no assistant turn, an unreadable path, and the five naming cases from `design-foundation.md` including `[1m]` and a dated id. A rollup test that a day's per-model split sums to that day's total. A vitest over the split model including the empty case. A screenshot against the real tree showing the model on a live agent's line. |
 
+| 7 | **The page says what the spend bought.** A `yield` block shows the range's merged pull requests, merged lines, releases and hours of model time, each with its unit cost, and says in the same line that a line and a PR are proxies. A `split` row per role — crew in a worktree, session in a root — carries `$/API h` and `$/line`, read from the transcript's own directory. A `leaks` block names the spend with no round record, the corrections per round, and any session under 95% cached. The cache share leaves every heading and becomes that exception line. | Swift tests over the role reader (a worktree path, a root path, a path outside every project) and over the yield arithmetic with a zero-count range. A vitest over the yield and split models, including the empty range and the case where no session falls under 95%. A `sessions-css.test.ts` assertion that no heading carries a cache share. A screenshot against the real tree. |
+
 Capability 1 is independent and goes first, because it removes code the
 later capabilities would otherwise have to carry. Capability 2 goes
 second, because every later capability writes CSS and should write it
 against the scale. Capability 3 is independent of 4. Capability 6 is independent of all of
 them and may run beside any; it is last only because it is the smallest.
-Capability 5 needs 3, 4 and 6, because it shapes the lines and the facts
-they create. The human sees the
+Capability 7 needs 6, because both read the bill's per-model map, and it
+must land before 5, because it takes the cache share off the headings
+that 5 then measures. Capability 5 needs 3, 4, 6 and 7, because it
+shapes the lines and the facts they create and is therefore last. The human sees the
 images after 2 and after 5 before either merges, because both change how
 the page looks.

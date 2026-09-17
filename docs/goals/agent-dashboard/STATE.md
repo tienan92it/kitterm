@@ -13,7 +13,8 @@
 3. `a-task-is-the-fourth-level` (capability 3)
 4. `the-band-replaces-the-strip` (capability 4)
 5. `every-agent-says-its-model` (capability 6)
-6. `every-line-is-one-line` (capability 5, last: it shapes the lines the
+6. `the-page-says-what-the-spend-bought` (capability 7)
+7. `every-line-is-one-line` (capability 5, last: it shapes the lines the
    others create)
 
 ## Failures
@@ -67,6 +68,29 @@ on each transcript's final `cost-state` line, which `TranscriptBill`
 already reads and `UsageRollup` throws away. Over the last 30 days seven
 ids appear, led by `claude-fable-5-1` at $1,283.48 and
 `claude-opus-5[1m]` at $404.43. It is capability 6.
+
+2026-09-17: the human asked to measure and show valuemaxxing. The
+foreman read it as: how much delivered work each dollar buys, and which
+lever moves that number. `corpus/valuemaxxing.md` holds the research;
+if the reading is wrong, that file is the thing to correct.
+
+Seven findings, all measured against real transcripts, real round
+records and the repository's own merge history. Yield is measurable:
+kitterm's last 30 days cost $976.74 and bought 83 merged PRs at $11.77
+each, 58,853 lines at 1.7 cents, and 24 releases at $40.70. Delegation
+is the lever: a crew in a worktree costs $42 an API hour against $61 in
+a root session, 31% cheaper. Most spend has no unit attached: 14 of 51
+round records carry a `Cost:` line and 14% of account spend runs in a
+crew worktree. And one finding removes something the page draws today:
+the cache share is 95–99% on every session over $5 but three, so it is a
+constant, and it leaves every heading for an exception line.
+
+Three things the research refuses to claim: a quality rate, because
+every one of the 51 rounds records `done`; a rework rate, because two
+commits in 30 days is noise; and a money value for the work, because
+nothing here knows the human's hourly rate and the page takes no input.
+
+It is capability 7.
 
 ## Next action
 
