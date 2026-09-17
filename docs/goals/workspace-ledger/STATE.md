@@ -1,10 +1,10 @@
 # STATE: workspace-ledger
 
-- Status: waiting
+- Status: done
 - Round: 3 of 3 in this budget (second budget)
 - Rounds total: 6
 - Last floor: green (2026-09-16, round 6 after: swift test 780, vitest 1286 in 41 files; no `Sources/` change, so no Linux build and no bench)
-- Updated: 2026-09-16, round 6 closed
+- Updated: 2026-09-17, the human set the goal done
 
 ## Queue
 
@@ -24,10 +24,9 @@ None.
 - `plan.md` row 5 says "sparkline". Round 5 shipped one SVG bar a day, so
   a silent day is a visible gap and the chart adds no colour pair for the
   ratchet to measure. The plan is the human's to change.
-- `corpus/01-where-did-it-go.md` item 1 says the strip is "as today".
-  Round 6 changed it: the strip now holds only a live goal's proposals.
-  The corpus is Frozen and the human updates the line.
-- `plan.md` has no row for capability 6. Round 6's record offers one.
+- `plan.md` has no row for capability 6, `the-strip-holds-only-what-needs-you`.
+  Round 6's record offers one. The human has not answered; it blocks
+  nothing, because the capability is shipped and its record stands.
 
 ## Done
 
@@ -89,17 +88,24 @@ its items.
 
 ## Next action
 
-None until the human answers. The second budget is spent at round 6, so
-the goal is `waiting`.
+None. The human set the goal `done` on 2026-09-17 and amended the corpus
+request in the same answer.
 
-The foreman recommends **done**. All six conditions in `goal.md` hold on
-`main`: the page groups by workspace, project and goal state with no
-filters; a foreman or crew row takes a typed answer; `GET
-/api/usage/limits` serves the newest quota reading with its age; the
-daemon keeps a daily rollup that outlives the 30-day transcript
-retention; every heading carries its cost and cache share beside the
-panel; and `main` is green after every merge.
+All six conditions in `goal.md` hold on `main` at `7996ebb`, released as
+v0.30.0 and upgraded in place. The page groups by workspace, project and
+goal state with no filters. A foreman or crew row takes a typed answer.
+`GET /api/usage/limits` serves the newest quota reading with its age.
+The daemon keeps a daily rollup that outlives the 30-day transcript
+retention. Every heading carries its cost and cache share beside the
+panel. `main` was green after every merge.
 
-Two proposals wait on the human, both listed above, and neither blocks
-anything. The human sets `Status: done`, or reopens the goal with
-`Status: active` and a new queue.
+Measured on the live daemon on 2026-09-16: last 30 days $1,177.28,
+`kitterm` $926.21 at 98% cached, this goal itself $75.11. The page at
+390 px is 1238 px tall, from 2820 px before the two dashboard goals.
+
+One step stays with the human and is not a defect: run
+`kitterm statusline install`. The quota block reads "No quota reading
+yet" until a statusline render posts one.
+
+To reopen: set `Status: active`, write a queue, and set
+`Round: 0 of 3 in this budget (third budget)`.
