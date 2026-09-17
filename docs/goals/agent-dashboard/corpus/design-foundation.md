@@ -12,6 +12,7 @@ number in them is read from the live daemon on 2026-09-17:
 | `Dashboard 390` | the same page on a phone, 44 px lines, facts dropped, the yield block kept |
 | `Foundation` | the space scale, the type scale, the state marks, the two densities, the model naming rule |
 | `Anatomy of a line` | the line's six cells and the order its facts drop in |
+| `Value groupings` | the `VALUE` panel at each of its four groupings, with real rows |
 
 Exports of the four frames sit beside this file as `01-*.png`. A written
 specimen of the same contract, with the before-image and the
@@ -223,15 +224,38 @@ as a dashboard rather than as five lists.
 |---|---|
 | `USAGE` | the range's spend and tokens, the day chart, the axis, the apportionment note |
 | `QUOTA` | one bar per window, its percentage and its reset |
-| `VALUE` | four tiles: a count, what it is, its unit cost |
-| `WHERE` | one stacked bar, then one legend line per role with its rate |
+| `VALUE` | a grouping selector, then one row per group: name, bar, spend, unit count, unit cost |
 | `MODELS` | one bar per model, scaled to spend, with the spend and the session count |
 | `LEAKS` | one line per leak, marked |
 
+### The VALUE panel groups by the same levels as the tree
+
+`VALUE` and `WHERE` were two panels asking one question at two fixed
+groupings. They are one panel with a selector, and the groupings are the
+levels the page already has:
+
+| Grouping | A row is | Its spend comes from | Its units come from |
+|---|---|---|---|
+| **project** | a registered project | the daily rollup, keyed on the transcript's cwd | that repository's merged pull requests and lines |
+| **goal** | a goal folder | the sum of the `- Cost:` line of its round records | the pull requests those records name |
+| **task** | a queue item, which is one round | that round's `- Cost:` line | the pull request that round's record names |
+| **role** | a crew in a worktree, or a session in a root | the transcript's own directory | that role's lines and API hours |
+
+Two rules the panel holds at every grouping.
+
+**A row with no source prints a dash, never a zero.** 37 of 51 round
+records carry no `- Cost:` line, so most goals and tasks have no spend,
+and most rounds name no pull request.
+
+**The unattributed remainder is a row, not a footnote.** At the `goal`
+grouping, `no round record` is $832.89, which is 85% of kitterm's 30-day
+spend, and it draws as the longest bar in amber. Hiding it would make
+the other three rows look like the whole picture.
+
 Below 768 px the gutter goes and each panel's label becomes a small
-heading over its content. `WHERE` and `LEAKS` drop entirely: they are
-the least urgent measures, and the same drop rule governs them as
-governs a line's facts.
+heading over its content. `VALUE` keeps its selector and its rows.
+`LEAKS` drops: it is the least urgent measure, and the same rule governs
+it as governs a line's facts.
 
 `corpus/valuemaxxing.md` holds the measurements and the reason each row
 is there.
