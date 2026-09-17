@@ -211,12 +211,30 @@ fixed, because the cells are fixed.
 The usage series and the quota bars, side by side above 768 px, stacked
 below it. Both are the `meter` and `series` components.
 
-### Then the yield
+### The panels
 
-What the range's spend bought, and where the dollar went. One `yield`
-block of counts and unit costs, then one `split` row per role and per
-model. `corpus/valuemaxxing.md` holds the measurements and the reason
-each row is there.
+Everything that is a measure rather than a session sits in one stack of
+panels between the band and the tree. Each panel is one row: a label in
+an 84 px gutter on the left, its content filling the rest. The gutter
+gives the whole stack one rhythm, and it is what makes five panels read
+as a dashboard rather than as five lists.
+
+| Panel | Content |
+|---|---|
+| `USAGE` | the range's spend and tokens, the day chart, the axis, the apportionment note |
+| `QUOTA` | one bar per window, its percentage and its reset |
+| `VALUE` | four tiles: a count, what it is, its unit cost |
+| `WHERE` | one stacked bar, then one legend line per role with its rate |
+| `MODELS` | one bar per model, scaled to spend, with the spend and the session count |
+| `LEAKS` | one line per leak, marked |
+
+Below 768 px the gutter goes and each panel's label becomes a small
+heading over its content. `WHERE` and `LEAKS` drop entirely: they are
+the least urgent measures, and the same drop rule governs them as
+governs a line's facts.
+
+`corpus/valuemaxxing.md` holds the measurements and the reason each row
+is there.
 
 ### Then the tree
 
