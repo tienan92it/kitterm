@@ -4,7 +4,6 @@ import { resolveFontFamily } from "./fonts";
 import { summarize, waitedLabel } from "./approval-format";
 import {
   actionName,
-  agentMark,
   applicationServerKey,
   approvalName,
   attention,
@@ -36,12 +35,9 @@ import {
   projectUsage,
   pushToggle,
   readUsageChoice,
-  receiptStands,
   recordLabel,
   recordName,
   restartDismissName,
-  replyControl,
-  replyName,
   restartNotice,
   rowLine,
   rowName,
@@ -72,7 +68,6 @@ import {
   type ProjectSummary,
   type LineProposals,
   type ProposedItem,
-  type ReplySent,
   type PushFacts,
   type PushSupport,
   type PushToggle,
@@ -92,9 +87,7 @@ import { findThemeById } from "./themes";
 /**
  * The fleet view: every live shell grouped by project, what needs the human
  * first, and the actions a supervisor takes from a phone — answer, spawn,
- * archive, kill, and answer a foreman or a crew by typing a line under its
- * row, which `POST /api/sessions/<id>/input?enter=1` types into its pane
- * (`replyControl` decides when the field sends). Polls `/api/projects`, `/api/sessions`, `/api/approvals`,
+ * archive, kill. Polls `/api/projects`, `/api/sessions`, `/api/approvals`,
  * `/api/archives` and `/api/usage/limits`, plus `/api/projects/<id>/knowledge` for each
  * registered project and `/api/usage/daily` for the chosen range, and links
  * each row back to `/?session=<id>`.
@@ -207,16 +200,6 @@ let notice: string | null = null;
 /** The row whose action menu is open on a phone. Kept across repaints, so a
  * poll between the two taps does not close the menu under the thumb. */
 let openMenu: string | null = null;
-/** The line typed under each row and not yet sent, by session id. A repaint
- * rebuilds the field, so the draft lives here, like the spawn choice. */
-const drafts = new Map<string, string>();
-/** The last line each row sent, by session id: when, and the agent's report
- * then, so the receipt beside `[send]` knows when the agent has moved on. */
-const sent = new Map<string, ReplySent>();
-/** The daemon refused a send for want of `--agent-control`. The flag cannot
- * change while the daemon runs, so every reply field is held with that
- * reason from the first refusal until the daemon starts again. */
-let agentControlOff = false;
 /** The profile picked in each card's spawn select, by project id. A repaint
  * rebuilds the select, so the choice lives here, not in the DOM. */
 const spawnProfile = new Map<string, string>();
@@ -542,10 +525,6 @@ function render(): void {
     watchOnly,
     profiles.map((p) => p.name),
     notice,
-    agentControlOff,
-    // A receipt goes when the agent reports again; that report is out of
-    // `rendered`, so the receipt's standing is in.
-    sessions.map((s) => receiptStands(sent.get(s.id), s)),
     quota,
     panel,
   ]);
@@ -1089,10 +1068,6 @@ function stripItem(item: StripItem): HTMLElement {
     line.textContent = detail;
     li.append(line);
   }
-  // A row that needs input is in the strip and not in its card, so the
-  // field that answers it is here.
-  const reply = replyForm(row);
-  if (reply) li.append(reply);
   li.append(openLink(row.id, "Open the pane"));
   return li;
 }
@@ -1642,8 +1617,6 @@ function row(s: SessionRow, base?: string): HTMLElement {
   link.append(dot, main);
   li.append(link);
   if (!watchOnly) li.append(rowActions(s));
-  const reply = replyForm(s);
-  if (reply) li.append(reply);
   return li;
 }
 
@@ -1763,101 +1736,6 @@ async function endSession(s: SessionRow, verb: string, url: string, method: stri
     busy.delete(s.id);
     lastSignature = "";
     void poll();
-  }
-}
-
-// --- answering an agent -----------------------------------------------------
-
-/**
- * One line under a row with a live agent: a text field and `[send]`, which
- * types the line into the pane through `POST /api/sessions/<id>/input?enter=1`,
- * as if typed. Null when `replyControl` says the control is absent (a watch
- * client, or no live agent). A held control keeps the field and prints the
- * reason where `[send]` was: a working agent loses a line typed mid-turn
- * (`docs/goals/facts.md`), so the send waits for the reader, not a queue.
- * After a send, `sent 14:32` stands beside `[send]` until the agent's next
- * report (`receiptStands`).
- *
- * The draft lives in `drafts`, because every poll that changes the page
- * rebuilds the field; the field's `data-focus` key gets focus back.
- */
-function replyForm(s: SessionRow): HTMLFormElement | null {
-  const control = replyControl(s, { watchOnly, agentControlOff });
-  if (control.kind === "absent") return null;
-  const form = document.createElement("form");
-  form.className = "reply";
-  const field = document.createElement("input");
-  field.type = "text";
-  field.className = "reply-input";
-  field.autocomplete = "off";
-  field.spellcheck = false;
-  field.enterKeyHint = "send";
-  field.placeholder = replyName(s);
-  field.setAttribute("aria-label", replyName(s));
-  field.value = drafts.get(s.id) ?? "";
-  field.dataset.focus = `${s.id}:reply`;
-  field.addEventListener("input", () => {
-    if (field.value) drafts.set(s.id, field.value);
-    else drafts.delete(s.id);
-  });
-  form.append(field);
-  if (control.kind === "held") {
-    form.append(span("reply-hold", control.reason));
-  } else {
-    const send = button("send", "quiet", () => void sendReply(s.id));
-    send.dataset.focus = `${s.id}:send`;
-    send.setAttribute("aria-label", actionName("Send to", headlineOf(s)));
-    form.append(send);
-    const receipt = sent.get(s.id);
-    if (receiptStands(receipt, s)) {
-      const stamp = span("reply-sent", `sent ${clockTime(receipt!.at)}`);
-      stamp.setAttribute("role", "status");
-      form.append(stamp);
-    }
-  }
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    void sendReply(s.id);
-  });
-  return form;
-}
-
-/** Type the row's draft into its pane and press Enter. The control is read
- * again here, against the row as last polled, because the state may have
- * moved since the field was painted: a held control refuses with its
- * reason in the notice and keeps the draft. A refusal from the daemon
- * keeps the draft too, and the `--agent-control` one holds every field
- * from then on (`agentControlOff`). */
-async function sendReply(id: string): Promise<void> {
-  const s = sessions.find((r) => r.id === id);
-  const line = drafts.get(id)?.trim() ?? "";
-  if (!s || !line || busy.has(id)) return;
-  const control = replyControl(s, { watchOnly, agentControlOff });
-  if (control.kind !== "ready") {
-    fail(`Not sent to ${headlineOf(s)}: ${control.kind === "held" ? control.reason : "no live agent"}`);
-    return;
-  }
-  busy.add(id);
-  try {
-    const res = await fetch(`/api/sessions/${encodeURIComponent(id)}/input?enter=1`, {
-      method: "POST",
-      headers: { "content-type": "text/plain; charset=utf-8" },
-      body: line,
-    });
-    if (!res.ok) {
-      const reason = await reasonOf(res);
-      if (res.status === 403 && reason.includes("--agent-control")) agentControlOff = true;
-      throw new Error(reason);
-    }
-    drafts.delete(id);
-    sent.set(id, { at: Date.now(), ...agentMark(s) });
-    notice = null;
-  } catch (error) {
-    fail(`Could not send to ${headlineOf(s)}: ${describe(error)}`);
-  } finally {
-    busy.delete(id);
-    lastSignature = "";
-    render();
   }
 }
 
@@ -2022,10 +1900,7 @@ type FeedEvent = { type?: string; data?: Record<string, string> };
 function readStarted(events: FeedEvent[], epoch: string | undefined): void {
   if (epoch === undefined) return;
   for (const event of events) {
-    if (event.type !== "daemon.started") continue;
-    // A new run may carry `--agent-control`; the next send finds out.
-    if (started?.epoch !== epoch) agentControlOff = false;
-    started = { epoch, data: event.data ?? {} };
+    if (event.type === "daemon.started") started = { epoch, data: event.data ?? {} };
   }
 }
 

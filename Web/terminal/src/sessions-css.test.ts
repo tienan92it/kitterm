@@ -84,4 +84,17 @@ describe("sessions.css is the terminal's surface", () => {
     );
     expect(animated).toEqual([]);
   });
+
+  it("styles no text field: the page takes no typed work", () => {
+    // `agent-dashboard`, capability 1: the reply field, `[send]` and the
+    // held reason are gone, so a `.reply` rule or a selector that reaches an
+    // `input` or a `textarea` is dead and must not return.
+    const typed = RULES.filter((rule) =>
+      rule.selector
+        .split(",")
+        .map((part) => part.trim())
+        .some((part) => /(^|[\s>+~])(input|textarea)\b/.test(part) || /\.reply(-|\b)/.test(part)),
+    ).map(at);
+    expect(typed, "a rule for a field the page no longer draws").toEqual([]);
+  });
 });

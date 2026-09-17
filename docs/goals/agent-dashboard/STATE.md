@@ -1,20 +1,19 @@
 # STATE: agent-dashboard
 
 - Status: active
-- Round: 0 of 3 in this budget (first budget)
-- Rounds total: 0
-- Last floor: green (2026-09-17, main at 2eee3cf: swift test 780, vitest 1286 in 41 files)
-- Updated: 2026-09-17, foundation approved, round 1 starting
+- Round: 1 of 3 in this budget (first budget)
+- Rounds total: 1
+- Last floor: green (2026-09-17, round 1 after: swift test 780, vitest 1274 in 41 files)
+- Updated: 2026-09-17, round 1 closed
 
 ## Queue
 
-1. `no-input-on-the-page` (capability 1)
-2. `the-foundation-in-the-stylesheet` (capability 2)
-3. `a-task-is-the-fourth-level` (capability 3)
-4. `the-band-replaces-the-strip` (capability 4)
-5. `every-agent-says-its-model` (capability 6)
-6. `the-page-says-what-the-spend-bought` (capability 7)
-7. `every-line-is-one-line` (capability 5, last: it shapes the lines the
+1. `the-foundation-in-the-stylesheet` (capability 2)
+2. `a-task-is-the-fourth-level` (capability 3)
+3. `the-band-replaces-the-strip` (capability 4)
+4. `every-agent-says-its-model` (capability 6)
+5. `the-page-says-what-the-spend-bought` (capability 7)
+6. `every-line-is-one-line` (capability 5, last: it shapes the lines the
    others create)
 
 ## Failures
@@ -34,7 +33,11 @@ None.
 
 ## Done
 
-None.
+- `no-input-on-the-page` (capability 1), round 1, PR #125. See
+  `rounds/001.md`. No element on the page accepts typed text. The crew
+  took out the form and everything that existed only to serve it. 390 px
+  page 1340 to 1174, 1200 px 1099 to 933, fields 3 to 0. One chartered
+  deletion: `sessions-reply.test.ts` and its 16 assertions.
 
 ## Direction
 
@@ -99,9 +102,9 @@ It is capability 7.
 
 ## Next action
 
-Round 1, `no-input-on-the-page`, from `plan.md` row 1, running now. It
-goes first because it removes code the later capabilities would
-otherwise have to carry.
+Round 2, `the-foundation-in-the-stylesheet`, from `plan.md` row 2. It
+goes next because every later capability writes CSS and should write it
+against the scale.
 
 The design is settled and frozen: `corpus/design-foundation.md` holds
 the contract, `corpus/palette.md` holds five palette rounds and the
