@@ -36,6 +36,9 @@ components, colour on the state mark alone.
   list is in `design-foundation.md` under "What the page keeps".
 - **No density control, no theme picker, no settings.** Density follows
   the width. The theme follows the terminal.
+- **One animation, and only one.** The working mark turns through the
+  terminal's braille spinner. Nothing else on the page moves, and
+  `prefers-reduced-motion` stops even that.
 
 ## Completion condition
 
@@ -48,7 +51,10 @@ All nine hold on a build from `main`:
    task's state is working, pending, done or failed, read from the
    goal's `STATE.md` and from a live session's `task:` label.
 3. Every line in the tree is one line at 390 px: a mark, a name, its
-   facts, its time. Nothing wraps.
+   facts, its time. Nothing wraps. Every state reads as a bracketed word
+   beside a coloured mark — `[working]`, `[needs you]`, `[pending]`,
+   `[done]`, `[failed]`, `[idle]` — and the `SESSIONS` header prints the
+   whole vocabulary above the tree.
 4. No element on the page accepts typed text. A vitest asserts that the
    rendered page contains no `input`, `textarea` or `contenteditable`.
 5. `sessions.css` uses the space scale and the three type sizes from

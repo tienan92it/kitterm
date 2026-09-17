@@ -43,7 +43,16 @@ Five, in order. When two conflict, the earlier one wins.
    wrapped.
 4. **The terminal is the idiom.** Monospace, hairlines, bracketed words,
    text-cell bars. No pill, no shadow, no radius above 2 px, no
-   gradient, no transition, no icon font.
+   gradient, no icon font.
+
+   **One thing moves, and only one.** The mark on a line whose agent
+   holds the tty turns through the ten braille frames
+   `⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏` at 80 ms a frame — the terminal's own spinner,
+   and the one Claude Code already turns in the pane. It is a character
+   cycle, not a CSS transition, so it costs no layout and it reads at a
+   glance from across a room. Everything else is still: no fade, no
+   slide, no transition on a colour or a size. Under
+   `prefers-reduced-motion` the cycle stops and the mark rests on `⠿`.
 5. **Colour marks state and nothing else.** Text is one of three greys.
    The four semantic colours appear on the one-character mark at the
    start of a line, and nowhere else.
@@ -77,12 +86,24 @@ project stands at the top level. That rule is already shipped and stays.
 
 A task's state comes from one place each:
 
-| State | Source |
-|---|---|
-| working | a live session carries `task:<slug>` and `goal:<slug>` |
-| pending | the slug appears in `## Queue` |
-| done | the slug appears in `## Done` |
-| failed | the slug appears in `## Failures` |
+| State | Mark | Reads | Source |
+|---|---|---|---|
+| working | `⠹` turning, accent | `[working]` | a live session carries `task:<slug>` and `goal:<slug>` |
+| needs you | `?` warning | `[needs you]` | the agent's hook report, or a pending approval |
+| pending | `·` faint | `[pending]` | the slug appears in `## Queue` |
+| done | `✓` success | `[done]` | the slug appears in `## Done` |
+| failed | `!` danger | `[failed]` | the slug appears in `## Failures` |
+| idle | `–` faint | `[idle]` | a session with no agent holding the tty |
+| waiting | `?` warning | `[waiting]` | a goal whose budget is spent |
+
+**A state always reads as a bracketed word, never as a bare one.** The
+brackets are the `tag` component and they are what makes a state
+unmistakable in a column of names that are also lower-case and hyphenated.
+The mark carries the colour; the word carries the meaning; neither
+appears without the other.
+
+The `SESSIONS` panel header prints the whole vocabulary above the tree,
+so a reader never has to infer a mark.
 
 ## The model
 
