@@ -38,7 +38,7 @@ button { font: inherit; }
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
 }
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible {
+button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visible {
   outline: 2px solid var(--ui-accent); outline-offset: 2px;
 }
 /* A text button: the word in brackets, nothing else. */
@@ -360,9 +360,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 /* --- rows ----------------------------------------------------------------- */
 .rows { list-style: none; margin: 0; padding: 0; }
-/* The row wraps only for the reply line, which asks for the whole width;
-   `.open` has a zero basis, so the actions stay beside the text. */
-.row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px; border-top: 1px solid var(--ui-border); padding: 0 8px 0 12px; }
+.row { display: flex; align-items: flex-start; gap: 4px; border-top: 1px solid var(--ui-border); padding: 0 8px 0 12px; }
 /* 44 px tall on one line (WCAG 2.2 SC 2.5.8), through the padding. */
 .open {
   flex: 1; min-width: 0; display: flex; gap: 8px; align-items: flex-start; text-decoration: none;
@@ -383,38 +381,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .main .since { margin-left: auto; color: var(--ui-text-muted); font-size: 12px; white-space: nowrap; }
-
-/* --- answering an agent -----------------------------------------------------
-   A row whose agent holds the tty takes one more line under its text: a
-   hairline field and `[send]`, which types the line into the pane. The
-   field is the second bordered control on the page after the profile
-   select, and wears the same hairline. While the agent works, the reason
-   prints where `[send]` was and the field keeps the draft; after a send,
-   `sent 14:32` stands beside `[send]` until the agent reports again. In a
-   row the line sits under the name, past the gutter mark; in a strip item
-   the grid already puts it in the text column. */
-.row .reply, .strip-item .reply {
-  flex: 1 1 100%; min-width: 0; display: flex; align-items: center; gap: 8px;
-  margin: 0 0 0 16px; padding: 0 0 8px; font-size: 12px;
-}
-.strip-item .reply { margin: 0; padding: 4px 0 0; }
-/* The field and `[send]` are 44 px tall (WCAG 2.2 SC 2.5.8), as the
-   approval answers are: both are tapped on a phone, and the row's own
-   44 px comes from its link's padding, which the field does not share. */
-/* The field is 16 px, the one size on the page above 13: iOS Safari zooms
-   the page on focus of any smaller field and leaves it zoomed, and this
-   is the field a phone reader uses most. A viewport `maximum-scale` would
-   stop that too, and pinch-zoom for everyone with it. */
-.row .reply-input, .strip-item .reply-input {
-  flex: 1 1 8em; min-width: 0; font: inherit; font-size: 16px; color: var(--ui-text);
-  background: none; border: 1px solid var(--ui-border); padding: 0 6px; min-height: 44px;
-}
-.row .reply .quiet, .strip-item .reply .quiet { min-height: 44px; }
-.row .reply-input::placeholder, .strip-item .reply-input::placeholder { color: var(--ui-text-muted); }
-/* The reason wraps beside the field on a phone; the receipt is one word
-   and a time, and stays on its line. */
-.row .reply-hold, .strip-item .reply-hold { color: var(--ui-text-muted); font-size: 12px; flex: 0 1 auto; }
-.row .reply-sent, .strip-item .reply-sent { color: var(--ui-text-muted); font-size: 12px; white-space: nowrap; }
 
 /* Row actions: quiet text beside the row on a wide screen; on a phone, one
    menu button opens them below the row's text. */

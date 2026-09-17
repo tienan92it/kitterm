@@ -43,14 +43,8 @@ export type ModelRow = {
   lastOutputAt?: number;
   /** Free-text status note set by a program or a person (`post_note`). */
   note?: string;
-  /** The session's latest Claude Code hook report; the row reads the message,
-   * and the reply control reads when it arrived and what it said. */
-  agent?: { message?: string; status?: string; at?: number };
-  /** The program that took the terminal from the shell, by name; absent
-   * while the shell itself reads. */
-  foregroundProgram?: string;
-  /** The shell ended; the row is kept so its records can still be read. */
-  exited?: boolean;
+  /** The session's latest Claude Code hook report; the row reads the message. */
+  agent?: { message?: string };
 };
 
 export type Approval = {
@@ -340,7 +334,7 @@ export function tally(rows: ModelRow[]): Partial<Record<MergedState, number>> {
 
 /** The accessible name of one row action, so a button list does not read
  * "Kill, Kill, Kill": the verb and the row's headline. */
-export function actionName(action: "Rename" | "Name" | "Archive" | "Kill" | "Actions for" | "Send to", headline: string): string {
+export function actionName(action: "Rename" | "Name" | "Archive" | "Kill" | "Actions for", headline: string): string {
   return `${action} ${headline}`;
 }
 
@@ -1382,85 +1376,6 @@ export function levels<R extends ModelRow>(
     sections.push({ heading: null, rows: [], projects: [none] });
   }
   return sections;
-}
-
-// --- answering an agent from the page ---------------------------------------
-
-/** The reply control under a row: absent, ready to send, or held with the
- * reason printed where `[send]` would be. */
-export type ReplyControl = { kind: "absent" } | { kind: "ready" } | { kind: "held"; reason: string };
-
-/** What the page holds about the write route: `agentControlOff` once the
- * daemon answered a send with its `--agent-control` refusal, until the
- * daemon restarts. A watch token never sees the control. */
-export type ReplyFacts = { watchOnly: boolean; agentControlOff: boolean };
-
-/** The reason a held control prints when the daemon refused a send for
- * want of `--agent-control`. The daemon's own words in the notice say the
- * remedy; this is the short form beside every field. */
-export const AGENT_CONTROL_OFF = "the daemon runs without --agent-control";
-
-/** A live agent holds the row: a Claude Code hook has reported here, a
- * program other than the shell holds the terminal, and the shell has not
- * ended. A hook report alone is stale once the agent quits to the shell,
- * and a foreground program alone is any `sleep` or editor; both together
- * is an agent at its prompt or in its turn. */
-export function hasLiveAgent(row: ModelRow): boolean {
-  return row.agent !== undefined && row.foregroundProgram !== undefined && row.exited !== true;
-}
-
-/**
- * The control's state for one row. Absent for a watch client, the same rule
- * as every other action, and for a row without a live agent, because the
- * input route types into whatever reads the terminal and a line into a
- * shell runs as a command.
- *
- * Held, with the reason where `[send]` was, when the daemon has already
- * refused for want of `--agent-control`, when the agent is working, and
- * when it waits on an approval. A line typed mid-turn is lost or lands in
- * the wrong place (`docs/goals/facts.md`), so the page withholds the send
- * rather than queue it: a queued line would be state the daemon never
- * sees and a closed tab loses. The field stays, so a half-typed line
- * survives the state change and goes when the reader sends it.
- */
-export function replyControl(row: ModelRow, facts: ReplyFacts): ReplyControl {
-  if (facts.watchOnly || !hasLiveAgent(row)) return { kind: "absent" };
-  if (facts.agentControlOff) return { kind: "held", reason: AGENT_CONTROL_OFF };
-  switch (stateOf(row)) {
-    case "working":
-      return { kind: "held", reason: "working, wait for the turn to end" };
-    case "needs-approval":
-      return { kind: "held", reason: "answer the approval first" };
-    default:
-      return { kind: "ready" };
-  }
-}
-
-/** What the page keeps after a send: when it went, and the agent's report
- * at that moment, so the receipt can tell when the agent has moved on. */
-export type ReplySent = { at: number; agentAt: number | null; agentStatus: string | null };
-
-/** The report a `ReplySent` remembers, from the row it was sent to. */
-export function agentMark(row: ModelRow): Pick<ReplySent, "agentAt" | "agentStatus"> {
-  return { agentAt: row.agent?.at ?? null, agentStatus: row.agent?.status ?? null };
-}
-
-/** The receipt, `sent 14:32`, stands beside `[send]` while the agent's
- * report is the one it was sent against. The next hook report, a tool
- * call or the end of the turn, is the evidence the line arrived, and the
- * receipt goes with it; a receipt that stays is a line the agent has not
- * answered, which the reader then checks in the pane. No timer, because a
- * clock says nothing about the agent. */
-export function receiptStands(sent: ReplySent | undefined, row: ModelRow): boolean {
-  if (!sent) return false;
-  const now = agentMark(row);
-  return now.agentAt === sent.agentAt && now.agentStatus === sent.agentStatus;
-}
-
-/** The name of a row's reply field for a screen reader and its placeholder:
- * `Answer foreman`, the same headline its buttons carry. */
-export function replyName(row: ModelRow): string {
-  return `Answer ${rowName(row)}`;
 }
 
 // --- the quota bars ----------------------------------------------------------
