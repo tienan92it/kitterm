@@ -8,8 +8,8 @@ number in them is read from the live daemon on 2026-09-17:
 
 | Frame | What it shows |
 |---|---|
-| `Dashboard 1200` | the whole page at desktop width, 28 px lines, the by-model split |
-| `Dashboard 390` | the same page on a phone, 44 px lines, facts dropped |
+| `Dashboard 1200` | the whole page at desktop width, 28 px lines, the by-model split, the yield block, where the dollar goes, the leaks |
+| `Dashboard 390` | the same page on a phone, 44 px lines, facts dropped, the yield block kept |
 | `Foundation` | the space scale, the type scale, the state marks, the two densities, the model naming rule |
 | `Anatomy of a line` | the line's six cells and the order its facts drop in |
 
