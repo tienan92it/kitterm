@@ -68,7 +68,39 @@ Signal the cyan accent sits 46° from the success green; in Phosphor the
 accent *is* green and success has to move to cyan, which inverts a
 mapping every reader already knows.
 
-## The decision
+## Round two: not cyan, not purple
+
+The human ruled out cyan on 2026-09-17, after ruling out violet the same
+day. That closes most of the wheel.
+
+**The accent has to stay clear of green, amber and red**, because those
+three carry state and a mark is one character. Cyan and violet are out.
+What is left is the yellow-green band, the magenta band, or no hue at
+all. Three candidates, drawn as the same strip in the `Palettes` frame:
+
+| | Accent | Closest hue pair | Accent to nearest state | Lowest contrast |
+|---|---|---|---|---|
+| **Lime** | `#a3e635` chartreuse | 40° (accent/warning) | 40° | **5.20** |
+| **Rose** | `#f472b6` magenta | **31°** (accent/danger) | 31° | 5.06 |
+| **Mono** | `#f2f4f7` no hue | 52° (warning/danger) | **not a hue** | 5.20 |
+
+**Mono wins the measurement outright.** Its accent has no hue, so it
+cannot be confused with a state at any size — the strongest separation
+available, and it is not a compromise but a different idea: bars and the
+spinner are white, text is grey, and colour appears *only* on a state
+mark. That makes every coloured thing on the page meaningful.
+
+**Lime is the bold one.** Chartreuse on near-black is the industrial
+terminal look, shifted yellow so it never reads as the green of done.
+Its 40° to the warning amber is the number to look at on the strip.
+
+**Rose is the most distinctive and the weakest.** 31° from the red of
+failed is close for two marks in the same column.
+
+The human picks. Every frame draws from the document variables, so the
+re-tint is one edit whichever they take.
+
+## Superseded: Carbon
 
 **Carbon, under rule C.** The human ruled out violet on 2026-09-17, so
 Flux is not taken despite the best numbers, and Carbon is the pick.
