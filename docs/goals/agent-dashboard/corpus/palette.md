@@ -68,7 +68,62 @@ Signal the cyan accent sits 46° from the success green; in Phosphor the
 accent *is* green and success has to move to cyan, which inverts a
 mapping every reader already knows.
 
-## Round two: not cyan, not purple
+## The decision: Prompt, the palette kitterm already has
+
+The human asked what colour the landing page uses. It uses a defined
+one, and looking there settled the question that two rounds of
+invention had not.
+
+**`site/index.html` sets `--accent: #3fb950`.** That green is the
+favicon's chevron and pipe, the blinking caret beside the headline, and
+`Web/terminal/src/favicon.ts` calls the same value `connected`. The
+landing page's whole ground is already the page's ground: `--bg
+#0d1117`, `--panel #131922`, `--line #232b36`, `--fg #e6edf3`, `--muted
+#9aa5b1`, `--dim #6e7681`.
+
+**The dashboard never needed a new hue. It needed to stop spending
+green on two things.** `tokens.css` binds `--ui-success` to the same
+`#3fb950`, so green means both "kitterm" and "done".
+
+### The rule that frees it
+
+**Colour marks what needs attention. A finished thing is grey.**
+
+A done task is history. It needs nothing from the reader, so it does not
+earn a colour — a grey `✓` says it. The same holds for pending and for
+idle. That leaves three hues, not four:
+
+| State | Colour | Why it is coloured |
+|---|---|---|
+| working | `#3fb950` the brand green | it is alive; this is the caret's colour |
+| needs you | `#fbbf24` amber | it is blocked on a person |
+| failed | `#fb7185` red | it is broken |
+| done, pending, idle | grey | they need nothing |
+
+Three hues sit at 128°, 43° and 351°. **The closest pair is 52°, the
+widest of any palette drawn**, and it is wide for a reason that is not
+luck: there are fewer colours competing.
+
+Both themes measured, on the ground and on the surface: zero failures.
+The dark values are the landing page's own.
+
+| Token | Dark, from `site/index.html` | Light |
+|---|---|---|
+| `bg` | `#0d1117` | `#ffffff` |
+| `surface` | `#131922` | `#f6f8fa` |
+| `border` | `#232b36` | `#d0d7de` |
+| `text` | `#e6edf3` | `#1f2328` |
+| `muted` | `#9aa5b1` | `#4d5560` |
+| `faint` | `#7d8794` | `#5f6873` |
+| `accent` | `#3fb950` | `#1a7f37` |
+| `warning` | `#fbbf24` | `#8a5a00` |
+| `danger` | `#fb7185` | `#c8102e` |
+
+One value moved: `faint` lifted from the landing page's `#6e7681` to
+`#7d8794`, because `#6e7681` reads 4.19 on the surface and a text pair
+needs 4.5.
+
+## Superseded: round two, not cyan, not purple
 
 The human ruled out cyan on 2026-09-17, after ruling out violet the same
 day. That closes most of the wheel.
@@ -100,7 +155,7 @@ failed is close for two marks in the same column.
 The human picks. Every frame draws from the document variables, so the
 re-tint is one edit whichever they take.
 
-## Superseded: Carbon
+## Superseded: Carbon, before the landing page was read
 
 **Carbon, under rule C.** The human ruled out violet on 2026-09-17, so
 Flux is not taken despite the best numbers, and Carbon is the pick.

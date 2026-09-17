@@ -59,9 +59,12 @@ Five, in order. When two conflict, the earlier one wins.
    first whose advance width matches the mark column: braille
    `⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏`, which matches the pane; quadrant `◐ ◓ ◑ ◒`;
    then the block ramp `▁ ▃ ▅ ▇`, which the chart already proves.
-5. **Colour marks state and nothing else.** Text is one of three greys.
-   The four semantic colours appear on the one-character mark at the
-   start of a line, and nowhere else.
+5. **Colour marks what needs attention. A finished thing is grey.** Text
+   is one of three greys. Three colours appear on the one-character mark
+   at the start of a line, and nowhere else: the brand green for what is
+   alive, amber for what is blocked on a person, red for what is broken.
+   Done, pending and idle are grey, because they need nothing from the
+   reader.
 
 ## Hierarchy
 
@@ -225,9 +228,10 @@ recommendation is **Flux**, pending the human's pick:
 | `--ui-danger` failed | `#f87171` | |
 
 They paint the mark glyph. They never paint text, a background, or a
-border. The lowest ratio any pair reaches on any bundled theme is 5.20,
-against 4.18 for the palette the page had, so the ratchet gains no
-`KNOWN_BELOW` entry.
+border. Three hues sit at 128°, 43° and 351°, so the closest pair is
+52°, the widest of any palette drawn — because there are fewer colours
+competing. The lowest contrast ratio is 5.20, against 4.18 for the
+palette the page had, so the ratchet gains no `KNOWN_BELOW` entry.
 
 ## The frame
 
