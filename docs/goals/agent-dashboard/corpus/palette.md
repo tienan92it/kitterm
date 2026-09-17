@@ -68,9 +68,12 @@ Signal the cyan accent sits 46° from the success green; in Phosphor the
 accent *is* green and success has to move to cyan, which inverts a
 mapping every reader already knows.
 
-## The recommendation
+## The decision
 
-**Flux**, under rule C.
+**Flux, under rule C.** The human picked it on 2026-09-17, and every
+frame in `dashboard.pen` is re-tinted: the document variables now hold
+Flux, and each frame draws from them, so the re-tint was one edit rather
+than six.
 
 - Violet is the widest hue any accent can take from green, amber and
   red at once, so it never competes with a state.
@@ -79,9 +82,35 @@ mapping every reader already knows.
 - Its ground is warmed a touch off pure black, `#0c0c12`, so the violet
   does not sit on a dead ground.
 
-**Phosphor** is the boldest and the most fun, and it is the one to take
-if the human wants the page to look like a terminal from across the
-room. The cost is real and should be stated: success stops being green.
+**Phosphor** was the boldest and is not taken. Its cost was real:
+success stops being green.
+
+## Flux, as shipped
+
+Two themes, both measured. Every text pair clears 4.5 and every state
+pair clears 3.0, on the ground and on the surface.
+
+| Token | Dark | Light |
+|---|---|---|
+| `bg` | `#0c0c12` | `#fbfbfe` |
+| `surface` | `#14141d` | `#f2f2f8` |
+| `border` | `#23232f` | `#dcdce8` |
+| `text` | `#eaeaf2` | `#17171f` |
+| `muted` | `#b0b0c0` | `#4d4d61` |
+| `faint` | `#81819a` | `#68687f` |
+| `accent` | `#a78bfa` | `#6d3ee8` |
+| `success` | `#34d399` | `#047857` |
+| `warning` | `#fbbf24` | `#a35a00` |
+| `danger` | `#f87171` | `#c81e34` |
+
+One value moved after the first measurement: `faint` on `surface` in
+light read 4.37, under the 4.5 a text pair needs, so it darkened from
+`#6f6f88` to `#68687f` and reads 4.86.
+
+Under rule C the product keeps deriving `bg`, `surface`, `border` and
+the three greys from the terminal's theme. The table's ground values are
+what the design file draws and what the page falls back to when no
+terminal theme is set.
 
 ## The spinner glyph
 
