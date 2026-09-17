@@ -7,8 +7,8 @@ one screen: how many agents are working, how many wait for them, what
 the work is costing, and how much quota is left. Below that, the same
 fleet in four levels — workspace, project, goal, task — one line each,
 so the reader can follow a workspace down to the task an agent is
-running right now. The page presents and monitors. It accepts no typed
-work.
+running right now, and read which model that agent is running on. The
+page presents and monitors. It accepts no typed work.
 
 The design language is the one in `corpus/design-foundation.md`:
 minimal, monospace, hairline, three type sizes, one space scale, eight
@@ -23,8 +23,13 @@ components, colour on the state mark alone.
   pass the contrast ratchet. A round that wants a fifth stops and says
   so.
 - **No new data source.** Every number comes from a route that exists,
-  or from a `STATE.md` section that every goal already writes. The task
-  level parses what is written; it does not ask a human to write more.
+  from a `STATE.md` section that every goal already writes, or from a
+  transcript field Claude Code already writes. The task level and the
+  model both parse what is there; neither asks a human to write more.
+- **No per-model quota row.** `workspace-ledger` excluded it because the
+  rate limits are not per model and no local source carries one. That
+  exclusion stands. Cost per model is a different fact with a real
+  source, and it is in.
 - **No change to the terminal pane.** `/` is not this goal's surface.
 - **No loss of an accessibility rule an earlier round paid for.** The
   list is in `design-foundation.md` under "What the page keeps".
@@ -33,7 +38,7 @@ components, colour on the state mark alone.
 
 ## Completion condition
 
-All seven hold on a build from `main`:
+All eight hold on a build from `main`:
 
 1. The top band is one fixed-height row of four counts — agents working,
    items needing a person, spend over the chosen range, quota used — and
@@ -50,7 +55,10 @@ All seven hold on a build from `main`:
 6. The page at 390 px is under 1200 px tall with the live tree loaded,
    and the first screen holds the band, the meters, and the first
    workspace.
-7. The floor is green and `main` is green after the merge.
+7. A session running an agent shows its model as a fact on its line, and
+   the meters carry one row per model with its spend and its cache
+   share. A model with no reading prints nothing rather than a guess.
+8. The floor is green and `main` is green after the merge.
 
 The floor (`swift test`, the web suite with the contrast ratchet,
 `KittermBench interactive-echo` under 50 ms p95, and the Linux build) is

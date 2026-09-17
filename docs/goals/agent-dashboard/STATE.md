@@ -12,7 +12,9 @@
 2. `the-foundation-in-the-stylesheet` (capability 2)
 3. `a-task-is-the-fourth-level` (capability 3)
 4. `the-band-replaces-the-strip` (capability 4)
-5. `every-line-is-one-line` (capability 5)
+5. `every-agent-says-its-model` (capability 6)
+6. `every-line-is-one-line` (capability 5, last: it shapes the lines the
+   others create)
 
 ## Failures
 
@@ -53,6 +55,18 @@ height, so a reader never learns where to look.
 The Pencil design tool was not reachable — its MCP server reported
 `transport not connected to app` on both calls — so the foundation is a
 written contract plus a visual specimen page rather than a `.pen` file.
+
+## Direction, continued
+
+2026-09-17: the human asked for the LLM model on a session or agent's
+info. The foreman measured the two sources before planning it. A live
+session's model is the last `"model"` field in its `agentTranscript`,
+which the session payload already carries: a 4 KiB tail is enough, and
+40 reads cost 10 ms in total. The spend by model is the `modelUsage` map
+on each transcript's final `cost-state` line, which `TranscriptBill`
+already reads and `UsageRollup` throws away. Over the last 30 days seven
+ids appear, led by `claude-fable-5-1` at $1,283.48 and
+`claude-opus-5[1m]` at $404.43. It is capability 6.
 
 ## Next action
 

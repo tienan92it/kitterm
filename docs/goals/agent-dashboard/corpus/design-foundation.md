@@ -8,9 +8,9 @@ number in them is read from the live daemon on 2026-09-17:
 
 | Frame | What it shows |
 |---|---|
-| `Dashboard 1200` | the whole page at desktop width, 28 px lines |
+| `Dashboard 1200` | the whole page at desktop width, 28 px lines, the by-model split |
 | `Dashboard 390` | the same page on a phone, 44 px lines, facts dropped |
-| `Foundation` | the space scale, the type scale, the state marks, the two densities |
+| `Foundation` | the space scale, the type scale, the state marks, the two densities, the model naming rule |
 | `Anatomy of a line` | the line's six cells and the order its facts drop in |
 
 Exports of the four frames sit beside this file as `01-*.png`. A written
@@ -67,6 +67,10 @@ WORKSPACE                         $1,249.23  98%   2 agents
 | Goal | `GET /api/projects/<id>/knowledge` | its `slug` |
 | Task | the goal's `STATE.md` sections, plus a live `task:` label | its slug |
 
+An agent is not a fifth level. It is a session, and a session sits under
+the task it runs or under its project. Its model is one of its facts;
+see "The model" below.
+
 A workspace that holds one project shows no heading of its own; the
 project stands at the top level. That rule is already shipped and stays.
 
@@ -78,6 +82,55 @@ A task's state comes from one place each:
 | pending | the slug appears in `## Queue` |
 | done | the slug appears in `## Done` |
 | failed | the slug appears in `## Failures` |
+
+## The model
+
+An agent's model is a fact of its line, and the spend splits by model in
+the meters. Both come from data that is already on disk.
+
+**A live session's model** comes from the last `"model"` field in its
+`agentTranscript`, which the session payload already carries. Measured on
+2026-09-17 over the 40 most recent transcripts: a 4 KiB tail read is
+enough, and 40 reads of a 64 KiB tail cost 10 ms in total, 0.25 ms each.
+37 of the 40 yielded a model; the other three had no assistant turn yet,
+and a session with no model prints nothing rather than a guess.
+
+**The spend by model** comes from each transcript's final `cost-state`
+line, whose `modelUsage` map already carries `costUSD`, the three input
+token kinds, and `outputTokens` per model. `TranscriptBill` reads that
+map today and `UsageRollup` throws it away. Keeping it is the only
+change the data needs.
+
+### Naming
+
+The page prints a name, not an id. The rule, in order:
+
+1. Drop the `claude-` prefix.
+2. Move a `[1m]` suffix to ` · 1M`, and keep that variant separate from
+   its family. The 1M context costs more per token, which is the point of
+   showing the split at all.
+3. Drop a trailing eight-digit date.
+4. Title-case the family and join the version digits with a dot.
+5. When a step does not apply, print the id unchanged. Never guess.
+
+| Id | Name |
+|---|---|
+| `claude-fable-5-1` | Fable 5.1 |
+| `claude-opus-5[1m]` | Opus 5 · 1M |
+| `claude-haiku-4-5-20251001` | Haiku 4.5 |
+
+### Where it shows
+
+- **On a session line**, in the facts, before the time. It drops before
+  the state word and after the cost, as every fact does.
+- **In the meters**, as one row per model under the day series: the name,
+  the spend, the cache share. Measured over the last 30 days on
+  2026-09-17, seven ids appear and this is what they cost.
+
+**Not the quota.** `goal.md` of `workspace-ledger` excluded a per-model
+quota row because the rate limits are not per model and no local source
+carries one. That exclusion stands. Cost per model is a different fact
+with a real source, and it is in.
 
 ## Tokens
 
@@ -169,7 +222,7 @@ Archived sessions and done goals, closed.
 
 ## Components
 
-Eight. Nothing else is added without a change to this file. Every class
+Nine. Nothing else is added without a change to this file. Every class
 name carries its component's prefix, which replaces the 100 ad-hoc names
 the page has today with about 30.
 
@@ -180,6 +233,7 @@ the page has today with about 30.
 | Series | `series-` | one bar a day, with an axis and a headline |
 | Tree | `tree-` | the nested disclosure holding every level |
 | Line | `line-` | one row: mark, name, facts, time, actions |
+| Split | `split-` | one row per model: name, spend, cache share |
 | Fold | `fold-` | a closed group with a count |
 | Tag | `tag-` | a bracketed word: `[new]`, `[done]`, `[PR #118]` |
 | Note | `note-` | a paragraph of explanation under a block |
@@ -196,9 +250,9 @@ Every level of the tree is one `line`. Its cells, in order:
 - **mark**: one character, coloured by state, or blank.
 - **indent**: `--space-3` per level below the top.
 - **name**: the only cell that grows, and the only one that truncates.
-- **facts**: state word, cost, cache share, round counter. Each drops
-  from the right as the line narrows, in that order, so the state word
-  is the last fact to go.
+- **facts**: state word, cost, model, cache share, round counter. Each
+  drops from the right as the line narrows, in that order, so the state
+  word is the last fact to go and the model goes before the cost.
 - **time**: relative, always the same width.
 - **actions**: `[new]`, the `…` menu, or nothing.
 

@@ -48,7 +48,7 @@ content, so a reader never learns where to look.
 
 ## Capability order
 
-Five capabilities. Each ships as one PR. Each names the check that
+Six capabilities. Each ships as one PR. Each names the check that
 proves it.
 
 | # | Capability | Proof |
@@ -59,10 +59,14 @@ proves it.
 | 4 | **The band replaces the strip.** One fixed-height row of four counts: agents working, items needing a person, spend over the range, quota used. The "need you" count links to the first marked line. The strip's items become a mark on the line they belong to, and the strip is gone. | A vitest over the band model: the four counts, the empty fleet, and the case where nothing needs a person. A vitest asserting no session appears twice on the page. The band's height is the same in a fixture with 0, 4 and 20 items needing a person. Screenshots at both widths. |
 | 5 | **Every line is one line.** The tree's line component carries mark, indent, name, facts, time and actions, and its facts drop from the right in a fixed order as the line narrows. Nothing wraps at 390 px. | A vitest over the line model for each level and each drop step. A measurement in the live check: every line's `scrollHeight` equals one `--line-h` at 390 px. The page at 390 px is under 1200 px tall with the live tree loaded. |
 
+| 6 | **Every agent says its model.** A session's model comes from the last `"model"` field in its `agentTranscript` and rides on the session payload. `UsageRollup` keeps the `modelUsage` map that `TranscriptBill` already reads, and `GET /api/usage/daily` answers a per-model split for the range. The line carries the model as a fact; the meters carry one `split` row per model with its spend and cache share. | Swift tests over the reader: a transcript whose last assistant line names a model, one with no assistant turn, an unreadable path, and the five naming cases from `design-foundation.md` including `[1m]` and a dated id. A rollup test that a day's per-model split sums to that day's total. A vitest over the split model including the empty case. A screenshot against the real tree showing the model on a live agent's line. |
+
 Capability 1 is independent and goes first, because it removes code the
 later capabilities would otherwise have to carry. Capability 2 goes
 second, because every later capability writes CSS and should write it
-against the scale. Capability 3 is independent of 4. Capability 5 needs
-3 and 4, because it shapes the lines they create. The human sees the
+against the scale. Capability 3 is independent of 4. Capability 6 is independent of all of
+them and may run beside any; it is last only because it is the smallest.
+Capability 5 needs 3, 4 and 6, because it shapes the lines and the facts
+they create. The human sees the
 images after 2 and after 5 before either merges, because both change how
 the page looks.
