@@ -1,6 +1,8 @@
 # Design foundation
 
-Approved by: pending. Frozen once approved.
+Approved by the human on 2026-09-17, after five palette rounds and a
+deeper ground. Frozen. A round that needs a different token proposes the
+change in its record rather than making it.
 
 The design is drawn in Pencil. Save the open document as
 `corpus/dashboard.pen` beside this file; it holds four frames, and every

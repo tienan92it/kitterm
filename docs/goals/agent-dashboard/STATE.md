@@ -1,10 +1,10 @@
 # STATE: agent-dashboard
 
-- Status: waiting
+- Status: active
 - Round: 0 of 3 in this budget (first budget)
 - Rounds total: 0
 - Last floor: green (2026-09-17, main at 2eee3cf: swift test 780, vitest 1286 in 41 files)
-- Updated: 2026-09-17, researched and planned
+- Updated: 2026-09-17, foundation approved, round 1 starting
 
 ## Queue
 
@@ -23,9 +23,14 @@ None.
 
 ## Proposals waiting on the human
 
-- `corpus/design-foundation.md` is written and not yet approved. It is
-  the contract every round implements against, so the first round waits
-  on the human's approval or their edits. Nothing else blocks.
+- `site/index.html` sets `--accent: #3fb950`. The dashboard's palette is
+  the Coolors set the human chose, so the site and the page no longer
+  share a colour. Not blocking; the human decides whether the site
+  follows.
+- `dashboard.pen` is open in Pencil and unsaved. The MCP server has no
+  save tool, so the human saves it to
+  `docs/goals/agent-dashboard/corpus/dashboard.pen`. The four frame
+  exports and the written contract are committed either way.
 
 ## Done
 
@@ -94,7 +99,11 @@ It is capability 7.
 
 ## Next action
 
-The human approves or edits `corpus/design-foundation.md`. Then set
-`Status: active` and run round 1, `no-input-on-the-page`, from
-`plan.md` row 1. It goes first because it removes code the later
-capabilities would otherwise carry.
+Round 1, `no-input-on-the-page`, from `plan.md` row 1, running now. It
+goes first because it removes code the later capabilities would
+otherwise have to carry.
+
+The design is settled and frozen: `corpus/design-foundation.md` holds
+the contract, `corpus/palette.md` holds five palette rounds and the
+measurements behind each, and the six frames in Pencil draw it with real
+numbers.
