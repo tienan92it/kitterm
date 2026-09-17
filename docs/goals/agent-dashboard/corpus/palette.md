@@ -68,7 +68,47 @@ Signal the cyan accent sits 46° from the success green; in Phosphor the
 accent *is* green and success has to move to cyan, which inverts a
 mapping every reader already knows.
 
-## The decision: Prompt, the palette kitterm already has
+## The decision: the brand green, brightened
+
+The human said the green still looked wrong. Measuring twelve greens in
+OKLCh says why, and the answer is not the hue.
+
+**`#3fb950` is the darkest but one and the third-least saturated green of
+the twelve.** L* 69.5 and chroma 0.181. A green that is both dark and
+low-chroma on a near-black ground reads muddy, and the day chart is a
+large field of it, which is where that shows most.
+
+| Green | Hex | L* | Chroma | Contrast on `#0d1117` |
+|---|---|---:|---:|---:|
+| **Spring — picked** | `#2ee66b` | 81.2 | **0.218** | 11.40 |
+| Material A400 | `#00e676` | 81.0 | 0.214 | 11.34 |
+| Vivid | `#00e05a` | 79.1 | 0.230 | 10.64 |
+| Neon | `#00ff88` | 87.6 | 0.228 | 14.11 |
+| Tailwind 400 | `#4ade80` | 80.0 | 0.182 | 10.86 |
+| GitHub, the site's | `#3fb950` | 69.5 | 0.181 | 7.45 |
+| Emerald 400 | `#34d399` | 77.3 | 0.153 | 9.84 |
+
+**Spring `#2ee66b` is the most saturated green that is not glare.**
+Above L* 85 a large fill starts to glare — Neon and Phosphor both do,
+and the chart is the largest accent field on the page. Spring holds the
+chroma at a lightness that does not.
+
+The hue stays where the brand put it: 149°, still 106° from the amber of
+needs-you and 158° from the red of failed. Everything else about the
+palette is unchanged.
+
+Light theme: `#2ee66b` reads 1.6 on white, so the light accent is
+`#0a7f3f`, which reads 5.10 on the ground and 4.79 on the surface.
+
+### One thing for the human
+
+**`site/index.html` still sets `--accent: #3fb950`.** The dashboard and
+the site are no longer the same green. Either the site takes `#2ee66b`
+too — a one-line change, and the favicon's two `stroke="#3fb950"`
+attributes with it — or the tie between them is structural rather than
+exact. The foreman proposes the first and has not made it.
+
+## Where the green came from: the palette kitterm already has
 
 The human asked what colour the landing page uses. It uses a defined
 one, and looking there settled the question that two rounds of
