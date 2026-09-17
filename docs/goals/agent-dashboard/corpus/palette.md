@@ -101,14 +101,25 @@ it, so the two warm marks separate on two axes rather than one.
 
 Charcoal cannot be the page ground — it measures 1.88 against
 `#0d1117`, which is to say it *is* a mid tone. It takes the hairline
-instead, which is what a 0.044-chroma slate is for. The ground is a
-darkened version of it, `#0e1a20`, so the page keeps the palette's
-slate-teal cast rather than reverting to a neutral black.
+instead, which is what a 0.044-chroma slate is for.
+
+The ground is `#050c10`, **L\* 14.8**, a fifth of charcoal's lightness
+and darker than the `#0d1117` the page started on. It keeps the
+palette's slate-teal cast rather than reverting to a neutral black.
+
+Deepening the ground lifts every foreground pair — the accent goes from
+5.32 to 5.92 against it — but it flattens the surface, which has to
+move with it. At the first attempt the surface read 1.07 against the
+ground and disappeared. `#0e1d25` restores it to **1.145**, a lift a
+reader sees without it becoming a second colour.
+
+The hairline holds at **1.95**, inside the 1.5 to 3.0 a rule wants: more
+than that and it stops being a rule and becomes a line.
 
 | Token | Dark | Light |
 |---|---|---|
-| `bg` | `#0e1a20` | `#ffffff` |
-| `surface` | `#14242c` | `#f4f7f7` |
+| `bg` | `#050c10` | `#ffffff` |
+| `surface` | `#0e1d25` | `#f4f7f7` |
 | `border` | `#264653` | `#cfdcdf` |
 | `text` | `#e8eef0` | `#1b2a30` |
 | `muted` | `#a7b8bf` | `#4a5c63` |
