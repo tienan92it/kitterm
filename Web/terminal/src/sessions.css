@@ -129,6 +129,10 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
   --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 13'><path d='M1.6 6.5H6.4' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round'/></svg>");
 }
 .mark.idle, .mark.done { background: var(--ui-success); }
+/* A pending task: a dot in the faint grey, because it needs nothing yet. */
+.mark.pending {
+  --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 13'><circle cx='4' cy='6.5' r='1.3' fill='black'/></svg>");
+}
 
 /* --- the attention strip -------------------------------------------------
    Sticky, so the answer buttons stay under the thumb while the list scrolls.
@@ -401,6 +405,21 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
   flex: 1 1 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis;
   color: var(--ui-text-muted);
 }
+/* The fourth level (`design-foundation.md`, Hierarchy): a goal's tasks,
+   one line each, set in by one indent level under the goal's line, and the
+   crew's rows under a working task by one more. The line is `--line-h`
+   tall like a row. The mark carries the colour; the slug is in the text
+   colour; the state's bracketed word and its facts are muted. */
+.card .tree-tasks { list-style: none; margin: 0; padding: 0 0 0 var(--space-3); }
+.card .tree-task { min-width: 0; }
+.card .line-task {
+  display: flex; align-items: center; gap: var(--space-2); min-width: 0;
+  padding: 0 var(--space-3); min-height: var(--line-h); white-space: nowrap;
+}
+.card .line-task .mark { margin-top: 0; }
+.card .line-task .line-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ui-text); }
+.card .line-task .tag-state, .card .line-task .line-fact { flex: none; color: var(--ui-text-muted); }
+.card .line-task .line-fact { font-variant-numeric: tabular-nums; }
 .card .goal-none { margin: 0; padding: var(--space-2) var(--space-3); color: var(--ui-text-muted); border-top: 1px solid var(--ui-border); }
 .goal-link { margin-left: auto; margin-top: 0; }
 

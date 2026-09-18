@@ -113,7 +113,45 @@ export type KnowledgeSummary = {
   inTokens?: number;
   /** The cache-read part of `inTokens`. */
   cacheReadTokens?: number;
+  /** The goal's tasks from `STATE.md`: one per slug under `## Queue`
+   * (pending), `## Failures` (failed) and `## Done` (done), in that order,
+   * each slug once. Absent from a daemon before capability 3 of
+   * `agent-dashboard`, and for a `STATE.md` with none of the three
+   * headings; empty for one whose headings list nothing. */
+  tasks?: TaskSummary[];
 };
+
+/** One task on the wire: `KnowledgeSummary.tasks[]`. `working` never comes
+ * from the daemon; the page joins it from a live `task:` label
+ * (`taskLines`). */
+export type TaskSummary = {
+  slug: string;
+  state: "pending" | "done" | "failed";
+  /** The round the line names, `round 2`, when it does. */
+  round?: number;
+  /** The pull request the line names, `PR #126`, when it does. */
+  pr?: number;
+};
+
+/** The four states a task line prints (`design-foundation.md`, Hierarchy). */
+export type TaskState = "working" | "pending" | "done" | "failed";
+
+/** One task under its goal, the fourth level: the slug, its state, the
+ * bracketed word the state reads as, the facts after it, and the listed
+ * rows that carry its label, the crew's row under a working task. */
+export type TaskLine<R extends ModelRow> = {
+  slug: string;
+  state: TaskState;
+  /** `[working]`, `[pending]`, `[done]`, `[failed]` (`taskTag`). */
+  tag: string;
+  /** `round 1`, `PR #118`; empty for a task whose line names neither. */
+  facts: string[];
+  rows: R[];
+};
+
+/** What a goal prints under its line: its tasks, then the rows no task
+ * claimed, which stay under the goal as before the level existed. */
+export type TaskLines<R extends ModelRow> = { tasks: TaskLine<R>[]; rest: R[] };
 
 /** One goal that is not done, as its project prints it on one line: the
  * title, the status word when the goal is not active, the round counter,
@@ -409,6 +447,13 @@ export function crews(rows: ModelRow[]): string[] {
 export function goalOf(row: ModelRow): string | null {
   const goal = row.labels?.goal;
   return goal ? goal : null;
+}
+
+/** The `task:` label, the queue item slug `LOOP.md` gives a crew session;
+ * null when absent or empty. */
+export function taskOf(row: ModelRow): string | null {
+  const task = row.labels?.task;
+  return task ? task : null;
 }
 
 /** A whole number from a label or an event value, or null when the value is
@@ -1259,6 +1304,59 @@ export function goalBuckets<R extends ModelRow>(
 /** The label over a bucket: `1 working`, `2 pending`, `10 done`. */
 export function bucketLabel(state: GoalState, count: number): string {
   return `${count} ${state}`;
+}
+
+// --- the fourth level -------------------------------------------------------
+
+/** The state as the line prints it: a bracketed word, never a bare one,
+ * so it is unmistakable in a column of names that are also lower-case
+ * and hyphenated (`design-foundation.md`, Hierarchy). */
+export function taskTag(state: TaskState): string {
+  return `[${state}]`;
+}
+
+/** The gutter mark's family for a task state: the working mark is the
+ * accent glyph a working row wears (the turning mark is capability 5's),
+ * failed is the danger glyph, done and pending are grey. */
+export function taskMark(state: TaskState): "running" | "pending" | "done" | "failed" {
+  return state === "working" ? "running" : state;
+}
+
+/** The facts a task line prints after its state word, in the order the
+ * foundation's frame shows them: the round, then the pull request. */
+export function taskFacts(task: TaskSummary): string[] {
+  const facts: string[] = [];
+  if (typeof task.round === "number") facts.push(`round ${task.round}`);
+  if (typeof task.pr === "number") facts.push(`PR #${task.pr}`);
+  return facts;
+}
+
+/**
+ * The tasks of one goal, in the daemon's order (queue, failures, done),
+ * joined with the live sessions. A task is `working` when a session in
+ * `owned` carries `task:<slug>` under `goal:<the goal's slug>`, whatever
+ * `STATE.md` says: the session is what the reader can open, and a task
+ * that runs again is being retried. The listed rows with that label nest
+ * under the task; `rest` is every other listed row, which stays under the
+ * goal's line as before. A row whose `task:` names no listed slug stays in
+ * `rest` too, because a line the reader cannot find in `STATE.md` would
+ * be a fifth kind of state. A summary with no `tasks` prints no task and
+ * changes nothing: eleven of the thirteen goals on the machine this was
+ * built on have an empty queue, and their lines must read as they did.
+ */
+export function taskLines<R extends ModelRow>(summary: KnowledgeSummary, listed: R[], owned: R[]): TaskLines<R> {
+  const goal = summary.slug;
+  const tasks: TaskLine<R>[] = [];
+  const claimed = new Set<string>();
+  for (const task of summary.tasks ?? []) {
+    const under = (row: R): boolean => goalOf(row) === goal && taskOf(row) === task.slug;
+    const live = goal !== undefined && owned.some(under);
+    const rows = goal === undefined ? [] : sortInGroup(listed.filter(under));
+    for (const row of rows) claimed.add(row.id);
+    const state: TaskState = live ? "working" : task.state;
+    tasks.push({ slug: task.slug, state, tag: taskTag(state), facts: taskFacts(task), rows });
+  }
+  return { tasks, rest: listed.filter((row) => !claimed.has(row.id)) };
 }
 
 /**
