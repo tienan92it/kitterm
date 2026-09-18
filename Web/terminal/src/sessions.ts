@@ -57,6 +57,9 @@ import {
   type DaemonStarted,
   type GoalEntry,
   type GoalLine,
+  type TaskLine,
+  taskLines,
+  taskMark,
   type Heading,
   type KnowledgeAnswer,
   type KnowledgeSummary,
@@ -1371,7 +1374,36 @@ function goalList(project: ProjectRef, entries: GoalEntry<SessionRow>[], propose
     li.className = "goal";
     li.setAttribute("aria-label", `${entry.line.title} in ${project.name}`);
     li.append(goalLineItem(entry.line, project, proposed));
-    if (entry.rows.length > 0) li.append(rowList(entry.rows));
+    // The fourth level: the goal's tasks, each with the listed rows that
+    // carry its `task:` label; the rows no task claimed stay under the goal.
+    // `owned` is every session of the project, the strip's included, so a
+    // crew in the strip still holds its task at working.
+    const owned = sessions.filter((s) => (s.project?.id ?? NO_PROJECT) === project.id);
+    const { tasks, rest } = taskLines(entry.line.summary, entry.rows, owned);
+    if (tasks.length > 0) li.append(taskList(tasks));
+    if (rest.length > 0) li.append(rowList(rest));
+    list.append(li);
+  }
+  return list;
+}
+
+/** The tasks under a goal's line, one line each, set in by one indent
+ * level: the mark in the state's colour, the slug, the state as a
+ * bracketed word, then its facts (`round 1`, `PR #118`). A working task
+ * wears the accent mark a working row wears; the turning mark is
+ * capability 5's. The crew's row nests under its working task. */
+function taskList(tasks: TaskLine<SessionRow>[]): HTMLElement {
+  const list = document.createElement("ul");
+  list.className = "tree-tasks";
+  for (const task of tasks) {
+    const li = document.createElement("li");
+    li.className = "tree-task";
+    const line = document.createElement("div");
+    line.className = "line-task";
+    line.append(mark(taskMark(task.state)), span("line-name", task.slug), span(`tag-state ${task.state}`, task.tag));
+    for (const fact of task.facts) line.append(span("line-fact", fact));
+    li.append(line);
+    if (task.rows.length > 0) li.append(rowList(task.rows));
     list.append(li);
   }
   return list;

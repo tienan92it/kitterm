@@ -208,3 +208,28 @@ describe("sessions.css carries the design foundation", () => {
     expect(under).toEqual([]);
   });
 });
+
+/**
+ * The fourth level (`agent-dashboard`, capability 3; `design-foundation.md`,
+ * Hierarchy): a task is one line under its goal, set in by one indent
+ * level, and its state's colour is on the gutter mark alone.
+ */
+describe("a task line follows the foundation", () => {
+  const taskRules = RULES.filter((rule) => /\.(tree-tasks|tree-task|line-task|tag-state|line-fact|line-name)\b/.test(rule.selector));
+
+  it("exists, is one line tall, and indents by one level", () => {
+    expect(taskRules.length).toBeGreaterThan(0);
+    const heights = taskRules.filter((rule) => rule.selector.endsWith(".line-task")).map((rule) => rule.decls.get("min-height"));
+    expect(heights, "a task line is one --line-h, like a row").toEqual(["var(--line-h)"]);
+    const indents = taskRules.filter((rule) => rule.selector.endsWith(".tree-tasks")).map((rule) => rule.decls.get("padding"));
+    expect(indents, "one indent level is --space-3").toEqual(["0 0 0 var(--space-3)"]);
+  });
+
+  it("paints no owned colour as text: the mark carries the state", () => {
+    const coloured = taskRules
+      .filter((rule) => !rule.selector.includes(".mark"))
+      .flatMap((rule) => [...rule.decls].filter(([name, value]) => name === "color" && OWNED.some((owned) => value.includes(owned))).map(() => at(rule)));
+    expect(coloured).toEqual([]);
+    expect(RULES.some((rule) => rule.selector === ".mark.pending"), "the pending task's faint dot").toBe(true);
+  });
+});
