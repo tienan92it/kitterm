@@ -1,9 +1,8 @@
-/* Fleet view. Colours and type come from the shared token layer, so the page
-   follows the terminal theme like the rest of the chrome. The page is set in
-   the terminal's own font. Text at 12 to 13 px is --ui-text or
-   --ui-text-muted; --ui-text-faint is for the placeholder and a mark, never
-   for a line someone reads (theme-contrast.test.ts pins the ratios per
-   bundled theme).
+/* Fleet view. The ground comes from the shared token layer, so the page
+   follows the terminal theme like the rest of the chrome, and the page is set
+   in the terminal's own font. Text is --ui-text or --ui-text-muted;
+   --ui-text-faint is for a mark, never for a line someone reads
+   (theme-contrast.test.ts pins the ratios per bundled theme).
 
    The surface is the terminal's. `sessions-css.test.ts` pins four absences:
    no border-radius above 2 px, no box-shadow other than a hairline, no
@@ -15,36 +14,85 @@
    prints in brackets, a toggle prints a checkbox, and a link is underlined,
    so a reader tells "does something" from "goes somewhere" without colour. */
 
+/* --- the foundation ---------------------------------------------------------
+   `docs/goals/agent-dashboard/corpus/design-foundation.md`, frozen. One space
+   scale, three type sizes, one line height chosen by width, and the four
+   colours that carry meaning. `sessions-css.test.ts` pins each.
+
+   This block is the fleet page's own layer over `tokens.css`. It loads only
+   with `sessions.ts`, after `tokens.css`, so it reaches nothing at `/`. Rule C
+   of the foundation: the page keeps inheriting the ground (`--ui-bg`,
+   `--ui-surface`, `--ui-border`) and the three text greys from the terminal's
+   theme, and none of those six is re-declared here; it owns the four colours
+   that mark a state, so a mark reads the same on every terminal theme. The
+   owned three are hues chosen for separation (`corpus/palette.md`): they
+   paint the mark glyph and nothing else, never text, a background or a
+   border. `--ui-success` is the faint grey, because a finished thing needs
+   nothing from the reader. `light-dark()` follows the `color-scheme` the
+   theme layer sets on the root, so a light terminal gets the light values. */
+:root {
+  /* Space. No rule below writes a raw pixel for margin, padding or gap. */
+  --space-1: 4px;   /* inside a line: between a mark and a name */
+  --space-2: 8px;   /* between lines in a group */
+  --space-3: 12px;  /* one indent level in the tree */
+  --space-4: 16px;  /* between groups */
+  --space-5: 24px;  /* between the band and the tree */
+
+  /* Type. Three sizes; hierarchy comes from weight and colour, not from a
+     fourth size. 12 px is the floor. Each token is a `font` shorthand, so a
+     rule writes `font: var(--type-body)` and no `font-size` anywhere. */
+  --type-headline: 600 18px/1.4 var(--font-mono);  /* the page title, the one headline number */
+  --type-heading: 600 13px/1.5 var(--font-mono);   /* a workspace name, a project name */
+  --type-body: 400 12px/1.5 var(--font-mono);      /* everything else */
+
+  /* Density, chosen by width and never by a control. Every interactive target
+     below 768 px is 44 px tall (WCAG 2.2 SC 2.5.8 is a touch rule); a pointer
+     gets 28 px. */
+  --line-h: 44px;
+
+  /* The four owned colours, light then dark, as `light-dark()` takes them
+     (`corpus/palette.md`). */
+  --ui-accent: light-dark(#1d7268, #2a9d8f);   /* working, the bars */
+  --ui-warning: light-dark(#8a6415, #e9c46a);  /* needs you */
+  --ui-danger: light-dark(#b0472c, #e76f51);   /* failed */
+  --ui-success: var(--ui-text-faint);          /* done: grey, like pending and idle */
+}
+@media (min-width: 768px) {
+  :root { --line-h: 28px; }
+}
+
 body {
   margin: 0; background: var(--ui-bg); color: var(--ui-text);
-  font: 13px/1.5 var(--font-mono);
+  font: var(--type-body);
 }
-#sessions { max-width: 760px; margin: 0 auto; padding: 16px 16px 64px; }
-header { display: flex; align-items: baseline; gap: 8px; margin: 4px 0 12px; }
-h1 { font-size: 16px; margin: 0; font-weight: 600; }
-.count { color: var(--ui-text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+#sessions { max-width: 760px; margin: 0 auto; padding: var(--space-4) var(--space-4) var(--space-5); }
+header { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-2); min-height: var(--line-h); }
+h1 { font: var(--type-headline); margin: 0; }
+.count { color: var(--ui-text-muted); font-variant-numeric: tabular-nums; }
 .count::before { content: "("; }
 .count::after { content: ")"; }
-.empty { color: var(--ui-text-muted); padding: 24px 0; }
+.empty { color: var(--ui-text-muted); padding: var(--space-5) 0; }
 .launch {
-  margin-left: auto; color: var(--ui-text-muted); font-size: 12px;
+  display: inline-flex; align-items: center; min-height: var(--line-h);
+  margin-left: auto; color: var(--ui-text-muted);
   text-decoration: underline; text-underline-offset: 2px;
 }
 .launch:hover { color: var(--ui-text); }
 
 button { font: inherit; }
-/* Read by a screen reader, drawn nowhere. */
+/* Read by a screen reader, drawn nowhere. `clip-path: inset(50%)` clips the
+   box without the -1 px margin the older recipe needed. */
 .sr-only {
-  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
-  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  position: absolute; width: 1px; height: 1px; padding: 0; border: 0;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap;
 }
 button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visible {
   outline: 2px solid var(--ui-accent); outline-offset: 2px;
 }
-/* A text button: the word in brackets, nothing else. */
+/* A text button: the word in brackets, nothing else, one line tall. */
 .quiet {
   color: var(--ui-text-muted); background: none; border: none; cursor: pointer;
-  font-size: 12px; padding: 4px 2px; min-height: var(--tap-min); white-space: nowrap;
+  padding: 0; min-height: var(--line-h); white-space: nowrap;
 }
 .quiet::before { content: "["; }
 .quiet::after { content: "]"; }
@@ -88,25 +136,25 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
    their argument blocks cannot push the sections off a phone for good. */
 .strip {
   position: sticky; top: 0; z-index: 2;
-  background: var(--ui-bg); padding: 2px 0 6px; margin: 0 0 6px;
+  background: var(--ui-bg); padding: 0 0 var(--space-2); margin: 0 0 var(--space-2);
   max-height: 50vh; overflow: auto;
 }
-.strip-quiet, .strip-foreman { margin: 0; padding: 4px 0; font-size: 12px; color: var(--ui-text-muted); }
+.strip-quiet, .strip-foreman { margin: 0; padding: var(--space-1) 0; color: var(--ui-text-muted); }
 .strip-list { list-style: none; margin: 0; padding: 0; }
 /* One item is one line, or two with its message: the mark in the gutter,
    the rest in the column beside it. The kind is the mark's colour and the
    item's first word; nothing is tinted. */
 .strip-item {
-  display: grid; grid-template-columns: 8px 1fr; column-gap: 8px; align-items: start;
-  padding: 5px 0;
+  display: grid; grid-template-columns: 8px 1fr; column-gap: var(--space-2); align-items: start;
+  padding: var(--space-1) 0;
 }
 .strip-item > :not(.mark) { grid-column: 2; min-width: 0; }
-.strip-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
-.strip-what, .strip-who { font-weight: 600; font-size: 13px; }
-.strip-where { color: var(--ui-text-muted); font-size: 12px; }
-.strip-waited { color: var(--ui-text-muted); font-size: 12px; font-variant-numeric: tabular-nums; margin-left: auto; }
+.strip-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); }
+.strip-what, .strip-who { font-weight: 600; }
+.strip-where { color: var(--ui-text-muted); }
+.strip-waited { color: var(--ui-text-muted); font-variant-numeric: tabular-nums; margin-left: auto; }
 .strip-detail {
-  color: var(--ui-text-muted); font-size: 12px; margin-top: 1px;
+  color: var(--ui-text-muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 /* The decision line is what the human decides on: it wraps to two lines,
@@ -116,25 +164,25 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
 }
 .strip-open {
-  display: inline-flex; align-items: center; min-height: var(--tap-min); font-size: 12px;
+  display: inline-flex; align-items: center; min-height: var(--line-h);
   color: var(--ui-text-muted); text-decoration: underline; text-underline-offset: 2px;
 }
 .strip-open:hover { color: var(--ui-text); }
-.proposed-actions { display: flex; align-items: center; gap: 12px; }
+.proposed-actions { display: flex; align-items: center; gap: var(--space-3); }
 .approval-input {
-  font-size: 12px; color: var(--ui-text);
-  margin: 4px 0 0; white-space: pre-wrap; word-break: break-word;
+  color: var(--ui-text);
+  margin: var(--space-1) 0 0; white-space: pre-wrap; word-break: break-word;
   /* A Write's arguments are long even after the daemon's cap; keep the item
      scannable and let the pane show the rest. */
   max-height: 7.5em; overflow: auto;
 }
-.approval-actions { display: flex; gap: 8px; margin-top: 4px; }
-/* The two answers, each a bracketed word that fills half the line. */
+.approval-actions { display: flex; gap: var(--space-2); margin-top: var(--space-1); }
+/* The two answers, each a bracketed word that fills half the line; these
+   are tapped on a phone in a hurry, so each is one line tall. */
 .approval-actions button {
-  flex: 1; font-size: 13px; font-weight: 600; cursor: pointer;
-  background: none; border: none; color: var(--ui-text); padding: 9px 4px;
-  /* WCAG 2.2 SC 2.5.8 floor, and these are tapped on a phone in a hurry. */
-  min-height: 44px;
+  flex: 1; font-weight: 600; cursor: pointer;
+  background: none; border: none; color: var(--ui-text); padding: 0 var(--space-1);
+  min-height: var(--line-h);
 }
 .approval-actions button::before { content: "["; }
 .approval-actions button::after { content: "]"; }
@@ -150,14 +198,14 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
    every opacity. */
 .push[hidden] { display: none; }
 .push {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
-  margin: 12px 0 0; font-size: 12px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2);
+  margin: var(--space-3) 0 0;
 }
 .push-switch {
   display: inline-flex; align-items: center;
   background: none; color: var(--ui-text); border: none;
-  padding: 1px 2px; font-size: 12px; cursor: pointer; white-space: nowrap;
-  min-height: var(--tap-min);
+  padding: 0; cursor: pointer; white-space: nowrap;
+  min-height: var(--line-h);
 }
 .push-switch::before { content: "[ ] "; white-space: pre; color: var(--ui-text-muted); }
 .push-switch[aria-checked="true"]::before { content: "[x] "; color: var(--ui-text); }
@@ -167,60 +215,58 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
    generated content. */
 .push-state { display: none; }
 .push-detail { color: var(--ui-text-muted); }
-.notice[hidden] { display: none; }
-.notice {
-  display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 6px 8px;
-  font-size: 12px; color: var(--ui-danger); border: 1px solid var(--ui-danger);
-}
-.notice span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
-/* The restart line: the previous run died and took its sessions with it.
-   It reads like a failed strip item, the danger mark in the gutter, because
-   it reports the same kind of thing: a loss that already happened. */
-.restart[hidden] { display: none; }
-.restart {
-  display: flex; align-items: flex-start; gap: 8px; margin: 0 0 12px;
-  padding: 5px 0; font-size: 12px; color: var(--ui-text);
+/* The notice and the restart line: one reports an action that failed, the
+   other a previous run that died and took its sessions with it. Both read
+   like a failed strip item, the danger mark in the gutter and the text in
+   the text colour, because each reports the same kind of thing: a loss that
+   already happened. The colour is on the mark alone; the danger red never
+   paints text or a border. */
+.notice[hidden], .restart[hidden] { display: none; }
+.notice, .restart {
+  display: flex; align-items: flex-start; gap: var(--space-2); margin: 0 0 var(--space-3);
+  padding: var(--space-1) 0; color: var(--ui-text);
 }
-.restart span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.notice span, .restart span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.notice .quiet, .restart .quiet { align-self: center; }
 
 /* --- the usage panel ----------------------------------------------------------
    The range's total at the full API rate, the two toggle groups, one bar
    per day, the axis, then what the numbers are made of. On the body like
-   the quota under it, in the page's 12 and 13 px. The chart is an SVG of
+   the quota under it, in the page's body size. The chart is an SVG of
    rects in currentColor, so it draws in the text colour on the body, the
    page's own pair, and adds no surface. A toggle is a radio that prints
    `[ ]` or `[x]` before its word, the push switch's checkbox, so it reads
    as a control without colour; the chosen one wears the text colour and
    the rest the muted one. */
 .usage[hidden] { display: none; }
-.usage { margin: 0 0 12px; font-size: 12px; color: var(--ui-text); }
-.usage-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; }
-.usage-title { font-size: 13px; font-weight: 600; margin: 0; flex: 1 1 auto; }
-.usage-toggles { display: flex; align-items: center; gap: 8px; }
+.usage { margin: 0 0 var(--space-3); color: var(--ui-text); }
+.usage-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-4); }
+.usage-title { font: var(--type-heading); margin: 0; flex: 1 1 auto; }
+.usage-toggles { display: flex; align-items: center; gap: var(--space-2); }
 .usage-toggle {
   display: inline-flex; align-items: center;
   background: none; color: var(--ui-text-muted); border: none;
-  padding: 1px 2px; font-size: 12px; cursor: pointer; white-space: nowrap;
-  min-height: var(--tap-min);
+  padding: 0; cursor: pointer; white-space: nowrap;
+  min-height: var(--line-h);
 }
 .usage-toggle::before { content: "[ ] "; white-space: pre; }
 .usage-toggle[aria-checked="true"] { color: var(--ui-text); }
 .usage-toggle[aria-checked="true"]::before { content: "[x] "; }
 .usage-toggle:hover { text-decoration: underline; text-underline-offset: 2px; color: var(--ui-text); }
-.usage-headline { margin: 2px 0 6px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
-.usage-amount { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.usage-headline { margin: 0 0 var(--space-2); display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); }
+.usage-amount { font: var(--type-headline); font-variant-numeric: tabular-nums; }
 .usage-qualifier { color: var(--ui-text-muted); }
 /* One bar a day, the day's share of the tallest, on a hairline base. */
 .usage-chart { display: block; width: 100%; height: 40px; color: var(--ui-text); border-bottom: 1px solid var(--ui-border); }
 .usage-chart rect { fill: currentColor; }
 .usage-axis {
-  display: flex; justify-content: space-between; gap: 8px; margin: 2px 0 0;
+  display: flex; justify-content: space-between; gap: var(--space-2); margin: var(--space-1) 0 0;
   color: var(--ui-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .usage-peak { flex: 1 1 auto; text-align: center; overflow: hidden; text-overflow: ellipsis; }
-.usage-note { margin: 6px 0 0; color: var(--ui-text-muted); overflow-wrap: anywhere; }
-.usage-age { margin: 2px 0 0; color: var(--ui-text-muted); }
+.usage-note { margin: var(--space-2) 0 0; color: var(--ui-text-muted); overflow-wrap: anywhere; }
+.usage-age { margin: var(--space-1) 0 0; color: var(--ui-text-muted); }
 
 /* --- the quota -------------------------------------------------------------
    One line per window the statusline last reported: the label, a bar,
@@ -235,14 +281,14 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
    the shape carries the value without colour. On the body, like the
    restart line above it. */
 .quota[hidden] { display: none; }
-.quota { margin: 0 0 12px; font-size: 12px; color: var(--ui-text); }
+.quota { margin: 0 0 var(--space-3); color: var(--ui-text); }
 .quota-bars { list-style: none; margin: 0; padding: 0; }
 /* One line per window on a wide screen. At 390 px the four parts do not
    fit one line at twenty cells, so a window takes two: the label and the
    countdown, then the bar and the number, each pair on its own row of a
    two-column grid; the DOM order stays label, bar, number, countdown, which
    is what a screen reader hears. */
-.quota-bar { display: flex; align-items: baseline; gap: 8px; padding: 2px 0; white-space: nowrap; }
+.quota-bar { display: flex; align-items: baseline; gap: var(--space-2); padding: var(--space-1) 0; white-space: nowrap; }
 .quota-label { flex: none; min-width: 12ch; }
 .quota-cells { flex: none; color: var(--ui-text-muted); }
 .quota-fill { color: var(--ui-text); }
@@ -250,29 +296,29 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
 .quota-percent { flex: none; min-width: 5ch; text-align: right; font-variant-numeric: tabular-nums; }
 .quota-reset { color: var(--ui-text-muted); font-variant-numeric: tabular-nums; }
 @media (max-width: 600px) {
-  .quota-bar { display: grid; grid-template-columns: 1fr auto; column-gap: 8px; padding: 4px 0; }
+  .quota-bar { display: grid; grid-template-columns: 1fr auto; column-gap: var(--space-2); padding: var(--space-1) 0; }
   .quota-label { grid-column: 1; grid-row: 1; }
   .quota-reset { grid-column: 2; grid-row: 1; text-align: right; }
   .quota-cells { grid-column: 1; grid-row: 2; }
   .quota-percent { grid-column: 2; grid-row: 2; }
 }
-.quota-note { margin: 2px 0 0; color: var(--ui-text-muted); overflow-wrap: anywhere; }
+.quota-note { margin: var(--space-1) 0 0; color: var(--ui-text-muted); overflow-wrap: anywhere; }
 
 /* --- the three levels ------------------------------------------------------
    A workspace is a section under a hairline with one heading line and the
    shells that sit in its directory; its projects are set in by
-   `NESTED_INDENT_PX` (the model counts the same 16 px off their heading
+   `NESTED_INDENT_PX` (the model counts the same --space-4 off their heading
    line), so the tree reads by indent, as `tree` prints one. A workspace of
    one project shows no heading: that project is a top-level section. */
 .cards { display: flex; flex-direction: column; border-bottom: 1px solid var(--ui-border); }
 .workspace { border-top: 1px solid var(--ui-border); background: var(--ui-surface); }
-.workspace > .head { display: flex; align-items: center; padding: 4px 12px; min-height: 36px; }
-.workspace .nested { padding-left: 16px; }
+.workspace > .head { display: flex; align-items: center; padding: 0 var(--space-3); min-height: var(--line-h); }
+.workspace .nested { padding-left: var(--space-4); }
 .workspace .nested .card:first-child { border-top: none; }
 .workspace > .rows + .nested, .workspace > .archived + .nested { border-top: 1px solid var(--ui-border); }
 /* The one line of counts above the projects: how many sessions are
    working, done, idle. --ui-text on the body, the page's own pair. */
-.cards .fleet { margin: 0 0 8px; font-size: 12px; color: var(--ui-text); font-variant-numeric: tabular-nums; }
+.cards .fleet { margin: 0 0 var(--space-2); color: var(--ui-text); font-variant-numeric: tabular-nums; }
 /* A project is a section under a hairline rule, on the lifted surface the
    rows share. No `overflow: hidden`: it clipped the open row menu and the
    focus outline of the last row at 390 px. */
@@ -282,11 +328,11 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
    gone; a row's place is relative to it, and the pane shows it. The line
    wraps only when the name alone is wider than it: `headingLine` keeps
    every shorter name on one line by giving the count and the select away. */
-.card .head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 4px 12px; min-height: 36px; }
+.card .head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: 0 var(--space-3); min-height: var(--line-h); }
 /* The name never shrinks and never clips: it is what the reader scans for.
    A name wider than the line breaks inside its own box, and `[new]` wraps
    under it. */
-.card .head .name, .workspace > .head .name { font-size: 13px; font-weight: 600; margin: 0; flex: none; max-width: 100%; overflow-wrap: anywhere; }
+.card .head .name, .workspace > .head .name { font: var(--type-heading); margin: 0; flex: none; max-width: 100%; overflow-wrap: anywhere; }
 /* What the range cost under this heading, after the name in the heading's
    own box: `$850.51 · 91% cached`, muted and unbolded, so the name is what
    the eye scans for and the number is what it reads next. On a phone it is
@@ -294,7 +340,7 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
    gives the count and the select away to keep the name and `[new]` on one
    line, and there is no room left for a number. */
 .card .head .cost, .workspace > .head .cost {
-  color: var(--ui-text-muted); font-size: 12px; font-weight: 400;
+  color: var(--ui-text-muted); font-weight: 400;
   white-space: nowrap; font-variant-numeric: tabular-nums;
 }
 /* The count takes what the name and the controls leave, so it never pushes
@@ -302,23 +348,23 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
    (`gives-way`) rather than cut it; the ellipsis is for a face wider than
    the model's 0.6 em cell. */
 .card .head .tally {
-  color: var(--ui-text-muted); font-size: 12px; white-space: nowrap;
+  color: var(--ui-text-muted); white-space: nowrap;
   flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis;
 }
 /* The profile select sits beside `[new]` because the two are one action:
    pick where, then start. It is on the page only when the daemon has
    profiles. Its width is its label plus `--profile-chrome`, the padding,
    the border and the arrow; `headingLine` counts the same cells. */
-.card .spawn { display: flex; align-items: center; gap: 6px; margin-left: auto; flex: none; }
+.card .spawn { display: flex; align-items: center; gap: var(--space-1); margin-left: auto; flex: none; }
 .card .spawn-profile {
   --profile-chrome: 30px;
-  font: inherit; font-size: 12px; color: var(--ui-text); background: none;
-  border: 1px solid var(--ui-border); padding: 2px 4px; max-width: calc(11ch + var(--profile-chrome));
-  min-height: var(--tap-min);
+  font: inherit; color: var(--ui-text); background: none;
+  border: 1px solid var(--ui-border); padding: 0 var(--space-1); max-width: calc(11ch + var(--profile-chrome));
+  min-height: var(--line-h);
 }
 .card .spawn-button {
-  font-size: 12px; color: var(--ui-text); background: none; cursor: pointer;
-  border: none; padding: 4px 2px; min-height: var(--tap-min); white-space: nowrap;
+  color: var(--ui-text); background: none; cursor: pointer;
+  border: none; padding: 0; min-height: var(--line-h); white-space: nowrap;
 }
 .card .spawn-button::before { content: "["; }
 .card .spawn-button::after { content: "]"; }
@@ -330,10 +376,10 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
    goal is not active, the round counter, then the next action cut at the
    line's end; "not written yet" after the slug of a goal whose files still
    hold the template. A working goal's crew rows sit under its line, set in
-   by 12 px. The done goals are a fold. On the section's --ui-surface, the
-   rows' own surface. */
+   by one indent level. The done goals are a fold. On the section's
+   --ui-surface, the rows' own surface. */
 .card .bucket {
-  margin: 0; padding: 6px 12px 0; font-size: 12px; font-weight: 400;
+  margin: 0; padding: var(--space-2) var(--space-3) 0; font-weight: 400;
   color: var(--ui-text-muted); border-top: 1px solid var(--ui-border);
 }
 .card .goal-lines { list-style: none; margin: 0; padding: 0; }
@@ -342,55 +388,57 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
    next action alone, cut at the line's end. The next action used to share
    the first line and read "Roun…" at 390 px. */
 .card .goal-line {
-  display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0;
-  padding: 6px 12px; font-size: 12px; white-space: nowrap;
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); min-width: 0;
+  padding: var(--space-1) var(--space-3); white-space: nowrap;
 }
-.card .goal .rows { padding-left: 12px; }
+.card .goal .rows { padding-left: var(--space-3); }
 .card .goal-line .goal-name { flex: 0 1 auto; min-width: 8em; overflow: hidden; text-overflow: ellipsis; color: var(--ui-text); }
 .card .goal-line .goal-status, .card .goal-line .goal-round, .card .goal-line .goal-unwritten, .card .goal-line .goal-cost {
-  flex: none; font-size: 12px; color: var(--ui-text-muted);
+  flex: none; color: var(--ui-text-muted);
 }
 .card .goal-line .goal-cost { font-variant-numeric: tabular-nums; }
 .card .goal-line .goal-next {
   flex: 1 1 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis;
-  color: var(--ui-text-muted); font-size: 12px;
+  color: var(--ui-text-muted);
 }
-.card .goal-none { margin: 0; padding: 6px 12px; font-size: 12px; color: var(--ui-text-muted); border-top: 1px solid var(--ui-border); }
+.card .goal-none { margin: 0; padding: var(--space-2) var(--space-3); color: var(--ui-text-muted); border-top: 1px solid var(--ui-border); }
 .goal-link { margin-left: auto; margin-top: 0; }
 
 /* --- rows ----------------------------------------------------------------- */
 .rows { list-style: none; margin: 0; padding: 0; }
-.row { display: flex; align-items: flex-start; gap: 4px; border-top: 1px solid var(--ui-border); padding: 0 8px 0 12px; }
-/* 44 px tall on one line (WCAG 2.2 SC 2.5.8), through the padding. */
+.row { display: flex; align-items: flex-start; gap: var(--space-1); border-top: 1px solid var(--ui-border); padding: 0 var(--space-2) 0 var(--space-3); }
+/* One line tall through the padding: the first line of text (1.5em) sits
+   centred in --line-h, and a row that wraps at 390 px grows from there. */
 .open {
-  flex: 1; min-width: 0; display: flex; gap: 8px; align-items: flex-start; text-decoration: none;
-  color: inherit; padding: 12px 0;
+  flex: 1; min-width: 0; display: flex; gap: var(--space-2); align-items: flex-start; text-decoration: none;
+  color: inherit; padding: calc((var(--line-h) - 1.5em) / 2) 0;
 }
 .open:hover .folder { text-decoration: underline; text-underline-offset: 2px; }
 /* One line per row: name, state, place, what, how long. It wraps to a
    second line at 390 px, where `.what` takes the rest of the width. */
-.main { min-width: 0; flex: 1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
-.folder { font-weight: 600; font-size: 13px; overflow-wrap: anywhere; }
+.main { min-width: 0; flex: 1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); }
+.folder { font-weight: 600; overflow-wrap: anywhere; }
 /* The family colour is on the mark; the label prints in the text colour,
    because an ANSI red at 12 px sits under 3:1 on half the themes. */
-.state { font-size: 12px; white-space: nowrap; color: var(--ui-text); }
+.state { white-space: nowrap; color: var(--ui-text); }
 .state.attention { font-weight: 600; }
-.main .place { color: var(--ui-text-muted); font-size: 12px; white-space: nowrap; }
+.main .place { color: var(--ui-text-muted); white-space: nowrap; }
 .main .what {
   flex: 1 1 14em; min-width: 0; color: var(--ui-text);
-  font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.main .since { margin-left: auto; color: var(--ui-text-muted); font-size: 12px; white-space: nowrap; }
+.main .since { margin-left: auto; color: var(--ui-text-muted); white-space: nowrap; }
 
 /* Row actions: quiet text beside the row on a wide screen; on a phone, one
-   menu button opens them below the row's text. */
-.actions { position: relative; flex: none; display: flex; align-items: center; padding-top: 8px; }
+   menu button opens them below the row's text. Centred in the row's first
+   line, which is one --line-h tall. */
+.actions { position: relative; flex: none; display: flex; align-items: center; min-height: var(--line-h); }
 .more { display: none; }
-.menu { display: flex; align-items: center; gap: 2px; }
+.menu { display: flex; align-items: center; gap: var(--space-1); }
 @media (max-width: 600px) {
   .more {
     display: inline-flex; align-items: center; justify-content: center;
-    width: 36px; min-height: 36px; font-size: 18px; line-height: 1;
+    width: 36px; min-height: var(--line-h); font: var(--type-headline); line-height: 1;
     color: var(--ui-text-muted); background: none; border: none; cursor: pointer;
   }
   .more:hover, .more[aria-expanded="true"] { color: var(--ui-text); }
@@ -399,12 +447,12 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
      rows under it, so it paints --ui-surface-2 inside a hairline. */
   .menu.open {
     display: flex; flex-direction: column; align-items: stretch;
-    position: absolute; right: 4px; top: 40px; z-index: 3; min-width: 140px;
+    position: absolute; right: var(--space-1); top: var(--line-h); z-index: 3; min-width: 140px;
     background: var(--ui-surface-2); border: 1px solid var(--ui-border);
-    padding: 4px;
+    padding: var(--space-1);
   }
-  .menu.open .quiet { text-align: left; min-height: 40px; font-size: 13px; }
-  .row { padding-right: 4px; }
+  .menu.open .quiet { text-align: left; }
+  .row { padding-right: var(--space-1); }
   /* The heading gives way as `headingLine` decided for 390 px: the count
      and the select drop, or the select shrinks to five cells, so that the
      name stays whole and `[new]` stays on the line. */
@@ -419,17 +467,18 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
 }
 
 /* The folds: the done goals ("7 done") and the archived sessions, collapsed
-   evidence of finished work, at the foot of its project. */
+   evidence of finished work, at the foot of its project. The summary is one
+   line tall through its padding, like a row. */
 .archived { color: var(--ui-text-muted); border-top: 1px solid var(--ui-border); }
 .archived > summary {
-  cursor: pointer; font-size: 12px; color: var(--ui-text-muted);
-  padding: 6px 12px; user-select: none; min-height: var(--tap-min);
+  cursor: pointer; color: var(--ui-text-muted);
+  padding: calc((var(--line-h) - 1.5em) / 2) var(--space-3); user-select: none;
 }
 .archived > summary:hover { color: var(--ui-text); }
-.archived-list { list-style: none; margin: 0; padding: 0 12px 8px; display: flex; flex-direction: column; gap: 2px; }
+.archived-list { list-style: none; margin: 0; padding: 0 var(--space-3) var(--space-2); display: flex; flex-direction: column; }
 .archived-list li {
-  display: flex; justify-content: space-between; gap: 10px;
-  font-size: 12px; padding: 2px 0; min-width: 0;
+  display: flex; justify-content: space-between; gap: var(--space-2);
+  padding: var(--space-1) 0; min-width: 0;
 }
 .archived-name { color: var(--ui-text); overflow-wrap: anywhere; }
 .archived-meta { color: var(--ui-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }

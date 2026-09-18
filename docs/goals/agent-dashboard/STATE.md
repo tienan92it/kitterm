@@ -1,19 +1,18 @@
 # STATE: agent-dashboard
 
 - Status: active
-- Round: 1 of 3 in this budget (first budget)
-- Rounds total: 1
-- Last floor: green (2026-09-17, round 1 after: swift test 780, vitest 1274 in 41 files)
-- Updated: 2026-09-17, round 1 closed
+- Round: 2 of 3 in this budget (first budget)
+- Rounds total: 2
+- Last floor: green (2026-09-18, round 2 after: swift test 780, vitest 1264 in 41 files)
+- Updated: 2026-09-18, round 2 closed
 
 ## Queue
 
-1. `the-foundation-in-the-stylesheet` (capability 2)
-2. `a-task-is-the-fourth-level` (capability 3)
-3. `the-band-replaces-the-strip` (capability 4)
-4. `every-agent-says-its-model` (capability 6)
-5. `the-page-says-what-the-spend-bought` (capability 7)
-6. `every-line-is-one-line` (capability 5, last: it shapes the lines the
+1. `a-task-is-the-fourth-level` (capability 3)
+2. `the-band-replaces-the-strip` (capability 4)
+3. `every-agent-says-its-model` (capability 6)
+4. `the-page-says-what-the-spend-bought` (capability 7)
+5. `every-line-is-one-line` (capability 5, last: it shapes the lines the
    others create)
 
 ## Failures
@@ -33,6 +32,13 @@ None.
 
 ## Done
 
+- `the-foundation-in-the-stylesheet` (capability 2), round 2, PR #126.
+  See `rounds/002.md`. Rule C expressed as a page-scoped `:root` in
+  `sessions.css`, which loads only on `/sessions`, so `tokens.css` is
+  byte-identical and the pane at `/` is untouched. `light-dark()`
+  carries the light theme with no JavaScript. The ratchet **shrank**, 61
+  entries to 55, because `.notice` stopped painting `--ui-danger` as
+  text. The three hues clear 3:1 on all 17 bundled themes, lowest 3.49.
 - `no-input-on-the-page` (capability 1), round 1, PR #125. See
   `rounds/001.md`. No element on the page accepts typed text. The crew
   took out the form and everything that existed only to serve it. 390 px
@@ -102,9 +108,9 @@ It is capability 7.
 
 ## Next action
 
-Round 2, `the-foundation-in-the-stylesheet`, from `plan.md` row 2. It
-goes next because every later capability writes CSS and should write it
-against the scale.
+Round 3, `a-task-is-the-fourth-level`, from `plan.md` row 3. It adds the
+level the page has never had, and capability 5 needs it before it can
+shape those lines.
 
 The design is settled and frozen: `corpus/design-foundation.md` holds
 the contract, `corpus/palette.md` holds five palette rounds and the

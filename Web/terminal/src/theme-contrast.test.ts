@@ -186,18 +186,21 @@ interface Below {
  * each pair says which themes its lever reaches and which fail without the
  * blocker too.
  *
- * 61 entries over 24 pairs. The list read 273 after round 1 derived it, 178
+ * 55 entries over 23 pairs. The list read 273 after round 1 derived it, 178
  * after round 2 raised the two muted tokens, 134 after round 3 lowered the
  * elevation, 110 after round 5 opened the three opacities round 3 left
  * alone (`.settings-gear` at 0.35 and 0.65 and `.keyboard-toggle` at 0.75;
  * those three pairs went whole, 24 entries, and their keys collapsed into
  * `--ui-text on --ui-bg + --ui-veil`, which already carried synthwave-84),
  * 97 after round 6 darkened `--ui-accent-soft`, and 84 after round 7 sank
- * `--ui-bg-sunken` to black (four pairs went whole), and 61 over 24 pairs
+ * `--ui-bg-sunken` to black (four pairs went whole), 61 over 24 pairs
  * after `fleet-catch-up` round 4 took the strip's two tints, the accent-soft
  * fill of the chip and the push switch, and the approval buttons'
- * `--ui-surface-2` off the fleet view (seven pairs went whole, 23 entries).
- * No ratio fell and no new entry appeared.
+ * `--ui-surface-2` off the fleet view (seven pairs went whole, 23 entries),
+ * and 55 over 23 pairs after `agent-dashboard` round 2 took `--ui-danger`
+ * off the notice's text: the fleet page's owned colours paint the mark
+ * alone, so `--ui-danger on --ui-bg` went whole (6 entries). No ratio fell
+ * and no new entry appeared.
  */
 const KNOWN_BELOW: Record<string, Below> = {
   "--code-comment on --ui-bg-sunken": {
@@ -253,18 +256,6 @@ const KNOWN_BELOW: Record<string, Below> = {
       "solarized-dark": 3.50,
       "nord": 3.90,
       "gruvbox-dark": 3.04,
-    },
-  },
-  "--ui-danger on --ui-bg": {
-    blocker: "bg",
-    // Only the theme's own colours could move this.
-    themes: {
-      "solarized-dark": 3.24,
-      "nord": 3.05,
-      "one-dark": 4.38,
-      "gruvbox-dark": 2.69,
-      "monokai": 3.92,
-      "synthwave-84": 4.45,
     },
   },
   "--ui-text on --ui-active": {

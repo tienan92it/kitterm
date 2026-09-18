@@ -110,6 +110,13 @@ decision moves to `docs/adr/`.
 
 ## Crew pane
 
+- Post a finding in a note **before** the last step, not with it. On
+  2026-09-17 a crew lost its whole turn to `API Error: Can't reach the
+  API server (ENOTFOUND)` after ten retries over 83 minutes, with
+  nothing committed. Two conclusions it had posted first were the only
+  thing the respawn inherited, and they saved the round.
+  (2026-09-18, agent-dashboard round 2)
+
 - Two concurrent `Bash` calls in one crew turn share one shell and one
   cwd. A `cd` in the first moves the second, and round 5 lost a
   `git add AGENTS.md` to "pathspec did not match". Use an absolute path
