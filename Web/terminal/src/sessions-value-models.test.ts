@@ -8,8 +8,9 @@ import { MODELS_NAMED, modelsPanel } from "./sessions-value";
  * into one row (`agent-dashboard`, round 8). The fleet this was built on
  * runs seven models, and the tail is noise: Haiku 4.5 is $2.72 over 140
  * sessions beside Fable 5.1 at $1,388.50. The rules under test: the
- * summed row is a real row with a name that says how many it covers, its
- * spend is the split's total less the named rows, fewer than five models
+ * summed row is a real row named `Others` (round 9: a count of models a
+ * reader cannot name is not a fact they can act on; the names live in the
+ * row's title), its spend is the split's total less the named rows, fewer than five models
  * print every name and no summed row, every bar is scaled to the longest
  * row with the summed row included, and a tail that sums past the leader
  * is the first row.
@@ -65,15 +66,16 @@ describe("MODELS names the top three and sums the rest", () => {
     expect(MODELS_NAMED).toBe(3);
   });
 
-  it("seven models are four rows: the top three by cost, then one row that says how many it sums", () => {
+  it("seven models are four rows: the top three by cost, then Others, which covers the other four through its spend, count and title", () => {
     const panel = modelsPanel(report(seven))!;
-    expect(panel.rows.map((r) => r.name)).toEqual(["Fable 5.1", "Opus 5 · 1M", "Fable 5.1 · 1M", "4 more models"]);
+    expect(panel.rows.map((r) => r.name)).toEqual(["Fable 5.1", "Opus 5 · 1M", "Fable 5.1 · 1M", "Others"]);
     const more = panel.rows[3];
     // 70.39 + 30.10 + 8.00 + 2.72, which is the split's total less the three named rows.
     expect(more.spend).toBe("$111.21");
     expect(more.sessions, "the sum of its models' session counts").toBe("152 sessions");
     expect(more.key).toBe("more");
-    expect(more.title).toBe("$111.21 over 152 sessions: Opus 5 $70.39, Fable 5 $30.10, Opus 4.8 $8.00, Haiku 4.5 $2.72");
+    expect(more.title, "the only place the tail's names appear").toBe("$111.21 over 152 sessions: Opus 5 $70.39, Fable 5 $30.10, Opus 4.8 $8.00, Haiku 4.5 $2.72");
+    for (const m of seven.slice(3)) expect(more.title, `Others covers ${m.name}`).toContain(`${m.name} $`);
     expect(more.fill, "measured against the same longest row as the three above it").toBeCloseTo(111.21 / 1388.5, 10);
     expect(panel.rows.map((r) => r.fill)).toEqual([1, 404.43 / 1388.5, 343.25 / 1388.5, more.fill]);
   });
@@ -101,8 +103,13 @@ describe("MODELS names the top three and sums the rest", () => {
     expect(modelsPanel(report(four))!.rows.some((r) => r.key === "more")).toBe(false);
   });
 
-  it("five models are the first case that sums, and the summed row then covers two", () => {
-    expect(modelsPanel(report(seven.slice(0, 5)))!.rows.map((r) => r.name)).toEqual(["Fable 5.1", "Opus 5 · 1M", "Fable 5.1 · 1M", "2 more models"]);
+  it("five models are the first case that sums, and Others then covers two", () => {
+    const panel = modelsPanel(report(seven.slice(0, 5)))!;
+    expect(panel.rows.map((r) => r.name)).toEqual(["Fable 5.1", "Opus 5 · 1M", "Fable 5.1 · 1M", "Others"]);
+    // Opus 5 $70.39 over 6 and Fable 5 $30.10 over 4: the row covers exactly those two.
+    expect(panel.rows[3].spend).toBe("$100.49");
+    expect(panel.rows[3].sessions).toBe("10 sessions");
+    expect(panel.rows[3].title).toBe("$100.49 over 10 sessions: Opus 5 $70.39, Fable 5 $30.10");
   });
 
   it("three, two and one model print that many rows, every one named, and no fourth row", () => {
@@ -112,7 +119,7 @@ describe("MODELS names the top three and sums the rest", () => {
     for (const n of [1, 2, 3]) {
       const rows = modelsPanel(report(seven.slice(0, n)))!.rows;
       expect(rows, `${n} models`).toHaveLength(n);
-      expect(rows.some((r) => r.key === "more" || /more model/.test(r.name)), `${n} models: no summed row`).toBe(false);
+      expect(rows.some((r) => r.key === "more" || r.name === "Others"), `${n} models: no summed row`).toBe(false);
     }
   });
 
@@ -132,7 +139,7 @@ describe("MODELS names the top three and sums the rest", () => {
     ];
     const panel = modelsPanel(report(models))!;
     expect(panel.rows.map((r) => [r.name, r.spend, r.sessions, r.fill])).toEqual([
-      ["4 more models", "$240.00", "8 sessions", 1],
+      ["Others", "$240.00", "8 sessions", 1],
       ["A", "$100.00", "1 session", 100 / 240],
       ["B", "$90.00", "1 session", 90 / 240],
       ["C", "$80.00", "1 session", 80 / 240],

@@ -420,7 +420,9 @@ export const MODELS_NAMED = 3;
  * rest: the name, a bar, the spend and the session count on every row.
  * The summed row's spend is the range's split total less the named
  * rows, its session count the sum of its models' counts, and its title
- * names them. Every bar is scaled to the longest row, the summed row
+ * is the only place that names them: the row reads `Others`, because
+ * a count of models a reader cannot name is not a fact they can act
+ * on (round 9). Every bar is scaled to the longest row, the summed row
  * included, and the rows sort by spend, so the first bar is always the
  * longest: a tail that sums past the leader is real, and it is the
  * first row. Null when the page has no rollup, the daemon sends no
@@ -448,7 +450,7 @@ export function modelsPanel(report: UsageDaily | null | undefined): ModelsPanel 
     const sessions = rest.reduce((sum, m) => sum + m.sessions, 0);
     raws.push({
       key: "more",
-      name: `${rest.length} more models`,
+      name: "Others",
       costUSD,
       sessions,
       title: `${dollars(costUSD)} over ${plural(sessions, "session", "sessions")}: ${rest.map((m) => `${m.name} ${dollars(m.costUSD)}`).join(", ")}`,
