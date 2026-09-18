@@ -1,16 +1,14 @@
 # STATE: agent-dashboard
 
-- Status: active
-- Round: 0 of 3 in this budget (third budget)
-- Rounds total: 7
-- Last floor: green (2026-09-18, round 7 after: swift test 823, vitest 1374 in 49 files)
-- Updated: 2026-09-18, reopened for the MODELS top-three
+- Status: waiting
+- Round: 1 of 3 in this budget (third budget)
+- Rounds total: 8
+- Last floor: green (2026-09-18, round 8 after: swift test 823, vitest 1384 in 50 files)
+- Updated: 2026-09-18, round 8 closed
 
 ## Queue
 
-1. `models-top-three` (capability 8, the human's on 2026-09-18). The
-   `MODELS` panel draws one bar per model and the fleet has seven. Show
-   the top three by cost and sum the rest into one row.
+Empty.
 
 ## Failures
 
@@ -52,6 +50,11 @@ None.
 
 ## Done
 
+- `models-top-three` (capability 8), round 8, PR #132. See
+  `rounds/008.md`. The `MODELS` panel shows the top three by cost and
+  sums the rest into one row, `4 more models`, which is a row with a bar
+  and a count rather than a footnote. Seven rows became four; 1200 px
+  1341 to 1263. Nine minutes and $4.77.
 - `every-line-is-one-line` (capability 5), round 7, PR #131. See
   `rounds/007.md`. Every line of the tree is one line at both widths;
   facts drop from the right and the state word never drops; the marks are
@@ -161,8 +164,16 @@ It is capability 7.
 
 ## Next action
 
-Round 8, `models-top-three`. The human asked for it after seeing the
-panel with seven bars: a long tail of models that cost almost nothing
-takes as many rows as the three that carry the spend.
+None until the human answers. Every capability is done, including the
+one they added after seeing the result.
 
-The five proposals above are unchanged and still wait; none blocks this.
+The foreman recommends **done**. All nine conditions in `goal.md` hold on
+`main`, including condition 6: the 390 px page is **1002 closed, 1114
+with every fold open**, against its 1200.
+
+Five proposals wait, all listed above and none blocking. Two are
+sentences in the frozen `design-foundation.md` that round 7's two answers
+changed in behaviour; ratifying them makes the contract match the page.
+
+To reopen: set `Status: active`, write a queue, and set
+`Round: 0 of 3 in this budget (fourth budget)`.
