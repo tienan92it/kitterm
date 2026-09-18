@@ -1,21 +1,14 @@
 # STATE: agent-dashboard
 
 - Status: active
-- Round: 0 of 3 in this budget (fourth budget)
-- Rounds total: 9
-- Last floor: green (2026-09-18, round 9 after: swift test 823, vitest 1384 in 50 files)
-- Updated: 2026-09-18, reopened: the page follows the Pen design
+- Round: 1 of 3 in this budget (fourth budget)
+- Rounds total: 10
+- Last floor: green (2026-09-18, round 10 after: Linux build, swift test 827, vitest 1411 in 52 files)
+- Updated: 2026-09-18, round 10 closed, PR open
 
 ## Queue
 
-1. `the-page-is-the-pen-design` (capability 10, the human's on
-   2026-09-18). The human reviewed the shipped page against
-   `corpus/dashboard.pen` and said the code is wrong: the page must
-   follow the two frames `Dashboard 1200` and `Dashboard 390` exactly,
-   with one change to the design, `MODELS` as the top three by cost plus
-   `Others` (rounds 8 and 9). The frames are exported as
-   `corpus/04-pen-1200.png` and `corpus/04-pen-390.png`. The differences
-   the foreman read off the frames are in `rounds/010.md`.
+Empty. Capability 10 is done on `agent-dashboard/round-10`, PR pending merge.
 
 ## Failures
 
@@ -57,6 +50,12 @@ None.
 
 ## Done
 
+- `the-page-is-the-pen-design` (capability 10), round 10, on
+  `agent-dashboard/round-10`. See `rounds/010.md`. The page reproduces
+  the two frames at 1200 and 390; `Others` is the last MODELS row. 27
+  assertions added, the shipped-shape assertions replaced under charter,
+  the ratchet untouched. 390 px is 2499 on the real tree: the frame's
+  shape, above `goal.md`'s 1200 condition by the human's direction.
 - `others-not-a-count` (round 9), PR #133. See `rounds/009.md`. The
   summed model row reads `Others`; the names it covers stay in its
   `title`. Four assertions updated, all round 8's own, two of them
@@ -187,6 +186,7 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-Round 10, `the-page-is-the-pen-design`. The foreman exported the two
-frames to `corpus/04-pen-1200.png` and `corpus/04-pen-390.png` for the
-crew, and lists the differences in the round prompt.
+Merge the round 10 PR after the human reviews the shots beside the
+frames. Then the human decides: `goal.md` condition 6 (390 px under
+1200) against the frame's shape, which measures 2499 on the real tree;
+and the six crew choices in `rounds/010.md` where the frames are silent.

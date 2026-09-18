@@ -265,6 +265,15 @@ decision moves to `docs/adr/`.
 
 ## Foreman
 
+- A `.pen` file under `corpus/` is the human's design. The foreman reads
+  it, exports its frames, and hands the crew the differences; it never
+  edits a frame. Round 10 of `agent-dashboard` replaced two frames with a
+  tracing of the shipped page and the human closed Pen without saving
+  (2026-09-18, round 10).
+- A daemon started for a screenshot overwrites `~/.kitterm/port` and
+  `pid`, and an MCP bridge binds its port once at start, so the
+  session's `kitterm mcp` follows the wrong daemon until it reconnects.
+  Run a scratch daemon with its own state directory (2026-09-18, round 10).
 - Write the `- Cost:` line at collect, or the goal prices at nothing. The
   daily rollup keys on the directory a transcript ran in; a goal is a set
   of round records, not a directory. The line in each record is the only
@@ -397,3 +406,4 @@ decision moves to `docs/adr/`.
   in 10 minutes 21 seconds with no human input and stopped at the budget
   with the digest shape from `LOOP.md`; it left the package uncommitted
   until told. (2026-09-09, round 8)
+
