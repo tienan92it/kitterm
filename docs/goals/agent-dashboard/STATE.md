@@ -1,23 +1,33 @@
 # STATE: agent-dashboard
 
 - Status: active
-- Round: 1 of 3 in this budget (second budget)
-- Rounds total: 4
-- Last floor: green (2026-09-18, round 4 after: swift test 788, vitest 1295 in 44 files)
-- Updated: 2026-09-18, round 4 closed
+- Round: 2 of 3 in this budget (second budget)
+- Rounds total: 5
+- Last floor: green (2026-09-18, round 5 after: Linux green, swift test 803, vitest 1301 in 45 files, bench p95 2.98 ms)
+- Updated: 2026-09-18, round 5 closed
 
 ## Queue
 
-1. `every-agent-says-its-model` (capability 6)
-2. `the-page-says-what-the-spend-bought` (capability 7)
-3. `every-line-is-one-line` (capability 5, last: it shapes the lines the
-   others create, and it owes 101 px at 390)
+1. `the-page-says-what-the-spend-bought` (capability 7)
+2. `every-line-is-one-line` (capability 5, last: it shapes the lines the
+   others create, and it owes 47 px at 390)
 
 ## Failures
 
 None.
 
 ## Proposals waiting on the human
+
+- **`corpus/design-foundation.md`, "The model": the 4 KiB sentence is
+  measured false.** The last assistant line sits within 4 KiB in 3 of 40
+  transcripts, within 256 KiB in 40 of 40. The code uses 256 KiB. The
+  corpus is Frozen, so the human changes the sentence. See
+  `rounds/005.md`.
+- **`AGENTS.md`'s fleet entry still describes the reply line** capability
+  1 removed. One sentence; capability 5 rewrites that paragraph anyway.
+- **The anatomy's "actions" cell** lists "`[new]`, the `…` menu, or
+  nothing", and an approval's `[Deny]`/`[Allow]` now live there. Name
+  them in the foundation or move them.
 
 - `site/index.html` sets `--accent: #3fb950`. The dashboard's palette is
   the Coolors set the human chose, so the site and the page no longer
@@ -30,6 +40,14 @@ None.
 
 ## Done
 
+- `every-agent-says-its-model` (capability 6), round 5, PR #129. See
+  `rounds/005.md`. A session's row carries its model, and
+  `GET /api/usage/daily` answers a per-model split whose parts sum to
+  the total to 1e-6 on every day. One 256 KiB `pread` off the event
+  loop, cached by size and mtime, so an unchanged file costs one `stat`.
+  A pre-change rollup loads unchanged. The crew measured the
+  foundation's 4 KiB claim and found it false; the sentence is a
+  proposal for the human.
 - `the-band-replaces-the-strip` (capability 4), round 4, PR #128. See
   `rounds/004.md`. One fixed row of four counts replaces the strip; its
   items became marks on the lines they belong to. The band's height held
@@ -119,11 +137,12 @@ It is capability 7.
 
 ## Next action
 
-Round 5, `every-agent-says-its-model`, from `plan.md` row 6. It is
-independent of the rest and is the smallest of the three left.
+Round 6, `the-page-says-what-the-spend-bought`, from `plan.md` row 7. It
+reads the per-model split round 5 just shipped and takes the cache share
+off every heading.
 
-Capability 5 owes 101 px: round 4 left the 390 px page at 1301, against
-a completion condition of 1200.
+Capability 5 then owes 47 px: round 5 left the 390 px page at 1247,
+against a completion condition of 1200.
 
 The design is settled and frozen: `corpus/design-foundation.md` holds
 the contract, `corpus/palette.md` holds five palette rounds and the
