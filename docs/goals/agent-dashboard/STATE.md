@@ -1,16 +1,14 @@
 # STATE: agent-dashboard
 
-- Status: active
+- Status: waiting
 - Round: 3 of 3 in this budget (second budget)
-- Rounds total: 6
-- Last floor: green (2026-09-18, round 6 after: Linux green, swift test 822, vitest 1337 in 47 files, bench p95 2.61 ms)
-- Updated: 2026-09-18, round 6 closed
+- Rounds total: 7
+- Last floor: green (2026-09-18, round 7 after: swift test 823, vitest 1374 in 49 files)
+- Updated: 2026-09-18, round 7 closed, every capability done
 
 ## Queue
 
-1. `every-line-is-one-line` (capability 5, the last. It shapes the lines
-   every other capability created, and it owes **342 px at 390**, which
-   round 6 measured and named.)
+Empty. All seven capabilities in `plan.md` are done.
 
 ## Failures
 
@@ -18,6 +16,12 @@ None.
 
 ## Proposals waiting on the human
 
+- **`corpus/design-foundation.md`, Hierarchy**: "below 768 px a goal's
+  done tasks fold behind one line, the way a project's done goals do."
+  Round 7's first answer. See `rounds/007.md`.
+- **`corpus/design-foundation.md`, The panels**: `VALUE` folds at 390 px
+  with `WHERE` and `MODELS`. The current sentence says it does not; that
+  was round 6's foreman call and round 7 priced it at 187 px.
 - **`corpus/valuemaxxing.md` has four numbers the parser disagrees with.**
   84 merged PRs not 83, 59,251 lines not 58,853 (a one-day range), 2
   corrections not 3, and **7 sessions over $5 under 95% cached worth
@@ -46,6 +50,12 @@ None.
 
 ## Done
 
+- `every-line-is-one-line` (capability 5), round 7, PR #131. See
+  `rounds/007.md`. Every line of the tree is one line at both widths;
+  facts drop from the right and the state word never drops; the marks are
+  characters and the working mark turns through a measured cycle. **390 px
+  1659 → 1137: the completion condition holds by 63 px.** The round asked
+  twice and the second answer reversed round 6's foreman call.
 - `the-page-says-what-the-spend-bought` (capability 7), round 6, PR #130.
   See `rounds/006.md`. `VALUE`, `WHERE` with four groupings, `MODELS`,
   `LEAKS`, and the cache share off every heading. `WHERE` and `MODELS`
@@ -149,14 +159,18 @@ It is capability 7.
 
 ## Next action
 
-Round 7, `every-line-is-one-line`, from `plan.md` row 5. The last
-capability.
+None until the human answers. The second budget is spent at round 7 and
+every capability in `plan.md` is done, so the goal is `waiting`.
 
-It owes **342 px at 390**: round 6 left the page at 1542 against a
-completion condition of 1200, and that height is in the tree, which is
-exactly what this capability shapes.
+The foreman recommends **done**. All nine conditions in `goal.md` hold on
+`main` once PR #131 merges, including condition 6: the 390 px page is
+**1137** against its 1200, measured on the real `docs/goals/` tree with a
+three-row fleet.
 
-The design is settled and frozen: `corpus/design-foundation.md` holds
-the contract, `corpus/palette.md` holds five palette rounds and the
-measurements behind each, and the six frames in Pencil draw it with real
-numbers.
+Five proposals wait, all listed above and none blocking. Two are
+Hierarchy and panel sentences in `design-foundation.md` that round 7's
+two answers changed in behaviour; ratifying them makes the frozen
+contract match the page.
+
+To reopen: set `Status: active`, write a queue, and set
+`Round: 0 of 3 in this budget (third budget)`.
