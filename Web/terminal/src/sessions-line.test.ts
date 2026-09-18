@@ -209,6 +209,10 @@ beforeAll(async () => {
 
 const lines = (): FakeElement[] => page.root.querySelectorAll(".line");
 const textOf = (els: FakeElement[]): string[] => els.map((el) => el.textContent);
+/** A line's cells as the frame draws them: the class, the text, and the
+ * column (`data-col`) of each cell of `.main`. */
+const cellsOf = (main: FakeElement) =>
+  main.children.filter((c): c is FakeElement => typeof c !== "string").map((c) => [c.className, c.textContent, c.getAttribute("data-col")] as [string, string, string | null]);
 
 describe("the page's lines", () => {
   it("draws every level as one line with one name cell and its facts numbered in drop order", () => {
@@ -221,24 +225,47 @@ describe("the page's lines", () => {
     }
   });
 
-  it("prints a row's state as the bracketed word, its facts after it, its model before the time", () => {
+  it("prints a row's state as the bracketed word, its model in the number column and its time in the last, nothing else", () => {
+    // Round 10 (the frame `Dashboard 1200`): `◐ path-mapping-real-terminal
+    // [working] Fable 5.1 4m`. What the agent is doing and where it sits
+    // are the name's tooltip, not cells. The time keeps the phone.
     const main = page.root.querySelectorAll(".main").find((m) => m.textContent.startsWith("crew"))!;
-    const cells = main.children.filter((c): c is FakeElement => typeof c !== "string");
-    // The span reads the real clock, so only its shape is pinned.
-    expect(cells.map((c) => [c.className, c.className === "since" ? c.textContent.replace(/^\d+[mhd]$/, "<span>") : c.textContent])).toEqual([
-      ["folder", "crew"], ["state running", "[working]"], ["place", ".claude/worktrees/one-line"], ["what", "Measuring the page"],
-      ["model", "Fable 5.1"], ["since", "<span>"],
+    const cells = cellsOf(main).map(([c, t, col]) => [c, c === "since" ? t.replace(/^\d+[mhd]$|^now$/, "<span>") : t, col]);
+    expect(cells).toEqual([
+      ["folder line-name", "crew", null], ["state running", "[working]", null], ["model", "Fable 5.1", "2"], ["since", "<span>", "4"],
     ]);
-    expect(cells.map((c) => c.getAttribute("data-drop")), "what drops first, then place, then the model").toEqual([null, null, "1", "0", "2", null]);
+    expect(main.querySelector(".since")?.hasAttribute("data-narrow")).toBe(true);
+    expect(main.querySelector(".model")?.hasAttribute("data-narrow")).toBe(false);
+    expect(main.querySelector(".line-name")?.title).toBe("Measuring the page\n" + `${ROOT}/.claude/worktrees/one-line`);
+    // The crew sits under its task, under its goal, under the project.
+    const line = page.root.querySelectorAll(".row-line").find((l) => l.querySelector(".folder")?.textContent === "crew")!;
+    expect(line.querySelector(".mark")?.className).toBe("mark running");
   });
 
-  it("prints a goal's line as mark, title, word, then cost, round, next action", () => {
+  it("prints a goal's line as disclosure, title, word, then its cost and its counter in their columns", () => {
+    // `workspace-ledger [done] $75.11 r6/3`: the cost in the number column,
+    // the counter in the last; the next action is the title's tooltip.
     const goal = page.root.querySelector(".goal-line")!;
-    expect(goal.querySelector(".mark")?.className).toBe("mark running");
-    expect(goal.querySelector(".tag-state")?.textContent).toBe("[working]");
-    expect(textOf(goal.querySelectorAll("[data-drop]"))).toEqual(["$65.72", "round 7 of 3", "Round 7, `every-line-is-one-line`, from `plan.md` row 5."]);
-    expect(goal.querySelectorAll("[data-drop]").map((c) => c.getAttribute("data-drop"))).toEqual(["2", "1", "0"]);
-    expect(page.root.querySelectorAll(".goal-next")[0].hasAttribute("hidden"), "hidden only by measurement, which this DOM cannot do").toBe(false);
+    expect(goal.querySelector(".mark")?.className).toBe("mark pending disclosure");
+    expect(goal.querySelector(".mark")?.textContent).toBe("▾");
+    expect(goal.querySelector(".state")?.textContent).toBe("[working]");
+    expect(cellsOf(goal.querySelector(".main")!)).toEqual([
+      ["line-name", "/sessions is a dashboard for workspaces and agents", null], ["state running", "[working]", null], ["cost", "$65.72", "2"], ["counter", "r7/3", "4"],
+    ]);
+    expect(goal.querySelector(".line-name")?.title).toBe("Round 7, `every-line-is-one-line`, from `plan.md` row 5.");
+    expect(goal.querySelector(".line-name")?.tagName).toBe("A");
+    expect(goal.querySelectorAll("[data-drop]"), "a goal's facts never drop: they sit in columns").toEqual([]);
+  });
+
+  it("prints a task's line as mark, slug, word, then round and PR in their columns, and its crew under it", () => {
+    const tasks = page.root.querySelectorAll(".line-task");
+    expect(tasks.map((t) => cellsOf(t.querySelector(".main")!))).toEqual([
+      [["line-name", "every-line-is-one-line", null], ["state running", "[working]", null]],
+      [["line-name", "the-page-says-what-the-spend-bought", null], ["state done", "[done]", null], ["round", "round 6", "2"], ["pr", "PR #130", "3"]],
+      [["line-name", "no-input-on-the-page", null], ["state done", "[done]", null], ["round", "round 1", "2"], ["pr", "PR #125", "3"]],
+    ]);
+    expect(tasks.map((t) => t.querySelector(".mark")?.className)).toEqual(["mark running", "mark done", "mark done"]);
+    expect(tasks.map((t) => t.getAttribute("style") ?? "")).toEqual(["", "", ""]);
   });
 
   it("prints the vocabulary in the tree's header, each mark beside its word, the working one at rest", () => {
@@ -248,27 +275,22 @@ describe("the page's lines", () => {
     expect(head.querySelectorAll(".mark").map((m) => m.className)).toEqual([
       "mark running rest", "mark attention rest", "mark pending rest", "mark done rest", "mark failed rest", "mark idle rest",
     ]);
-    expect(page.root.children.indexOf(head), "inside the tree, not above the panels").toBe(-1);
-    expect(page.root.querySelector(".cards")?.children[0]).toBe(head);
+    // Above the tree and under the panels, at the page's top level.
+    const order = page.root.children.filter((c): c is FakeElement => typeof c !== "string").map((c) => c.className.split(" ")[0]);
+    expect(order.slice(order.indexOf("tree-head"))).toEqual(["tree-head", "tree", "folds"]);
   });
 
-  it("folds a goal's done tasks on a phone behind `N done`, the way a project folds its done goals", () => {
-    const fold = page.root.querySelector(".done-tasks")!;
-    expect(fold.tagName).toBe("DETAILS");
-    expect(fold.querySelector("summary")?.textContent).toBe("2 done");
-    expect(textOf(fold.querySelectorAll(".line-name"))).toEqual(["the-page-says-what-the-spend-bought", "no-input-on-the-page"]);
-    const open = page.root.querySelectorAll(".tree-tasks")[0];
-    expect(textOf(open.querySelectorAll(".line-name")), "the working task stays open, the crew under it").toEqual(["every-line-is-one-line"]);
-    expect(open.querySelectorAll(".row")).toHaveLength(1);
-  });
-
-  it("draws every task at 768 px and up, and no fold", async () => {
+  it("shows a goal's last done tasks at both widths and folds none of them", async () => {
+    // Round 10: the frame draws a done goal's last done tasks open at 1200
+    // and at 390, so the DOM is the same at both widths and there is no
+    // `N done` fold under a goal.
+    const names = () => page.root.querySelectorAll(".line-task").map((t) => t.querySelector(".line-name")!.textContent);
+    expect(names()).toEqual(["every-line-is-one-line", "the-page-says-what-the-spend-bought", "no-input-on-the-page"]);
+    expect(page.root.querySelectorAll(".fold")).toEqual([]);
     phone = false;
     await page.poll();
-    expect(page.root.querySelectorAll(".done-tasks")).toEqual([]);
-    expect(textOf(page.root.querySelectorAll(".line-name"))).toEqual([
-      "every-line-is-one-line", "the-page-says-what-the-spend-bought", "no-input-on-the-page",
-    ]);
+    expect(names()).toEqual(["every-line-is-one-line", "the-page-says-what-the-spend-bought", "no-input-on-the-page"]);
+    expect(page.root.querySelectorAll(".fold")).toEqual([]);
     phone = true;
   });
 
@@ -277,6 +299,7 @@ describe("the page's lines", () => {
     expect(line.querySelector("[data-name]")?.textContent).toBe("approve Bash");
     expect(textOf(line.querySelectorAll("[data-drop]"))).toEqual(["swift test"]);
     expect(line.querySelector(".mark")?.textContent).toBe("?");
+    expect(line.querySelector(".actions")?.querySelectorAll("a").map((a) => a.textContent)).toEqual(["Open the pane"]);
   });
 
   it("stands no label over a bucket: each goal line says its own state", () => {

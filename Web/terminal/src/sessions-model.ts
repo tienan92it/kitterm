@@ -176,6 +176,9 @@ export type TaskLine<R extends ModelRow> = {
   tag: string;
   /** `round 1`, `PR #118`; empty for a task whose line names neither. */
   facts: string[];
+  /** The numbers behind the facts, for the tree's columns. */
+  round?: number;
+  pr?: number;
   rows: R[];
 };
 
@@ -533,6 +536,14 @@ export function isUnwritten(summary: KnowledgeSummary): boolean {
 export function roundLabel(summary: KnowledgeSummary): string | null {
   if (typeof summary.round !== "number") return null;
   return typeof summary.budget === "number" ? `round ${summary.round} of ${summary.budget}` : `round ${summary.round}`;
+}
+
+/** The round counter as the tree prints it: `r2/3`, `r2` from a daemon
+ * that sends no budget, null without a round (`design-foundation.md`'s
+ * frame draws `r2/3`; `roundLabel` is the long form). */
+export function roundCounter(summary: KnowledgeSummary): string | null {
+  if (typeof summary.round !== "number") return null;
+  return typeof summary.budget === "number" ? `r${summary.round}/${summary.budget}` : `r${summary.round}`;
 }
 
 /** The first line of the next action, trimmed; null when there is none.
@@ -1012,6 +1023,41 @@ export function keptFacts(widths: readonly number[], need: number, gap: number):
  * a failed task needs a person. */
 export function foldDoneTasks<R extends ModelRow>(tasks: readonly TaskLine<R>[]): { open: TaskLine<R>[]; done: TaskLine<R>[] } {
   return { open: tasks.filter((t) => t.state !== "done"), done: tasks.filter((t) => t.state === "done") };
+}
+
+/** How many of a goal's done tasks its line shows: the most recent two,
+ * as the frame draws them; the older ones are history the record link
+ * holds. `STATE.md` lists `## Done` newest first, so the first two are
+ * the most recent. */
+export const DONE_TASKS_SHOWN = 2;
+
+/** The tasks a goal's line shows: every task that is not done, in the
+ * daemon's order, and the first `DONE_TASKS_SHOWN` done ones. */
+export function shownTasks<R extends ModelRow>(tasks: readonly TaskLine<R>[]): TaskLine<R>[] {
+  let done = 0;
+  return tasks.filter((t) => {
+    if (t.state !== "done") return true;
+    done += 1;
+    return done <= DONE_TASKS_SHOWN;
+  });
+}
+
+/** The project's most recently finished goal, the one the tree shows open
+ * with its last done tasks while the rest fold behind `N done`: the done
+ * goal whose latest round started last, by the `started` day of its
+ * records; the first in the route's order when no record carries a day.
+ * Null for no done goal. */
+export function latestDoneGoal(done: readonly KnowledgeSummary[]): KnowledgeSummary | null {
+  let best: KnowledgeSummary | null = null;
+  let bestDay = "";
+  for (const goal of done) {
+    const day = (goal.rounds ?? []).reduce((max, r) => (typeof r.started === "string" && r.started > max ? r.started : max), "");
+    if (best === null || day > bestDay) {
+      best = goal;
+      bestDay = day;
+    }
+  }
+  return best;
 }
 
 // --- the restart line -------------------------------------------------------
@@ -1502,7 +1548,10 @@ export function taskLines<R extends ModelRow>(summary: KnowledgeSummary, listed:
     const rows = goal === undefined ? [] : sortInGroup(listed.filter(under));
     for (const row of rows) claimed.add(row.id);
     const state: TaskState = live ? "working" : task.state;
-    tasks.push({ slug: task.slug, state, tag: taskTag(state), facts: taskFacts(task), rows });
+    const line: TaskLine<R> = { slug: task.slug, state, tag: taskTag(state), facts: taskFacts(task), rows };
+    if (typeof task.round === "number") line.round = task.round;
+    if (typeof task.pr === "number") line.pr = task.pr;
+    tasks.push(line);
   }
   return { tasks, rest: listed.filter((row) => !claimed.has(row.id)) };
 }
@@ -1927,6 +1976,14 @@ export function dollars(usd: number): string {
   return `${usd < 0 ? "-" : ""}$${grouped}.${cents}`;
 }
 
+/** `$2,316` for $2,316.83: the dollars with the cents cut, thousands
+ * grouped, for the band and a phone's `MODELS` row, where the cents are
+ * noise beside the number. Cut, not rounded, as the frame prints it. */
+export function wholeDollars(usd: number): string {
+  const whole = String(Math.floor(Math.abs(usd))).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${usd < 0 ? "-" : ""}$${whole}`;
+}
+
 /** Whole units under a thousand, one decimal of `k` under a million, two
  * decimals of `M` under a billion, two of `B` above: `0`, `17.7k`,
  * `1.10M`, `2.31B`. The shape `kitterm goal cost` prints. */
@@ -2180,9 +2237,13 @@ export type BandCell = {
   /** `2`, `4`, `$2,316.45`, `19%`; `–` for a cell whose source the page
    * does not have, never a zero that would read as a measurement. */
   value: string;
-  /** `working`, `need you`, `30d`, `7d quota`. */
+  /** `working`, `need you`, `30d`, `quota · 3h 16m`. */
   noun: string;
   title: string;
+  /** The colour the count wears: the accent on the working count, the
+   * amber on the need-you count, none on the two numbers. The count is
+   * the one glyph run in the band that carries a state, so it is a mark. */
+  family?: "running" | "attention";
 };
 
 /** The band as the page prints it. Always four cells, whatever the fleet
@@ -2205,6 +2266,29 @@ export const NEEDS_YOU_ID = "needs-you";
  * holding the tty, whatever else the fleet holds. */
 export function workingCount(rows: ModelRow[]): number {
   return rows.filter((row) => stateOf(row) === "working").length;
+}
+
+/** What a workspace or a project prints for its working sessions at the
+ * line's end: `1 agent`, `2 agents`; null for none, because a heading
+ * with no agent prints nothing rather than a zero. */
+export function agentsLabel(working: number): string | null {
+  if (working <= 0) return null;
+  return `${working} ${working === 1 ? "agent" : "agents"}`;
+}
+
+/** Is the row an idle shell: a session nobody is waiting on and no agent
+ * holds, so it is not a line of the tree but one of the `N idle shells`
+ * the page folds at its foot. `idle`, `exited` with a zero code, and a
+ * shell with no integration; a `completed` agent at its prompt is not
+ * one, because `claude` still holds its tty. */
+export function isIdleShell(row: ModelRow): boolean {
+  const state = stateOf(row);
+  return state === "idle" || state === "exited" || state === "unknown";
+}
+
+/** The fold line over the idle shells: `1 idle shell`, `3 idle shells`. */
+export function idleShellsLabel(count: number): string {
+  return `${count} idle ${count === 1 ? "shell" : "shells"}`;
 }
 
 /** The noun of the "need you" cell: `needs you` for one item, `need you`
@@ -2239,57 +2323,61 @@ export function orphanApprovals(approvals: readonly Approval[], rows: readonly M
   return approvals.filter((approval) => !approval.session || !ids.has(approval.session));
 }
 
-/** The short noun of a quota window in the band: `5h quota`, `7d quota`,
- * `spend limit`; any other key with its underscores opened. */
-const BAND_QUOTA_NOUNS: Record<string, string> = {
-  five_hour: "5h quota",
-  seven_day: "7d quota",
-  spend_limit: "spend limit",
-};
-
-export function bandQuotaNoun(key: string): string {
-  return BAND_QUOTA_NOUNS[key] ?? `${key.replace(/_/g, " ")} quota`;
+/** The noun of the quota cell: `quota · 3h 16m`, the word and the
+ * countdown to the window's reset, as the frame draws it. */
+export function bandQuotaNoun(reset: string): string {
+  return `quota · ${reset}`;
 }
 
+/** The window the band's quota cell reads: the session window
+ * (`five_hour`) while it has not reset, because it is the one that
+ * decides whether more work can start now; else the most-used window
+ * that has not reset. */
+const BAND_QUOTA_WINDOW = "five_hour";
+
 /**
- * The quota cell: the most-used window that has not reset, because that
- * is the one that decides whether more work can start. `–` with the
- * noun `quota` when the page has no reading, the reading carries no
- * window, or every window has reset; the quota panel below says which
- * in words.
+ * The quota cell: the session window's share and its countdown, `19%`
+ * with `quota · 3h 16m`, from the newest reading; the most-used window
+ * that has not reset when the reading carries no session window. `–`
+ * with the noun `quota` when the page has no reading, the reading
+ * carries no window, or every window has reset; the quota panel below
+ * says which in words.
  */
 export function bandQuota(limits: UsageLimits | null | undefined, now: number): BandCell {
   const none: BandCell = { key: "quota", value: "–", noun: "quota", title: "No quota reading." };
   if (!limits || !limits.ok || !limits.hasReading) return none;
-  let top: [string, LimitWindow] | null = null;
-  for (const entry of Object.entries(limits.rateLimits ?? {})) {
-    const [, window] = entry;
-    if (window.resets_at * 1000 <= now) continue;
-    if (top === null || window.used_percentage > top[1].used_percentage) top = entry;
+  const live = Object.entries(limits.rateLimits ?? {}).filter(([, window]) => window.resets_at * 1000 > now);
+  let top: [string, LimitWindow] | null = live.find(([key]) => key === BAND_QUOTA_WINDOW) ?? null;
+  if (top === null) {
+    for (const entry of live) {
+      if (top === null || entry[1].used_percentage > top[1].used_percentage) top = entry;
+    }
   }
   if (top === null) return none;
   const [key, window] = top;
   const percent = Math.round(Math.min(999, Math.max(0, window.used_percentage)));
   const stale = limits.stale === true ? ", from a stale reading" : "";
+  const reset = countdown(window.resets_at * 1000 - now);
   return {
     key: "quota",
     value: `${percent}%`,
-    noun: bandQuotaNoun(key),
-    title: `${quotaLabel(key)}: ${percent}% used, resets in ${countdown(window.resets_at * 1000 - now)}${stale}.`,
+    noun: bandQuotaNoun(reset),
+    title: `${quotaLabel(key)}: ${percent}% used, resets in ${reset}${stale}.`,
   };
 }
 
-/** The spend cell: the range's total at the full API rate, with the span
- * as its noun; `–` with the noun `spend` when the page has no rollup (a
- * watch token, or a daemon without the route). */
+/** The spend cell: the range's total at the full API rate in whole
+ * dollars, `$2,316`, with the span as its noun; `–` with the noun `spend`
+ * when the page has no rollup (a watch token, or a daemon without the
+ * route). The cents are on the `USAGE` headline under it. */
 export function bandSpend(report: UsageDaily | null | undefined, choice: UsageChoice): BandCell {
   if (!report || !report.ok) return { key: "spend", value: "–", noun: "spend", title: "No usage rollup." };
   const total = report.totals?.costUSD ?? 0;
   return {
     key: "spend",
-    value: dollars(total),
+    value: wholeDollars(total),
     noun: `${choice.span}d`,
-    title: `What the last ${choice.span} days cost, if billed at full API rate.`,
+    title: `${dollars(total)}: what the last ${choice.span} days cost, if billed at full API rate.`,
   };
 }
 
@@ -2319,12 +2407,14 @@ export function band<R extends ModelRow>(
         value: String(working),
         noun: "working",
         title: `${working} ${working === 1 ? "session is" : "sessions are"} running a command or an agent.`,
+        family: "running",
       },
       {
         key: "needs",
         value: String(needs),
         noun: needsNoun(needs),
         title: "Pending approvals, sessions waiting for input, failed sessions, and live goals' proposals.",
+        family: "attention",
       },
       bandSpend(report, choice),
       bandQuota(limits, now),

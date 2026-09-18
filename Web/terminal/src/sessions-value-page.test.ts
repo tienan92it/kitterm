@@ -94,72 +94,110 @@ beforeAll(async () => {
 
 const panels = () => page.root.querySelectorAll(".panel").filter((p) => !p.hidden);
 const panelNamed = (name: string) => page.root.querySelectorAll(".panel").find((p) => p.classList.contains(name))!;
+/** A WHERE row as the frame draws it: name | spend | count | PRs | unit. */
 const rowsOf = (panel: ReturnType<typeof panelNamed>) =>
   panel.querySelectorAll(".split-row").map((row) => [
     row.querySelector(".split-name")?.textContent,
     row.querySelector(".split-spend")?.textContent,
+    row.querySelector(".split-count")?.textContent,
     row.querySelector(".split-units")?.textContent,
-    row.querySelector(".split-rate")?.textContent ?? null,
+    row.querySelector(".split-rate")?.textContent,
     row.classList.contains("remainder"),
   ]);
 
-describe("the four panels", () => {
-  it("sit between the quota and the tree, in one order, each with its label", () => {
+describe("the panels", () => {
+  it("sit between the band and the tree, in one order, each with its label in the gutter", () => {
+    // Round 10 (the frame `Dashboard 1200`): USAGE and QUOTA are panels
+    // with a label like the four under them; the header and the tree
+    // follow, then the folds.
     const order = page.root.children
       .filter((child): child is Exclude<typeof child, string> => typeof child !== "string")
       .map((child) => child.className.split(" ")[0]);
-    expect(order.slice(order.indexOf("quota"), order.indexOf("cards") + 1)).toEqual(["quota", "panel", "panel", "panel", "panel", "cards"]);
-    expect(panels().map((p) => p.querySelector(".panel-label")?.textContent)).toEqual(["VALUE", "WHERE", "MODELS", "LEAKS"]);
+    expect(order.slice(order.indexOf("band"))).toEqual(["band", "notice", "restart", "panel", "panel", "panel", "panel", "panel", "panel", "tree-head", "tree", "folds"]);
+    expect(panels().map((p) => p.querySelector(".panel-label")?.textContent)).toEqual(["USAGE", "QUOTA", "VALUE", "WHERE", "MODELS", "LEAKS"]);
+    expect(panels().map((p) => p.querySelector(".panel-label")?.tagName)).toEqual(["H2", "H2", "H2", "H2", "H2", "H2"]);
   });
 
-  it("VALUE prints four tiles and the proxies line", () => {
+  it("USAGE prints the amount, the tokens and the model hours on one row with the toggles, and no title, qualifier or age line", () => {
+    const usage = panelNamed("usage");
+    const head = usage.querySelector(".usage-head")!;
+    expect(head.querySelector(".usage-amount")?.textContent).toBe("$1,000.00");
+    expect(head.querySelector(".usage-amount")?.title).toBe("if billed at full API rate");
+    expect(head.querySelectorAll(".usage-fact").map((f) => f.textContent)).toEqual(["63.10M tokens", "10.0 h model time"]);
+    expect(head.querySelector(".usage-span")?.textContent).toBe("30 days");
+    expect(head.querySelectorAll(".usage-toggle").map((b) => [b.textContent, b.getAttribute("aria-checked")])).toEqual([
+      ["cost", "true"], ["tokens", "false"], ["7d", "false"], ["30d", "true"], ["90d", "false"],
+    ]);
+    expect(usage.querySelectorAll(".usage-title")).toEqual([]);
+    expect(usage.querySelectorAll(".usage-qualifier")).toEqual([]);
+    expect(usage.querySelectorAll(".usage-age")).toEqual([]);
+    expect(usage.querySelectorAll(".usage-note"), "nothing apportioned: no note").toEqual([]);
+    expect(usage.querySelector(".panel-label")?.title).toMatch(/^rollup refreshed /);
+  });
+
+  it("QUOTA holds the no-reading sentence in its content cell", () => {
+    const quota = panelNamed("quota");
+    expect(quota.querySelector(".quota-note")?.textContent).toBe(
+      "No quota reading yet. Run kitterm statusline install, then open a Claude Code session; its statusline posts one.",
+    );
+    expect(quota.querySelectorAll(".quota-bar")).toEqual([]);
+  });
+
+  it("VALUE prints four tiles behind an accent rule, their nouns in two forms, and one note naming the scope and the span", () => {
     const value = panelNamed("value");
     // kitterm is the one checkout, $950 of the fleet's $1,000: its unit
     // costs divide its own spend; the hour divides the fleet's.
-    expect(value.querySelectorAll(".yield-tile").map((t) => [t.querySelector(".yield-count")?.textContent, t.querySelector(".yield-noun")?.textContent, t.querySelector(".yield-rate")?.textContent])).toEqual([
-      ["5", "merged PRs", "$190.00 a PR"],
-      ["1,234", "merged lines", "$0.770 a line"],
-      ["2", "releases", "$475.00 a release"],
-      ["10.0", "model hours", "$100.00 an hour"],
+    expect(value.querySelectorAll(".yield-tile").map((t) => [
+      t.querySelector(".yield-count")?.textContent, t.querySelector(".yield-noun")?.textContent, t.querySelector(".yield-noun-short")?.textContent, t.querySelector(".yield-rate")?.textContent,
+    ])).toEqual([
+      ["5", "merged pull requests", "merged PRs", "$190.00 each"],
+      ["1,234", "merged lines added", "merged lines", "$0.770 each"],
+      ["2", "releases", "releases", "$475.00 each"],
+      ["10.0", "hours of model time", "model hours", "$100 an hour"],
     ]);
-    expect(value.querySelector(".panel-note")?.textContent).toBe(
-      "A merged line and a merged PR are proxies for value, not value. A unit cost divides the $950.00 spent in 1 repository counted; the hour divides the fleet's.",
-    );
+    expect(value.querySelectorAll(".yield-tile").map((t) => t.querySelector(".mark")?.className)).toEqual(Array(4).fill("mark bar rule"));
+    expect(value.querySelector(".note-long")?.textContent).toBe("kitterm, 30 days. Proxies for value, not value.");
+    expect(value.querySelector(".note-short")?.textContent).toBe("kitterm, 30 days");
+    expect(value.querySelectorAll("details"), "VALUE folds nowhere").toEqual([]);
   });
 
-  it("WHERE opens at the goal grouping with the unattributed remainder as an amber row", () => {
+  it("WHERE opens at the goal grouping with the counted checkouts at the selector's right and the remainder in the amber", () => {
     const where = panelNamed("where");
     expect(where.querySelectorAll(".panel-toggle").map((b) => [b.textContent, b.getAttribute("aria-checked")])).toEqual([
       ["project", "false"], ["goal", "true"], ["task", "false"], ["role", "false"],
     ]);
+    expect(where.querySelector(".panel-summary")?.textContent).toBe("$950.00 in kitterm · 5 merged PRs · 1,234 lines · 2 releases");
     expect(rowsOf(where)).toEqual([
-      ["agent-dashboard", "$19.01", "3 PRs", "$6.34 a PR", false],
-      ["no round record", "$980.99", "–", "–", true],
+      ["agent-dashboard", "$19.01", "3 tasks", "3 PRs", "–", false],
+      ["no round record", "$980.99", "98%", "–", "–", true],
     ]);
     const rest = where.querySelectorAll(".remainder")[0];
-    expect(rest.querySelectorAll(".mark").map((m) => m.className)).toEqual(["mark attention", "mark bar attention"]);
+    // No `?` mark: the name, the bar and the spend wear the amber themselves.
+    expect(rest.querySelectorAll(".mark").map((m) => m.className)).toEqual(["mark attention wide", "mark bar attention", "mark attention wide"]);
     expect(rest.querySelector(".split-bar")?.children.map((c) => (typeof c === "string" ? c : c.className))).toEqual(["mark bar attention"]);
-    expect(where.querySelector(".panel-note")?.textContent).toBe("98% names no round, so it cannot be valued.");
+    expect(where.querySelector(".note-long")?.textContent).toBe("98% names no round, so it cannot be valued");
     // A bar is a mark, never text: the accent and the amber paint it alone.
     const bars = where.querySelectorAll(".split-bar").map((b) => b.getAttribute("aria-hidden"));
     expect(bars).toEqual(["true", "true"]);
   });
 
-  it("MODELS is one bar per model with its spend and sessions, and no cache share", () => {
+  it("MODELS is one bar per model with its spend to the cent, in whole dollars for a phone, and its sessions, and no cache share", () => {
     const models = panelNamed("models");
-    expect(rowsOf(models)).toEqual([
-      ["Fable 5.1", "$900.00", "2 sessions", null, false],
-      ["Haiku 4.5", "$100.00", "1 session", null, false],
+    expect(models.querySelectorAll(".split-row").map((row) => [
+      row.querySelector(".split-name")?.textContent, row.querySelector(".split-spend")?.textContent, row.querySelector(".split-short")?.textContent, row.querySelector(".split-units")?.textContent,
+    ])).toEqual([
+      ["Fable 5.1", "$900.00", "$900", "2 sessions"],
+      ["Haiku 4.5", "$100.00", "$100", "1 session"],
     ]);
     expect(models.textContent).not.toContain("cached");
+    expect(models.querySelectorAll("details"), "MODELS folds nowhere").toEqual([]);
   });
 
-  it("LEAKS names the unpriced rounds, the corrections and the low-cache sessions, one marked line each", () => {
+  it("LEAKS is two lines: the unpriced rounds, then the corrections and the low-cache sessions joined", () => {
     const leaks = panelNamed("leaks");
     expect(leaks.querySelectorAll(".leak-line").map((l) => [l.querySelector(".mark")?.className, l.querySelector(".leak-text")?.textContent])).toEqual([
       ["mark attention", "1 of 3 rounds carry no Cost line"],
-      ["mark idle", "0 corrections in 3 rounds"],
-      ["mark attention", "1 session over $5 under 95% cached, $15.84"],
+      ["mark pending", "0 corrections in 3 rounds · 1 session under 95% cached, $15.84"],
     ]);
   });
 
@@ -171,30 +209,18 @@ describe("the four panels", () => {
 });
 
 describe("on a phone", () => {
-  it("folds VALUE, WHERE and MODELS behind the done goals' fold, one summary line each", async () => {
+  it("paints the same panels: the sheet hides WHERE and LEAKS, and nothing folds (round 10)", async () => {
+    // Chartered in round 10: the frame `Dashboard 390` draws VALUE and
+    // MODELS open and WHERE and LEAKS absent, so the DOM is the same at
+    // both widths and the stylesheet decides what shows.
     phone = true;
     await page.poll();
-    const where = panelNamed("where");
-    const models = panelNamed("models");
-    const foldOf = (panel: ReturnType<typeof panelNamed>) => panel.querySelectorAll("details").filter((d) => d.classList.contains("panel-fold"));
-    expect(foldOf(where)).toHaveLength(1);
-    expect(foldOf(models)).toHaveLength(1);
-    expect(foldOf(where)[0].querySelector("summary")?.textContent).toBe("where the dollar goes · 98% unattributed");
-    expect(foldOf(models)[0].querySelector("summary")?.textContent).toBe("by model · Fable 5.1 $900.00");
-    expect(where.querySelectorAll(".panel-label"), "the summary line replaces the label").toHaveLength(0);
-    // Closed by default, and the panel inside is the whole panel.
-    expect((foldOf(where)[0] as unknown as { open: boolean }).open).toBe(false);
-    expect(rowsOf(where)).toHaveLength(2);
-    expect(rowsOf(models)).toHaveLength(2);
-    // Every measure panel folds at 390 px (round 7 reversed round 6's
-    // exception for VALUE): the band carries the headline spend, and the
-    // tiles are inside the fold, whole.
-    expect(foldOf(panelNamed("value"))).toHaveLength(1);
-    expect(foldOf(panelNamed("value"))[0].querySelector("summary")?.textContent).toBe("what the spend bought · 5 merged PRs");
+    expect(page.root.querySelectorAll(".panel-fold")).toEqual([]);
+    expect(panels().map((p) => p.querySelector(".panel-label")?.textContent)).toEqual(["USAGE", "QUOTA", "VALUE", "WHERE", "MODELS", "LEAKS"]);
     expect(panelNamed("value").querySelectorAll(".yield-tile")).toHaveLength(4);
+    expect(panelNamed("models").querySelectorAll(".split-short").map((s) => s.textContent)).toEqual(["$900", "$100"]);
     phone = false;
     await page.poll();
-    expect(foldOf(panelNamed("where"))).toHaveLength(0);
     expect(panelNamed("where").querySelector(".panel-label")?.textContent).toBe("WHERE");
   });
 });
@@ -206,9 +232,11 @@ describe("the cache share left every heading", () => {
     for (const h of headings) {
       expect(h.textContent, h.className).not.toMatch(/cached|%/);
     }
-    // The workspace heading over the two projects, then each project.
-    expect(page.root.querySelectorAll(".cost").map((c) => c.textContent)).toEqual(["$1,000.00", "$950.00", "$50.00"]);
-    expect(page.root.querySelectorAll(".goal-cost").map((c) => c.textContent)).toEqual(["$65.72"]);
+    // The workspace heading over the two projects, then kitterm, its goal
+    // (round 10: a goal's cost is the same `cost` cell as a heading's),
+    // then notes.
+    expect(page.root.querySelectorAll(".cost").map((c) => c.textContent)).toEqual(["$1,000.00", "$950.00", "$65.72", "$50.00"]);
+    expect(page.root.querySelector(".goal-line")?.querySelector(".cost")?.textContent).toBe("$65.72");
   });
 
   it("prints the share in one place only: the LEAKS exception line", () => {

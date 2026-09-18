@@ -6,138 +6,113 @@ import {
   actionName,
   applicationServerKey,
   approvalName,
-  approvalsOf,
   attention,
   band,
-  cardRecord,
-  costLabel,
-  dayLabel,
   dismissKey,
   dismissName,
-  doneLabel,
   focusKey,
-  foldDoneTasks,
   folderOf,
-  headingLine,
-  HEADING_DROP_ORDER,
+  idleShellsLabel,
   keptFacts,
-  goalCost,
-  goalFacts,
-  goalTag,
-  goalTitle,
-  group,
-  knowledgeUrl,
-  levels,
   markFamily,
   markGlyph,
   needsYouMessage,
   NEEDS_YOU_ID,
-  NESTED_INDENT_PX,
-  NO_PROJECT,
-  NO_PROJECT_NAME,
-  orphanApprovals,
-  lineProposals,
   proposalsName,
   proposedItems,
   proposedLabel,
-  projectUsage,
   pushToggle,
+  quotaPanel,
   readUsageChoice,
-  recordLabel,
   recordName,
   restartDismissName,
   restartNotice,
   rowLine,
   rowModel,
   rowName,
-  rowNeeds,
-  ROW_DROP_ORDER,
   sameServerKey,
   stateOf,
+  stateTag,
   usageAmount,
   usageChartName,
   usagePanel,
   usageRange,
   VOCABULARY,
   withProposed,
-  workspaceHome,
-  workspaceUsage,
+  dayLabel,
+  goalTitle,
   type Approval,
   type AttentionItem,
   type Band,
   type BandCell,
   type DaemonStarted,
-  type GoalEntry,
-  type GoalLine,
-  type TaskLine,
-  taskLines,
-  taskMark,
-  type Heading,
   type KnowledgeAnswer,
   type KnowledgeSummary,
-  type ModelRow,
-  type ProfileWidth,
-  type ProjectRef,
-  type ProjectSection,
-  type ProjectSummary,
-  type LineProposals,
   type MarkFamily,
+  type ModelRow,
+  type ProjectRef,
+  type ProjectSummary,
   type ProposedItem,
   type PushFacts,
   type PushSupport,
   type PushToggle,
-  quotaPanel,
   type QuotaPanel,
   type StampFormat,
   type UsageChoice,
   type UsageDaily,
   type UsageLimits,
   type UsagePanel,
-  type WorkspaceSection,
 } from "./sessions-model";
 import {
+  apportionedNote,
   leakLines,
   modelsPanel,
   readWhereGrouping,
+  usageHead,
   valuePanel,
   wherePanel,
   type LeakLine,
   type ModelsPanel,
+  type UsageHead,
   type ValuePanel,
   type WhereGrouping,
   type WherePanel,
   type YieldReport,
 } from "./sessions-value";
+import { sessionFactColumns, tree, type TreeLine, type TreeSection } from "./sessions-tree";
 import { canvasMeasure, type Cycle, FRAME_MS, frameAt, pickCycle } from "./spinner";
 import { loadSettings } from "./settings-store";
 import { applyThemeTokens } from "./theme-tokens";
 import { findThemeById } from "./themes";
 
 /**
- * The fleet view: every live shell grouped by project, what needs the human
- * first, and the actions a supervisor takes from a phone — answer, spawn,
- * archive, kill. Polls `/api/projects`, `/api/sessions`, `/api/approvals`,
- * `/api/archives` and `/api/usage/limits`, plus `/api/projects/<id>/knowledge` for each
- * registered project and `/api/usage/daily` for the chosen range, and links
- * each row back to `/?session=<id>`.
+ * The fleet view: the page the frames `Dashboard 1200` and `Dashboard
+ * 390` of `corpus/dashboard.pen` draw (`agent-dashboard`, round 10). Polls
+ * `/api/projects`, `/api/sessions`, `/api/approvals`, `/api/archives` and
+ * `/api/usage/limits`, plus `/api/projects/<id>/knowledge` for each
+ * registered project and `/api/usage/daily` and `/api/yield` for the
+ * chosen range, and links each session back to `/?session=<id>`.
  *
- * The page reads top to bottom in the order a returning reader needs: the
- * title, the band (four counts in one fixed-height row: working, need you,
- * spend, quota; the "need you" count links to the first marked line), the
- * restart line if the previous run died, the usage panel (the range's
- * total at the full API rate, the per-day chart, the quota bars), the four
- * panels that say what the spend bought (`VALUE`, `WHERE`, `MODELS`,
- * `LEAKS`; `sessions-value.ts`), then the work in four levels: a
- * workspace, its projects, each project's goals by state (working,
- * pending, done), and each goal's tasks, each heading with what it cost.
- * The cache share is on no heading: it is a constant, and it appears only
- * as a `LEAKS` line when a session falls under 95%. Everything that
- * needs a person is a mark on the line it belongs to: an approval under
- * its session's row, a waiting or failed session on its own row, a live
- * goal's proposals on the goal's line. No session is on the page twice.
- * There is no search and no filter; the grouping is the navigation. The
- * push switch sits under the sections. The pure model
- * (`sessions-model.ts`) decides what goes where; this file only paints it.
+ * Top to bottom: **the band**, the brand at the left and four counts at
+ * the right, each a headline-size number with a body-size noun, in one
+ * fixed-height row; **the panels**, each a label in an 84 px gutter beside
+ * its content — `USAGE` (the range's dollars, tokens and model hours, the
+ * two toggle groups, one bar per day, the axis, the apportioned note),
+ * `QUOTA` (one ASCII bar per window with its reset), `VALUE` (four tiles:
+ * what the spend bought and what one unit cost), `WHERE` (the spend by
+ * project, goal, task or role, with the counted checkouts' summary at the
+ * selector's right), `MODELS` (the top three by cost and `Others`) and
+ * `LEAKS` (two lines); **the tree**, under `SESSIONS` and the state
+ * vocabulary, as flat lines with fixed fact columns (`sessions-tree.ts`):
+ * a workspace, its projects, their goals, tasks and sessions, the most
+ * recent done goal open and the rest behind `N done`; then **the folds**
+ * on one line: the archives, the idle shells, and the push switch. On a
+ * phone the gutters, `WHERE`, `LEAKS` and the vocabulary go, the counts
+ * wrap to two rows of two, the tiles to two by two, and every line keeps
+ * its state word and one fact. The page presents and monitors; it accepts
+ * no typed work, and `Open the pane` is the way to act on an agent. The
+ * pure models (`sessions-model.ts`, `sessions-value.ts`,
+ * `sessions-tree.ts`) decide what goes where; this file only paints it.
  *
  * Deliberately its own page, not the terminal: `/` stays "open a tab, get a
  * shell".
@@ -157,8 +132,6 @@ type SessionRow = ModelRow & {
   exited?: boolean;
   exitCode?: number;
 };
-
-type Profile = { name: string; command: string; cwd?: string };
 
 /** Archived sessions: finished work whose evidence was kept. */
 type ArchivedRow = {
@@ -197,6 +170,8 @@ const DISMISSED_KEY = "kitterm.sessions.dismissed";
  * so one list does not have to hold two kinds of entry. A dismissal keys on
  * the epoch, so it dies with the run it answers. */
 const RESTART_DISMISSED_KEY = "kitterm.sessions.restart-dismissed";
+/** The brand at the band's left. */
+const BRAND = "kitterm";
 
 const settings = loadSettings();
 const activeTheme = findThemeById(settings.themeId);
@@ -222,24 +197,19 @@ let knowledgeInFlight = false;
 /** Polls that failed in a row. One is a blip and keeps the last snapshot on
  * the page; the second replaces the page with the error. */
 let failedPolls = 0;
-/** Named session profiles (~/.kitterm/profiles.json), fetched once. */
-let profiles: Profile[] = [];
 /** This client's token is watch-only (the daemon 403s the profiles route for
  * it). Watch clients cannot start, end, or answer anything, so those buttons
  * are hidden rather than shown and refused. */
 let watchOnly = false;
 /** Ids being acted on right now, so a second tap cannot double-post. */
 const busy = new Set<string>();
-/** The archive folds the user opened, by group key; a rebuild keeps them. */
-const archivedOpen = new Set<string>();
+/** The folds the user opened, by key; a rebuild keeps them. */
+const foldsOpen = new Set<string>();
 /** The last action that failed, shown until the next action. */
 let notice: string | null = null;
-/** The row whose action menu is open on a phone. Kept across repaints, so a
- * poll between the two taps does not close the menu under the thumb. */
+/** The row whose action menu is open. Kept across repaints, so a poll
+ * between the two taps does not close the menu under the pointer. */
 let openMenu: string | null = null;
-/** The profile picked in each card's spawn select, by project id. A repaint
- * rebuilds the select, so the choice lives here, not in the DOM. */
-const spawnProfile = new Map<string, string>();
 /** The knowledge summary of each registered project, by id, with the ETag
  * the daemon gave it: an unchanged package answers 304 and repaints nothing. */
 const knowledge = new Map<string, KnowledgeEntry>();
@@ -269,17 +239,6 @@ let yieldReport: YieldReport | null = null;
 /** The `WHERE` panel's grouping, kept across loads like the usage choice. */
 const WHERE_KEY = "kitterm.sessions.where";
 let whereGrouping: WhereGrouping = readWhereGrouping(readStorage(WHERE_KEY));
-/** The width below which `WHERE` and `MODELS` fold (`design-foundation.md`,
- * "The panels": a measure is not what a phone reader opens the page for;
- * `VALUE`'s four tiles are the headline and stay). The sheet's own
- * breakpoint, read here because a closed `details` cannot be opened by a
- * stylesheet. */
-const NARROW_QUERY = "(max-width: 767px)";
-
-/** True on a phone-width page; false where the page cannot ask. */
-function narrow(): boolean {
-  return typeof matchMedia === "function" ? matchMedia(NARROW_QUERY).matches : false;
-}
 /** The newest quota reading the daemon holds (`GET /api/usage/limits`), or
  * null when the route did not answer: a daemon too old to have it, or a
  * watch token, which it refuses. */
@@ -371,20 +330,18 @@ function dismissRestart(key: string): void {
   render();
 }
 
+/** The profiles route answers 403 to a watch token, which is how the page
+ * learns it may not act; the profiles themselves are not offered, because
+ * `[new]` starts a local shell and the pane picks a profile. */
 async function fetchProfiles(): Promise<void> {
   try {
     const res = await fetch("/api/profiles", { headers: { accept: "application/json" } });
     if (res.status === 403) {
       watchOnly = true;
       lastSignature = "";
-      return;
     }
-    if (!res.ok) return;
-    const data = (await res.json()) as { ok: boolean; profiles?: Profile[] };
-    profiles = data.profiles ?? [];
-    lastSignature = "";
   } catch {
-    // No profiles is a fine state; spawn offers a local shell only.
+    // No answer is a fine state; the next poll paints what it can.
   }
 }
 
@@ -430,9 +387,7 @@ async function poll(): Promise<void> {
   }
   // The summaries come after the fleet has painted, bounded by the poll
   // interval each and outside `inFlight`, so a package on a stalled disk
-  // costs one card and never the sessions or the approvals. Checked by
-  // hand: a registered project on an unreadable root leaves the fleet
-  // painting (rounds/007.md).
+  // costs one section and never the sessions or the approvals.
   if (knowledgeInFlight) return;
   knowledgeInFlight = true;
   try {
@@ -479,7 +434,7 @@ async function fetchKnowledge(): Promise<void> {
           missesLeft: 0,
         });
       } catch {
-        // Keep what the card shows, on a timeout too; the next poll asks again.
+        // Keep what the page shows, on a timeout too; the next poll asks again.
       }
     }),
   );
@@ -505,11 +460,13 @@ function knowledgeEntries(): { project: ProjectRef; summary: KnowledgeSummary }[
 // The page has fixed regions. Each poll replaces the children of the ones
 // that changed.
 
-/** The band: one fixed-height row of four counts (`band`). Built once;
- * `paintBand` replaces its cells when they change. */
+/** The band: the brand, then four counts in one fixed-height row (`band`).
+ * Built once; `paintBand` replaces its cells when they change. */
 const bandBlock = document.createElement("section");
 bandBlock.className = "band";
 bandBlock.setAttribute("aria-label", "Fleet");
+const bandCells = document.createElement("div");
+bandCells.className = "band-cells";
 let bandPainted = "";
 const noticeLine = document.createElement("p");
 noticeLine.className = "notice";
@@ -523,11 +480,17 @@ const announce = document.createElement("p");
 announce.className = "sr-only";
 announce.setAttribute("aria-live", "polite");
 let announcedCount = -1;
-/** One line above the cards when the previous run died without recording a
- * reason (`restartNotice`). It paints once per run and its text is fixed, so
- * unlike the band it can be a live region; `paintRestart` only touches it
- * when the text changes, so a 2 s repaint never announces it twice. */
-/** The push line under the head: one switch that subscribes this device to
+/** One line above the panels when the previous run died without recording
+ * a reason (`restartNotice`). It paints once per run and its text is fixed,
+ * so unlike the band it can be a live region; `paintRestart` only touches
+ * it when the text changes, so a 2 s repaint never announces it twice. */
+const restartLine = document.createElement("p");
+restartLine.className = "restart";
+restartLine.hidden = true;
+restartLine.setAttribute("role", "status");
+/** The text on the line right now, so an unchanged line is left alone. */
+let restartPainted = "";
+/** The push line in the folds: one switch that subscribes this device to
  * the daemon's notifications, and the reason it cannot when it cannot
  * (`pushToggle`). Hidden for a watch client. Built once; `paintPush` only
  * touches it when the toggle changes. */
@@ -536,75 +499,62 @@ pushLine.className = "push";
 pushLine.hidden = true;
 /** The toggle on the line right now, so an unchanged one is left alone. */
 let pushPainted = "";
-const restartLine = document.createElement("p");
-restartLine.className = "restart";
-restartLine.hidden = true;
-restartLine.setAttribute("role", "status");
-/** The quota: one bar per window the statusline last reported, with its
- * countdown, and one line saying how old the reading is or why there is
- * none (`quotaPanel`). Above the fleet line, because it is the one number
- * that decides whether more work can start. Hidden for a watch client. */
-const usageBlock = document.createElement("section");
-usageBlock.className = "usage";
-usageBlock.hidden = true;
-usageBlock.setAttribute("aria-label", "Usage");
-let usagePainted = "";
-const quotaBlock = document.createElement("section");
-quotaBlock.className = "quota";
-quotaBlock.hidden = true;
-quotaBlock.setAttribute("aria-label", "Quota");
-let quotaPainted = "";
-/** The four panels that say what the spend bought, between the meters and
- * the tree (`design-foundation.md`, "The panels"): each a label in an
- * 84 px gutter and its content. Built once; each `paint*` replaces its
- * content when its model changes. */
-function panelBlock(name: string): HTMLElement {
+/** The panels between the band and the tree (`design-foundation.md`, "The
+ * panels"): each a label in an 84 px gutter and its content. Built once;
+ * each `paint*` replaces its content when its model changes. */
+function panelBlock(name: string, label: string): HTMLElement {
   const block = document.createElement("section");
   block.className = `panel ${name}`;
   block.hidden = true;
-  block.setAttribute("aria-label", name.toUpperCase());
+  block.setAttribute("aria-label", label);
   return block;
 }
-const valueBlock = panelBlock("value");
-const whereBlock = panelBlock("where");
-const modelsBlock = panelBlock("models");
-const leaksBlock = panelBlock("leaks");
+const usageBlock = panelBlock("usage", "Usage");
+const quotaBlock = panelBlock("quota", "Quota");
+const valueBlock = panelBlock("value", "VALUE");
+const whereBlock = panelBlock("where", "WHERE");
+const modelsBlock = panelBlock("models", "MODELS");
+const leaksBlock = panelBlock("leaks", "LEAKS");
+let usagePainted = "";
+let quotaPainted = "";
 let valuePainted = "";
 let wherePainted = "";
 let modelsPainted = "";
 let leaksPainted = "";
-/** The text on the line right now, so an unchanged line is left alone. */
-let restartPainted = "";
-/** The tree's header: `SESSIONS`, then the whole state vocabulary, each
- * mark beside the bracketed word it always appears with, so a reader never
- * has to infer a mark (`design-foundation.md`, Hierarchy). The working
- * mark here stands still; only a line whose agent holds the tty turns. */
+/** The tree's header: `SESSIONS` in the gutter, then the whole state
+ * vocabulary, each mark beside the bracketed word it always appears with,
+ * so a reader never has to infer a mark (`design-foundation.md`,
+ * Hierarchy). The working mark here stands still; only a line whose agent
+ * holds the tty turns. */
 const treeHead = document.createElement("div");
 treeHead.className = "tree-head";
 function treeLegend(): Node[] {
-  return [
-    span("tree-label", "SESSIONS"),
-    ...VOCABULARY.map((entry) => {
-      const key = document.createElement("span");
-      key.className = "tree-key";
-      key.append(mark(entry.family, true), span(`tag-state ${entry.family}`, entry.tag));
-      return key;
-    }),
-  ];
+  const keys = document.createElement("div");
+  keys.className = "tree-keys";
+  for (const entry of VOCABULARY) {
+    const key = document.createElement("span");
+    key.className = "tree-key";
+    key.append(mark(entry.family, true), span(`tag-state ${entry.family}`, entry.tag));
+    keys.append(key);
+  }
+  return [span("tree-label", "SESSIONS"), keys];
 }
-const cards = document.createElement("div");
-cards.className = "cards";
+/** The tree itself: one section per workspace or lone project, each a
+ * list of lines. */
+const treeBlock = document.createElement("div");
+treeBlock.className = "tree";
+/** The folds at the foot: the archives, the idle shells, the push switch. */
+const foldsBlock = document.createElement("div");
+foldsBlock.className = "folds";
 let skeletonMounted = false;
 
 function mountSkeleton(): void {
   if (!root || skeletonMounted) return;
   skeletonMounted = true;
   treeHead.replaceChildren(...treeLegend());
-  // Status first, the push switch last: it is a thing the reader does, not
-  // a thing the reader came to learn.
   root.replaceChildren(
-    header(), announce, bandBlock, noticeLine, restartLine, usageBlock, quotaBlock,
-    valueBlock, whereBlock, modelsBlock, leaksBlock, cards, pushLine,
+    announce, bandBlock, noticeLine, restartLine, usageBlock, quotaBlock,
+    valueBlock, whereBlock, modelsBlock, leaksBlock, treeHead, treeBlock, foldsBlock,
   );
 }
 
@@ -617,18 +567,18 @@ function render(): void {
     ...rest,
     agent: agent ? { status: agent.status, message: agent.message } : undefined,
   }));
-  const order = group(sessions, projects).flatMap((g) => g.rows.map((r) => r.id));
-  // The span a row prints moves once a minute at most, so it is in.
   const now = Date.now();
-  const spans = sessions.map((s) => rowLine(s, now).since);
-  // The quota's text moves once a minute at most, like a row's span; the
-  // usage panel's age line too, and its numbers when the rollup refreshes.
+  // The span a line prints moves once a minute at most, so it is in; so
+  // is the tree's order.
+  const built = tree({ rows: sessions, projects, goalsOf: (id) => knowledge.get(id)?.goals, approvals, proposed: [], usage, now });
+  const shape = built.sections.map((s) => s.lines.map((l) => [l.key, l.facts.map((f) => f.text)]));
+  // The quota's text moves once a minute at most, like a line's span; the
+  // usage panel's numbers when the rollup refreshes.
   const quota = quotaPanel(limits, now);
   const panel = usagePanel(usage, usageChoice, now);
   const signature = JSON.stringify([
     rendered,
-    order,
-    spans,
+    shape,
     projects,
     approvals.map((a) => a.id),
     archives.map((a) => a.id),
@@ -637,13 +587,11 @@ function render(): void {
     [...restartDismissed],
     started,
     watchOnly,
-    profiles.map((p) => p.name),
     notice,
     quota,
     panel,
     yieldReport,
     whereGrouping,
-    narrow(),
   ]);
   if (signature === lastSignature) return;
   lastSignature = signature;
@@ -653,10 +601,11 @@ function render(): void {
 /** Paint from the current snapshot. Called by `render` when the snapshot
  * changed.
  *
- * Every control carries a `data-focus` key (row id and action, fold, spawn
- * control, approval button), so the control that had focus before the four
- * regions were rebuilt gets it back by key afterwards. Without this a poll
- * that repainted while a keyboard user sat on Kill sent focus to `body`. */
+ * Every control carries a `data-focus` key (session id and action, fold,
+ * spawn control, approval button), so the control that had focus before
+ * the regions were rebuilt gets it back by key afterwards. Without this a
+ * poll that repainted while a keyboard user sat on Kill sent focus to
+ * `body`. */
 function paint(): void {
   if (!root) return;
   mountSkeleton();
@@ -676,54 +625,61 @@ function paint(): void {
     announcedCount = count;
     announce.textContent = needsYouMessage(count);
   }
-  const badge = root.querySelector(".count")!;
-  badge.textContent = String(sessions.length);
-  badge.setAttribute("aria-label", `${sessions.length} sessions`);
 
   paintBand(cells);
   noticeLine.hidden = notice === null;
   noticeLine.replaceChildren(...(notice === null ? [] : [noticeContent(notice)]));
   paintRestart();
-  paintUsage(usagePanel(usage, usageChoice, now));
+  paintUsage(usageHead(usage, usageChoice), usagePanel(usage, usageChoice, now));
   paintQuota(quotaPanel(limits, now));
   const goals = knowledgeEntries();
-  paintValue(valuePanel(usage, yieldReport));
+  paintValue(valuePanel(usage, yieldReport, usageChoice.span));
   paintWhere(wherePanel(whereGrouping, {
     report: usage, yield: yieldReport, projects, goals,
     range: { from: usage?.from ?? "", to: usage?.to ?? "" },
   }));
   paintModels(modelsPanel(usage));
   paintLeaks(leakLines(usage, goals));
+  // Every session is a line once: in the tree, or in the idle fold.
+  const built = tree({ rows: sessions, projects, goalsOf: (id) => knowledge.get(id)?.goals, approvals, proposed, usage, now });
+  if (built.sections.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = watchOnly ? "No live sessions to watch." : "No live sessions. Open a shell to start one.";
+    treeBlock.replaceChildren(empty);
+  } else {
+    treeBlock.replaceChildren(...built.sections.map(sectionElement));
+  }
+  paintFolds(built.idle);
   paintPush();
-  // Every session is a line once; the foreman is a row of its own project
-  // or workspace, first among them (`sortInGroup`).
-  cards.replaceChildren(treeHead, ...sectionList(sessions, proposed));
   // The first marked line, in the page's own order, is where the band's
   // "need you" cell lands. One id, set after the tree is built, so the
   // cell's link is a plain fragment.
-  cards.querySelector("[data-needs]")?.setAttribute("id", NEEDS_YOU_ID);
+  treeBlock.querySelector("[data-needs]")?.setAttribute("id", NEEDS_YOU_ID);
   fitLines();
   syncSpinner();
   if (focusKey) restoreFocus(focusKey);
 }
 
-// --- every line is one line ---------------------------------------------------
+// --- a fact that does not fit drops -------------------------------------------
 //
-// A line's name is the only cell that truncates; its facts drop, whole, from
-// the right when the line is too narrow for them. CSS cannot hide a flex
-// item that does not fit without cutting it, so the page measures: with
-// every fact shown and every cell at its content width (`.measure`), how
-// far the line's cells run past its content edge is what the facts must
-// give back, and `keptFacts` says how many stay. Facts carry `data-drop`, their place in the drop
-// order (0 first); the name carries `data-name`. Two passes over the page,
-// one read and one write, so the layout runs twice, not once per line.
+// The tree's facts sit in fixed columns and never drop; the one line with a
+// fact that does is an approval's, whose arguments are cut whole when the
+// line is too narrow for them. CSS cannot hide a flex item that does not
+// fit without cutting it, so the page measures: with every fact shown and
+// every cell at its content width (`.measure`), how far the line's cells
+// run past its content edge is what the facts must give back, and
+// `keptFacts` says how many stay. Facts carry `data-drop`, their place in
+// the drop order (0 first); the name carries `data-name`. Two passes over
+// the page, one read and one write, so the layout runs twice, not once per
+// line.
 
 /** One measured line: its facts in drop order and what they must free. */
 type Fit = { facts: HTMLElement[]; widths: number[]; need: number; gap: number };
 
 function fitLines(): void {
   if (!root) return;
-  const lines = [...root.querySelectorAll<HTMLElement>(".line")];
+  const lines = [...root.querySelectorAll<HTMLElement>(".line")].filter((line) => line.querySelector("[data-drop]") !== null);
   if (lines.length === 0 || typeof lines[0].getBoundingClientRect !== "function") return;
   // Show every fact and let nothing shrink, so the overflow is the truth.
   for (const line of lines) {
@@ -756,25 +712,6 @@ function restoreFocus(key: string): void {
   // The control is gone when its row was ended; focus then stays where the
   // browser put it.
   target?.focus({ preventScroll: true });
-}
-
-function header(): HTMLElement {
-  const h = document.createElement("header");
-  const title = document.createElement("h1");
-  title.textContent = "Sessions";
-  const badge = document.createElement("span");
-  badge.className = "count";
-  badge.textContent = "0";
-  h.append(title, badge);
-  const launch = document.createElement("a");
-  launch.className = "launch";
-  launch.href = "/";
-  launch.target = "_blank";
-  launch.rel = "noopener";
-  launch.textContent = "Open a shell";
-  launch.title = "Open a local shell in a new tab";
-  h.append(launch);
-  return h;
 }
 
 function noticeContent(text: string): DocumentFragment {
@@ -818,78 +755,106 @@ function restartContent(text: string, key: string): DocumentFragment {
   return fragment;
 }
 
-// --- push notifications -----------------------------------------------------
+// --- the panels ---------------------------------------------------------------
 
-/** Show, hide, or leave the usage panel; rebuilt only when its content
- * changes, so a toggle a keyboard user sits on survives the polls. */
-function paintUsage(panel: UsagePanel | null): void {
-  const signature = JSON.stringify(panel);
-  if (signature === usagePainted) return;
-  usagePainted = signature;
-  usageBlock.hidden = panel === null;
-  usageBlock.replaceChildren(...(panel === null ? [] : usageContent(panel)));
+/** The label in a panel's gutter, a heading so a reader who moves by
+ * heading finds the panel. */
+function panelLabel(text: string, title?: string): HTMLElement {
+  const h = document.createElement("h2");
+  h.className = "panel-label";
+  h.textContent = text;
+  if (title) h.title = title;
+  return h;
+}
+
+/** One note line under a panel's content, in a long form and a short one
+ * the phone prints in its place. */
+function noteLine(long: string, short: string = long): HTMLElement {
+  const p = document.createElement("p");
+  p.className = "panel-note";
+  p.append(span("note-long", long), span("note-short", short));
+  return p;
+}
+
+/** Show, hide, or leave one panel; rebuilt only when its model changes,
+ * so a toggle a keyboard user sits on survives the polls. */
+function paintPanel(block: HTMLElement, painted: string, model: unknown, content: () => Node[]): string {
+  const signature = JSON.stringify(model ?? null);
+  if (signature === painted) return painted;
+  const empty = model === null;
+  block.hidden = empty;
+  block.replaceChildren(...(empty ? [] : content()));
+  return signature;
 }
 
 /**
- * The panel: the title line with the two toggle groups, the headline and
- * what it is, the chart, its axis, then the note and the rollup's age.
- * The chart is one bar per day in an SVG, `currentColor` on the body, so
- * it adds no colour pair; a silent day is a gap. It is hidden from a
- * screen reader behind one sentence (`usageChartName`), and each bar
- * carries its day and amount as a tooltip. A toggle prints `[ ]`/`[x]`
- * like the push switch and is a radio to a screen reader.
+ * `USAGE`: the headline row — the amount at the headline size, the tokens
+ * and the model hours beside it, the span the phone prints in their place,
+ * and the two toggle groups at the right — then the chart, its axis, and
+ * the apportioned note. The chart is one bar per day in an SVG,
+ * `currentColor` on the body, so it adds no colour pair; a silent day is
+ * a gap. It is hidden from a screen reader behind one sentence
+ * (`usageChartName`), and each bar carries its day and amount as a
+ * tooltip. A toggle prints `[ ]`/`[x]` like the push switch and is a radio
+ * to a screen reader. The rollup's age rides on the label's tooltip and
+ * the long note on the note's.
  */
-function usageContent(panel: UsagePanel): Node[] {
-  const head = document.createElement("div");
-  head.className = "usage-head";
-  const title = document.createElement("h2");
-  title.className = "usage-title";
-  title.textContent = panel.title;
-  head.append(title, usageToggles("mode", panel), usageToggles("span", panel));
+function paintUsage(head: UsageHead | null, panel: UsagePanel | null): void {
+  const model = head && panel ? { head, panel } : null;
+  usagePainted = paintPanel(usageBlock, usagePainted, model, () => {
+    const row = document.createElement("div");
+    row.className = "usage-head";
+    const amount = span("usage-amount", head!.amount);
+    amount.title = head!.title;
+    row.append(amount);
+    for (const fact of head!.facts) row.append(span("usage-fact", fact));
+    row.append(span("usage-span", head!.span));
+    const toggles = document.createElement("div");
+    toggles.className = "usage-toggle-groups";
+    toggles.append(usageToggles("mode", panel!), usageToggles("span", panel!));
+    row.append(toggles);
 
-  const headline = document.createElement("p");
-  headline.className = "usage-headline";
-  const amount = span("usage-amount", panel.headline);
-  const qualifier = span("usage-qualifier", panel.qualifier);
-  headline.append(amount, " ", qualifier);
+    const chart = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    chart.setAttribute("class", "usage-chart");
+    chart.setAttribute("role", "img");
+    chart.setAttribute("aria-label", usageChartName(panel!));
+    chart.setAttribute("preserveAspectRatio", "none");
+    const n = Math.max(1, panel!.series.length);
+    chart.setAttribute("viewBox", `0 0 ${n} 100`);
+    const top = panel!.peak?.value ?? 0;
+    panel!.series.forEach((value, i) => {
+      if (value <= 0 || top <= 0) return;
+      const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      const height = Math.max(1, (value / top) * 100);
+      rect.setAttribute("x", `${i + 0.1}`);
+      rect.setAttribute("width", "0.8");
+      rect.setAttribute("y", `${100 - height}`);
+      rect.setAttribute("height", `${height}`);
+      const tip = document.createElementNS("http://www.w3.org/2000/svg", "title");
+      tip.textContent = `${panel!.days[i]}: ${usageAmount(value, panel!.mode)}`;
+      rect.append(tip);
+      chart.append(rect);
+    });
 
-  const chart = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  chart.setAttribute("class", "usage-chart");
-  chart.setAttribute("role", "img");
-  chart.setAttribute("aria-label", usageChartName(panel));
-  chart.setAttribute("preserveAspectRatio", "none");
-  const n = Math.max(1, panel.series.length);
-  chart.setAttribute("viewBox", `0 0 ${n} 100`);
-  const top = panel.peak?.value ?? 0;
-  panel.series.forEach((value, i) => {
-    if (value <= 0 || top <= 0) return;
-    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    const height = Math.max(1, (value / top) * 100);
-    rect.setAttribute("x", `${i + 0.1}`);
-    rect.setAttribute("width", "0.8");
-    rect.setAttribute("y", `${100 - height}`);
-    rect.setAttribute("height", `${height}`);
-    const tip = document.createElementNS("http://www.w3.org/2000/svg", "title");
-    tip.textContent = `${panel.days[i]}: ${usageAmount(value, panel.mode)}`;
-    rect.append(tip);
-    chart.append(rect);
+    const axis = document.createElement("p");
+    axis.className = "usage-axis";
+    axis.append(span("usage-from", panel!.days[0] ? dayLabel(panel!.days[0]) : ""));
+    if (panel!.peak) axis.append(span("usage-peak", `most ${usageAmount(panel!.peak.value, panel!.mode)} on ${dayLabel(panel!.peak.day)}`));
+    axis.append(span("usage-to", panel!.days.length > 1 ? dayLabel(panel!.days[panel!.days.length - 1]) : ""));
+
+    const body = document.createElement("div");
+    body.className = "panel-body";
+    body.append(row, chart, axis);
+    const apportioned = apportionedNote(usage?.totals, panel!.mode);
+    if (apportioned !== null) {
+      const note = document.createElement("p");
+      note.className = "usage-note";
+      note.textContent = apportioned;
+      note.title = `${panel!.note}. A session across midnight is split by each day's token share, not measured.`;
+      body.append(note);
+    }
+    return [panelLabel("USAGE", panel!.age), body];
   });
-
-  const axis = document.createElement("p");
-  axis.className = "usage-axis";
-  axis.append(span("usage-from", panel.days[0] ? dayLabel(panel.days[0]) : ""));
-  if (panel.peak) axis.append(span("usage-peak", `most ${usageAmount(panel.peak.value, panel.mode)} on ${dayLabel(panel.peak.day)}`));
-  axis.append(span("usage-to", panel.days.length > 1 ? dayLabel(panel.days[panel.days.length - 1]) : ""));
-
-  // One line that names the number; the long form is its title.
-  const note = document.createElement("p");
-  note.className = "usage-note";
-  note.textContent = panel.note;
-  note.title = "Apportioned: a session across midnight is split by each day's token share, not measured. Unbilled: a session with turns and no bill yet, so its tokens are in and its dollars are not.";
-  const age = document.createElement("p");
-  age.className = "usage-age";
-  age.textContent = panel.age;
-  return [head, headline, chart, axis, note, age];
 }
 
 /** One radio group of the panel: cost or tokens, 7, 30 or 90 days. */
@@ -917,38 +882,44 @@ function usageToggles(kind: "mode" | "span", panel: UsagePanel): HTMLElement {
   return group;
 }
 
-/** Show, hide, or leave the quota block; rebuilt only when its text
- * changes, so the bars do not flicker on every poll. */
+/**
+ * `QUOTA`: one line per window — the label, the ASCII bar in the accent,
+ * the number, the reset — and the reading's age after the last line's
+ * reset, `· read just now`. The bar is the terminal's own,
+ * `[#####···············]`, the fill a mark so it wears the accent and the
+ * track the muted grey; the cells are hidden from a screen reader, which
+ * gets the label, the number and the countdown as words. With no bar the
+ * panel's content is the sentence that says why (`quotaPanel`).
+ */
 function paintQuota(panel: QuotaPanel | null): void {
-  const signature = JSON.stringify(panel);
-  if (signature === quotaPainted) return;
-  quotaPainted = signature;
-  quotaBlock.hidden = panel === null;
-  quotaBlock.replaceChildren(...(panel === null ? [] : quotaContent(panel)));
-}
-
-/** One line per bar, then the note. The bar is the terminal's own:
- * `[#####···············]`, the fill and the track two runs of text so the
- * fill can wear the text colour and the track the muted one; the cells
- * are hidden from a screen reader, which gets the label, the number and
- * the countdown as words. */
-function quotaContent(panel: QuotaPanel): Node[] {
-  const nodes: Node[] = [];
-  if (panel.bars.length > 0) {
+  quotaPainted = paintPanel(quotaBlock, quotaPainted, panel, () => {
+    const body = document.createElement("div");
+    body.className = "panel-body";
+    if (panel!.bars.length === 0) {
+      const note = document.createElement("p");
+      note.className = "quota-note";
+      note.textContent = panel!.note;
+      body.append(note);
+      return [panelLabel("QUOTA"), body];
+    }
     const list = document.createElement("ul");
     list.className = "quota-bars";
-    for (const bar of panel.bars) {
+    panel!.bars.forEach((bar, i) => {
       const item = document.createElement("li");
       item.className = `quota-bar ${bar.state}`;
       const label = document.createElement("span");
       label.className = "quota-label";
-      label.textContent = bar.label;
+      // `Session (5h)`: the window in parentheses goes on a phone.
+      const at = bar.label.indexOf(" (");
+      if (at > 0) label.append(bar.label.slice(0, at), span("quota-window", bar.label.slice(at)));
+      else label.textContent = bar.label;
       const cells = document.createElement("span");
       cells.className = "quota-cells";
       cells.setAttribute("aria-hidden", "true");
       const fill = document.createElement("span");
       fill.className = "quota-fill";
-      fill.textContent = bar.cells.slice(0, bar.filled);
+      const glyphs = span(bar.state === "fresh" ? "mark running wide" : "mark idle wide", bar.cells.slice(0, bar.filled));
+      fill.append(glyphs);
       const track = document.createElement("span");
       track.className = "quota-track";
       track.textContent = bar.cells.slice(bar.filled);
@@ -960,79 +931,61 @@ function quotaContent(panel: QuotaPanel): Node[] {
       reset.className = "quota-reset";
       reset.textContent = bar.reset;
       item.append(label, cells, percent, reset);
+      if (i === panel!.bars.length - 1) item.append(span("quota-age", `· ${panel!.note}`));
       list.append(item);
-    }
-    nodes.push(list);
-  }
-  const note = document.createElement("p");
-  note.className = "quota-note";
-  note.textContent = panel.note;
-  nodes.push(note);
-  return nodes;
+    });
+    body.append(list);
+    return [panelLabel("QUOTA"), body];
+  });
 }
 
-// --- the panels: what the spend bought --------------------------------------
-
-/** The label in a panel's gutter, a heading so a reader who moves by
- * heading finds the panel. */
-function panelLabel(text: string): HTMLElement {
-  const h = document.createElement("h2");
-  h.className = "panel-label";
-  h.textContent = text;
-  return h;
-}
-
-function panelNote(text: string): HTMLElement {
-  const p = document.createElement("p");
-  p.className = "panel-note";
-  p.textContent = text;
-  return p;
-}
-
-/** Show, hide, or leave one panel; rebuilt only when its model changes,
- * so a toggle a keyboard user sits on survives the polls. */
-function paintPanel(block: HTMLElement, painted: string, model: unknown, content: () => Node[]): string {
-  const signature = JSON.stringify(model ?? null);
-  if (signature === painted) return painted;
-  // A panel folded by width passes `[panel, narrow]`; the panel decides.
-  const empty = model === null || (Array.isArray(model) && model[0] === null);
-  block.hidden = empty;
-  block.replaceChildren(...(empty ? [] : content()));
-  return signature;
-}
-
-/** `VALUE`: four tiles, a count and its noun and what one unit cost, and
- * the one line that says a line and a PR are proxies. A tile with no
- * source prints a dash. Below 768 px it folds behind its summary line
- * like every measure panel: the band carries the headline spend. */
+/** `VALUE`: four tiles, each behind a 2 px accent rule — a count at the
+ * headline size, its noun, what one unit cost — and one note that names
+ * the scope, the span and the caveat. A tile with no source prints a
+ * dash. */
 function paintValue(panel: ValuePanel | null): void {
-  valuePainted = paintPanel(valueBlock, valuePainted, [panel, narrow()], () => {
+  valuePainted = paintPanel(valueBlock, valuePainted, panel, () => {
     const tiles = document.createElement("div");
     tiles.className = "yield";
     for (const tile of panel!.tiles) {
       const cell = document.createElement("div");
       cell.className = `yield-tile ${tile.key}`;
       cell.title = tile.title;
-      cell.append(span("yield-count", tile.count), span("yield-noun", tile.noun), span("yield-rate", tile.rate));
+      // The rule is a mark, not a border: a shape in the accent.
+      const rule = document.createElement("span");
+      rule.className = "mark bar rule";
+      rule.setAttribute("aria-hidden", "true");
+      cell.append(rule, span("yield-count", tile.count), span("yield-noun", tile.noun), span("yield-noun-short", tile.shortNoun), span("yield-rate", tile.rate));
       tiles.append(cell);
     }
     const body = document.createElement("div");
     body.className = "panel-body";
-    body.append(tiles, panelNote(panel!.note));
-    return panelContent("VALUE", "panel:value", panel!.summary, body);
+    body.append(tiles, noteLine(panel!.note, panel!.shortNote));
+    return [panelLabel("VALUE"), body];
   });
 }
 
-/** One `split` row: the mark when the row is the remainder, the name, the
- * bar as a mark that wears the accent or the amber (the bar is not text,
- * so the owned colour may paint it), then the facts, right-aligned. */
-function splitRow(key: string, name: string, remainder: boolean, fill: number, facts: string[], title: string): HTMLElement {
+/** One cell of a split row: its class, its text, and whether it wears the
+ * amber as a mark (the remainder's name and spend). */
+type SplitCell = { className: string; text: string; amber?: boolean };
+
+/** One `split` row: the name, the bar as a mark that wears the accent or
+ * the amber (the bar is not text, so the owned colour may paint it), then
+ * the cells, right-aligned. The remainder's name and spend are marks too:
+ * text that wears the amber, as the frame draws them. */
+function splitRow(key: string, name: string, remainder: boolean, fill: number, cells: SplitCell[], title: string): HTMLElement {
   const li = document.createElement("li");
   li.className = remainder ? "split-row remainder" : "split-row";
   li.dataset.key = key;
   li.title = title;
-  if (remainder) li.append(mark("attention"));
-  li.append(span("split-name", name));
+  const amberText = (className: string, text: string, amber: boolean): HTMLElement => {
+    const cell = document.createElement("span");
+    cell.className = className;
+    if (amber) cell.append(span("mark attention wide", text));
+    else cell.textContent = text;
+    return cell;
+  };
+  li.append(amberText("split-name", name, remainder));
   const track = document.createElement("span");
   track.className = "split-bar";
   track.setAttribute("aria-hidden", "true");
@@ -1043,39 +996,16 @@ function splitRow(key: string, name: string, remainder: boolean, fill: number, f
   bar.style.width = `${Math.round(fill * 1000) / 10}%`;
   track.append(bar);
   li.append(track);
-  const classes = ["split-spend", "split-units", "split-rate"];
-  facts.forEach((fact, i) => li.append(span(classes[i] ?? "split-rate", fact)));
+  for (const cell of cells) li.append(amberText(cell.className, cell.text, cell.amber === true));
   return li;
 }
 
-/**
- * A panel's content on a phone: behind the fold the done goals use, closed
- * by default, with one summary line in place of the label; open, the
- * panel is exactly what it is at 1200 px. At 768 px and up nothing folds
- * and the label sits in its gutter. `key` keeps the open state across
- * repaints, like every other fold.
- */
-function panelContent(label: string, key: string, summary: string, body: HTMLElement): Node[] {
-  if (!narrow()) return [panelLabel(label), body];
-  const details = document.createElement("details");
-  details.className = "archived panel-fold";
-  details.open = archivedOpen.has(key);
-  details.addEventListener("toggle", () => {
-    if (details.open) archivedOpen.add(key);
-    else archivedOpen.delete(key);
-  });
-  const line = document.createElement("summary");
-  line.textContent = summary;
-  line.dataset.focus = `archived:${key}`;
-  details.append(line, body);
-  return [details];
-}
-
-/** `WHERE`: the grouping selector, one row per group, the note. The
- * selector is a radio group that prints `[ ]`/`[x]` like the usage
- * toggles; the grouping is kept in storage. */
+/** `WHERE`: the grouping selector with the counted checkouts' summary at
+ * its right, one row per group with four columns, the note. The selector
+ * is a radio group that prints `[ ]`/`[x]` like the usage toggles; the
+ * grouping is kept in storage. */
 function paintWhere(panel: WherePanel | null): void {
-  wherePainted = paintPanel(whereBlock, wherePainted, [panel, narrow()], () => {
+  wherePainted = paintPanel(whereBlock, wherePainted, panel, () => {
     const head = document.createElement("div");
     head.className = "panel-head";
     head.append(span("panel-by", "by"));
@@ -1098,35 +1028,47 @@ function paintWhere(panel: WherePanel | null): void {
       group.append(b);
     }
     head.append(group);
+    if (panel!.summary !== null) head.append(span("panel-summary", panel!.summary));
     const list = document.createElement("ul");
     list.className = "split";
     for (const row of panel!.rows) {
-      list.append(splitRow(row.key, row.name, row.remainder, row.fill, [row.spend, row.units, row.rate], row.title));
+      list.append(splitRow(row.key, row.name, row.remainder, row.fill, [
+        { className: "split-spend", text: row.spend, amber: row.remainder },
+        { className: "split-count", text: row.count },
+        { className: "split-units", text: row.units },
+        { className: "split-rate", text: row.rate },
+      ], row.title));
     }
     const body = document.createElement("div");
     body.className = "panel-body";
-    body.append(head, list, panelNote(panel!.note));
-    return panelContent("WHERE", "panel:where", panel!.summary, body);
+    body.append(head, list, noteLine(panel!.note));
+    return [panelLabel("WHERE"), body];
   });
 }
 
 /** `MODELS`: one bar per named model and one for the rest summed, scaled
- * to the longest, with the spend and the session count. */
+ * to the longest, with the spend and the session count; the phone prints
+ * the spend in whole dollars and no count. */
 function paintModels(panel: ModelsPanel | null): void {
-  modelsPainted = paintPanel(modelsBlock, modelsPainted, [panel, narrow()], () => {
+  modelsPainted = paintPanel(modelsBlock, modelsPainted, panel, () => {
     const list = document.createElement("ul");
     list.className = "split";
-    for (const row of panel!.rows) list.append(splitRow(row.key, row.name, false, row.fill, [row.spend, row.sessions], row.title));
+    for (const row of panel!.rows) {
+      list.append(splitRow(row.key, row.name, false, row.fill, [
+        { className: "split-spend", text: row.spend },
+        { className: "split-short", text: row.short },
+        { className: "split-units", text: row.sessions },
+      ], row.title));
+    }
     const body = document.createElement("div");
     body.className = "panel-body";
     body.append(list);
-    if (panel!.note) body.append(panelNote(panel!.note));
-    return panelContent("MODELS", "panel:models", panel!.summary, body);
+    if (panel!.note) body.append(noteLine(panel!.note));
+    return [panelLabel("MODELS"), body];
   });
 }
 
-/** `LEAKS`: one marked line each. Below 768 px the sheet drops the panel
- * whole, the least urgent measure. */
+/** `LEAKS`: two marked lines. */
 function paintLeaks(lines: LeakLine[]): void {
   const model = lines.length === 0 ? null : lines;
   leaksPainted = paintPanel(leaksBlock, leaksPainted, model, () => {
@@ -1145,6 +1087,8 @@ function paintLeaks(lines: LeakLine[]): void {
     return [panelLabel("LEAKS"), body];
   });
 }
+
+// --- push notifications -----------------------------------------------------
 
 /** What the page knows about push, less `watchOnly`, which `fetchProfiles`
  * owns and `paintPush` reads at paint time. */
@@ -1376,12 +1320,15 @@ function paintBand(cells: Band): void {
   const signature = JSON.stringify(cells);
   if (signature === bandPainted) return;
   bandPainted = signature;
-  bandBlock.replaceChildren(...cells.cells.map((cell) => bandCell(cell, cell.key === "needs" ? cells.target : null)));
+  bandCells.replaceChildren(...cells.cells.map((cell) => bandCell(cell, cell.key === "needs" ? cells.target : null)));
+  bandBlock.replaceChildren(span("band-brand", BRAND), bandCells);
 }
 
-/** One cell: the count, then its noun. The "need you" cell is a link to
- * the first marked line while there is one; otherwise every cell is a
- * plain span, and the band holds four cells either way. */
+/** One cell: the count at the headline size, then its noun. The count of
+ * the working and the need-you cells is a mark, so it wears the accent or
+ * the amber. The "need you" cell is a link to the first marked line while
+ * there is one; otherwise every cell is a plain span, and the band holds
+ * four cells either way. */
 function bandCell(cell: BandCell, target: string | null): HTMLElement {
   let el: HTMLElement;
   if (target) {
@@ -1395,23 +1342,272 @@ function bandCell(cell: BandCell, target: string | null): HTMLElement {
   }
   el.className = `band-cell ${cell.key}`;
   el.title = cell.title;
-  el.append(span("band-value", cell.value), span("band-noun", cell.noun));
+  const value = document.createElement("span");
+  value.className = "band-value";
+  if (cell.family) value.append(span(`mark ${cell.family} wide`, cell.value));
+  else value.textContent = cell.value;
+  el.append(value, span("band-noun", cell.noun));
   return el;
+}
+
+// --- the tree -----------------------------------------------------------------
+
+/** One section: a workspace with its projects, or a lone project. */
+function sectionElement(section: TreeSection<SessionRow>): HTMLElement {
+  const el = document.createElement("section");
+  el.className = "tree-section";
+  el.setAttribute("aria-label", section.label);
+  el.append(...section.lines.map(lineElement));
+  return el;
+}
+
+/** The `.main` cell of a line: the name, the state word, then the facts in
+ * their columns (`data-col`), the phone's one fact marked `data-narrow`. */
+function lineMain(line: TreeLine<SessionRow>, name: HTMLElement): HTMLElement {
+  const main = document.createElement("div");
+  main.className = "main";
+  name.classList.add("line-name");
+  name.dataset.name = "";
+  if (line.title) name.title = line.title;
+  main.append(name);
+  if (line.state) main.append(span(`state ${line.state.family}`, line.state.tag));
+  for (const fact of line.facts) {
+    const cell = span(fact.kind, fact.text);
+    cell.dataset.col = String(fact.column);
+    if (fact.narrow) cell.dataset.narrow = "";
+    if (fact.title) cell.title = fact.title;
+    main.append(cell);
+  }
+  return main;
+}
+
+/** The shell of a line: the mark, the body, the actions, with the depth
+ * on the element for the indent. */
+function lineShell(line: TreeLine<SessionRow>, className: string, markEl: HTMLElement, body: HTMLElement, actions: HTMLElement | null): HTMLElement {
+  const el = document.createElement("div");
+  el.className = `line ${className}`;
+  el.style.setProperty("--depth", String(line.depth));
+  el.append(markEl, body, actions ?? emptyActions());
+  return el;
+}
+
+/** The actions cell of a line with no action: the cell is there, at its
+ * width, so the columns line up. */
+function emptyActions(): HTMLElement {
+  const el = document.createElement("span");
+  el.className = "actions";
+  return el;
+}
+
+/** A blank mark: the cell is there, so the names align; nothing is drawn. */
+function blankMark(): HTMLElement {
+  const el = document.createElement("span");
+  el.className = "mark blank";
+  el.setAttribute("aria-hidden", "true");
+  return el;
+}
+
+/** A goal's disclosure glyph or a fold's: `▾` open, `▸` closed, in the
+ * family's colour. */
+function disclosure(family: MarkFamily, open: boolean): HTMLElement {
+  const el = document.createElement("span");
+  el.className = `mark ${family} disclosure`;
+  el.setAttribute("aria-hidden", "true");
+  el.textContent = open ? "▾" : "▸";
+  return el;
+}
+
+function lineElement(line: TreeLine<SessionRow>): HTMLElement {
+  switch (line.kind) {
+    case "workspace": {
+      const name = document.createElement("h2");
+      name.textContent = line.name;
+      return lineShell(line, "line-workspace", blankMark(), lineMain(line, name), null);
+    }
+    case "project": {
+      // A heading level per depth, so a reader who moves by heading gets
+      // the tree: a workspace or a lone project is an h2, a project under
+      // a workspace an h3.
+      const name = document.createElement(line.depth === 0 ? "h2" : "h3");
+      name.textContent = line.name;
+      const actions = !watchOnly && line.project?.root ? spawnControls(line.project) : null;
+      return lineShell(line, "line-project", line.working ? mark("running") : blankMark(), lineMain(line, name), actions);
+    }
+    case "goal": {
+      const name = document.createElement("a");
+      name.href = line.href;
+      name.target = "_blank";
+      name.rel = "noopener";
+      name.textContent = line.name;
+      name.dataset.focus = focusKey("goal", line.project.id, line.summary.slug ?? line.name);
+      if (line.proposed) {
+        // The name opens the record the proposals wait in; the count and
+        // the decision line ride on its tooltip, and its name says so.
+        const goal = goalTitle(line.summary);
+        name.setAttribute("aria-label", line.proposed.record ? recordName(line.proposed.record, line.project.name, goal) : proposalsName(line.proposed.count, line.project.name, goal));
+        name.title = [proposedLabel(line.proposed.count), line.proposed.decision].filter((t): t is string => t !== null).join(": ");
+      }
+      const el = lineShell(line, "goal-line", line.mark === null ? blankMark() : disclosure(line.mark, true), lineMain(line, name), line.proposed ? proposalActions(line.proposed) : null);
+      if (line.proposed) el.dataset.needs = "proposed";
+      return el;
+    }
+    case "task": {
+      const name = document.createElement("span");
+      name.textContent = line.name;
+      return lineShell(line, "line-task", mark(line.mark), lineMain(line, name), null);
+    }
+    case "session":
+      return row(line);
+    case "approval": {
+      const wrap = document.createElement("div");
+      wrap.className = "row";
+      wrap.append(approvalLine(line.approval, null, line.depth));
+      return wrap;
+    }
+    case "fold":
+      return foldElement(line.key, line.name, line.depth, () => line.lines.map(lineElement));
+  }
+}
+
+/** A closed group with a count: `▸ 9 done`, `▸ Archived (61)`, `▸ 3 idle
+ * shells`. Its summary is a line at `depth`; `foldsOpen` keeps it open
+ * across repaints. */
+function foldElement(key: string, label: string, depth: number, content: () => Node[]): HTMLElement {
+  const details = document.createElement("details");
+  details.className = "fold";
+  details.open = foldsOpen.has(key);
+  const summary = document.createElement("summary");
+  summary.className = "line line-fold";
+  summary.style.setProperty("--depth", String(depth));
+  const glyph = disclosure("pending", details.open);
+  const main = document.createElement("div");
+  main.className = "main";
+  const name = span("line-name", label);
+  name.dataset.name = "";
+  main.append(name);
+  summary.append(glyph, main);
+  summary.dataset.focus = `fold:${key}`;
+  details.addEventListener("toggle", () => {
+    if (details.open) foldsOpen.add(key);
+    else foldsOpen.delete(key);
+    glyph.textContent = details.open ? "▾" : "▸";
+  });
+  const body = document.createElement("div");
+  body.className = "fold-body";
+  body.append(...content());
+  details.append(summary, body);
+  return details;
+}
+
+/** The action of a goal whose proposals wait on the human: `[Dismiss]`,
+ * which says the human read them. The goal's name is the link to the
+ * record they wait in. */
+function proposalActions(item: ProposedItem): HTMLElement {
+  const box = document.createElement("div");
+  box.className = "actions";
+  // Read it, decided in STATE.md: the mark and the count leave the band
+  // until the goal's next round.
+  const key = dismissKey(item.project.id, item.summary.slug ?? "", item.round);
+  const dismiss = button("Dismiss", "quiet", () => dismissProposal(key));
+  dismiss.dataset.focus = focusKey("dismiss", key);
+  dismiss.setAttribute("aria-label", dismissName(item.round, item.project.name, item.summary.goal ?? item.summary.slug ?? "goal"));
+  box.append(dismiss);
+  return box;
+}
+
+/** `[new]` in a project's actions cell: a local shell in the project's
+ * root, `POST /api/sessions` with `cwd`. The pane picks a profile. */
+function spawnControls(project: ProjectRef): HTMLElement {
+  const box = document.createElement("div");
+  box.className = "actions";
+  const b = button("new", "quiet spawn-button", () => {
+    void spawn(project, b);
+  });
+  b.setAttribute("aria-label", `New session in ${project.name}`);
+  b.title = `Start a shell in ${project.root ?? project.name}`;
+  b.dataset.focus = `spawn:${project.id}:new`;
+  box.append(b);
+  return box;
+}
+
+async function spawn(project: ProjectRef, b: HTMLButtonElement): Promise<void> {
+  const key = `spawn:${project.id}`;
+  if (busy.has(key) || !project.root) return;
+  busy.add(key);
+  b.disabled = true;
+  try {
+    const res = await fetch("/api/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ cwd: project.root }),
+    });
+    if (!res.ok) throw new Error(await reasonOf(res));
+    notice = null;
+    lastSignature = "";
+    await poll();
+  } catch (error) {
+    fail(`Could not start a session in ${project.name}: ${describe(error)}`);
+  } finally {
+    busy.delete(key);
+    b.disabled = false;
+  }
+}
+
+/** The folds at the page's foot: the archives, the idle shells, and the
+ * push switch, on one line. */
+function paintFolds(idle: SessionRow[]): void {
+  const nodes: Node[] = [];
+  if (archives.length > 0) nodes.push(foldElement("archived", `Archived (${archives.length})`, 0, () => [archivedList(archives)]));
+  if (idle.length > 0) {
+    const now = Date.now();
+    nodes.push(foldElement("idle", idleShellsLabel(idle.length), 0, () => idle.map((s) => {
+      const family = markFamily(stateOf(s));
+      return row({
+        kind: "session", key: `session:${s.id}`, depth: 0, name: rowName(s), title: s.cwd,
+        state: { family, tag: stateTag(s) }, facts: sessionFactColumns(rowModel(s), s.agentModel, rowLine(s, now).since),
+        row: s, mark: family, needs: false, approvals: [],
+      }, true);
+    })));
+  }
+  nodes.push(pushLine);
+  foldsBlock.replaceChildren(...nodes);
+}
+
+function archivedList(list: ArchivedRow[]): HTMLElement {
+  const ul = document.createElement("ul");
+  ul.className = "archived-list";
+  for (const a of list) {
+    const li = document.createElement("li");
+    const name = document.createElement("span");
+    name.className = "archived-name";
+    name.textContent = a.name || (a.cwd ? folderOf(a.cwd) : a.id.slice(0, 8));
+    const meta = document.createElement("span");
+    meta.className = "archived-meta";
+    const bits: string[] = [];
+    if (a.project) bits.push(a.project.name);
+    if (typeof a.exitCode === "number") bits.push(`exit ${a.exitCode}`);
+    if (a.archivedAt) bits.push(new Date(a.archivedAt).toLocaleString());
+    meta.textContent = bits.join(" · ");
+    li.append(name, meta);
+    ul.append(li);
+  }
+  return ul;
 }
 
 // --- an approval on its line ------------------------------------------------
 
-/** One waiting tool call as a line under its session's row, or alone in a
- * row under "No project" when its session is gone: the amber mark, what it
- * wants to run, the arguments cut at the line's end with the whole summary
- * as the tooltip, how long it has waited, the pane when it has one, and
- * the two answers. The loudest thing in the tree, because an agent is
- * stopped until it is answered. */
-function approvalLine(approval: Approval, row: SessionRow | null): HTMLElement {
+/** One waiting tool call as a line under its session's, or alone under
+ * "No project" when its session is gone: the amber mark, what it wants to
+ * run, the arguments cut at the line's end with the whole summary as the
+ * tooltip, how long it has waited, the pane when it has one, and the two
+ * answers in the actions cell. The loudest thing in the tree, because an
+ * agent is stopped until it is answered. */
+function approvalLine(approval: Approval, row: SessionRow | null, depth: number): HTMLElement {
   const line = document.createElement("div");
-  line.className = "line-approval line";
+  line.className = "line line-approval";
+  line.style.setProperty("--depth", String(depth));
   line.dataset.needs = "approval";
-  const what = span("line-approval-what", `approve ${approval.tool}`);
+  const what = span("line-name line-approval-what", `approve ${approval.tool}`);
   what.dataset.name = "";
   line.append(mark("attention"), what);
   // The arguments are the line's one fact: whole in the title, dropped
@@ -1421,11 +1617,11 @@ function approvalLine(approval: Approval, row: SessionRow | null): HTMLElement {
   input.dataset.drop = "0";
   line.append(input, span("line-waited", waitedLabel(approval.waitingMs)));
   const who = row ? headlineOf(row) : (approval.session?.slice(0, 8) ?? "");
-  if (approval.session) line.append(openLink(approval.session, "Open the pane"));
+  const actions = document.createElement("div");
+  actions.className = "actions line-actions";
+  if (approval.session) actions.append(openLink(approval.session, "Open the pane"));
   // A watch token cannot decide, and the daemon would refuse it anyway.
   if (!watchOnly) {
-    const actions = document.createElement("div");
-    actions.className = "line-actions";
     const deny = button("Deny", "approval-deny", () => void decide(approval.id, "deny"));
     const allow = button("Allow", "approval-allow", () => void decide(approval.id, "allow"));
     deny.dataset.focus = `approval:${approval.id}:deny`;
@@ -1433,23 +1629,9 @@ function approvalLine(approval: Approval, row: SessionRow | null): HTMLElement {
     deny.setAttribute("aria-label", approvalName("Deny", approval.tool, who));
     allow.setAttribute("aria-label", approvalName("Allow", approval.tool, who));
     actions.append(deny, allow);
-    line.append(actions);
   }
+  line.append(actions);
   return line;
-}
-
-/** The approvals with no session on the page, each as a row of its own
- * (`orphanApprovals`), listed under the "No project" heading. */
-function orphanList(orphans: Approval[]): HTMLElement {
-  const list = document.createElement("ul");
-  list.className = "rows";
-  for (const approval of orphans) {
-    const li = document.createElement("li");
-    li.className = "row";
-    li.append(approvalLine(approval, null));
-    list.append(li);
-  }
-  return list;
 }
 
 /** Post one decision. The agent is unblocked by the daemon's response to its
@@ -1476,582 +1658,38 @@ async function decide(id: string, decision: "allow" | "deny"): Promise<void> {
   }
 }
 
-// --- the three levels -------------------------------------------------------
-
-/** The sections under the band: every session is a line once. `levels`
- * decides the tree; this paints one workspace section or one lone project
- * per entry, gives an approval with no session a row under "No project",
- * making that section when no loose shell would, then homes the archives
- * whose section is not on the page. */
-function sectionList(rows: SessionRow[], proposed: ProposedItem[]): Node[] {
-  const sections = levels(rows, rows, projects, (id) => knowledge.get(id)?.goals);
-  const headed = sections.flatMap((s) => (s.heading?.path ? [s.heading.path] : []));
-  const nodes: Node[] = [];
-  const homed = new Set<string>();
-  for (const s of sections) {
-    if (s.heading === null) {
-      const p = s.projects[0];
-      homed.add(p.key);
-      nodes.push(card(p, archivesOf(p.key, headed, null), proposed, 2));
-      continue;
-    }
-    for (const p of s.projects) homed.add(p.key);
-    nodes.push(workspace(s, headed, proposed));
-  }
-  const orphans = orphanApprovals(approvals, rows);
-  if (orphans.length > 0 && !homed.has(NO_PROJECT)) {
-    homed.add(NO_PROJECT);
-    const none: ProjectSection<SessionRow> = {
-      key: NO_PROJECT,
-      heading: { name: NO_PROJECT_NAME, path: null },
-      project: null,
-      rows: [],
-      owned: 0,
-      goals: { working: [], pending: [], done: [] },
-      noGoals: null,
-    };
-    nodes.push(card(none, archivesOf(NO_PROJECT, headed, null), proposed, 2));
-  }
-  if (nodes.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "empty";
-    empty.textContent = watchOnly ? "No live sessions to watch." : "No live sessions. Open a shell to start one.";
-    nodes.push(empty);
-  }
-  // Archives whose section is not on the page still need a home: a project
-  // the daemon no longer lists, or shells outside every project when no
-  // "No project" section and no workspace holds them.
-  const orphaned = archives.filter((a) => {
-    const key = a.project?.id ?? NO_PROJECT;
-    if (key !== NO_PROJECT) return !homed.has(key);
-    return workspaceHome(a.cwd ?? "", headed) === null && !homed.has(NO_PROJECT);
-  });
-  if (orphaned.length > 0) nodes.push(archivedFold("__orphaned", orphaned));
-  return nodes;
-}
-
-/** The archives of one section: a project's by its id; for the shells
- * outside every project, the ones whose cwd `home` holds (a headed
- * workspace directory), or the ones no headed workspace holds when `home`
- * is null, the same rule `levels` applies to the live rows. */
-function archivesOf(key: string, headed: string[], home: string | null): ArchivedRow[] {
-  return archives.filter((a) => {
-    if ((a.project?.id ?? NO_PROJECT) !== key) return false;
-    if (key !== NO_PROJECT) return true;
-    return workspaceHome(a.cwd ?? "", headed) === home;
-  });
-}
-
-/**
- * One workspace: its heading line, the shells that sit in its directory
- * outside every project, its archives, then its projects set in by
- * `NESTED_INDENT_PX`. The heading is a level-2 heading and the projects
- * under it level 3, so a reader who moves by heading gets the tree.
- */
-function workspace(s: WorkspaceSection<SessionRow>, headed: string[], proposed: ProposedItem[]): HTMLElement {
-  const heading = s.heading!;
-  const section = document.createElement("section");
-  section.className = "workspace";
-  section.setAttribute("aria-label", heading.name);
-  const head = document.createElement("div");
-  head.className = "head line";
-  head.append(headingName(heading, 2, usage ? costLabel(workspaceUsage(usage, heading.path, headed)) : null));
-  section.append(head);
-  if (s.rows.length > 0) section.append(rowList(s.rows, heading.path ?? undefined));
-  const archived = archivesOf(NO_PROJECT, headed, heading.path);
-  if (archived.length > 0) section.append(archivedFold(`workspace:${heading.path}`, archived));
-  const nested = document.createElement("div");
-  nested.className = "nested";
-  for (const p of s.projects) nested.append(card(p, archivesOf(p.key, headed, null), proposed, 3));
-  section.append(nested);
-  return section;
-}
-
-/** The heading's name as an `h2` or `h3`, with the directory it stands for
- * as its tooltip, and after it what the range cost there, `$850.51`
- * (`costLabel`), when the rollup answered. No cache share: it is a
- * constant, and the `LEAKS` panel names the exceptions.
- * The two are one heading, so a reader who moves by heading hears the
- * number with the name; the sheet puts the cost on its own line under the
- * name on a phone, where the heading line has no room left. */
-function headingName(heading: Heading, level: 2 | 3, cost: string | null): HTMLElement {
-  const h = document.createElement(`h${level}`);
-  h.className = "name";
-  const text = span("name-text", heading.name);
-  text.dataset.name = "";
-  if (heading.path) text.title = heading.path;
-  h.append(text);
-  if (cost !== null) {
-    const c = span("cost", cost);
-    c.title = `${heading.name}: what the range cost here, at the full API rate`;
-    c.dataset.drop = String(HEADING_DROP_ORDER.indexOf("cost"));
-    h.append(c);
-  }
-  return h;
-}
-
-/**
- * One project, top to bottom: one heading line (the name, "no live
- * session" when it owns none, the spawn control), its rows under no goal,
- * then its goals by state: the working ones each with the crew's row
- * beneath, the pending ones, the done ones folded, or the one line that
- * says why there are none; then the archives folded. The root path is not
- * printed: a row's place is relative to it, and the pane shows it; the
- * heading carries it as a tooltip. The rows come before the goals because
- * a running session is what the reader can act on now; a goal's next
- * action is what the foreman does next. `level` is the heading's: 2 at the
- * top, 3 under a workspace, where `NESTED_INDENT_PX` comes off the line.
- */
-function card(p: ProjectSection<SessionRow>, archived: ArchivedRow[], proposed: ProposedItem[], level: 2 | 3): HTMLElement {
-  const section = document.createElement("section");
-  section.className = "card";
-  section.setAttribute("aria-label", p.heading.name);
-
-  const head = document.createElement("div");
-  head.className = "head line";
-  head.append(headingName(p.heading, level, usage && p.project ? costLabel(projectUsage(usage, p.project.root)) : null));
-  // The counts live on the fleet line above the projects; the rows say
-  // their own state. A project with no session at all says so, once.
-  // `headingLine` decides what gives way on a phone; the sheet applies it
-  // under its phone media query, so a wider screen shows everything.
-  const tallyText = p.owned === 0 ? "no live session" : null;
-  const spawnIn = !watchOnly && p.project?.root ? p.project : null;
-  const line = headingLine({
-    name: p.heading.name,
-    tally: tallyText,
-    profiles: spawnIn ? [LOCAL_SHELL, ...profiles.map((pr) => pr.name)] : null,
-    indent: level === 3 ? NESTED_INDENT_PX : 0,
-  });
-  if (tallyText) {
-    const tally = span(line.tally ? "tally" : "tally gives-way", tallyText);
-    tally.dataset.drop = String(HEADING_DROP_ORDER.indexOf("tally"));
-    head.append(tally);
-  }
-  if (spawnIn) head.append(spawnControls(spawnIn, line.profile));
-  section.append(head);
-
-  if (p.rows.length > 0) section.append(rowList(p.rows));
-  if (p.key === NO_PROJECT) {
-    const orphans = orphanApprovals(approvals, sessions);
-    if (orphans.length > 0) section.append(orphanList(orphans));
-  }
-  if (p.project) {
-    // The goals by state, working first: each line says its own state in
-    // brackets, so no label stands over a bucket.
-    const { working, pending, done } = p.goals;
-    if (working.length > 0) section.append(goalList(p.project, working, proposed, "working"));
-    if (pending.length > 0) section.append(goalList(p.project, pending.map((line) => ({ line, rows: [] })), proposed, "pending"));
-    if (done.length > 0) section.append(doneFold(p.project, done, proposed));
-  }
-  if (p.noGoals) {
-    const none = document.createElement("p");
-    none.className = "goal-none";
-    none.textContent = p.noGoals;
-    section.append(none);
-  }
-  if (archived.length > 0) section.append(archivedFold(p.key, archived));
-  return section;
-}
-
-/** One list of rows in the model's order. `base` is the directory the
- * heading above names when it is not the rows' project root: a workspace
- * directory, for the shells it lists outside every project. */
-function rowList(rows: SessionRow[], base?: string): HTMLElement {
-  const list = document.createElement("ul");
-  list.className = "rows";
-  for (const r of rows) list.append(row(r, base));
-  return list;
-}
-
-/** The goals of one bucket: each its line, then the rows that carry its
- * label, set in under it. `proposed` is what needs the human, so a line
- * knows whether to wear the mark or the plain count (`lineProposals`). */
-function goalList(project: ProjectRef, entries: GoalEntry<SessionRow>[], proposed: ProposedItem[], bucket: "working" | "pending"): HTMLElement {
-  const list = document.createElement("ul");
-  list.className = "goal-lines";
-  for (const entry of entries) {
-    const li = document.createElement("li");
-    li.className = "goal";
-    li.setAttribute("aria-label", `${entry.line.title} in ${project.name}`);
-    li.append(goalLineItem(entry.line, project, proposed, bucket));
-    // The fourth level: the goal's tasks, each with the listed rows that
-    // carry its `task:` label; the rows no task claimed stay under the goal.
-    const owned = sessions.filter((s) => (s.project?.id ?? NO_PROJECT) === project.id);
-    const { tasks, rest } = taskLines(entry.line.summary, entry.rows, owned);
-    if (tasks.length > 0) li.append(...taskLists(project, entry.line.summary.slug ?? "", tasks));
-    if (rest.length > 0) li.append(rowList(rest));
-    list.append(li);
-  }
-  return list;
-}
-
-/** The tasks under a goal's line. Below 768 px the done ones fold behind
- * one line, `6 done`, the way a project's done goals do: a finished thing
- * needs nothing from the reader and has not earned a phone line. At 768 px
- * and up every task is drawn. The fold is built here rather than in the
- * sheet because a stylesheet cannot open a closed `details`. */
-function taskLists(project: ProjectRef, slug: string, tasks: TaskLine<SessionRow>[]): Node[] {
-  if (!narrow()) return [taskList(tasks)];
-  const { open, done } = foldDoneTasks(tasks);
-  const nodes: Node[] = [];
-  if (open.length > 0) nodes.push(taskList(open));
-  if (done.length > 0) {
-    const key = `tasks:${project.id}:${slug}`;
-    const details = document.createElement("details");
-    details.className = "archived done-tasks";
-    details.open = archivedOpen.has(key);
-    details.addEventListener("toggle", () => {
-      if (details.open) archivedOpen.add(key);
-      else archivedOpen.delete(key);
-    });
-    const summary = document.createElement("summary");
-    summary.textContent = doneLabel(done.length);
-    summary.dataset.focus = `archived:${key}`;
-    details.append(summary, taskList(done));
-    nodes.push(details);
-  }
-  return nodes;
-}
-
-/** The tasks of one list, one line each, set in by one indent level: the
- * mark in the state's colour, the slug, the state as a bracketed word,
- * then its facts (`round 1`, `PR #118`), which drop from the right. A
- * working task's mark turns. The crew's row nests under its working
- * task. */
-function taskList(tasks: TaskLine<SessionRow>[]): HTMLElement {
-  const list = document.createElement("ul");
-  list.className = "tree-tasks";
-  for (const task of tasks) {
-    const li = document.createElement("li");
-    li.className = "tree-task";
-    const line = document.createElement("div");
-    line.className = "line-task line";
-    const name = span("line-name", task.slug);
-    name.dataset.name = "";
-    line.append(mark(taskMark(task.state)), name, span(`tag-state ${task.state}`, task.tag));
-    task.facts.forEach((fact, i) => {
-      const cell = span("line-fact", fact);
-      cell.dataset.drop = String(task.facts.length - 1 - i);
-      line.append(cell);
-    });
-    li.append(line);
-    if (task.rows.length > 0) li.append(rowList(task.rows));
-    list.append(li);
-  }
-  return list;
-}
-
-/** One goal that is not done, on one line: the mark and the state word
- * (`goalTag`: `[working]`, `[pending]`, `[needs you]`, `[waiting]`, or
- * the status word), the title, then the facts that drop from the right
- * when the line narrows — the next action first, then the round counter,
- * then what its rounds cost (`goalCost`, `goalFacts`). The title is the
- * only cell that truncates and carries the next action as its tooltip. A
- * goal whose files still hold the template reads "not written yet" after
- * its slug. No floor word, no slug, no record link: the record is history,
- * and the done fold carries it (`goalLine`).
- *
- * A goal whose proposals need the human wears the amber mark and
- * `[needs you]` (`proposedItems`): `N proposals` links the record, else the
- * `STATE.md` they wait in, with the record's decision line as its title;
- * `[Dismiss]` says the human read them. A dismissed item's count stands
- * at the line's end unmarked, like a stopped goal's (`lineProposals`). One
- * place per proposal. */
-function goalLineItem(line: GoalLine, project: ProjectRef, proposed: ProposedItem[], bucket: "working" | "pending"): HTMLElement {
-  const li = document.createElement("div");
-  li.className = "goal-line line";
-  const item = proposed.find((p) => p.project.id === project.id && p.summary.slug === line.summary.slug) ?? null;
-  if (item) li.dataset.needs = "proposed";
-  const word = goalTag(bucket, line.status, item !== null);
-  li.append(mark(word.family));
-  const name = span("goal-name", line.title);
-  name.dataset.name = "";
-  if (line.next) name.title = line.next;
-  li.append(name);
-  if (line.unwritten) {
-    li.append(span("goal-unwritten", "not written yet"));
-    return li;
-  }
-  li.append(span(`tag-state ${word.family}`, word.tag));
-  // The facts stand cost, round, next action, and drop in the reverse
-  // order (`goalFacts`); each is one cell the line hides whole.
-  const cost = goalCost(line.summary);
-  const facts = goalFacts(line, cost);
-  const classes = [cost !== null ? "goal-cost" : null, line.round ? "goal-round" : null, line.next ? "goal-next" : null].filter(
-    (c): c is string => c !== null,
-  );
-  facts.forEach((fact, i) => {
-    const cell = span(classes[i], fact);
-    cell.dataset.drop = String(facts.length - 1 - i);
-    if (classes[i] === "goal-cost") cell.title = "the sum of this goal's round records' Cost lines, at the full API rate";
-    if (classes[i] === "goal-next") cell.title = fact;
-    li.append(cell);
-  });
-  if (item) {
-    const goal = goalTitle(item.summary);
-    // The count and Dismiss are one group at the line's end, so they stay
-    // together when the line wraps at 390 px.
-    const group = document.createElement("span");
-    group.className = "goal-proposals";
-    const open = knowledgeLink(item.project.id, item.path, proposedLabel(item.count), "line-knowledge");
-    open.setAttribute(
-      "aria-label",
-      item.record ? recordName(item.record, item.project.name, goal) : proposalsName(item.count, item.project.name, goal),
-    );
-    // The record's decision line is what the human decides on; it rides on
-    // the link's title, because a line is one line.
-    if (item.decision) open.title = item.decision;
-    // Read it, decided in STATE.md: the mark and the count leave the band
-    // until the goal's next round.
-    const key = dismissKey(item.project.id, item.summary.slug ?? "", item.round);
-    const dismiss = button("Dismiss", "quiet", () => dismissProposal(key));
-    dismiss.dataset.focus = focusKey("dismiss", key);
-    dismiss.setAttribute("aria-label", dismissName(item.round, item.project.name, goal));
-    group.append(open, dismiss);
-    li.append(group);
-  } else {
-    const waiting = lineProposals(project.id, line.summary, proposed);
-    if (waiting) li.append(proposalsLink(project, line.summary, waiting, true));
-  }
-  return li;
-}
-
-/** The done goals behind one line, "7 done": each with its title, the
- * proposals its `STATE.md` still lists (`lineProposals`; a done goal's
- * never need the human), and its record link, unless a proposed item
- * carries the record already (`cardRecord`). Folded, because a done goal
- * is history. */
-function doneFold(project: ProjectRef, done: KnowledgeSummary[], proposed: ProposedItem[]): HTMLElement {
-  const key = `done:${project.id}`;
-  const details = document.createElement("details");
-  details.className = "archived done";
-  details.open = archivedOpen.has(key);
-  details.addEventListener("toggle", () => {
-    if (details.open) archivedOpen.add(key);
-    else archivedOpen.delete(key);
-  });
-  const summary = document.createElement("summary");
-  summary.textContent = doneLabel(done.length);
-  summary.dataset.focus = `archived:${key}`;
-  details.append(summary);
-  const ul = document.createElement("ul");
-  ul.className = "archived-list";
-  for (const goal of done) {
-    const li = document.createElement("li");
-    li.append(span("archived-name", goalTitle(goal)));
-    const waiting = lineProposals(project.id, goal, proposed);
-    if (waiting) li.append(proposalsLink(project, goal, waiting, false));
-    const record = cardRecord(project.id, goal, proposed);
-    if (record !== null) {
-      const link = knowledgeLink(project.id, record, `record ${recordLabel(record)}`, "card-knowledge");
-      link.classList.add("goal-link");
-      link.setAttribute("aria-label", recordName(record, project.name, goalTitle(goal)));
-      li.append(link);
-    }
-    ul.append(li);
-  }
-  details.append(ul);
-  return details;
-}
-
-/** The unmarked proposals count a goal's line carries (`lineProposals`):
- * `2 proposals`, linking the `STATE.md` they wait in. `edge` sets it at
- * the line's right end, where the done fold's record link sits; in the
- * fold the record link takes that place and this one stands before it. */
-function proposalsLink(project: ProjectRef, goal: KnowledgeSummary, waiting: LineProposals, edge: boolean): HTMLAnchorElement {
-  const link = knowledgeLink(project.id, waiting.path, proposedLabel(waiting.count), "card-knowledge");
-  if (edge) link.classList.add("goal-link");
-  link.setAttribute("aria-label", proposalsName(waiting.count, project.name, goalTitle(goal)));
-  return link;
-}
-
-/** A link to one file of a project's package, opened in a new tab. Keyed
- * for focus like every other control, so a repaint does not drop a keyboard
- * user off it; `region` tells a marked goal line's link to a record from
- * the fold's link to the same record, so the repaint gives focus back to
- * the one the user was on. */
-function knowledgeLink(
-  projectId: string, path: string, text: string, region: "line-knowledge" | "card-knowledge",
-): HTMLAnchorElement {
-  const a = document.createElement("a");
-  a.className = "line-link";
-  a.href = knowledgeUrl(projectId, path);
-  a.target = "_blank";
-  a.rel = "noopener";
-  a.textContent = text;
-  a.dataset.focus = focusKey(region, projectId, path);
-  return a;
-}
-
-/** The select's default option: no profile, a plain shell. */
-const LOCAL_SHELL = "local shell";
-
-/** Spawn a session in this project's root: a plain shell, or one of the
- * named profiles when the daemon has any. `width` is `headingLine`'s
- * decision for the select on a phone: whole, short, or gone. */
-function spawnControls(project: ProjectRef, width: ProfileWidth | null): HTMLElement {
-  const box = document.createElement("div");
-  box.className = "spawn";
-  let select: HTMLSelectElement | null = null;
-  if (profiles.length > 0) {
-    select = document.createElement("select");
-    select.className = width === "whole" ? "spawn-profile" : width === "short" ? "spawn-profile short" : "spawn-profile gives-way";
-    select.setAttribute("aria-label", `Profile for the new session in ${project.name}`);
-    select.dataset.focus = `spawn:${project.id}:profile`;
-    const local = document.createElement("option");
-    local.value = "";
-    local.textContent = LOCAL_SHELL;
-    select.append(local);
-    for (const p of profiles) {
-      const option = document.createElement("option");
-      option.value = p.name;
-      option.textContent = p.name;
-      option.title = p.command;
-      select.append(option);
-    }
-    // The pick survives the repaint between choosing and tapping New session.
-    select.value = spawnProfile.get(project.id) ?? "";
-    const picked = select;
-    picked.addEventListener("change", () => spawnProfile.set(project.id, picked.value));
-    box.append(select);
-  }
-  // `[new]` on the heading line; the aria-label says what is new and where.
-  const b = button("new", "spawn-button", () => {
-    void spawn(project, select?.value || undefined, b);
-  });
-  b.setAttribute("aria-label", `New session in ${project.name}`);
-  b.title = `Start a shell in ${project.root ?? project.name}`;
-  b.dataset.focus = `spawn:${project.id}:new`;
-  box.append(b);
-  return box;
-}
-
-async function spawn(project: ProjectRef, profile: string | undefined, b: HTMLButtonElement): Promise<void> {
-  const key = `spawn:${project.id}`;
-  if (busy.has(key) || !project.root) return;
-  busy.add(key);
-  b.disabled = true;
-  try {
-    const body: Record<string, string> = { cwd: project.root };
-    if (profile) body.profile = profile;
-    const res = await fetch("/api/sessions", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(await reasonOf(res));
-    notice = null;
-    lastSignature = "";
-    await poll();
-  } catch (error) {
-    fail(`Could not start a session in ${project.name}: ${describe(error)}`);
-  } finally {
-    busy.delete(key);
-    b.disabled = false;
-  }
-}
-
-function archivedFold(key: string, list: ArchivedRow[]): HTMLElement {
-  const details = document.createElement("details");
-  details.className = "archived";
-  details.open = archivedOpen.has(key);
-  details.addEventListener("toggle", () => {
-    if (details.open) archivedOpen.add(key);
-    else archivedOpen.delete(key);
-  });
-  const summary = document.createElement("summary");
-  summary.textContent = `Archived (${list.length})`;
-  summary.dataset.focus = `archived:${key}`;
-  details.append(summary);
-  const ul = document.createElement("ul");
-  ul.className = "archived-list";
-  for (const a of list) {
-    const li = document.createElement("li");
-    const name = document.createElement("span");
-    name.className = "archived-name";
-    name.textContent = a.name || (a.cwd ? folderOf(a.cwd) : a.id.slice(0, 8));
-    const meta = document.createElement("span");
-    meta.className = "archived-meta";
-    const bits: string[] = [];
-    if (typeof a.exitCode === "number") bits.push(`exit ${a.exitCode}`);
-    if (a.archivedAt) bits.push(new Date(a.archivedAt).toLocaleString());
-    meta.textContent = bits.join(" · ");
-    li.append(name, meta);
-    ul.append(li);
-  }
-  details.append(ul);
-  return details;
-}
-
 // --- rows -------------------------------------------------------------------
 
-/** One session, one line (`design-foundation.md`, "The line, in detail"):
- * the mark, the name, the state as a bracketed word, then the facts that
- * drop when the line is too narrow for them, in `ROW_DROP_ORDER` — what
- * it is doing, where it is, its model — then how long, then the actions.
- * The name is the only cell that truncates. The line is the link; a
- * pending tool call is a line of its own under it. */
-function row(s: SessionRow, base?: string): HTMLElement {
-  const li = document.createElement("li");
-  li.className = "row";
-  const lineEl = document.createElement("div");
-  lineEl.className = "line row-line";
-
+/** One session, one line: the mark, the name, the state as a bracketed
+ * word, its model and how long since its output in their columns, then
+ * the actions. The line is the link; a pending tool call is a line of its
+ * own under it, in the same row. `folded` is a row in the idle fold,
+ * which lists no approval. */
+function row(line: Extract<TreeLine<SessionRow>, { kind: "session" }>, folded = false): HTMLElement {
+  const s = line.row;
+  const wrap = document.createElement("div");
+  wrap.className = "row";
   const link = document.createElement("a");
   link.href = `/?session=${encodeURIComponent(s.id)}`;
   link.className = "open";
   link.dataset.focus = `${s.id}:open`;
-
-  // The state is the text beside it; the gutter mark is decoration.
-  const family = markFamily(stateOf(s));
-  const dot = mark(family);
-
-  // The model decides each field; a null one is not painted.
-  const line = rowLine(s, Date.now(), base ?? s.project?.root);
-  const main = document.createElement("div");
-  main.className = "main";
   const name = document.createElement("span");
   name.className = "folder";
   name.textContent = line.name;
-  name.title = s.cwd;
-  name.dataset.name = "";
-  const state = document.createElement("span");
-  state.className = `state ${family}`;
-  state.textContent = line.state;
-  main.append(name, state);
-  const drop = (cell: HTMLElement, key: (typeof ROW_DROP_ORDER)[number]): HTMLElement => {
-    cell.dataset.drop = String(ROW_DROP_ORDER.indexOf(key));
-    return cell;
-  };
-  if (line.place) main.append(drop(span("place", line.place), "place"));
-  if (line.what) {
-    const what = span("what", line.what);
-    what.title = line.what;
-    main.append(drop(what, "what"));
-  }
-  // The model is a fact before the time; absent when the session has none.
-  const model = rowModel(s);
-  if (model) {
-    const fact = span("model", model);
-    if (s.agentModel) fact.title = s.agentModel;
-    main.append(drop(fact, "model"));
-  }
-  if (line.since) main.append(span("since", line.since));
-  link.append(dot, main);
-  lineEl.append(link);
-  if (!watchOnly) lineEl.append(rowActions(s));
-  li.append(lineEl);
+  link.append(lineMain(line, name));
+  const lineEl = lineShell(line, "row-line", mark(line.mark), link, watchOnly ? null : rowActions(s));
+  wrap.append(lineEl);
   // A waiting or failed row is a marked line the band's cell can land on;
   // a pending tool call is a line of its own under the row.
-  if (rowNeeds(s)) li.dataset.needs = "row";
-  for (const approval of approvalsOf(s, approvals)) li.append(approvalLine(approval, s));
-  return li;
+  if (line.needs) wrap.dataset.needs = "row";
+  if (!folded) for (const approval of line.approvals) wrap.append(approvalLine(approval, s, line.depth + 1));
+  return wrap;
 }
 
-/** Name, archive, kill. Inline beside the row on a wide screen; behind one
- * menu button on a phone, where three targets do not fit beside the text.
- * The menu closes on Escape, when focus leaves it, and when an item is
- * chosen; each of those hands focus back to the ⋯ button. */
+/** Name, archive, kill, behind one `⋯` button in the actions cell at every
+ * width, so the line stays quiet. The menu closes on Escape, when focus
+ * leaves it, and when an item is chosen; each of those hands focus back to
+ * the ⋯ button. */
 function rowActions(s: SessionRow): HTMLElement {
   const box = document.createElement("div");
   box.className = "actions";
@@ -2070,10 +1708,9 @@ function rowActions(s: SessionRow): HTMLElement {
   more.setAttribute("aria-controls", menu.id);
   more.setAttribute("aria-expanded", isOpen ? "true" : "false");
   more.dataset.focus = `${s.id}:more`;
-  // Choosing an item on the phone closes the menu and returns focus to ⋯
-  // before the item's own dialog opens, so the poll that follows the dialog
-  // finds ⋯ by its key. On a wide screen there is no menu to close and the
-  // item keeps focus itself.
+  // Choosing an item closes the menu and returns focus to ⋯ before the
+  // item's own dialog opens, so the poll that follows the dialog finds ⋯
+  // by its key.
   const item = (
     label: "Rename" | "Name" | "Archive" | "Kill",
     className: string,
@@ -2134,7 +1771,7 @@ async function renameSession(s: SessionRow): Promise<void> {
 }
 
 /** Keep the session's evidence, then end it. One confirm, then the row moves
- * under the card's archived list on the next poll. */
+ * into the archived fold on the next poll. */
 async function archiveSession(s: SessionRow): Promise<void> {
   if (!window.confirm(`Archive ${headlineOf(s)}? The shell ends; its output is kept.`)) return;
   await endSession(s, "archive", `/api/sessions/${encodeURIComponent(s.id)}/archive`, "POST");
@@ -2252,12 +1889,12 @@ function syncSpinner(): void {
     ticker = setInterval(() => {
       tick += 1;
       const frame = frameAt(picked, tick);
-      for (const el of root?.querySelectorAll(".mark.running:not(.rest)") ?? []) el.textContent = frame;
+      for (const el of root?.querySelectorAll(".mark.running:not(.rest):not(.wide)") ?? []) el.textContent = frame;
     }, FRAME_MS);
   } else if (!run && ticker !== null) {
     clearInterval(ticker);
     ticker = null;
-    for (const el of root?.querySelectorAll(".mark.running") ?? []) el.textContent = workingGlyph(false);
+    for (const el of root?.querySelectorAll(".mark.running:not(.wide)") ?? []) el.textContent = workingGlyph(false);
   }
 }
 
@@ -2304,10 +1941,10 @@ function clockTime(epochMs: number): string {
 
 /** A label for a moment that can be old: the time alone when `stampFormat`
  * says the moment falls on today, else the date and the time, the convention
- * `archivedFold` already follows. The short styles drop the seconds that a
- * bare `toLocaleString()` prints: the daemon writes the previous run's clock
- * on a heartbeat, so the seconds are false precision, and the line has one
- * line above the cards at 390 px. */
+ * the archived list already follows. The short styles drop the seconds that
+ * a bare `toLocaleString()` prints: the daemon writes the previous run's
+ * clock on a heartbeat, so the seconds are false precision, and the line
+ * has one line above the panels at 390 px. */
 function pastTime(epochMs: number, format: StampFormat): string {
   if (format === "time") return clockTime(epochMs);
   return new Date(epochMs).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
@@ -2324,16 +1961,11 @@ function renderError(): void {
   root.append(p);
 }
 
-// Crossing the phone breakpoint folds or unfolds WHERE, MODELS and a goal's
-// done tasks; a change in the motion preference stops or starts the mark.
+// A change in the motion preference stops or starts the mark.
 if (typeof matchMedia === "function") {
-  matchMedia(NARROW_QUERY).addEventListener("change", () => {
-    lastSignature = "";
-    render();
-  });
   matchMedia(REDUCED_MOTION_QUERY).addEventListener("change", syncSpinner);
 }
-// A narrower window drops facts; a wider one brings them back.
+// A narrower window drops an approval's arguments; a wider one brings them back.
 if (typeof addEventListener === "function") {
   let queued = false;
   addEventListener("resize", () => {
