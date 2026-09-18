@@ -51,6 +51,47 @@ public struct KnowledgeSummary: Equatable, Sendable {
     /// The cache-read part of `inTokens`, each line's `in` times its
     /// `C% cached`, so the page can print the share.
     public var cacheReadTokens: Int?
+    /// The goal's tasks, the fourth level of the fleet view: one per slug
+    /// listed under `## Queue` (pending), `## Failures` (failed) and
+    /// `## Done` (done) of `STATE.md`, in that order, each slug once
+    /// (`tasks(_:)`). Absent when `STATE.md` carries none of the three
+    /// headings, so a goal that lists no tasks renders as it did before
+    /// the level existed; empty when a heading is there and lists nothing.
+    public var tasks: [Task]?
+
+    /// The state a `STATE.md` section gives a task. `working` is not here:
+    /// the page reads it from a live session's `task:` label.
+    public enum TaskState: String, Equatable, Sendable {
+        case pending, done, failed
+
+        /// The state a reader needs most first: a failed task needs a
+        /// person, a pending one says the loop runs it again, a done one
+        /// needs nothing. A slug in two sections keeps the lower rank.
+        var rank: Int {
+            switch self {
+            case .failed: return 0
+            case .pending: return 1
+            case .done: return 2
+            }
+        }
+    }
+
+    /// One task of a goal: a queue item as `LOOP.md` names it (the value
+    /// of the `task:` label), with the round and the pull request its
+    /// line names when it does.
+    public struct Task: Equatable, Sendable {
+        public var slug: String
+        public var state: TaskState
+        public var round: Int?
+        public var pr: Int?
+
+        public init(slug: String, state: TaskState, round: Int? = nil, pr: Int? = nil) {
+            self.slug = slug
+            self.state = state
+            self.round = round
+            self.pr = pr
+        }
+    }
 
     public static let nextActionCap = 512
     public static let lineCap = 256
@@ -117,6 +158,7 @@ public struct KnowledgeSummary: Equatable, Sendable {
             if let proposals = section(state, heading: "Proposals waiting on the human") {
                 summary.proposals = topLevelBullets(proposals)
             }
+            summary.tasks = tasks(state)
         }
         if let latestRecord, let number = roundNumber(latestRecord) {
             summary.lastRound = number
@@ -145,6 +187,14 @@ public struct KnowledgeSummary: Equatable, Sendable {
         if let costUSD { item["costUSD"] = costUSD }
         if let inTokens { item["inTokens"] = inTokens }
         if let cacheReadTokens { item["cacheReadTokens"] = cacheReadTokens }
+        if let tasks {
+            item["tasks"] = tasks.map { task -> [String: Any] in
+                var entry: [String: Any] = ["slug": task.slug, "state": task.state.rawValue]
+                if let round = task.round { entry["round"] = round }
+                if let pr = task.pr { entry["pr"] = pr }
+                return entry
+            }
+        }
         return item
     }
 
@@ -237,6 +287,88 @@ public struct KnowledgeSummary: Equatable, Sendable {
         costUSD = costs.reduce(0) { $0 + $1.costUSD }
         inTokens = costs.reduce(0) { $0 + $1.inTokens }
         cacheReadTokens = costs.reduce(0) { $0 + $1.cacheReadTokens }
+    }
+
+    // MARK: - the tasks
+
+    /// The sections that list tasks, in the order the list keeps them:
+    /// the queue first because its head is what runs next, then the
+    /// failures because they need a person, then the done ones, which are
+    /// history.
+    static let taskSections: [(heading: String, state: TaskState)] = [
+        ("Queue", .pending), ("Failures", .failed), ("Done", .done),
+    ]
+
+    private static let slugPattern: NSRegularExpression = {
+        // A backticked kebab slug, the shape `kitterm goal new` enforces on a
+        // folder and `LOOP.md` gives a queue item. `rounds/001.md`,
+        // `LiveTakeoverTests` and `sessions.css` in the same line do not match.
+        try! NSRegularExpression(pattern: "`([a-z0-9]+(?:-[a-z0-9]+)*)`")
+    }()
+    private static let roundPattern: NSRegularExpression = {
+        try! NSRegularExpression(pattern: "\\brounds? ([0-9]+)")
+    }()
+    private static let prPattern: NSRegularExpression = {
+        try! NSRegularExpression(pattern: "\\bPR #([0-9]+)")
+    }()
+
+    /// The tasks `STATE.md` lists: every column-0 item (`- `, `* ` or
+    /// `N. `) under `## Queue`, `## Failures` and `## Done`, each slug once
+    /// with the state of the lowest `TaskState.rank`, in the order the
+    /// slugs first appear. A slug is a backticked kebab word on the item's
+    /// first line before its first comma, so ``- `a` (1) and `b` (2),
+    /// round 1, `9784fd2`.`` yields `a` and `b` and not the sha; the round
+    /// and the PR come from the whole first line. Prose under a heading
+    /// (`None.`) yields nothing. Nil when none of the three headings is
+    /// in the text.
+    static func tasks(_ text: String) -> [Task]? {
+        var found = false
+        var tasks: [Task] = []
+        var position: [String: Int] = [:]
+        for (heading, state) in taskSections {
+            guard let body = section(text, heading: heading) else { continue }
+            found = true
+            for line in itemLines(body) {
+                let head = line.split(separator: ",", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? line
+                let round = firstNumber(roundPattern, in: line)
+                let pr = firstNumber(prPattern, in: line)
+                for slug in matches(slugPattern, in: head) {
+                    if let index = position[slug] {
+                        if state.rank < tasks[index].state.rank {
+                            tasks[index].state = state
+                            tasks[index].round = round ?? tasks[index].round
+                            tasks[index].pr = pr ?? tasks[index].pr
+                        }
+                        continue
+                    }
+                    position[slug] = tasks.count
+                    tasks.append(Task(slug: slug, state: state, round: round, pr: pr))
+                }
+            }
+        }
+        return found ? tasks : nil
+    }
+
+    /// The first line of every column-0 item: `- `, `* `, or `N. `. An
+    /// indented line is a continuation or a sub-item and is skipped.
+    static func itemLines(_ text: String) -> [String] {
+        lines(text).compactMap { line in
+            if line.hasPrefix("- ") || line.hasPrefix("* ") { return String(line.dropFirst(2)) }
+            let digits = line.prefix { $0.isASCII && $0.isNumber }
+            guard !digits.isEmpty, line.dropFirst(digits.count).hasPrefix(". ") else { return nil }
+            return String(line.dropFirst(digits.count + 2))
+        }
+    }
+
+    private static func matches(_ pattern: NSRegularExpression, in text: String) -> [String] {
+        let whole = NSRange(text.startIndex..., in: text)
+        return pattern.matches(in: text, range: whole).compactMap { match in
+            Range(match.range(at: 1), in: text).map { String(text[$0]) }
+        }
+    }
+
+    private static func firstNumber(_ pattern: NSRegularExpression, in text: String) -> Int? {
+        matches(pattern, in: text).first.flatMap { Int($0) }
     }
 
     // MARK: - pieces
