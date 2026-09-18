@@ -263,8 +263,11 @@ Every workspace, project and goal heading then carries its own number. A project
 the range's bucket at its root, which is the root the rollup resolved each transcript's
 cwd to, worktrees folded in; a workspace's is the sum over every bucket whose root its
 directory is or holds, by the rule that homes a loose shell, so the foreman's own
-sessions in the workspace directory count toward the workspace. The share beside the
-dollars is cache reads over input, the ledger's `cached` column. A heading the report
+sessions in the workspace directory count toward the workspace. No cache share sits
+beside the dollars: `docs/goals/agent-dashboard/corpus/valuemaxxing.md` measured it at
+95–99% on every session over $5 but three, a constant that carries no information, so
+since `agent-dashboard` round 6 it appears only as the `LEAKS` exception line, from the
+rollup's `lowCache` list. A heading the report
 does not name prints `$0.00`, because "nothing" is an answer and an absent number
 would read as "not loaded"; every number is absent together for a watch token, which
 the route refuses.
@@ -280,6 +283,28 @@ archived transcript where one still exists, so its total can differ from the pag
 the line's rounding to cents and whole thousands. The knowledge route answers at watch
 grade, and so does the record file that holds the line; the summed number adds nothing
 a watch reader could not already open.
+
+### What the spend bought
+
+Four panels between the meters and the tree say what the range's dollars delivered
+(`sessions-value.ts`, pure and tested; `design-foundation.md`, "The panels"). The
+counts are the repositories' own history, not the rollup: `RepositoryYield` runs
+`git log --first-parent` on the remote's branch in each project root, off the loop and
+cached five minutes, and counts a first-parent commit whose subject ends in `(#N)` or
+starts with `Merge pull request` as a merged pull request, its insertions as merged
+lines, and a tag created in the range as a release; `GET /api/yield` serves them. A root
+that is not a checkout has no history and every count is absent; a checkout with no
+remote has commits but no pull requests, and its releases are still counted. The hours
+of model time are the bills' `totalAPIDuration`, which the rollup now keeps per record
+beside `totalLinesAdded`, and the split by role reads the transcript's directory: a cwd
+under `.claude/worktrees/` is a crew, everything else a root session. A unit cost
+divides the spend by the count; the hour's divides only the dollars of the sessions that
+carry a duration. At every grouping of the `WHERE` panel a row with no source prints a
+dash, never a zero, and the dollars nothing claims are a row of their own, which at the
+goal grouping is the largest bar. The page refuses what the research refuses: no quality
+rate (every round on record says `done`), no rework rate (two fix commits are noise),
+and no money value for the human's time (nothing here knows their rate, and the page
+takes no input).
 
 ## Security model
 

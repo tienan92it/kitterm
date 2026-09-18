@@ -58,6 +58,56 @@ public struct KnowledgeSummary: Equatable, Sendable {
     /// headings, so a goal that lists no tasks renders as it did before
     /// the level existed; empty when a heading is there and lists nothing.
     public var tasks: [Task]?
+    /// One entry per `rounds/<N>.md`, by number: what the `WHERE` panel
+    /// groups by goal and by task and what the `LEAKS` lines count
+    /// (`agent-dashboard`, capability 7). Absent when the goal has no
+    /// `rounds/` directory or no record in it.
+    public var rounds: [RoundRecord]?
+
+    /// One round record, the unit a crew runs (`LOOP.md`, "Round record").
+    /// Every field but the number is absent when the record does not
+    /// carry the line, so a round with no `- Cost:` line prices at nothing
+    /// rather than at zero.
+    public struct RoundRecord: Equatable, Sendable {
+        public var number: Int
+        /// The queue item after `# Round NNN:`, the value of the `task:`
+        /// label.
+        public var task: String?
+        /// The `YYYY-MM-DD` the `- Started:` line begins with.
+        public var started: String?
+        /// The sum of the record's `- Cost:` lines (`costLines`).
+        public var costUSD: Double?
+        /// The summed `Hh Mm` of those lines, in milliseconds.
+        public var durationMs: Int?
+        /// The `PR #N` the `- Result:` line names.
+        public var pr: Int?
+        /// The record carries a `## Correction` section: the one correction
+        /// `LOOP.md` allows a round was spent.
+        public var correction: Bool
+
+        public init(
+            number: Int, task: String? = nil, started: String? = nil, costUSD: Double? = nil,
+            durationMs: Int? = nil, pr: Int? = nil, correction: Bool = false
+        ) {
+            self.number = number
+            self.task = task
+            self.started = started
+            self.costUSD = costUSD
+            self.durationMs = durationMs
+            self.pr = pr
+            self.correction = correction
+        }
+
+        public var json: [String: Any] {
+            var entry: [String: Any] = ["number": number, "correction": correction]
+            if let task { entry["task"] = task }
+            if let started { entry["started"] = started }
+            if let costUSD { entry["costUSD"] = costUSD }
+            if let durationMs { entry["durationMs"] = durationMs }
+            if let pr { entry["pr"] = pr }
+            return entry
+        }
+    }
 
     /// The state a `STATE.md` section gives a task. `working` is not here:
     /// the page reads it from a live session's `task:` label.
@@ -195,7 +245,47 @@ public struct KnowledgeSummary: Equatable, Sendable {
                 return entry
             }
         }
+        if let rounds { item["rounds"] = rounds.map(\.json) }
         return item
+    }
+
+    // MARK: - the round records
+
+    /// Read one record, `rounds/<number>.md`. The task is the text after
+    /// `# Round NNN:` on the first `# ` heading, trimmed; the date is the
+    /// first ten characters of the `- Started:` value when they are a day;
+    /// the cost and the duration sum the header's `- Cost:` lines; the PR
+    /// is the first `PR #N` on the `- Result:` line, so a result given as
+    /// a sha names none; the correction is a `## Correction` heading.
+    public static func roundRecord(number: Int, text: String) -> RoundRecord {
+        var record = RoundRecord(number: number)
+        if let title = heading(text, prefix: "Round") {
+            // `001: the-item` → `the-item`.
+            if let colon = title.firstIndex(of: ":") {
+                let task = title[title.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+                record.task = task.isEmpty ? nil : task
+            }
+        }
+        if let started = bulletValue(text, key: "Started") {
+            let day = String(started.prefix(10))
+            if DayKey(day) != nil { record.started = day }
+        }
+        let costs = costLines(text)
+        if !costs.isEmpty {
+            record.costUSD = costs.reduce(0) { $0 + $1.costUSD }
+            record.durationMs = costs.reduce(0) { $0 + $1.durationMs }
+        }
+        if let result = bulletValue(text, key: "Result") {
+            record.pr = firstNumber(prPattern, in: result)
+        }
+        record.correction = section(text, heading: "Correction") != nil
+        return record
+    }
+
+    /// Every record given, by number.
+    public mutating func readRounds(_ records: [(number: Int, text: String)]) {
+        guard !records.isEmpty else { return }
+        rounds = records.map { Self.roundRecord(number: $0.number, text: $0.text) }.sorted { $0.number < $1.number }
     }
 
     /// `rounds/NNN.md` → NNN. Nil for any other name.

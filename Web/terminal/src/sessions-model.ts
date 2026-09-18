@@ -125,6 +125,30 @@ export type KnowledgeSummary = {
    * `agent-dashboard`, and for a `STATE.md` with none of the three
    * headings; empty for one whose headings list nothing. */
   tasks?: TaskSummary[];
+  /** One entry per `rounds/<N>.md`, by number, from a daemon since
+   * capability 7 of `agent-dashboard`; absent for a goal with no record.
+   * The `WHERE` panel groups by goal and by task from these. */
+  rounds?: RoundRecord[];
+};
+
+/** One round record on the wire: `KnowledgeSummary.rounds[]`. Every field
+ * but the number and the flag is absent when the record has no line for
+ * it, so a round with no `- Cost:` line prices at nothing, never at
+ * zero. */
+export type RoundRecord = {
+  number: number;
+  /** The queue item after `# Round NNN:`. */
+  task?: string;
+  /** `YYYY-MM-DD` from the `- Started:` line. */
+  started?: string;
+  /** The sum of the record's `- Cost:` lines. */
+  costUSD?: number;
+  /** The summed `Hh Mm` of those lines, in milliseconds. */
+  durationMs?: number;
+  /** The `PR #N` the `- Result:` line names. */
+  pr?: number;
+  /** The record carries a `## Correction` section. */
+  correction: boolean;
 };
 
 /** One task on the wire: `KnowledgeSummary.tasks[]`. `working` never comes
@@ -1622,7 +1646,30 @@ export type UsageBucket = {
   tokens: UsageTokens;
   sessions: number;
   unbilledSessions: number;
+  /** The bills' API milliseconds, each session's share by the day's token
+   * share: the hours of model time. Absent from a daemon before
+   * `agent-dashboard` round 6. */
+  apiMs?: number;
+  /** The dollars of the sessions whose record carries a duration, so a
+   * rate an hour divides the dollars the hours belong to. */
+  measuredUSD?: number;
 };
+
+/** One role's part of the range: a session in a checkout's root, or a
+ * crew in a worktree, by the transcript's own directory. */
+export type UsageRole = {
+  role: "root" | "crew";
+  costUSD: number;
+  apportionedUSD: number;
+  sessions: number;
+  apiMs: number;
+  measuredUSD: number;
+  linesAdded: number;
+};
+
+/** A billed session over $5 in the range under 95% cached: the `LEAKS`
+ * exception line, the only place the cache share appears. */
+export type LowCacheSession = { sessionId?: string; project: string; costUSD: number; cacheShare: number };
 
 /** One model's part of a day or of the range: the bill's own field names,
  * and the name the daemon derived by the naming rule. The `MODELS` panel
@@ -1659,6 +1706,12 @@ export type UsageDaily = {
    * `totals.costUSD` less `totals.unsplitUSD`. */
   models?: UsageModel[];
   projects: UsageProject[];
+  /** The range per role, `root` then `crew`; absent from a daemon before
+   * `agent-dashboard` round 6. */
+  roles?: UsageRole[];
+  /** The sessions over $5 under 95% cached, dearest first; absent from an
+   * older daemon. */
+  lowCache?: LowCacheSession[];
 };
 
 /** What the panel plots: dollars, or tokens of every kind. */
@@ -1735,8 +1788,10 @@ export function inTokens(t: UsageTokens): number {
   return t.input + t.cacheCreation + t.cacheRead;
 }
 
-/** The cache-read share of the input, 0 to 1; null when nothing was read,
- * so a heading with no tokens prints no share rather than `0%`. */
+/** The cache-read share of the input, 0 to 1; null when nothing was read.
+ * No heading prints it since `agent-dashboard` round 6; the daemon's
+ * `lowCache` list is the exception line's source. Kept, with `cachedLabel`,
+ * for the share's own arithmetic and its tests. */
 export function cacheShare(cacheRead: number, input: number): number | null {
   return input > 0 ? cacheRead / input : null;
 }
@@ -1746,14 +1801,15 @@ export function cachedLabel(share: number | null): string | null {
   return share === null ? null : `${Math.round(share * 100)}% cached`;
 }
 
-/** What a heading prints after its name: the dollars, then the cache share
- * when there is one, `$850.51 · 91% cached`. `$0.00` for a heading the
- * report priced at nothing, because "nothing" is an answer and an absent
- * number would read as "not loaded". */
+/** What a heading prints after its name: the dollars, `$850.51`, and
+ * nothing else. `$0.00` for a heading the report priced at nothing,
+ * because "nothing" is an answer and an absent number would read as "not
+ * loaded". The cache share is not here: `corpus/valuemaxxing.md` measured
+ * it at 95–99% on every session over $5 but three, a constant that
+ * carries no information, so it left every heading and appears only as
+ * the `LEAKS` exception line (`leakLines`). */
 export function costLabel(bucket: UsageBucket | null): string {
-  if (bucket === null) return dollars(0);
-  const cached = cachedLabel(cacheShare(bucket.tokens.cacheRead, inTokens(bucket.tokens)));
-  return cached === null ? dollars(bucket.costUSD) : `${dollars(bucket.costUSD)} · ${cached}`;
+  return dollars(bucket === null ? 0 : bucket.costUSD);
 }
 
 const ZERO_TOKENS: UsageTokens = { input: 0, output: 0, cacheCreation: 0, cacheRead: 0, requests: 0 };
@@ -1808,13 +1864,12 @@ export function workspaceUsage(
 }
 
 /** What a goal prints beside its round: the sum of its records' `Cost:`
- * lines with the cache share, `$12.34 · 88% cached`, from the fields the
- * knowledge route adds; null for a goal whose records carry no line, which
- * is a goal that predates the bill, not a free one. */
+ * lines, `$12.34`, from the field the knowledge route adds; null for a
+ * goal whose records carry no line, which is a goal that predates the
+ * bill, not a free one. The cache share left the line with the headings'
+ * (`costLabel`). */
 export function goalCost(summary: Pick<KnowledgeSummary, "costUSD" | "inTokens" | "cacheReadTokens">): string | null {
-  if (typeof summary.costUSD !== "number") return null;
-  const cached = cachedLabel(cacheShare(summary.cacheReadTokens ?? 0, summary.inTokens ?? 0));
-  return cached === null ? dollars(summary.costUSD) : `${dollars(summary.costUSD)} · ${cached}`;
+  return typeof summary.costUSD === "number" ? dollars(summary.costUSD) : null;
 }
 
 /** One toggle of the panel: what it prints, whether it is the choice, and
