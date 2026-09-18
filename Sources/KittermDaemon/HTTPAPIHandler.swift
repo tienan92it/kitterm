@@ -58,6 +58,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// The newest quota reading behind `POST` and `GET /api/usage/limits`;
     /// nil in a handler built without one, where the routes answer 503.
     private let usageLimits: UsageLimitsStore?
+    /// The model per live session's transcript, for the `agentModel` field
+    /// of a session row; nil in a handler built without one, where the row
+    /// carries no model. One cache per daemon, shared by every connection.
+    private let transcriptModels: TranscriptModelCache?
     private var pendingHead: HTTPRequestHead?
     /// Accumulated request body, capped at `maxInputBytes`; only the input
     /// route reads it. `bodyOverflow` trips once the cap is exceeded so a large
@@ -86,7 +90,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         pushNotifier: PushNotifier? = nil,
         vapidKeys: VAPIDKeys? = nil,
         usageRollup: UsageRollup? = nil,
-        usageLimits: UsageLimitsStore? = nil
+        usageLimits: UsageLimitsStore? = nil,
+        transcriptModels: TranscriptModelCache? = nil
     ) {
         self.registry = registry
         self.projects = projects
@@ -106,6 +111,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.vapidKeys = vapidKeys
         self.usageRollup = usageRollup
         self.usageLimits = usageLimits
+        self.transcriptModels = transcriptModels
     }
 
     /// Put a fresh upgrade handler back in front of us so the *next* request on
@@ -634,22 +640,25 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             return
         }
         guard let projectFilter = projectFilter(head: head, context: context) else { return }
-        let promise = context.eventLoop.makePromise(of: [SessionRegistry.SessionSummary].self)
+        let promise = context.eventLoop.makePromise(of: ([SessionRegistry.SessionSummary], [UUID: String]).self)
         promise.completeWithTask {
-            await self.registry.summaries()
-        }
-        promise.futureResult.whenComplete { result in
-            var summaries = (try? result.get()) ?? []
+            var summaries = await self.registry.summaries()
             if let filter {
                 summaries = summaries.filter { SessionLabels($0.labels).matches(filter: filter) }
             }
             if let projectFilter {
                 summaries = summaries.filter { $0.project?.id == projectFilter }
             }
+            return (summaries, await self.modelsOfTranscripts(summaries))
+        }
+        promise.futureResult.whenComplete { result in
+            let (summaries, models) = (try? result.get()) ?? ([], [:])
             // The approval store is loop-confined; this whenComplete runs on the loop.
             let approvalSessions = Set(self.approvals.snapshot().compactMap(\.sessionID))
             let items: [[String: Any]] = summaries.map { summary in
-                Self.sessionItem(summary, pendingApproval: approvalSessions.contains(summary.id))
+                Self.sessionItem(
+                    summary, pendingApproval: approvalSessions.contains(summary.id), model: models[summary.id]
+                )
             }
             let body: String
             if let data = try? JSONSerialization.data(withJSONObject: ["ok": true, "sessions": items]),
@@ -681,14 +690,31 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         return .some(filter)
     }
 
+    /// The model per session id for every summary that has a transcript,
+    /// read on `TranscriptBill.queue`: off the event loop and off the
+    /// registry actor, the way the cost route reads the bill. Empty in a
+    /// handler built without a cache.
+    private func modelsOfTranscripts(_ summaries: [SessionRegistry.SessionSummary]) async -> [UUID: String] {
+        guard let cache = transcriptModels else { return [:] }
+        let joins = summaries.compactMap { summary in
+            summary.agentJoin.map { (key: summary.id, path: $0.transcriptPath) }
+        }
+        guard !joins.isEmpty else { return [:] }
+        return await withCheckedContinuation { continuation in
+            TranscriptBill.queue.async { continuation.resume(returning: cache.models(for: joins)) }
+        }
+    }
+
     /// One session's listing row. Shared by the list and the single-session
     /// route so the two can never drift apart. `pendingApproval` (whether a
     /// tool call is blocked on a human) is joined here, beside the session's
     /// own hook report, so a foreman reads one typed status per row instead of
-    /// correlating three endpoints itself.
+    /// correlating three endpoints itself. `model` is the id the session's
+    /// transcript last answered with (`TranscriptModelCache`), or nil.
     private static func sessionItem(
         _ summary: SessionRegistry.SessionSummary,
-        pendingApproval: Bool
+        pendingApproval: Bool,
+        model: String? = nil
     ) -> [String: Any] {
         let agent = summary.agentStatus
         let derived = DerivedSessionState.derive(from: summary.marks)
@@ -752,6 +778,13 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             item["agentSessionId"] = join.sessionID
             item["agentTranscript"] = join.transcriptPath
         }
+        // The model the transcript's last assistant line names, as the id
+        // Claude Code wrote and as the name the page prints (`ModelName`).
+        // Absent until the session has an assistant turn: never a guess.
+        if let model {
+            item["agentModel"] = model
+            item["agentModelName"] = ModelName.name(for: model)
+        }
         if summary.exited {
             // Kept only so its records can still be read.
             item["exited"] = true
@@ -778,12 +811,13 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             notFound(context: context, version: head.version)
             return
         }
-        let promise = context.eventLoop.makePromise(of: SessionRegistry.SessionSummary?.self)
+        let promise = context.eventLoop.makePromise(of: (SessionRegistry.SessionSummary, String?)?.self)
         promise.completeWithTask {
-            await self.registry.summary(id)
+            guard let summary = await self.registry.summary(id) else { return nil }
+            return (summary, await self.modelsOfTranscripts([summary])[summary.id])
         }
         promise.futureResult.whenComplete { result in
-            guard case .success(.some(let summary)) = result else {
+            guard case .success(.some((let summary, let model))) = result else {
                 self.writeJSON(
                     status: .notFound,
                     body: #"{"ok":false,"error":"no such session"}"#,
@@ -792,7 +826,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 return
             }
             let pendingApproval = self.approvals.snapshot().contains { $0.sessionID == summary.id }
-            var payload = Self.sessionItem(summary, pendingApproval: pendingApproval)
+            var payload = Self.sessionItem(summary, pendingApproval: pendingApproval, model: model)
             payload["ok"] = true
             let body: String
             if let data = try? JSONSerialization.data(withJSONObject: payload),

@@ -164,12 +164,30 @@ the tests added, the files changed from `git diff`, the decision and the PR, wit
 per goal. The transcript is exact and the line is rounded, so `--json` carries the
 transcript's field names wherever one was read.
 
+### The model
+
+A session row also says which model its agent runs on, `agentModel` and
+`agentModelName`, from the same transcript: the `message.model` of the last assistant
+line. `TranscriptModel` reads one 256 KiB `pread` of the tail, on the bill's queue, off
+the loop and off the registry actor. The window is measured, not assumed: the end of a
+transcript is tool results and bookkeeping lines, and over the 40 newest transcripts the
+last assistant line sat within 4 KiB of the end in 3, within 64 KiB in 39, and within
+256 KiB in all 40. `TranscriptModelCache` keys the answer by path with the file's size
+and mtime, so a session list costs one `stat` per session that has a transcript and a
+read only of a file that grew. A grown file whose window holds no assistant line, which
+a long tool result makes, keeps the model the path last yielded; a path never seen, a
+session with no assistant turn, and a `<synthetic>` line yield nothing, so the row
+prints nothing rather than a guess. The name is derived once, in `ModelName`, by the
+rule in `docs/goals/agent-dashboard/corpus/design-foundation.md`; the page prints what
+the daemon sends.
+
 ### The rollup
 
 Claude Code deletes a transcript thirty days after its last write, and every dollar and
 token the dashboard could show lives in those transcripts. So the daemon keeps a daily
 rollup of its own, `~/.kitterm/usage-daily.json`, and `GET /api/usage/daily?from=&to=`
-serves any range from it, one zero-filled entry per day with a per-project split.
+serves any range from it, one zero-filled entry per day with a per-project split and a
+per-model split.
 
 `UsageRollup` refreshes on start and every five minutes, on its own queue and never on
 the event loop: one listing per project directory under `~/.claude/projects/`, one `stat`
@@ -188,6 +206,13 @@ day is the daemon's local zone, named in the answer, because the transcript stam
 turn in UTC and an evening's work in `+07` would otherwise land on tomorrow. Tokens come
 from every assistant line, each `requestId` counted once, because one request is written
 as several lines carrying the same `usage`. Full grade only, like the bill.
+
+The split by model comes from the bill's own `modelUsage` map, kept on each record since
+2026-09-18, and each day takes its token share of every model's dollars and tokens, the
+same share that splits the session's total. A record written before the map was kept
+loads as it is and is read once more while its transcript is on disk; once the
+transcript is gone its dollars stay in the total and in no model's row, and the route
+reports them as `unsplitUSD`, so the model rows plus `unsplitUSD` equal the total.
 
 ### The quota
 

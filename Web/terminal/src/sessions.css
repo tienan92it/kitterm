@@ -459,6 +459,8 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
   flex: 1 1 14em; min-width: 0; color: var(--ui-text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* The model the agent runs on: a fact before the time, in the fact colour. */
+.main .model { color: var(--ui-text-muted); white-space: nowrap; }
 .main .since { margin-left: auto; color: var(--ui-text-muted); white-space: nowrap; }
 
 /* Row actions: quiet text beside the row on a wide screen; on a phone, one
