@@ -1,19 +1,18 @@
 # STATE: agent-dashboard
 
 - Status: active
-- Round: 2 of 3 in this budget (first budget)
-- Rounds total: 2
-- Last floor: green (2026-09-18, round 2 after: swift test 780, vitest 1264 in 41 files)
-- Updated: 2026-09-18, round 2 closed
+- Round: 3 of 3 in this budget (first budget)
+- Rounds total: 3
+- Last floor: green (2026-09-18, round 3 after: Linux green, swift test 788, vitest 1276 in 42 files, bench p95 2.58 ms)
+- Updated: 2026-09-18, round 3 closed
 
 ## Queue
 
-1. `a-task-is-the-fourth-level` (capability 3)
-2. `the-band-replaces-the-strip` (capability 4)
-3. `every-agent-says-its-model` (capability 6)
-4. `the-page-says-what-the-spend-bought` (capability 7)
-5. `every-line-is-one-line` (capability 5, last: it shapes the lines the
-   others create)
+1. `the-band-replaces-the-strip` (capability 4)
+2. `every-agent-says-its-model` (capability 6)
+3. `the-page-says-what-the-spend-bought` (capability 7)
+4. `every-line-is-one-line` (capability 5, last: it shapes the lines the
+   others create, and it owes 76 px at 390)
 
 ## Failures
 
@@ -32,6 +31,13 @@ None.
 
 ## Done
 
+- `a-task-is-the-fourth-level` (capability 3), round 3, PR #127. See
+  `rounds/003.md`. `KnowledgeSummary` parses `## Queue`, `## Done` and
+  `## Failures` into a task list the knowledge route serves, and the page
+  paints one line per task with the crew's row nested under the task it
+  runs. Failed beats pending beats done; a live `task:` label overrides
+  all three. No heading yields `nil`, not `[]`, which is eleven of
+  thirteen goals.
 - `the-foundation-in-the-stylesheet` (capability 2), round 2, PR #126.
   See `rounds/002.md`. Rule C expressed as a page-scoped `:root` in
   `sessions.css`, which loads only on `/sessions`, so `tokens.css` is
@@ -108,9 +114,14 @@ It is capability 7.
 
 ## Next action
 
-Round 3, `a-task-is-the-fourth-level`, from `plan.md` row 3. It adds the
-level the page has never had, and capability 5 needs it before it can
-shape those lines.
+Round 4, `the-band-replaces-the-strip`, from `plan.md` row 4.
+
+The budget is spent at round 3 and the human's standing direction is to
+run the goal to the end, so it continues into a second budget rather
+than waiting.
+
+Capability 5 now owes 76 px: round 3 left the 390 px page at 1276,
+against a completion condition of 1200.
 
 The design is settled and frozen: `corpus/design-foundation.md` holds
 the contract, `corpus/palette.md` holds five palette rounds and the
