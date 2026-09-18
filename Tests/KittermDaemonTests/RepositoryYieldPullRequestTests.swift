@@ -122,7 +122,7 @@ final class RepositoryYieldPullRequestTests: XCTestCase {
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         try process.run()
-        process.waitUntilExit()
+        waitForExit(of: process)
         XCTAssertEqual(process.terminationStatus, 0, "git \(args.joined(separator: " "))")
     }
 }
