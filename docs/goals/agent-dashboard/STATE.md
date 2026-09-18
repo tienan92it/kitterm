@@ -1,14 +1,16 @@
 # STATE: agent-dashboard
 
-- Status: waiting
+- Status: active
 - Round: 1 of 3 in this budget (third budget)
 - Rounds total: 8
 - Last floor: green (2026-09-18, round 8 after: swift test 823, vitest 1384 in 50 files)
-- Updated: 2026-09-18, round 8 closed
+- Updated: 2026-09-18, reopened for the Others label
 
 ## Queue
 
-Empty.
+1. `others-not-a-count` (the human's on 2026-09-18). The summed model row
+   reads `4 more models`. It should read `Others`: the count of models a
+   reader cannot name is not a fact they can act on.
 
 ## Failures
 
