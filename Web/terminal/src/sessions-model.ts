@@ -2087,25 +2087,24 @@ function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-/** The note under the chart, so the numbers say what they are made of. */
+/**
+ * The note under the chart: one line that names a fact
+ * (`design-foundation.md`, "The panels"). In cost mode, the part of the
+ * total that is apportioned across midnight by token share rather than
+ * measured, and the sessions that have turns and no bill yet, whose tokens
+ * are in and whose dollars are not; in tokens mode only the unbilled
+ * count, because every token is counted. Under 46 characters, which is
+ * what one line holds at 390 px; the page's title on the note carries the
+ * long form.
+ */
 export function usageNote(totals: UsageBucket, mode: UsageMode): string {
-  const parts: string[] = [];
-  if (mode === "cost" && totals.apportionedUSD > 0) {
-    parts.push(`${dollars(totals.apportionedUSD)} of it is apportioned across midnight by token share, not measured`);
-  }
-  if (totals.unbilledSessions > 0) {
-    parts.push(
-      mode === "cost"
-        ? `${plural(totals.unbilledSessions, "session has", "sessions have")} no bill yet, so their tokens are in and their dollars are not`
-        : `${plural(totals.unbilledSessions, "session has", "sessions have")} no bill yet; their tokens are counted`,
-    );
-  }
-  if (parts.length === 0) {
-    return mode === "cost"
-      ? "Every dollar is a session's own bill on the day it ran."
-      : "Every session in the range has its bill.";
-  }
-  return parts.join("; ") + ".";
+  const unbilled = totals.unbilledSessions > 0 ? `${plural(totals.unbilledSessions, "session", "sessions")} unbilled` : null;
+  if (mode === "tokens") return unbilled ? `${unbilled}: tokens counted` : "every session billed";
+  const apportioned = totals.apportionedUSD > 0 ? dollars(totals.apportionedUSD) : null;
+  if (apportioned && unbilled) return `${apportioned} apportioned · ${unbilled}`;
+  if (apportioned) return `${apportioned} apportioned across midnight`;
+  if (unbilled) return `${unbilled}: tokens in, dollars not`;
+  return "every dollar measured on its day";
 }
 
 /**

@@ -114,7 +114,6 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
 .mark {
   flex: none; width: 1ch; text-align: center; font-variant-ligatures: none;
   background: var(--ui-text-faint);
-  -webkit-background-clip: text; background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 .mark.running { background: var(--ui-accent); }
@@ -123,6 +122,12 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
 .mark.idle, .mark.done { background: var(--ui-success); }
 /* A pending task: the faint grey, because it needs nothing yet. */
 .mark.pending { background: var(--ui-text-faint); }
+/* The clip comes after the colours and at their specificity, because the
+   `background` shorthand above resets it, and a mark whose background is
+   not clipped to its glyph paints a box. */
+.mark.running, .mark.attention, .mark.failed, .mark.idle, .mark.done, .mark.pending, .mark.unknown {
+  -webkit-background-clip: text; background-clip: text;
+}
 
 /* --- the band ---------------------------------------------------------------
    One row, one height, always: four cells, a count and its noun each,
@@ -261,7 +266,9 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
   color: var(--ui-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .usage-peak { flex: 1 1 auto; text-align: center; overflow: hidden; text-overflow: ellipsis; }
-.usage-note { margin: var(--space-2) 0 0; color: var(--ui-text-muted); overflow-wrap: anywhere; }
+/* One line that names the number (`design-foundation.md`, "The panels");
+   the long form is the note's title. */
+.usage-note { margin: var(--space-2) 0 0; color: var(--ui-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .usage-age { margin: var(--space-1) 0 0; color: var(--ui-text-muted); }
 
 /* --- the quota -------------------------------------------------------------
@@ -549,7 +556,10 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
    not fit, in each level's drop order). While the page measures, nothing
    on the line shrinks, so the overflow is the room the facts must free. */
 [data-drop][hidden] { display: none; }
-.line.measure, .line.measure * { flex-shrink: 0; }
+/* `!important`, because the name cells set `flex: 0 1 auto` with more
+   specific selectors, and a name that shrinks while the page measures
+   hides the very overflow the facts must free. */
+.line.measure, .line.measure * { flex-shrink: 0 !important; }
 
 /* The folds: the done goals ("7 done") and the archived sessions, collapsed
    evidence of finished work, at the foot of its project. The summary is one

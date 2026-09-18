@@ -320,3 +320,104 @@ describe("the band is a fixed frame", () => {
     expect(sticky, "principle 2: the frame does not move, and nothing floats over the tree").toEqual([]);
   });
 });
+
+/**
+ * Every line is one line (`agent-dashboard`, capability 5;
+ * `design-foundation.md`, principle 3 and "The line, in detail"): a line
+ * of the tree is one `--line-h` tall and never wraps; its name is the only
+ * cell that truncates; a fact that does not fit is hidden whole. The marks
+ * are characters coloured through a clipped background, so no owned colour
+ * is ever `color`; and the one thing that moves is the working mark's
+ * character cycle in `sessions.ts`, which is why the sheet animates
+ * nothing at all.
+ */
+describe("every line is one line", () => {
+  // The parser splits a comma list, so each selector is its own rule.
+  const LINE_SELECTORS = [".card .head", ".workspace > .head", ".card .goal-line", ".card .line-task", ".row-line", ".line-approval"];
+  // A selector can have several unconditional rules (`.workspace > .head`
+  // does); they cascade, so the lookup merges them in sheet order.
+  const treeRule = (selector: string): CssRule | undefined => {
+    const rules = RULES.filter((rule) => rule.selector === selector && rule.conditions.length === 0);
+    return rules.length === 0 ? undefined : { ...rules[0], decls: new Map(rules.flatMap((rule) => [...rule.decls])) };
+  };
+  const lineRules = LINE_SELECTORS.map((selector) => treeRule(selector)!);
+
+  it("makes every level's line one --line-h tall, on one line, and never wraps it", () => {
+    expect(lineRules.map((rule) => rule?.selector), "each line selector has its rule").toEqual(LINE_SELECTORS);
+    expect(lineRules.map((rule) => rule.decls.get("min-height"))).toEqual(LINE_SELECTORS.map(() => "var(--line-h)"));
+    expect(lineRules.map((rule) => rule.decls.get("display"))).toEqual(LINE_SELECTORS.map(() => "flex"));
+    // The row's text lives in `.main`, which is where its nowrap goes.
+    const nowrap = [...lineRules.filter((rule) => rule.selector !== ".row-line"), treeRule(".main")!].map((rule) => rule.decls.get("white-space"));
+    expect(nowrap).toEqual(nowrap.map(() => "nowrap"));
+    const wrapping = RULES.filter((rule) => /\.(head|goal-line|line-task|row-line|row|open|main|line-approval)\b/.test(rule.selector))
+      .filter((rule) => rule.decls.has("flex-wrap"))
+      .map(at);
+    expect(wrapping, "principle 3: a fact that does not fit is dropped, not wrapped").toEqual([]);
+  });
+
+  it("truncates the name and nothing else in the tree", () => {
+    const NAMES = [".name-text", ".card .goal-line .goal-name", ".card .line-task .line-name", ".folder", ".line-approval-what", ".archived-name"];
+    const inTree = RULES.filter((rule) => /\.(card|workspace|row|open|main|line-|goal-|archived|tree-|folder|name-text|state|since|tally|cost)\b/.test(rule.selector));
+    const truncating = inTree.filter((rule) => rule.decls.get("text-overflow") === "ellipsis").map((rule) => rule.selector);
+    expect(truncating.sort()).toEqual([...NAMES].sort());
+    for (const name of NAMES) {
+      const rule = RULES.find((r) => r.selector === name)!;
+      expect(rule.decls.get("min-width"), `${name} may shrink`).toBe("0");
+      expect(rule.decls.get("overflow"), `${name} clips`).toBe("hidden");
+    }
+    // A fact is hidden whole, never cut: the cells that drop are `flex: none`.
+    const facts = [".main .place", ".main .what", ".main .model", ".line-approval-input"];
+    expect(facts.map((f) => treeRule(f)?.decls.get("flex"))).toEqual(facts.map(() => "none"));
+    expect(treeRule("[data-drop][hidden]")?.decls.get("display")).toBe("none");
+    expect(treeRule(".line.measure *")?.decls.get("flex-shrink")?.startsWith("0"), "nothing shrinks while the page measures").toBe(true);
+  });
+
+  it("draws every mark as a character coloured through its background, never through color", () => {
+    const mark = treeRule(".mark")!;
+    expect(mark.decls.get("-webkit-text-fill-color")).toBe("transparent");
+    expect(mark.decls.get("width")).toBe("1ch");
+    expect(mark.decls.has("mask") || mark.decls.has("-webkit-mask"), "no masked shape: the glyph is text").toBe(false);
+    // The clip sits on every family, after its colour: the `background`
+    // shorthand resets it, and an unclipped mark is a box.
+    const FAMILIES = ["running", "attention", "failed", "idle", "done", "pending", "unknown"];
+    expect(FAMILIES.map((f) => treeRule(`.mark.${f}`)?.decls.get("background-clip"))).toEqual(FAMILIES.map(() => "text"));
+    for (const f of FAMILIES) {
+      const rules = RULES.filter((rule) => rule.selector === `.mark.${f}` && rule.conditions.length === 0);
+      const colour = rules.findIndex((rule) => rule.decls.has("background"));
+      const clip = rules.findIndex((rule) => rule.decls.has("background-clip"));
+      expect(clip, `.mark.${f}: the clip comes after the colour`).toBeGreaterThanOrEqual(colour);
+    }
+    const coloured = RULES.filter((rule) => /\.mark\b/.test(rule.selector) && rule.decls.has("color")).map(at);
+    expect(coloured, "an owned colour on a mark is a background, so the ratchet measures it as the non-text mark it is").toEqual([]);
+    // The one mark that is not a character, the bar, paints its box again.
+    expect(treeRule(".mark.bar")?.decls.get("background-clip")).toBe("border-box");
+    // The families the model names each have their colour.
+    expect(["running", "attention", "failed", "pending"].map((f) => treeRule(`.mark.${f}`)?.decls.get("background"))).toEqual([
+      "var(--ui-accent)", "var(--ui-warning)", "var(--ui-danger)", "var(--ui-text-faint)",
+    ]);
+    expect([".mark.idle", ".mark.done"].map((f) => treeRule(f)?.decls.get("background"))).toEqual(["var(--ui-success)", "var(--ui-success)"]);
+  });
+
+  it("animates nothing but the working mark, and that as a character cycle outside the sheet", () => {
+    // `goal.md`: one animation, and only one. The spinner is a `textContent`
+    // swap on a 90 ms timer in `sessions.ts`, gated on
+    // `prefers-reduced-motion` there, so the sheet carries no `animation`,
+    // no `transition` and no `@keyframes`; any `animation` that ever
+    // appears must be the spinner's and must sit under a motion guard.
+    const animated = declarations((p) => p.startsWith("animation") || p.startsWith("transition"));
+    const outside = RULES.filter((rule) => [...rule.decls.keys()].some((p) => p.startsWith("animation")))
+      .filter((rule) => !(rule.selector === ".mark.running" && rule.conditions.some((c) => c.includes("prefers-reduced-motion"))))
+      .map(at);
+    expect(outside, "an animation that is not the spinner's under a prefers-reduced-motion guard").toEqual([]);
+    expect(animated.map(([where, name]) => `${where} ${name}`), "the spinner is a character cycle in sessions.ts, not a CSS animation").toEqual([]);
+    expect(SOURCE.includes("@keyframes")).toBe(false);
+    expect(RULES.filter((rule) => rule.decls.has("transition")).map(at)).toEqual([]);
+  });
+
+  it("prints the vocabulary in the tree's header and folds a goal's done tasks on a phone", () => {
+    expect(treeRule(".tree-head")?.decls.get("display")).toBe("flex");
+    expect(treeRule(".tree-key")?.decls.get("white-space")).toBe("nowrap");
+    expect(RULES.some((rule) => rule.selector === ".card .done-tasks > ul")).toBe(true);
+    expect(RULES.filter((rule) => /\.bucket\b/.test(rule.selector)).map(at), "no label over a bucket").toEqual([]);
+  });
+});

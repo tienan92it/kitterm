@@ -77,7 +77,9 @@ export type ValueTileKey = "prs" | "lines" | "releases" | "hours";
  * `rate` are `DASH` when the range has no source for them. */
 export type ValueTile = { key: ValueTileKey; count: string; noun: string; rate: string; title: string };
 
-export type ValuePanel = { tiles: ValueTile[]; note: string };
+/** The four tiles, the note under them, and the one line the panel folds
+ * behind below 768 px: `what the spend bought · 88 merged PRs`. */
+export type ValuePanel = { tiles: ValueTile[]; note: string; summary: string };
 
 /** The first sentence of the note under the tiles. */
 export const VALUE_NOTE = "A merged line and a merged PR are proxies for value, not value.";
@@ -112,8 +114,7 @@ export function valuePanel(report: UsageDaily | null | undefined, yieldReport: Y
   });
   const repos = counted && counted.counted > 0 ? counted : null;
   const apiMs = report.totals?.apiMs ?? 0;
-  return {
-    tiles: [
+  const tiles = [
       tile("prs", repos ? repos.mergedPullRequests : null, "merged PRs", "a PR",
         "First-parent commits on the remote's branch in the range whose subject ends in (#N) or starts with Merge pull request, over every registered or discovered checkout with a remote. The unit cost is the range's spend over the count."),
       tile("lines", repos ? repos.mergedLines : null, "merged lines", "a line",
@@ -123,10 +124,13 @@ export function valuePanel(report: UsageDaily | null | undefined, yieldReport: Y
       tile("hours", apiMs > 0 ? apiMs / 3_600_000 : null, "model hours", "an hour",
         "The bills' API duration over the range, each session's share by the day's token share. The unit cost divides the dollars of the sessions that carry a duration.",
         report.totals?.measuredUSD ?? 0),
-    ].map((t) => (t.key === "hours" && t.count !== DASH ? { ...t, count: hours(apiMs) } : t)),
+    ].map((t) => (t.key === "hours" && t.count !== DASH ? { ...t, count: hours(apiMs) } : t));
+  return {
+    tiles,
     note: checkouts.length > 0
       ? `${VALUE_NOTE} A unit cost divides the ${dollars(spend)} spent in ${plural(checkouts.length, "repository", "repositories")} counted; the hour divides the fleet's.`
       : VALUE_NOTE,
+    summary: tiles[0].count === DASH ? "what the spend bought" : `what the spend bought · ${tiles[0].count} ${tiles[0].noun}`,
   };
 }
 

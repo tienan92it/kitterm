@@ -880,9 +880,11 @@ function usageContent(panel: UsagePanel): Node[] {
   if (panel.peak) axis.append(span("usage-peak", `most ${usageAmount(panel.peak.value, panel.mode)} on ${dayLabel(panel.peak.day)}`));
   axis.append(span("usage-to", panel.days.length > 1 ? dayLabel(panel.days[panel.days.length - 1]) : ""));
 
+  // One line that names the number; the long form is its title.
   const note = document.createElement("p");
   note.className = "usage-note";
   note.textContent = panel.note;
+  note.title = "Apportioned: a session across midnight is split by each day's token share, not measured. Unbilled: a session with turns and no bill yet, so its tokens are in and its dollars are not.";
   const age = document.createElement("p");
   age.className = "usage-age";
   age.textContent = panel.age;
@@ -1000,9 +1002,10 @@ function paintPanel(block: HTMLElement, painted: string, model: unknown, content
 
 /** `VALUE`: four tiles, a count and its noun and what one unit cost, and
  * the one line that says a line and a PR are proxies. A tile with no
- * source prints a dash. */
+ * source prints a dash. Below 768 px it folds behind its summary line
+ * like every measure panel: the band carries the headline spend. */
 function paintValue(panel: ValuePanel | null): void {
-  valuePainted = paintPanel(valueBlock, valuePainted, panel, () => {
+  valuePainted = paintPanel(valueBlock, valuePainted, [panel, narrow()], () => {
     const tiles = document.createElement("div");
     tiles.className = "yield";
     for (const tile of panel!.tiles) {
@@ -1015,7 +1018,7 @@ function paintValue(panel: ValuePanel | null): void {
     const body = document.createElement("div");
     body.className = "panel-body";
     body.append(tiles, panelNote(panel!.note));
-    return [panelLabel("VALUE"), body];
+    return panelContent("VALUE", "panel:value", panel!.summary, body);
   });
 }
 
