@@ -1,5 +1,5 @@
 {
-  "version": "2.8",
+  "version": "2.14",
   "children": [
     {
       "type": "frame",
@@ -25,13 +25,11 @@
           "name": "Band",
           "width": "fill_container",
           "height": 44,
-          "stroke": {
-            "align": "inside",
-            "thickness": {
-              "bottom": 1
-            },
-            "fill": "$border"
+          "stroke": "$border",
+          "strokeWidth": {
+            "bottom": 1
           },
+          "strokeAlignment": "inner",
           "padding": [
             0,
             0,
@@ -478,13 +476,11 @@
                       "id": "zuqJO",
                       "name": "pua",
                       "width": "fill_container",
-                      "stroke": {
-                        "align": "inside",
-                        "thickness": {
-                          "top": 1
-                        },
-                        "fill": "$border"
+                      "stroke": "$border",
+                      "strokeWidth": {
+                        "top": 1
                       },
+                      "strokeAlignment": "inner",
                       "padding": [
                         4,
                         0,
@@ -723,13 +719,11 @@
                           "id": "COvOg",
                           "name": "tile",
                           "width": "fill_container",
-                          "stroke": {
-                            "align": "inside",
-                            "thickness": {
-                              "left": 2
-                            },
-                            "fill": "$accent"
+                          "stroke": "$accent",
+                          "strokeWidth": {
+                            "left": 2
                           },
+                          "strokeAlignment": "inner",
                           "layout": "vertical",
                           "gap": 1,
                           "padding": [
@@ -776,13 +770,11 @@
                           "id": "j2LkR",
                           "name": "tile",
                           "width": "fill_container",
-                          "stroke": {
-                            "align": "inside",
-                            "thickness": {
-                              "left": 2
-                            },
-                            "fill": "$accent"
+                          "stroke": "$accent",
+                          "strokeWidth": {
+                            "left": 2
                           },
+                          "strokeAlignment": "inner",
                           "layout": "vertical",
                           "gap": 1,
                           "padding": [
@@ -829,13 +821,11 @@
                           "id": "SJX2j",
                           "name": "tile",
                           "width": "fill_container",
-                          "stroke": {
-                            "align": "inside",
-                            "thickness": {
-                              "left": 2
-                            },
-                            "fill": "$accent"
+                          "stroke": "$accent",
+                          "strokeWidth": {
+                            "left": 2
                           },
+                          "strokeAlignment": "inner",
                           "layout": "vertical",
                           "gap": 1,
                           "padding": [
@@ -882,13 +872,11 @@
                           "id": "kUDFT",
                           "name": "tile",
                           "width": "fill_container",
-                          "stroke": {
-                            "align": "inside",
-                            "thickness": {
-                              "left": 2
-                            },
-                            "fill": "$accent"
+                          "stroke": "$accent",
+                          "strokeWidth": {
+                            "left": 2
                           },
+                          "strokeAlignment": "inner",
                           "layout": "vertical",
                           "gap": 1,
                           "padding": [
@@ -1851,13 +1839,11 @@
           "id": "uj9lF",
           "name": "Sessions head",
           "width": "fill_container",
-          "stroke": {
-            "align": "inside",
-            "thickness": {
-              "top": 1
-            },
-            "fill": "$border"
+          "stroke": "$border",
+          "strokeWidth": {
+            "top": 1
           },
+          "strokeAlignment": "inner",
           "gap": "$space-4",
           "padding": [
             10,
@@ -2092,11 +2078,8 @@
               "name": "Line",
               "width": "fill_container",
               "height": 28,
-              "stroke": {
-                "align": "inside",
-                "thickness": 0,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeAlignment": "inner",
               "gap": 8,
               "padding": [
                 0,
@@ -2194,11 +2177,8 @@
               "name": "r2",
               "width": "fill_container",
               "height": 28,
-              "stroke": {
-                "align": "inside",
-                "thickness": 0,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeAlignment": "inner",
               "gap": 8,
               "padding": [
                 0,
@@ -2296,11 +2276,8 @@
               "name": "r3",
               "width": "fill_container",
               "height": 28,
-              "stroke": {
-                "align": "inside",
-                "thickness": 0,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeAlignment": "inner",
               "gap": 8,
               "padding": [
                 0,
@@ -2397,11 +2374,8 @@
               "name": "r4",
               "width": "fill_container",
               "height": 28,
-              "stroke": {
-                "align": "inside",
-                "thickness": 0,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeAlignment": "inner",
               "gap": 8,
               "padding": [
                 0,
@@ -2498,11 +2472,8 @@
               "name": "r5",
               "width": "fill_container",
               "height": 28,
-              "stroke": {
-                "align": "inside",
-                "thickness": 0,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeAlignment": "inner",
               "gap": 8,
               "padding": [
                 0,
@@ -2599,11 +2570,8 @@
               "name": "r6",
               "width": "fill_container",
               "height": 28,
-              "stroke": {
-                "align": "inside",
-                "thickness": 0,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeAlignment": "inner",
               "gap": 8,
               "padding": [
                 0,
@@ -2702,11 +2670,8 @@
               "name": "r7",
               "width": "fill_container",
               "height": 28,
-              "stroke": {
-                "align": "inside",
-                "thickness": 0,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeAlignment": "inner",
               "gap": 8,
               "padding": [
                 0,
@@ -2805,11 +2770,8 @@
               "name": "r8",
               "width": "fill_container",
               "height": 28,
-              "stroke": {
-                "align": "inside",
-                "thickness": 0,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeAlignment": "inner",
               "gap": 8,
               "padding": [
                 0,
@@ -2908,11 +2870,8 @@
               "name": "r9",
               "width": "fill_container",
               "height": 28,
-              "stroke": {
-                "align": "inside",
-                "thickness": 0,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeAlignment": "inner",
               "gap": 8,
               "padding": [
                 0,
@@ -3008,13 +2967,11 @@
               "name": "r10",
               "width": "fill_container",
               "height": 38,
-              "stroke": {
-                "align": "inside",
-                "thickness": {
-                  "top": 1
-                },
-                "fill": "$border"
+              "stroke": "$border",
+              "strokeWidth": {
+                "top": 1
               },
+              "strokeAlignment": "inner",
               "gap": 8,
               "padding": [
                 10,
@@ -3111,11 +3068,8 @@
               "name": "r11",
               "width": "fill_container",
               "height": 28,
-              "stroke": {
-                "align": "inside",
-                "thickness": 0,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeAlignment": "inner",
               "gap": 8,
               "padding": [
                 0,
@@ -3213,11 +3167,8 @@
               "name": "r12",
               "width": "fill_container",
               "height": 28,
-              "stroke": {
-                "align": "inside",
-                "thickness": 0,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeAlignment": "inner",
               "gap": 8,
               "padding": [
                 0,
@@ -3316,11 +3267,8 @@
               "name": "r13",
               "width": "fill_container",
               "height": 28,
-              "stroke": {
-                "align": "inside",
-                "thickness": 0,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeAlignment": "inner",
               "gap": 8,
               "padding": [
                 0,
@@ -3419,11 +3367,8 @@
               "name": "r14",
               "width": "fill_container",
               "height": 28,
-              "stroke": {
-                "align": "inside",
-                "thickness": 0,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeAlignment": "inner",
               "gap": 8,
               "padding": [
                 0,
@@ -3520,13 +3465,11 @@
           "id": "p4jsk",
           "name": "Folds",
           "width": "fill_container",
-          "stroke": {
-            "align": "inside",
-            "thickness": {
-              "top": 1
-            },
-            "fill": "$border"
+          "stroke": "$border",
+          "strokeWidth": {
+            "top": 1
           },
+          "strokeAlignment": "inner",
           "gap": "$space-5",
           "padding": [
             10,
@@ -3592,13 +3535,11 @@
           "id": "q5wrt",
           "name": "Band",
           "width": "fill_container",
-          "stroke": {
-            "align": "inside",
-            "thickness": {
-              "bottom": 1
-            },
-            "fill": "$border"
+          "stroke": "$border",
+          "strokeWidth": {
+            "bottom": 1
           },
+          "strokeAlignment": "inner",
           "layout": "vertical",
           "gap": "$space-2",
           "padding": [
@@ -4018,13 +3959,11 @@
                   "id": "Kg9Jt",
                   "name": "ua",
                   "width": "fill_container",
-                  "stroke": {
-                    "align": "inside",
-                    "thickness": {
-                      "top": 1
-                    },
-                    "fill": "$border"
+                  "stroke": "$border",
+                  "strokeWidth": {
+                    "top": 1
                   },
+                  "strokeAlignment": "inner",
                   "padding": [
                     4,
                     0,
@@ -4158,13 +4097,11 @@
               "id": "29hh7",
               "name": "value",
               "width": "fill_container",
-              "stroke": {
-                "align": "inside",
-                "thickness": {
-                  "top": 1
-                },
-                "fill": "$border"
+              "stroke": "$border",
+              "strokeWidth": {
+                "top": 1
               },
+              "strokeAlignment": "inner",
               "layout": "vertical",
               "gap": 8,
               "padding": [
@@ -4186,13 +4123,11 @@
                       "id": "ORODm",
                       "name": "tile",
                       "width": "fill_container",
-                      "stroke": {
-                        "align": "inside",
-                        "thickness": {
-                          "left": 2
-                        },
-                        "fill": "$accent"
+                      "stroke": "$accent",
+                      "strokeWidth": {
+                        "left": 2
                       },
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "gap": 1,
                       "padding": [
@@ -4239,13 +4174,11 @@
                       "id": "oIEba",
                       "name": "tile",
                       "width": "fill_container",
-                      "stroke": {
-                        "align": "inside",
-                        "thickness": {
-                          "left": 2
-                        },
-                        "fill": "$accent"
+                      "stroke": "$accent",
+                      "strokeWidth": {
+                        "left": 2
                       },
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "gap": 1,
                       "padding": [
@@ -4301,13 +4234,11 @@
                       "id": "aH6ud",
                       "name": "tile",
                       "width": "fill_container",
-                      "stroke": {
-                        "align": "inside",
-                        "thickness": {
-                          "left": 2
-                        },
-                        "fill": "$accent"
+                      "stroke": "$accent",
+                      "strokeWidth": {
+                        "left": 2
                       },
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "gap": 1,
                       "padding": [
@@ -4354,13 +4285,11 @@
                       "id": "KMVOp",
                       "name": "tile",
                       "width": "fill_container",
-                      "stroke": {
-                        "align": "inside",
-                        "thickness": {
-                          "left": 2
-                        },
-                        "fill": "$accent"
+                      "stroke": "$accent",
+                      "strokeWidth": {
+                        "left": 2
                       },
+                      "strokeAlignment": "inner",
                       "layout": "vertical",
                       "gap": 1,
                       "padding": [
@@ -4423,13 +4352,11 @@
               "id": "D0ClG",
               "name": "models",
               "width": "fill_container",
-              "stroke": {
-                "align": "inside",
-                "thickness": {
-                  "top": 1
-                },
-                "fill": "$border"
+              "stroke": "$border",
+              "strokeWidth": {
+                "top": 1
               },
+              "strokeAlignment": "inner",
               "layout": "vertical",
               "gap": 3,
               "padding": [
@@ -5622,13 +5549,11 @@
           "id": "BkmuR",
           "name": "Folds",
           "width": "fill_container",
-          "stroke": {
-            "align": "inside",
-            "thickness": {
-              "top": 1
-            },
-            "fill": "$border"
+          "stroke": "$border",
+          "strokeWidth": {
+            "top": 1
           },
+          "strokeAlignment": "inner",
           "layout": "vertical",
           "gap": "$space-2",
           "padding": [
@@ -5680,13 +5605,11 @@
           "id": "x3LwF",
           "name": "fh",
           "width": "fill_container",
-          "stroke": {
-            "align": "inside",
-            "thickness": {
-              "bottom": 1
-            },
-            "fill": "$border"
+          "stroke": "$border",
+          "strokeWidth": {
+            "bottom": 1
           },
+          "strokeAlignment": "inner",
           "layout": "vertical",
           "gap": "$space-1",
           "padding": [
@@ -6225,13 +6148,11 @@
                               "name": "dl1",
                               "width": "fill_container",
                               "height": 44,
-                              "stroke": {
-                                "align": "inside",
-                                "thickness": {
-                                  "bottom": 1
-                                },
-                                "fill": "$border"
+                              "stroke": "$border",
+                              "strokeWidth": {
+                                "bottom": 1
                               },
+                              "strokeAlignment": "inner",
                               "gap": 8,
                               "alignItems": "center",
                               "children": [
@@ -6253,13 +6174,11 @@
                               "name": "dl2",
                               "width": "fill_container",
                               "height": 44,
-                              "stroke": {
-                                "align": "inside",
-                                "thickness": {
-                                  "bottom": 1
-                                },
-                                "fill": "$border"
+                              "stroke": "$border",
+                              "strokeWidth": {
+                                "bottom": 1
                               },
+                              "strokeAlignment": "inner",
                               "gap": 8,
                               "alignItems": "center",
                               "children": [
@@ -6301,13 +6220,11 @@
                               "name": "dm1",
                               "width": "fill_container",
                               "height": 28,
-                              "stroke": {
-                                "align": "inside",
-                                "thickness": {
-                                  "bottom": 1
-                                },
-                                "fill": "$border"
+                              "stroke": "$border",
+                              "strokeWidth": {
+                                "bottom": 1
                               },
+                              "strokeAlignment": "inner",
                               "gap": 8,
                               "alignItems": "center",
                               "children": [
@@ -6329,13 +6246,11 @@
                               "name": "dm2",
                               "width": "fill_container",
                               "height": 28,
-                              "stroke": {
-                                "align": "inside",
-                                "thickness": {
-                                  "bottom": 1
-                                },
-                                "fill": "$border"
+                              "stroke": "$border",
+                              "strokeWidth": {
+                                "bottom": 1
                               },
+                              "strokeAlignment": "inner",
                               "gap": 8,
                               "alignItems": "center",
                               "children": [
@@ -6779,13 +6694,11 @@
           "id": "DdoyZ",
           "name": "ah",
           "width": "fill_container",
-          "stroke": {
-            "align": "inside",
-            "thickness": {
-              "bottom": 1
-            },
-            "fill": "$border"
+          "stroke": "$border",
+          "strokeWidth": {
+            "bottom": 1
           },
+          "strokeAlignment": "inner",
           "layout": "vertical",
           "gap": "$space-1",
           "padding": [
@@ -6834,11 +6747,9 @@
               "name": "ce1",
               "width": 30,
               "height": 30,
-              "stroke": {
-                "align": "inside",
-                "thickness": 1,
-                "fill": "$accent"
-              },
+              "stroke": "$accent",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "justifyContent": "center",
               "alignItems": "center",
               "children": [
@@ -6859,11 +6770,9 @@
               "name": "ce2",
               "width": 62,
               "height": 30,
-              "stroke": {
-                "align": "inside",
-                "thickness": 1,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "justifyContent": "center",
               "alignItems": "center",
               "children": [
@@ -6884,11 +6793,9 @@
               "name": "ce3",
               "width": "fill_container",
               "height": 30,
-              "stroke": {
-                "align": "inside",
-                "thickness": 1,
-                "fill": "$text"
-              },
+              "stroke": "$text",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "justifyContent": "center",
               "alignItems": "center",
               "children": [
@@ -6909,11 +6816,9 @@
               "name": "ce4",
               "width": 190,
               "height": 30,
-              "stroke": {
-                "align": "inside",
-                "thickness": 1,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "justifyContent": "center",
               "alignItems": "center",
               "children": [
@@ -6934,11 +6839,9 @@
               "name": "ce5",
               "width": 62,
               "height": 30,
-              "stroke": {
-                "align": "inside",
-                "thickness": 1,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "justifyContent": "center",
               "alignItems": "center",
               "children": [
@@ -6959,11 +6862,9 @@
               "name": "ce6",
               "width": 62,
               "height": 30,
-              "stroke": {
-                "align": "inside",
-                "thickness": 1,
-                "fill": "$border"
-              },
+              "stroke": "$border",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "justifyContent": "center",
               "alignItems": "center",
               "children": [
@@ -7158,13 +7059,11 @@
           "id": "tiEiq",
           "name": "vgh",
           "width": "fill_container",
-          "stroke": {
-            "align": "inside",
-            "thickness": {
-              "bottom": 1
-            },
-            "fill": "$border"
+          "stroke": "$border",
+          "strokeWidth": {
+            "bottom": 1
           },
+          "strokeAlignment": "inner",
           "layout": "vertical",
           "gap": "$space-1",
           "padding": [
@@ -8385,13 +8284,11 @@
           "id": "8ogQr",
           "name": "pfh",
           "width": "fill_container",
-          "stroke": {
-            "align": "inside",
-            "thickness": {
-              "bottom": 1
-            },
-            "fill": "$border"
+          "stroke": "$border",
+          "strokeWidth": {
+            "bottom": 1
           },
+          "strokeAlignment": "inner",
           "layout": "vertical",
           "gap": "$space-1",
           "padding": [
@@ -8450,11 +8347,9 @@
               "name": "Signal",
               "width": "fill_container",
               "fill": "#0b0f14",
-              "stroke": {
-                "align": "inside",
-                "thickness": 1,
-                "fill": "#1e2833"
-              },
+              "stroke": "#1e2833",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "layout": "vertical",
               "children": [
                 {
@@ -8498,13 +8393,11 @@
                   "name": "fSb",
                   "width": "fill_container",
                   "height": 38,
-                  "stroke": {
-                    "align": "inside",
-                    "thickness": {
-                      "bottom": 1
-                    },
-                    "fill": "#1e2833"
+                  "stroke": "#1e2833",
+                  "strokeWidth": {
+                    "bottom": 1
                   },
+                  "strokeAlignment": "inner",
                   "gap": 18,
                   "padding": [
                     0,
@@ -9165,11 +9058,9 @@
               "name": "Flux",
               "width": "fill_container",
               "fill": "#0c0c12",
-              "stroke": {
-                "align": "inside",
-                "thickness": 1,
-                "fill": "#23232f"
-              },
+              "stroke": "#23232f",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "layout": "vertical",
               "children": [
                 {
@@ -9213,13 +9104,11 @@
                   "name": "fFb",
                   "width": "fill_container",
                   "height": 38,
-                  "stroke": {
-                    "align": "inside",
-                    "thickness": {
-                      "bottom": 1
-                    },
-                    "fill": "#23232f"
+                  "stroke": "#23232f",
+                  "strokeWidth": {
+                    "bottom": 1
                   },
+                  "strokeAlignment": "inner",
                   "gap": 18,
                   "padding": [
                     0,
@@ -9880,11 +9769,9 @@
               "name": "Phosphor",
               "width": "fill_container",
               "fill": "#080a09",
-              "stroke": {
-                "align": "inside",
-                "thickness": 1,
-                "fill": "#1d2420"
-              },
+              "stroke": "#1d2420",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
               "layout": "vertical",
               "children": [
                 {
@@ -9928,13 +9815,11 @@
                   "name": "fPb",
                   "width": "fill_container",
                   "height": 38,
-                  "stroke": {
-                    "align": "inside",
-                    "thickness": {
-                      "bottom": 1
-                    },
-                    "fill": "#1d2420"
+                  "stroke": "#1d2420",
+                  "strokeWidth": {
+                    "bottom": 1
                   },
+                  "strokeAlignment": "inner",
                   "gap": 18,
                   "padding": [
                     0,
@@ -10596,13 +10481,11 @@
           "id": "zj4nM",
           "name": "Glyph test",
           "width": "fill_container",
-          "stroke": {
-            "align": "inside",
-            "thickness": {
-              "top": 1
-            },
-            "fill": "$border"
+          "stroke": "$border",
+          "strokeWidth": {
+            "top": 1
           },
+          "strokeAlignment": "inner",
           "layout": "vertical",
           "gap": 4,
           "padding": [
@@ -10700,13 +10583,11 @@
           "id": "OWNdb",
           "name": "Round two",
           "width": "fill_container",
-          "stroke": {
-            "align": "inside",
-            "thickness": {
-              "top": 1
-            },
-            "fill": "$border"
+          "stroke": "$border",
+          "strokeWidth": {
+            "top": 1
           },
+          "strokeAlignment": "inner",
           "layout": "vertical",
           "gap": "$space-4",
           "padding": [
@@ -10752,11 +10633,9 @@
                   "name": "Lime",
                   "width": "fill_container",
                   "fill": "#0b0c0a",
-                  "stroke": {
-                    "align": "inside",
-                    "thickness": 1,
-                    "fill": "#1e211c"
-                  },
+                  "stroke": "#1e211c",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "children": [
                     {
@@ -10800,13 +10679,11 @@
                       "name": "fLib",
                       "width": "fill_container",
                       "height": 38,
-                      "stroke": {
-                        "align": "inside",
-                        "thickness": {
-                          "bottom": 1
-                        },
-                        "fill": "#1e211c"
+                      "stroke": "#1e211c",
+                      "strokeWidth": {
+                        "bottom": 1
                       },
+                      "strokeAlignment": "inner",
                       "gap": 18,
                       "padding": [
                         0,
@@ -11467,11 +11344,9 @@
                   "name": "Rose",
                   "width": "fill_container",
                   "fill": "#0d0a0c",
-                  "stroke": {
-                    "align": "inside",
-                    "thickness": 1,
-                    "fill": "#241e23"
-                  },
+                  "stroke": "#241e23",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "children": [
                     {
@@ -11515,13 +11390,11 @@
                       "name": "fRob",
                       "width": "fill_container",
                       "height": 38,
-                      "stroke": {
-                        "align": "inside",
-                        "thickness": {
-                          "bottom": 1
-                        },
-                        "fill": "#241e23"
+                      "stroke": "#241e23",
+                      "strokeWidth": {
+                        "bottom": 1
                       },
+                      "strokeAlignment": "inner",
                       "gap": 18,
                       "padding": [
                         0,
@@ -12182,11 +12055,9 @@
                   "name": "Mono",
                   "width": "fill_container",
                   "fill": "#0a0a0a",
-                  "stroke": {
-                    "align": "inside",
-                    "thickness": 1,
-                    "fill": "#1d1d1f"
-                  },
+                  "stroke": "#1d1d1f",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "children": [
                     {
@@ -12230,13 +12101,11 @@
                       "name": "fMob",
                       "width": "fill_container",
                       "height": 38,
-                      "stroke": {
-                        "align": "inside",
-                        "thickness": {
-                          "bottom": 1
-                        },
-                        "fill": "#1d1d1f"
+                      "stroke": "#1d1d1f",
+                      "strokeWidth": {
+                        "bottom": 1
                       },
+                      "strokeAlignment": "inner",
                       "gap": 18,
                       "padding": [
                         0,
@@ -12900,13 +12769,11 @@
           "id": "XtZTN",
           "name": "Brand",
           "width": "fill_container",
-          "stroke": {
-            "align": "inside",
-            "thickness": {
-              "top": 1
-            },
-            "fill": "$border"
+          "stroke": "$border",
+          "strokeWidth": {
+            "top": 1
           },
+          "strokeAlignment": "inner",
           "layout": "vertical",
           "gap": "$space-4",
           "padding": [
@@ -12952,11 +12819,9 @@
                   "name": "Prompt",
                   "width": "fill_container",
                   "fill": "#0d1117",
-                  "stroke": {
-                    "align": "inside",
-                    "thickness": 1,
-                    "fill": "#232b36"
-                  },
+                  "stroke": "#232b36",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "children": [
                     {
@@ -13010,13 +12875,11 @@
                       "name": "pbb",
                       "width": "fill_container",
                       "height": 38,
-                      "stroke": {
-                        "align": "inside",
-                        "thickness": {
-                          "bottom": 1
-                        },
-                        "fill": "#232b36"
+                      "stroke": "#232b36",
+                      "strokeWidth": {
+                        "bottom": 1
                       },
+                      "strokeAlignment": "inner",
                       "gap": 18,
                       "padding": [
                         0,
@@ -13680,13 +13543,11 @@
           "id": "UyQ8H",
           "name": "Greens",
           "width": "fill_container",
-          "stroke": {
-            "align": "inside",
-            "thickness": {
-              "top": 1
-            },
-            "fill": "$border"
+          "stroke": "$border",
+          "strokeWidth": {
+            "top": 1
           },
+          "strokeAlignment": "inner",
           "layout": "vertical",
           "gap": "$space-4",
           "padding": [
@@ -13732,11 +13593,9 @@
                   "name": "Spring",
                   "width": "fill_container",
                   "fill": "#0d1117",
-                  "stroke": {
-                    "align": "inside",
-                    "thickness": 1,
-                    "fill": "#232b36"
-                  },
+                  "stroke": "#232b36",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "children": [
                     {
@@ -14092,11 +13951,9 @@
                   "name": "Material",
                   "width": "fill_container",
                   "fill": "#0d1117",
-                  "stroke": {
-                    "align": "inside",
-                    "thickness": 1,
-                    "fill": "#232b36"
-                  },
+                  "stroke": "#232b36",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "children": [
                     {
@@ -14452,11 +14309,9 @@
                   "name": "Vivid",
                   "width": "fill_container",
                   "fill": "#0d1117",
-                  "stroke": {
-                    "align": "inside",
-                    "thickness": 1,
-                    "fill": "#232b36"
-                  },
+                  "stroke": "#232b36",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "children": [
                     {
@@ -14812,11 +14667,9 @@
                   "name": "Neon",
                   "width": "fill_container",
                   "fill": "#0d1117",
-                  "stroke": {
-                    "align": "inside",
-                    "thickness": 1,
-                    "fill": "#232b36"
-                  },
+                  "stroke": "#232b36",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "children": [
                     {
@@ -15172,11 +15025,9 @@
                   "name": "GitHub",
                   "width": "fill_container",
                   "fill": "#0d1117",
-                  "stroke": {
-                    "align": "inside",
-                    "thickness": 1,
-                    "fill": "#232b36"
-                  },
+                  "stroke": "#232b36",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
                   "layout": "vertical",
                   "children": [
                     {
@@ -15535,13 +15386,11 @@
           "id": "6gwEN",
           "name": "Coolors",
           "width": "fill_container",
-          "stroke": {
-            "align": "inside",
-            "thickness": {
-              "top": 1
-            },
-            "fill": "$border"
+          "stroke": "$border",
+          "strokeWidth": {
+            "top": 1
           },
+          "strokeAlignment": "inner",
           "layout": "vertical",
           "gap": "$space-4",
           "padding": [
@@ -16671,5 +16520,6 @@
         }
       ]
     }
-  }
+  },
+  "fileToken": "a3cef4a6-30f5-47b9-a1ec-47836fbea52b"
 }

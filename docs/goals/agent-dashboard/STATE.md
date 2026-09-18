@@ -1,14 +1,16 @@
 # STATE: agent-dashboard
 
-- Status: waiting
-- Round: 3 of 3 in this budget (second budget)
+- Status: active
+- Round: 0 of 3 in this budget (third budget)
 - Rounds total: 7
 - Last floor: green (2026-09-18, round 7 after: swift test 823, vitest 1374 in 49 files)
-- Updated: 2026-09-18, round 7 closed, every capability done
+- Updated: 2026-09-18, reopened for the MODELS top-three
 
 ## Queue
 
-Empty. All seven capabilities in `plan.md` are done.
+1. `models-top-three` (capability 8, the human's on 2026-09-18). The
+   `MODELS` panel draws one bar per model and the fleet has seven. Show
+   the top three by cost and sum the rest into one row.
 
 ## Failures
 
@@ -159,18 +161,8 @@ It is capability 7.
 
 ## Next action
 
-None until the human answers. The second budget is spent at round 7 and
-every capability in `plan.md` is done, so the goal is `waiting`.
+Round 8, `models-top-three`. The human asked for it after seeing the
+panel with seven bars: a long tail of models that cost almost nothing
+takes as many rows as the three that carry the spend.
 
-The foreman recommends **done**. All nine conditions in `goal.md` hold on
-`main` once PR #131 merges, including condition 6: the 390 px page is
-**1137** against its 1200, measured on the real `docs/goals/` tree with a
-three-row fleet.
-
-Five proposals wait, all listed above and none blocking. Two are
-Hierarchy and panel sentences in `design-foundation.md` that round 7's
-two answers changed in behaviour; ratifying them makes the frozen
-contract match the page.
-
-To reopen: set `Status: active`, write a queue, and set
-`Round: 0 of 3 in this budget (third budget)`.
+The five proposals above are unchanged and still wait; none blocks this.
