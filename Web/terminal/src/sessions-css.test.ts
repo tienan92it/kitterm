@@ -268,6 +268,12 @@ describe("the panels say what the spend bought", () => {
     expect(RULES.filter((rule) => /panel-fold|details/.test(rule.selector) && rule.selector.includes("panel")).map(at), "no panel folds").toEqual([]);
   });
 
+  it("keep only the MODELS label on a phone: USAGE, QUOTA and VALUE lose theirs", () => {
+    // Round 10 (the frame `Dashboard 390`): the tiles stand under no label.
+    const hidden = RULES.filter((rule) => rule.conditions.length > 0 && rule.decls.get("display") === "none" && /^\.panel\.\w+ > \.panel-label$/.test(rule.selector));
+    expect(hidden.map((rule) => rule.selector).sort()).toEqual([".panel.quota > .panel-label", ".panel.usage > .panel-label", ".panel.value > .panel-label"]);
+  });
+
   it("draw a bar as a mark, in the accent, and the remainder's in the amber", () => {
     const bar = RULES.filter((rule) => rule.selector === ".mark.bar");
     expect(bar.map((rule) => rule.decls.get("background"))).toEqual(["var(--ui-accent)"]);

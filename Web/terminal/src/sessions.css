@@ -306,7 +306,8 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
 @media (max-width: 767px) {
   #sessions { padding: var(--space-4) var(--space-3) var(--space-5); }
   .panel { grid-template-columns: minmax(0, 1fr); margin: 0 0 var(--space-3); }
-  .panel.usage > .panel-label, .panel.quota > .panel-label { display: none; }
+  /* Only MODELS keeps its label on a phone, as the frame draws it. */
+  .panel.usage > .panel-label, .panel.quota > .panel-label, .panel.value > .panel-label { display: none; }
   .panel.where, .panel.leaks { display: none; }
   /* Hairlines above VALUE and MODELS, as the frame draws them. */
   .panel.value, .panel.models { border-top: 1px solid var(--ui-border); padding-top: var(--space-3); }

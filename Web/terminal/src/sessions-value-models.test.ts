@@ -130,7 +130,9 @@ describe("MODELS names the top three and sums the rest", () => {
     expect(modelsPanel(report([]))).toBeNull();
   });
 
-  it("a tail that sums past the leader is the first row and the longest bar; no bar is longer than the first", () => {
+  it("a tail that sums past the leader is still the last row, and the longest bar", () => {
+    // Round 10, the human's word: top three by cost, then the others as one
+    // row more, whatever its sum.
     const models = [
       model("a", "A", 100, 1),
       model("b", "B", 90, 1),
@@ -142,12 +144,12 @@ describe("MODELS names the top three and sums the rest", () => {
     ];
     const panel = modelsPanel(report(models))!;
     expect(panel.rows.map((r) => [r.name, r.spend, r.sessions, r.fill])).toEqual([
-      ["Others", "$240.00", "8 sessions", 1],
       ["A", "$100.00", "1 session", 100 / 240],
       ["B", "$90.00", "1 session", 90 / 240],
       ["C", "$80.00", "1 session", 80 / 240],
+      ["Others", "$240.00", "8 sessions", 1],
     ]);
-    expect(panel.rows.every((r) => r.fill <= panel.rows[0].fill)).toBe(true);
+    expect(panel.rows[panel.rows.length - 1].key).toBe("more");
   });
 
   it("folds behind no summary line: the phone prints the rows themselves (round 10)", () => {

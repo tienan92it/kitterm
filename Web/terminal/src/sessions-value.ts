@@ -517,20 +517,21 @@ export const MODELS_NAMED = 3;
 
 /**
  * The top `MODELS_NAMED` models by cost over the range, from the split
- * `GET /api/usage/daily` answers (`models`), and one summed row for the
- * rest: the name, a bar, the spend and the session count on every row.
- * The summed row's spend is the range's split total less the named
- * rows, its session count the sum of its models' counts, and its title
- * is the only place that names them: the row reads `Others`, because
- * a count of models a reader cannot name is not a fact they can act
- * on (round 9). Every bar is scaled to the longest row, the summed row
- * included, and the rows sort by spend, so the first bar is always the
- * longest: a tail that sums past the leader is real, and it is the
- * first row. Null when the page has no rollup, the daemon sends no
- * split, or no model appears: a model with no reading prints nothing
- * rather than a guess. The note names the dollars of records read
- * before the rollup kept the map, which are in the total and in no row,
- * when there are any.
+ * `GET /api/usage/daily` answers (`models`), then one summed row for the
+ * rest, always last: the name, a bar, the spend and the session count on
+ * every row. The summed row's spend is the range's split total less the
+ * named rows, its session count the sum of its models' counts, and its
+ * title is the only place that names them: the row reads `Others`,
+ * because a count of models a reader cannot name is not a fact they can
+ * act on (round 9), and it sits after the top three whatever its sum
+ * (the human's word, round 10: "top 3 by cost, sum the others as one row
+ * more"). Every bar is scaled to the longest row, the summed row
+ * included, so a tail that sums past the leader is the longest bar and
+ * still the last row. Null when the page has no rollup, the daemon
+ * sends no split, or no model appears: a model with no reading prints
+ * nothing rather than a guess. The note names the dollars of records
+ * read before the rollup kept the map, which are in the total and in no
+ * row, when there are any.
  */
 export function modelsPanel(report: UsageDaily | null | undefined): ModelsPanel | null {
   if (!report || !report.ok || !report.models || report.models.length === 0) return null;
@@ -556,7 +557,6 @@ export function modelsPanel(report: UsageDaily | null | undefined): ModelsPanel 
       title: `${dollars(costUSD)} over ${plural(sessions, "session", "sessions")}: ${rest.map((m) => `${m.name} ${dollars(m.costUSD)}`).join(", ")}`,
     });
   }
-  raws.sort((a, b) => b.costUSD - a.costUSD);
   const max = Math.max(0, ...raws.map((r) => r.costUSD));
   return {
     rows: raws.map((r) => ({

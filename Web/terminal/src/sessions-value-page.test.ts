@@ -56,9 +56,14 @@ const routes: Record<string, unknown> = {
   "/api/usage/daily": {
     ok: true, timeZone: "UTC", from: "2026-08-20", to: "2026-09-18", refreshedAt: NOW, recordedSessions: 3, days: [],
     totals: { costUSD: 1000, apportionedUSD: 0, unsplitUSD: 0, tokens, sessions: 3, unbilledSessions: 0, apiMs: 10 * 3_600_000, measuredUSD: 1000 },
+    // Five models whose tail sums past the leader (round 10): the top three
+    // by cost, then Others, last whatever its sum.
     models: [
-      { model: "claude-fable-5-1", name: "Fable 5.1", costUSD: 900, apportionedUSD: 0, inputTokens: 1, outputTokens: 1, cacheReadInputTokens: 1, cacheCreationInputTokens: 0, sessions: 2 },
-      { model: "claude-haiku-4-5-20251001", name: "Haiku 4.5", costUSD: 100, apportionedUSD: 0, inputTokens: 1, outputTokens: 1, cacheReadInputTokens: 1, cacheCreationInputTokens: 0, sessions: 1 },
+      { model: "claude-fable-5-1", name: "Fable 5.1", costUSD: 100, apportionedUSD: 0, inputTokens: 1, outputTokens: 1, cacheReadInputTokens: 1, cacheCreationInputTokens: 0, sessions: 2 },
+      { model: "claude-opus-5[1m]", name: "Opus 5 · 1M", costUSD: 90, apportionedUSD: 0, inputTokens: 1, outputTokens: 1, cacheReadInputTokens: 1, cacheCreationInputTokens: 0, sessions: 1 },
+      { model: "claude-fable-5", name: "Fable 5", costUSD: 80, apportionedUSD: 0, inputTokens: 1, outputTokens: 1, cacheReadInputTokens: 1, cacheCreationInputTokens: 0, sessions: 1 },
+      { model: "claude-opus-5", name: "Opus 5", costUSD: 70, apportionedUSD: 0, inputTokens: 1, outputTokens: 1, cacheReadInputTokens: 1, cacheCreationInputTokens: 0, sessions: 1 },
+      { model: "claude-haiku-4-5-20251001", name: "Haiku 4.5", costUSD: 60, apportionedUSD: 0, inputTokens: 1, outputTokens: 1, cacheReadInputTokens: 1, cacheCreationInputTokens: 0, sessions: 1 },
     ],
     projects: [
       { id: "kitterm", name: "kitterm", root: `${W}/kitterm`, registered: true, costUSD: 950, apportionedUSD: 0, tokens, sessions: 2, unbilledSessions: 0 },
@@ -186,9 +191,13 @@ describe("the panels", () => {
     expect(models.querySelectorAll(".split-row").map((row) => [
       row.querySelector(".split-name")?.textContent, row.querySelector(".split-spend")?.textContent, row.querySelector(".split-short")?.textContent, row.querySelector(".split-units")?.textContent,
     ])).toEqual([
-      ["Fable 5.1", "$900.00", "$900", "2 sessions"],
-      ["Haiku 4.5", "$100.00", "$100", "1 session"],
+      ["Fable 5.1", "$100.00", "$100", "2 sessions"],
+      ["Opus 5 · 1M", "$90.00", "$90", "1 session"],
+      ["Fable 5", "$80.00", "$80", "1 session"],
+      ["Others", "$130.00", "$130", "2 sessions"],
     ]);
+    // Others sums past the leader and is still the last row.
+    expect(models.querySelectorAll(".split-row").map((r) => r.getAttribute("data-key"))).toEqual(["claude-fable-5-1", "claude-opus-5[1m]", "claude-fable-5", "more"]);
     expect(models.textContent).not.toContain("cached");
     expect(models.querySelectorAll("details"), "MODELS folds nowhere").toEqual([]);
   });
@@ -208,6 +217,21 @@ describe("the panels", () => {
   });
 });
 
+describe("MODELS keeps Others last", () => {
+  it("puts the summed row after the top three by cost at both widths, whatever its sum", async () => {
+    // Round 10, the human's word: top three by cost, then the others as
+    // one row more. The fixture's tail, $130, sums past its leader, $100.
+    const names = () => panelNamed("models").querySelectorAll(".split-name").map((n) => n.textContent);
+    for (const width of [false, true]) {
+      phone = width;
+      await page.poll();
+      expect(names(), width ? "390 px" : "1200 px").toEqual(["Fable 5.1", "Opus 5 · 1M", "Fable 5", "Others"]);
+    }
+    phone = false;
+    await page.poll();
+  });
+});
+
 describe("on a phone", () => {
   it("paints the same panels: the sheet hides WHERE and LEAKS, and nothing folds (round 10)", async () => {
     // Chartered in round 10: the frame `Dashboard 390` draws VALUE and
@@ -218,7 +242,7 @@ describe("on a phone", () => {
     expect(page.root.querySelectorAll(".panel-fold")).toEqual([]);
     expect(panels().map((p) => p.querySelector(".panel-label")?.textContent)).toEqual(["USAGE", "QUOTA", "VALUE", "WHERE", "MODELS", "LEAKS"]);
     expect(panelNamed("value").querySelectorAll(".yield-tile")).toHaveLength(4);
-    expect(panelNamed("models").querySelectorAll(".split-short").map((s) => s.textContent)).toEqual(["$900", "$100"]);
+    expect(panelNamed("models").querySelectorAll(".split-short").map((s) => s.textContent)).toEqual(["$100", "$90", "$80", "$130"]);
     phone = false;
     await page.poll();
     expect(panelNamed("where").querySelector(".panel-label")?.textContent).toBe("WHERE");
