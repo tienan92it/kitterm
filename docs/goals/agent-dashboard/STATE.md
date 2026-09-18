@@ -16,40 +16,24 @@ None.
 
 ## Proposals waiting on the human
 
-- **`corpus/design-foundation.md`, Hierarchy**: "below 768 px a goal's
-  done tasks fold behind one line, the way a project's done goals do."
-  Round 7's first answer. See `rounds/007.md`.
-- **`corpus/design-foundation.md`, The panels**: `VALUE` folds at 390 px
-  with `WHERE` and `MODELS`. The current sentence says it does not; that
-  was round 6's foreman call and round 7 priced it at 187 px.
-- **`corpus/valuemaxxing.md` has four numbers the parser disagrees with.**
-  84 merged PRs not 83, 59,251 lines not 58,853 (a one-day range), 2
-  corrections not 3, and **7 sessions over $5 under 95% cached worth
-  $64.92, not 3 worth $33.54**. The conclusion holds — $64.92 of $2,458
-  is still not a lever — but on the measured number. The corpus is
-  Frozen. See `rounds/006.md`.
-- **`corpus/design-foundation.md`, "The model": the 4 KiB sentence is
-  measured false.** The last assistant line sits within 4 KiB in 3 of 40
-  transcripts, within 256 KiB in 40 of 40. The code uses 256 KiB. The
-  corpus is Frozen, so the human changes the sentence. See
-  `rounds/005.md`.
-- **`AGENTS.md`'s fleet entry still describes the reply line** capability
-  1 removed. One sentence; capability 5 rewrites that paragraph anyway.
-- **The anatomy's "actions" cell** lists "`[new]`, the `…` menu, or
-  nothing", and an approval's `[Deny]`/`[Allow]` now live there. Name
-  them in the foundation or move them.
-
 - `site/index.html` sets `--accent: #3fb950`. The dashboard's palette is
   the Coolors set the human chose, so the site and the page no longer
   share a colour. Not blocking; the human decides whether the site
   follows.
-- `dashboard.pen` is open in Pencil and unsaved. The MCP server has no
-  save tool, so the human saves it to
-  `docs/goals/agent-dashboard/corpus/dashboard.pen`. The four frame
-  exports and the written contract are committed either way.
+- `goal.md` condition 6 says the 390 px page is under 1200 px. The
+  frame's shape on the real tree measures 2499 px. Reset the number or
+  strike the condition.
 
 ## Done
 
+- Corpus cleanup, 2026-09-18, at the human's direction: `dashboard.pen`
+  is the single source of truth. Every rendering of the design left the
+  corpus (`01-*`, `02-*`, `03-*`, `04-*`); `design-foundation.md` points
+  at the file and no longer describes the layout twice; its working
+  mark and its transcript-read sentence carry the measured values; and
+  `valuemaxxing.md` carries round 6's four corrections as an amendment.
+  Four proposals closed by that: the two folding sentences (the frames
+  decide), the 4 KiB sentence, the four numbers.
 - `the-page-is-the-pen-design` (capability 10), round 10, on
   `agent-dashboard/round-10`. See `rounds/010.md`. The page reproduces
   the two frames at 1200 and 390; `Others` is the last MODELS row. 27
