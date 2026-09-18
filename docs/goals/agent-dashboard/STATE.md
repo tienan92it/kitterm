@@ -1,16 +1,16 @@
 # STATE: agent-dashboard
 
 - Status: active
-- Round: 2 of 3 in this budget (second budget)
-- Rounds total: 5
-- Last floor: green (2026-09-18, round 5 after: Linux green, swift test 803, vitest 1301 in 45 files, bench p95 2.98 ms)
-- Updated: 2026-09-18, round 5 closed
+- Round: 3 of 3 in this budget (second budget)
+- Rounds total: 6
+- Last floor: green (2026-09-18, round 6 after: Linux green, swift test 822, vitest 1337 in 47 files, bench p95 2.61 ms)
+- Updated: 2026-09-18, round 6 closed
 
 ## Queue
 
-1. `the-page-says-what-the-spend-bought` (capability 7)
-2. `every-line-is-one-line` (capability 5, last: it shapes the lines the
-   others create, and it owes 47 px at 390)
+1. `every-line-is-one-line` (capability 5, the last. It shapes the lines
+   every other capability created, and it owes **342 px at 390**, which
+   round 6 measured and named.)
 
 ## Failures
 
@@ -18,6 +18,12 @@ None.
 
 ## Proposals waiting on the human
 
+- **`corpus/valuemaxxing.md` has four numbers the parser disagrees with.**
+  84 merged PRs not 83, 59,251 lines not 58,853 (a one-day range), 2
+  corrections not 3, and **7 sessions over $5 under 95% cached worth
+  $64.92, not 3 worth $33.54**. The conclusion holds — $64.92 of $2,458
+  is still not a lever — but on the measured number. The corpus is
+  Frozen. See `rounds/006.md`.
 - **`corpus/design-foundation.md`, "The model": the 4 KiB sentence is
   measured false.** The last assistant line sits within 4 KiB in 3 of 40
   transcripts, within 256 KiB in 40 of 40. The code uses 256 KiB. The
@@ -40,6 +46,12 @@ None.
 
 ## Done
 
+- `the-page-says-what-the-spend-bought` (capability 7), round 6, PR #130.
+  See `rounds/006.md`. `VALUE`, `WHERE` with four groupings, `MODELS`,
+  `LEAKS`, and the cache share off every heading. `WHERE` and `MODELS`
+  fold at 390 px behind a summary line; `VALUE` does not. The crew
+  corrected the research four times and stopped at the completion
+  condition rather than shipping past it.
 - `every-agent-says-its-model` (capability 6), round 5, PR #129. See
   `rounds/005.md`. A session's row carries its model, and
   `GET /api/usage/daily` answers a per-model split whose parts sum to
@@ -137,12 +149,12 @@ It is capability 7.
 
 ## Next action
 
-Round 6, `the-page-says-what-the-spend-bought`, from `plan.md` row 7. It
-reads the per-model split round 5 just shipped and takes the cache share
-off every heading.
+Round 7, `every-line-is-one-line`, from `plan.md` row 5. The last
+capability.
 
-Capability 5 then owes 47 px: round 5 left the 390 px page at 1247,
-against a completion condition of 1200.
+It owes **342 px at 390**: round 6 left the page at 1542 against a
+completion condition of 1200, and that height is in the tree, which is
+exactly what this capability shapes.
 
 The design is settled and frozen: `corpus/design-foundation.md` holds
 the contract, `corpus/palette.md` holds five palette rounds and the
