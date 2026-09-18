@@ -712,9 +712,9 @@ function paint(): void {
 // A line's name is the only cell that truncates; its facts drop, whole, from
 // the right when the line is too narrow for them. CSS cannot hide a flex
 // item that does not fit without cutting it, so the page measures: with
-// every fact shown and nothing allowed to shrink, how far the line's cells
-// run past its edge is what the facts must give back, and `keptFacts`
-// says how many stay. Facts carry `data-drop`, their place in the drop
+// every fact shown and every cell at its content width (`.measure`), how
+// far the line's cells run past its content edge is what the facts must
+// give back, and `keptFacts` says how many stay. Facts carry `data-drop`, their place in the drop
 // order (0 first); the name carries `data-name`. Two passes over the page,
 // one read and one write, so the layout runs twice, not once per line.
 
@@ -734,7 +734,8 @@ function fitLines(): void {
     const facts = [...line.querySelectorAll<HTMLElement>("[data-drop]")].sort(
       (a, b) => Number(a.dataset.drop) - Number(b.dataset.drop),
     );
-    const edge = line.getBoundingClientRect().right;
+    // The content edge: a cell past it is a cell the line has no room for.
+    const edge = line.getBoundingClientRect().right - (Number.parseFloat(getComputedStyle(line).paddingRight) || 0);
     let right = edge;
     for (const cell of line.querySelectorAll<HTMLElement>("*")) right = Math.max(right, cell.getBoundingClientRect().right);
     const gap = Number.parseFloat(getComputedStyle(line).columnGap) || 0;

@@ -556,10 +556,12 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
    not fit, in each level's drop order). While the page measures, nothing
    on the line shrinks, so the overflow is the room the facts must free. */
 [data-drop][hidden] { display: none; }
-/* `!important`, because the name cells set `flex: 0 1 auto` with more
-   specific selectors, and a name that shrinks while the page measures
-   hides the very overflow the facts must free. */
-.line.measure, .line.measure * { flex-shrink: 0 !important; }
+/* Every cell at its content width and no cell grown or shrunk, so the
+   overflow runs past the line's own edge rather than hiding inside
+   `.main` or the heading, whose `flex: 1` would hold them at their share
+   of the line. `!important`, because the cells set their own `flex` with
+   more specific selectors. */
+.line.measure, .line.measure * { flex: 0 0 auto !important; }
 
 /* The folds: the done goals ("7 done") and the archived sessions, collapsed
    evidence of finished work, at the foot of its project. The summary is one

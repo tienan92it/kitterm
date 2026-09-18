@@ -369,7 +369,7 @@ describe("every line is one line", () => {
     const facts = [".main .place", ".main .what", ".main .model", ".line-approval-input"];
     expect(facts.map((f) => treeRule(f)?.decls.get("flex"))).toEqual(facts.map(() => "none"));
     expect(treeRule("[data-drop][hidden]")?.decls.get("display")).toBe("none");
-    expect(treeRule(".line.measure *")?.decls.get("flex-shrink")?.startsWith("0"), "nothing shrinks while the page measures").toBe(true);
+    expect(treeRule(".line.measure *")?.decls.get("flex")?.startsWith("0 0 auto"), "every cell at its content width while the page measures").toBe(true);
   });
 
   it("draws every mark as a character coloured through its background, never through color", () => {
