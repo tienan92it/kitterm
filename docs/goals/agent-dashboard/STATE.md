@@ -1,14 +1,21 @@
 # STATE: agent-dashboard
 
-- Status: waiting
-- Round: 2 of 3 in this budget (third budget)
+- Status: active
+- Round: 0 of 3 in this budget (fourth budget)
 - Rounds total: 9
 - Last floor: green (2026-09-18, round 9 after: swift test 823, vitest 1384 in 50 files)
-- Updated: 2026-09-18, round 9 closed
+- Updated: 2026-09-18, reopened: the page follows the Pen design
 
 ## Queue
 
-Empty.
+1. `the-page-is-the-pen-design` (capability 10, the human's on
+   2026-09-18). The human reviewed the shipped page against
+   `corpus/dashboard.pen` and said the code is wrong: the page must
+   follow the two frames `Dashboard 1200` and `Dashboard 390` exactly,
+   with one change to the design, `MODELS` as the top three by cost plus
+   `Others` (rounds 8 and 9). The frames are exported as
+   `corpus/04-pen-1200.png` and `corpus/04-pen-390.png`. The differences
+   the foreman read off the frames are in `rounds/010.md`.
 
 ## Failures
 
@@ -167,18 +174,19 @@ nothing here knows the human's hourly rate and the page takes no input.
 
 It is capability 7.
 
+## Direction, continued
+
+2026-09-18: the human closed Pen without saving after the foreman
+replaced the two dashboard frames with a copy of the shipped page. The
+frames are the human's design and the foreman does not edit them. The
+human then said the shipped page is wrong: it must follow the Pen frames
+exactly, and the one change to the frames is `MODELS` as the top three
+plus `Others`. Two of the open proposals fall to this direction: the
+frames show `VALUE` unfolded at 390 px, and they show a done goal's last
+done tasks open at both widths. It is capability 10.
+
 ## Next action
 
-None until the human answers. Every capability is done, including the
-one they added after seeing the result.
-
-The foreman recommends **done**. All nine conditions in `goal.md` hold on
-`main`, including condition 6: the 390 px page is **1002 closed, 1114
-with every fold open**, against its 1200.
-
-Five proposals wait, all listed above and none blocking. Two are
-sentences in the frozen `design-foundation.md` that round 7's two answers
-changed in behaviour; ratifying them makes the contract match the page.
-
-To reopen: set `Status: active`, write a queue, and set
-`Round: 0 of 3 in this budget (fourth budget)`.
+Round 10, `the-page-is-the-pen-design`. The foreman exported the two
+frames to `corpus/04-pen-1200.png` and `corpus/04-pen-390.png` for the
+crew, and lists the differences in the round prompt.
