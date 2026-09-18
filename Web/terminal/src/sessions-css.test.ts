@@ -233,3 +233,50 @@ describe("a task line follows the foundation", () => {
     expect(RULES.some((rule) => rule.selector === ".mark.pending"), "the pending task's faint dot").toBe(true);
   });
 });
+
+/**
+ * The band (`agent-dashboard`, capability 4; `design-foundation.md`,
+ * principle 2): one row, one height, always. The height is set, not a
+ * minimum, and the box clips, so no count and no noun can move the frame;
+ * below 768 px the cells wrap to two rows of two at twice the height. The
+ * strip it replaces is gone, and nothing on the page is sticky.
+ */
+describe("the band is a fixed frame", () => {
+  const bandRules = RULES.filter((rule) => /^(a\.)?\.?band(-|\b)/.test(rule.selector.replace(/^a\./, ".")));
+  const bandRoot = RULES.filter((rule) => rule.selector === ".band");
+
+  it("sets one height from the line token, not a minimum, and clips", () => {
+    const plain = bandRoot.filter((rule) => rule.conditions.length === 0);
+    expect(plain.map((rule) => rule.decls.get("height"))).toEqual(["var(--line-h)"]);
+    expect(plain.map((rule) => rule.decls.get("overflow"))).toEqual(["hidden"]);
+    expect(bandRules.flatMap((rule) => [...rule.decls.keys()].filter((name) => name === "min-height" || name === "max-height").map(() => at(rule)))
+      .filter((where) => !where.includes(".band-cell")), "a band whose height can move").toEqual([]);
+  });
+
+  it("wraps to two rows of two below 768 px, at twice the height and no more", () => {
+    const narrow = bandRoot.filter((rule) => rule.conditions.length > 0).map((rule) => [
+      rule.conditions.join(" "),
+      rule.decls.get("height"),
+      rule.decls.get("grid-template-columns"),
+    ]);
+    expect(narrow).toEqual([["@media (max-width: 767px)", "calc(2 * var(--line-h))", "repeat(2, minmax(0, 1fr))"]]);
+    const wide = bandRoot.filter((rule) => rule.conditions.length === 0).map((rule) => rule.decls.get("grid-template-columns"));
+    expect(wide).toEqual(["repeat(4, minmax(0, 1fr))"]);
+  });
+
+  it("keeps a cell one line tall and on one line, cut rather than wrapped", () => {
+    const cell = RULES.filter((rule) => rule.selector === ".band-cell");
+    expect(cell.map((rule) => rule.decls.get("height"))).toEqual(["var(--line-h)"]);
+    expect(cell.map((rule) => rule.decls.get("white-space"))).toEqual(["nowrap"]);
+    expect(cell.map((rule) => rule.decls.get("overflow"))).toEqual(["hidden"]);
+    // The row tracks are the line height too, so no cell can stretch one.
+    expect(bandRoot.filter((rule) => rule.conditions.length === 0).map((rule) => rule.decls.get("grid-auto-rows"))).toEqual(["var(--line-h)"]);
+  });
+
+  it("draws no strip, no count line, and nothing sticky", () => {
+    const strip = RULES.filter((rule) => /\.(strip|fleet)(-|\b)/.test(rule.selector)).map(at);
+    expect(strip, "a rule for the strip the band replaced").toEqual([]);
+    const sticky = declarations((p) => p === "position").filter(([, , value]) => value.trim() === "sticky" || value.trim() === "fixed");
+    expect(sticky, "principle 2: the frame does not move, and nothing floats over the tree").toEqual([]);
+  });
+});

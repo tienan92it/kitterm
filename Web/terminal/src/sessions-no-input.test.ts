@@ -1,4 +1,6 @@
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+
+import { FakeElement, installFakePage } from "./fake-page";
 
 /**
  * The page presents and monitors; it accepts no typed work
@@ -9,9 +11,10 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
  * no `input`, no `textarea`, no `contenteditable` and no `[send]`.
  *
  * `sessions.ts` paints through the DOM on import, and the test runner has
- * no DOM package, so the test lends it one: a tree of plain elements that
- * records the tag, the attributes and the children the page gives it, and
- * a `fetch` that answers the daemon's routes from the fixture.
+ * no DOM package, so the test lends it one (`fake-page.ts`): a tree of
+ * plain elements that records the tag, the attributes and the children the
+ * page gives it, and a `fetch` that answers the daemon's routes from the
+ * fixture.
  */
 
 const NOW = 1_758_000_000_000;
@@ -76,163 +79,13 @@ const routes: Record<string, unknown> = {
   "/api/profiles": { profiles: [] },
 };
 
-/** One element of the lent DOM: what the page sets on it and what it holds. */
-class FakeElement {
-  tagName: string;
-  children: Array<FakeElement | string> = [];
-  attributes = new Map<string, string>();
-  dataset: Record<string, string> = {};
-  style = { setProperty(): void {} };
-  hidden = false;
-  className = "";
-  classList = {
-    add: (...names: string[]) => {
-      const set = new Set(this.className.split(/\s+/).filter(Boolean));
-      for (const name of names) set.add(name);
-      this.className = [...set].join(" ");
-    },
-    remove: (...names: string[]) => {
-      this.className = this.className
-        .split(/\s+/)
-        .filter((name) => name && !names.includes(name))
-        .join(" ");
-    },
-    toggle: (name: string, force?: boolean): boolean => {
-      const has = this.classList.contains(name);
-      const want = force ?? !has;
-      if (want) this.classList.add(name);
-      else this.classList.remove(name);
-      return want;
-    },
-    contains: (name: string): boolean => this.className.split(/\s+/).includes(name),
-  };
-
-  constructor(tagName: string) {
-    this.tagName = tagName.toUpperCase();
-  }
-
-  get textContent(): string {
-    return this.children.map((child) => (typeof child === "string" ? child : child.textContent)).join("");
-  }
-  set textContent(value: string) {
-    this.children = value === "" ? [] : [value];
-  }
-
-  append(...nodes: Array<FakeElement | string>): void {
-    for (const node of nodes) {
-      if (node instanceof FakeElement && node.tagName === "#FRAGMENT") this.children.push(...node.children);
-      else this.children.push(node);
-    }
-  }
-  appendChild(node: FakeElement | string): void {
-    this.append(node);
-  }
-  prepend(...nodes: Array<FakeElement | string>): void {
-    const rest = this.children;
-    this.children = [];
-    this.append(...nodes);
-    this.children.push(...rest);
-  }
-  replaceChildren(...nodes: Array<FakeElement | string>): void {
-    this.children = [];
-    this.append(...nodes);
-  }
-  remove(): void {}
-  setAttribute(name: string, value: string): void {
-    this.attributes.set(name, String(value));
-  }
-  getAttribute(name: string): string | null {
-    return this.attributes.get(name) ?? null;
-  }
-  removeAttribute(name: string): void {
-    this.attributes.delete(name);
-  }
-  hasAttribute(name: string): boolean {
-    return this.attributes.has(name);
-  }
-  addEventListener(): void {}
-  removeEventListener(): void {}
-  focus(): void {}
-  closest(): null {
-    return null;
-  }
-  contains(): boolean {
-    return false;
-  }
-
-  /** `.class` and `[attr="value"]` selectors, which is all the page asks of its root. */
-  querySelector(selector: string): FakeElement | null {
-    return this.querySelectorAll(selector)[0] ?? null;
-  }
-  querySelectorAll(selector: string): FakeElement[] {
-    const found: FakeElement[] = [];
-    const attr = /^\[([\w-]+)(?:="([^"]*)")?\]$/.exec(selector);
-    const matches = (el: FakeElement): boolean => {
-      if (selector.startsWith(".")) return el.classList.contains(selector.slice(1));
-      if (attr) return attr[2] === undefined ? el.hasAttribute(attr[1]) : el.getAttribute(attr[1]) === attr[2];
-      return el.tagName === selector.toUpperCase();
-    };
-    for (const el of this.descendants()) if (matches(el)) found.push(el);
-    return found;
-  }
-  *descendants(): Generator<FakeElement> {
-    for (const child of this.children) {
-      if (typeof child === "string") continue;
-      yield child;
-      yield* child.descendants();
-    }
-  }
-}
-
-const root = new FakeElement("main");
-root.setAttribute("id", "sessions");
-
-const fakeDocument = {
-  hidden: false,
-  title: "",
-  activeElement: null,
-  body: new FakeElement("body"),
-  documentElement: new FakeElement("html"),
-  createElement: (tag: string) => new FakeElement(tag),
-  createElementNS: (_ns: string, tag: string) => new FakeElement(tag),
-  createDocumentFragment: () => new FakeElement("#fragment"),
-  getElementById: (id: string) => (id === "sessions" ? root : null),
-  querySelector: () => null,
-  querySelectorAll: () => [],
-  addEventListener(): void {},
-};
-
-const storage = new Map<string, string>();
-
-async function settle(): Promise<void> {
-  // The page polls after it has read the profiles; each poll awaits five
-  // routes and the usage, then paints. Twenty turns of the macrotask
-  // queue cover that with room.
-  for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
-}
+let root: FakeElement;
 
 beforeAll(async () => {
-  vi.stubGlobal("document", fakeDocument);
-  vi.stubGlobal("window", globalThis);
-  vi.stubGlobal("HTMLElement", FakeElement);
-  vi.stubGlobal("Element", FakeElement);
-  vi.stubGlobal("localStorage", {
-    getItem: (key: string) => storage.get(key) ?? null,
-    setItem: (key: string, value: string) => void storage.set(key, value),
-    removeItem: (key: string) => void storage.delete(key),
-  });
-  vi.stubGlobal("CSS", { escape: (s: string) => s });
-  vi.stubGlobal("isSecureContext", false);
-  // The 2 s safety-net poll would outlive the test; one poll is the page.
-  vi.stubGlobal("setInterval", () => 0);
-  vi.stubGlobal("fetch", async (input: string | URL) => {
-    const path = String(input).replace(/\?.*$/, "");
-    const body = routes[path];
-    if (body === undefined) return new Response("not found", { status: 404 });
-    return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
-  });
+  const page = installFakePage(routes);
+  root = page.root;
   await import("./sessions");
-  await settle();
+  await page.settle();
 });
 
 describe("the fleet view takes no typed work", () => {
