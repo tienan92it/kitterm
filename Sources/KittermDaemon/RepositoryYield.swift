@@ -40,10 +40,28 @@ public struct RepositoryYield: Codable, Equatable, Sendable {
     public var mergedPullRequests: Int?
     public var mergedLines: Int?
     public var releases: Int?
+    /// Each merged pull request in the range, by number, with the lines
+    /// it added: what the fleet view's `WHERE` panel prices a goal's
+    /// lines from, by the `PR #N` its round records name. Absent with
+    /// `mergedPullRequests`; a merge commit whose subject names no number
+    /// is counted above and left out here.
+    public var pullRequests: [PullRequest]?
+
+    /// One merged pull request: its number and the lines it added.
+    public struct PullRequest: Codable, Equatable, Sendable {
+        public var number: Int
+        public var lines: Int
+
+        public init(number: Int, lines: Int) {
+            self.number = number
+            self.lines = lines
+        }
+    }
 
     public init(
         checkout: Bool, remote: Bool, branch: String? = nil,
-        mergedPullRequests: Int? = nil, mergedLines: Int? = nil, releases: Int? = nil
+        mergedPullRequests: Int? = nil, mergedLines: Int? = nil, releases: Int? = nil,
+        pullRequests: [PullRequest]? = nil
     ) {
         self.checkout = checkout
         self.remote = remote
@@ -51,6 +69,7 @@ public struct RepositoryYield: Codable, Equatable, Sendable {
         self.mergedPullRequests = mergedPullRequests
         self.mergedLines = mergedLines
         self.releases = releases
+        self.pullRequests = pullRequests
     }
 
     /// Not a checkout: nothing to count.
@@ -104,6 +123,9 @@ public struct RepositoryYield: Codable, Equatable, Sendable {
             let merged = parseLog(log.output).filter { isPullRequest($0.subject) }
             yield.mergedPullRequests = merged.count
             yield.mergedLines = merged.reduce(0) { $0 + $1.insertions }
+            yield.pullRequests = merged.compactMap { commit in
+                pullRequestNumber(commit.subject).map { PullRequest(number: $0, lines: commit.insertions) }
+            }
         }
         if let tags = at(["for-each-ref", "refs/tags", "--format=%(creatordate:unix)"]), tags.status == 0 {
             yield.releases = tags.output.split(separator: "\n").filter { line in
@@ -122,6 +144,21 @@ public struct RepositoryYield: Codable, Equatable, Sendable {
         let naive = TimeInterval(day.number * 86_400)
         let guess = naive - TimeInterval(zone.secondsFromGMT(for: Date(timeIntervalSince1970: naive)))
         return Date(timeIntervalSince1970: naive - TimeInterval(zone.secondsFromGMT(for: Date(timeIntervalSince1970: guess))))
+    }
+
+    /// The pull request number a merged commit's subject names: `N` from a
+    /// squash merge's `(#N)` suffix or a merge commit's `Merge pull request
+    /// #N`; nil for a subject `isPullRequest` refuses.
+    public static func pullRequestNumber(_ subject: String) -> Int? {
+        guard isPullRequest(subject) else { return nil }
+        let trimmed = subject.trimmingCharacters(in: .whitespaces)
+        if trimmed.hasPrefix("Merge pull request #") {
+            let digits = trimmed.dropFirst("Merge pull request #".count).prefix { $0.isASCII && $0.isNumber }
+            return Int(digits)
+        }
+        guard let open = trimmed.lastIndex(of: "(") else { return nil }
+        let inside = trimmed[trimmed.index(after: open)..<trimmed.index(before: trimmed.endIndex)]
+        return Int(inside.dropFirst())
     }
 
     /// A squash merge's `(#N)` suffix, or a merge commit's subject.
