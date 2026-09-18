@@ -455,8 +455,8 @@ export const fontOf = (decls: Map<string, string>): { px: number | null; weight:
  *
  * Where an ancestor or the element itself can be in several states, the rule
  * does not choose: it collects every background any rule paints on that class
- * and measures the text against all of them. `.strip-item` is warning-tinted,
- * danger-tinted or accent-soft; `.file-picker-row` is transparent or
+ * and measures the text against all of them. `.push-switch` is bare or
+ * accent-soft when checked; `.file-picker-row` is transparent or
  * accent-soft. That is the "parent class combination" case, and measuring the
  * whole set is the conservative answer rather than a guess.
  */
@@ -519,24 +519,19 @@ const BLOCK_SURFACES: Array<{ block: string; stack: string[]; why: string }> = [
   { block: "usage-peak", stack: ["var(--ui-bg)"], why: "in .usage-axis, on the body" },
   { block: "usage-note", stack: ["var(--ui-bg)"], why: "in .usage, on the body" },
   { block: "usage-age", stack: ["var(--ui-bg)"], why: "in .usage, on the body" },
-  // --- sessions.css: the attention strip, itself on the body ---
-  { block: "strip", stack: ["var(--ui-bg)"], why: "sticky on the body; it paints --ui-bg itself" },
-  { block: "strip-quiet", stack: ["var(--ui-bg)"], why: "in .strip, which paints --ui-bg" },
-  { block: "strip-foreman", stack: ["var(--ui-bg)"], why: "in .strip, which paints --ui-bg" },
-  { block: "strip-list", stack: ["var(--ui-bg)"], why: "in .strip, which paints --ui-bg" },
-  { block: "strip-item", stack: ["var(--ui-bg)"], why: "in .strip; it paints its own tint over --ui-bg" },
-  { block: "strip-top", stack: ["@strip-item"], why: "in .strip-item, whatever tint it wears" },
-  { block: "strip-what", stack: ["@strip-item"], why: "in .strip-item, whatever tint it wears" },
-  { block: "strip-who", stack: ["@strip-item"], why: "in .strip-item, whatever tint it wears" },
-  { block: "strip-where", stack: ["@strip-item"], why: "in .strip-item, whatever tint it wears" },
-  { block: "strip-waited", stack: ["@strip-item"], why: "in .strip-item, whatever tint it wears" },
-  { block: "strip-detail", stack: ["@strip-item"], why: "in .strip-item, whatever tint it wears" },
-  { block: "strip-open", stack: ["@strip-item"], why: "in .strip-item, whatever tint it wears" },
-  { block: "proposed-actions", stack: ["@strip-item"], why: "in .strip-item, whatever tint it wears" },
-  { block: "approval-input", stack: ["@strip-item"], why: "in .strip-item.approval" },
-  { block: "approval-actions", stack: ["@strip-item"], why: "in .strip-item.approval" },
-  { block: "approval-deny", stack: ["var(--ui-surface-2)"], why: "an .approval-actions button, which paints --ui-surface-2" },
-  { block: "approval-allow", stack: ["var(--ui-surface-2)"], why: "an .approval-actions button, which paints --ui-surface-2" },
+  // --- sessions.css: the band, on the body; a line's approval, on the card ---
+  { block: "band", stack: ["var(--ui-bg)"], why: "under the head, on the body; it paints nothing" },
+  { block: "band-cell", stack: ["var(--ui-bg)"], why: "in .band, on the body" },
+  { block: "band-value", stack: ["var(--ui-bg)"], why: "in .band-cell, on the body" },
+  { block: "band-noun", stack: ["var(--ui-bg)"], why: "in .band-cell, on the body" },
+  { block: "line-approval", stack: ["var(--ui-surface)"], why: "a line in a row, on the card" },
+  { block: "line-approval-what", stack: ["var(--ui-surface)"], why: "in .line-approval, on the card" },
+  { block: "line-approval-input", stack: ["var(--ui-surface)"], why: "in .line-approval, on the card" },
+  { block: "line-waited", stack: ["var(--ui-surface)"], why: "in .line-approval, on the card" },
+  { block: "line-link", stack: ["var(--ui-surface)"], why: "in .line-approval or a goal line, on the card" },
+  { block: "line-actions", stack: ["var(--ui-surface)"], why: "in .line-approval, on the card" },
+  { block: "approval-deny", stack: ["var(--ui-surface)"], why: "a .line-actions button, on the card" },
+  { block: "approval-allow", stack: ["var(--ui-surface)"], why: "a .line-actions button, on the card" },
   // --- sessions.css: the pinned foreman row, on the body ---
   { block: "pinned", stack: ["var(--ui-bg)"], why: "above the cards, on the body" },
   { block: "foreman", stack: ["var(--ui-bg)"], why: "above the cards, on the body; it paints nothing" },

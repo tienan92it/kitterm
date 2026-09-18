@@ -6,16 +6,16 @@ import {
   actionName,
   applicationServerKey,
   approvalName,
+  approvalsOf,
   attention,
+  band,
   bucketLabel,
   cardRecord,
-  cardRows,
   costLabel,
   dayLabel,
   dismissKey,
   dismissName,
   doneLabel,
-  fleetLine,
   focusKey,
   folderOf,
   headingLine,
@@ -25,9 +25,11 @@ import {
   knowledgeUrl,
   levels,
   needsYouMessage,
+  NEEDS_YOU_ID,
   NESTED_INDENT_PX,
   NO_PROJECT,
-  pickForeman,
+  NO_PROJECT_NAME,
+  orphanApprovals,
   lineProposals,
   proposalsName,
   proposedItems,
@@ -41,10 +43,9 @@ import {
   restartNotice,
   rowLine,
   rowName,
+  rowNeeds,
   sameServerKey,
-  stateLabel,
   stateOf,
-  stripWhere,
   usageAmount,
   usageChartName,
   usagePanel,
@@ -54,6 +55,8 @@ import {
   workspaceUsage,
   type Approval,
   type AttentionItem,
+  type Band,
+  type BandCell,
   type DaemonStarted,
   type GoalEntry,
   type GoalLine,
@@ -96,15 +99,19 @@ import { findThemeById } from "./themes";
  * each row back to `/?session=<id>`.
  *
  * The page reads top to bottom in the order a returning reader needs: the
- * title, what needs them (the strip), what broke (the failed items and the
- * restart line), the usage panel (the range's total at the full API rate,
- * the per-day chart, the quota bars), one line of counts, then the work in
- * three levels: a workspace, its projects, and each project's goals by
- * state (working, pending, done), each heading with what it cost and how
- * much of its input came from cache. There is no search and no filter; the
- * grouping is the navigation. The push switch sits under the sections. The
- * pure model (`sessions-model.ts`) decides what goes where; this file only
- * paints it.
+ * title, the band (four counts in one fixed-height row: working, need you,
+ * spend, quota; the "need you" count links to the first marked line), the
+ * restart line if the previous run died, the usage panel (the range's
+ * total at the full API rate, the per-day chart, the quota bars), then the
+ * work in four levels: a workspace, its projects, each project's goals by
+ * state (working, pending, done), and each goal's tasks, each heading with
+ * what it cost and how much of its input came from cache. Everything that
+ * needs a person is a mark on the line it belongs to: an approval under
+ * its session's row, a waiting or failed session on its own row, a live
+ * goal's proposals on the goal's line. No session is on the page twice.
+ * There is no search and no filter; the grouping is the navigation. The
+ * push switch sits under the sections. The pure model
+ * (`sessions-model.ts`) decides what goes where; this file only paints it.
  *
  * Deliberately its own page, not the terminal: `/` stays "open a tab, get a
  * shell".
@@ -137,9 +144,10 @@ type ArchivedRow = {
   project?: ProjectRef;
 };
 
-/** What the strip lists: the model's attention items plus a proposal that
- * waits on the human in a project's knowledge package. */
-type StripItem = AttentionItem<SessionRow> | ProposedItem;
+/** What needs a person: the model's attention items plus a proposal that
+ * waits on the human in a project's knowledge package. The band counts
+ * them; the tree marks them. */
+type NeedsItem = AttentionItem<SessionRow> | ProposedItem;
 
 /** One project's knowledge as last fetched: every goal summary the daemon
  * listed, in its order, each with the project's id; empty for a package
@@ -155,8 +163,8 @@ type KnowledgeEntry = {
 const POLL_MS = 2000;
 const KNOWLEDGE_RETRY_POLLS = 30;
 /** The proposals the human dismissed, `dismissKey`s in `localStorage`, so
- * a read proposal stays out of the strip and the title count across reloads
- * until the project's next round. */
+ * a read proposal loses its mark and leaves the band's count across
+ * reloads until the project's next round. */
 const DISMISSED_KEY = "kitterm.sessions.dismissed";
 /** The runs whose restart line the human dismissed, `restartDismissKey`s in
  * `localStorage` beside the proposals above: the same pattern, its own key,
@@ -424,7 +432,7 @@ function knowledgeGoals(answer: KnowledgeAnswer): KnowledgeSummary[] {
 }
 
 /** Every goal of every project with a package, one entry each in the
- * projects' then the route's order, for the strip's proposed items. */
+ * projects' then the route's order, for the proposed items. */
 function knowledgeEntries(): { project: ProjectRef; summary: KnowledgeSummary }[] {
   const entries: { project: ProjectRef; summary: KnowledgeSummary }[] = [];
   for (const project of projects) {
@@ -437,9 +445,12 @@ function knowledgeEntries(): { project: ProjectRef; summary: KnowledgeSummary }[
 // The page has fixed regions. Each poll replaces the children of the ones
 // that changed.
 
-const strip = document.createElement("section");
-strip.className = "strip";
-strip.setAttribute("aria-label", "Needs you");
+/** The band: one fixed-height row of four counts (`band`). Built once;
+ * `paintBand` replaces its cells when they change. */
+const bandBlock = document.createElement("section");
+bandBlock.className = "band";
+bandBlock.setAttribute("aria-label", "Fleet");
+let bandPainted = "";
 const noticeLine = document.createElement("p");
 noticeLine.className = "notice";
 noticeLine.hidden = true;
@@ -447,14 +458,14 @@ noticeLine.hidden = true;
 // role is set once.
 noticeLine.setAttribute("role", "alert");
 /** A visually hidden polite announcement of how many items need the human.
- * The strip itself repaints too often to be a live region. */
+ * The band's cell repaints too often to be a live region. */
 const announce = document.createElement("p");
 announce.className = "sr-only";
 announce.setAttribute("aria-live", "polite");
 let announcedCount = -1;
 /** One line above the cards when the previous run died without recording a
  * reason (`restartNotice`). It paints once per run and its text is fixed, so
- * unlike the strip it can be a live region; `paintRestart` only touches it
+ * unlike the band it can be a live region; `paintRestart` only touches it
  * when the text changes, so a 2 s repaint never announces it twice. */
 /** The push line under the head: one switch that subscribes this device to
  * the daemon's notifications, and the reason it cannot when it cannot
@@ -494,7 +505,7 @@ function mountSkeleton(): void {
   skeletonMounted = true;
   // Status first, the push switch last: it is a thing the reader does, not
   // a thing the reader came to learn.
-  root.replaceChildren(header(), announce, strip, noticeLine, restartLine, usageBlock, quotaBlock, cards, pushLine);
+  root.replaceChildren(header(), announce, bandBlock, noticeLine, restartLine, usageBlock, quotaBlock, cards, pushLine);
 }
 
 function render(): void {
@@ -548,17 +559,15 @@ function paint(): void {
   mountSkeleton();
   const active = document.activeElement;
   const focusKey = active instanceof HTMLElement ? active.dataset.focus : undefined;
-  const { foreman } = pickForeman(sessions);
   const proposed = proposedItems(knowledgeEntries(), dismissed);
-  const items: StripItem[] = withProposed(attention(sessions, approvals), proposed);
-  // What the strip shows, the sections do not list again (`cardRows`). The
-  // foreman is a row of its own project or workspace, first among them
-  // (`sortInGroup`).
-  const listed = cardRows(sessions, items);
+  const items: NeedsItem[] = withProposed(attention(sessions, approvals), proposed);
+  const now = Date.now();
+  const cells = band(sessions, items, usage, usageChoice, limits, now);
 
   // Title badge: how many items want the human right now, so a phone's tab
-  // or home-screen label says "come back" without a push notification.
-  const count = items.filter((item) => item.kind !== "failed").length;
+  // or home-screen label says "come back" without a push notification. The
+  // band's own count: a failed session counts, because no agent moves it.
+  const count = cells.needs;
   document.title = count > 0 ? `(${count}) kitterm — sessions` : "kitterm — sessions";
   if (count !== announcedCount) {
     announcedCount = count;
@@ -568,14 +577,20 @@ function paint(): void {
   badge.textContent = String(sessions.length);
   badge.setAttribute("aria-label", `${sessions.length} sessions`);
 
-  strip.replaceChildren(...stripContent(items, foreman !== null));
+  paintBand(cells);
   noticeLine.hidden = notice === null;
   noticeLine.replaceChildren(...(notice === null ? [] : [noticeContent(notice)]));
   paintRestart();
-  paintUsage(usagePanel(usage, usageChoice, Date.now()));
-  paintQuota(quotaPanel(limits, Date.now()));
+  paintUsage(usagePanel(usage, usageChoice, now));
+  paintQuota(quotaPanel(limits, now));
   paintPush();
-  cards.replaceChildren(fleetCounts(listed), ...sectionList(listed, sessions, proposed));
+  // Every session is a line once; the foreman is a row of its own project
+  // or workspace, first among them (`sortInGroup`).
+  cards.replaceChildren(...sectionList(sessions, proposed));
+  // The first marked line, in the page's own order, is where the band's
+  // "need you" cell lands. One id, set after the tree is built, so the
+  // cell's link is a plain fragment.
+  cards.querySelector("[data-needs]")?.setAttribute("id", NEEDS_YOU_ID);
   if (focusKey) restoreFocus(focusKey);
 }
 
@@ -1019,87 +1034,59 @@ function pushContent(toggle: PushToggle): DocumentFragment {
   return fragment;
 }
 
-// --- the attention strip ----------------------------------------------------
+// --- the band ---------------------------------------------------------------
 
-function stripContent(items: StripItem[], hasForeman: boolean): Node[] {
-  const nodes: Node[] = [];
-  if (items.length === 0) {
-    const quiet = document.createElement("p");
-    quiet.className = "strip-quiet";
-    quiet.textContent = "Nothing needs you.";
-    nodes.push(quiet);
+/** Replace the band's cells when they change; the cells are rebuilt only
+ * then, so the link a keyboard user sits on survives the polls. */
+function paintBand(cells: Band): void {
+  const signature = JSON.stringify(cells);
+  if (signature === bandPainted) return;
+  bandPainted = signature;
+  bandBlock.replaceChildren(...cells.cells.map((cell) => bandCell(cell, cell.key === "needs" ? cells.target : null)));
+}
+
+/** One cell: the count, then its noun. The "need you" cell is a link to
+ * the first marked line while there is one; otherwise every cell is a
+ * plain span, and the band holds four cells either way. */
+function bandCell(cell: BandCell, target: string | null): HTMLElement {
+  let el: HTMLElement;
+  if (target) {
+    const a = document.createElement("a");
+    a.href = `#${target}`;
+    a.dataset.focus = focusKey("band", cell.key);
+    a.setAttribute("aria-label", `${cell.value} ${cell.noun}: go to the first`);
+    el = a;
   } else {
-    const list = document.createElement("ul");
-    list.className = "strip-list";
-    for (const item of items) list.append(stripItem(item));
-    nodes.push(list);
+    el = document.createElement("span");
   }
-  if (!hasForeman) {
-    const line = document.createElement("p");
-    line.className = "strip-foreman";
-    line.textContent = "no foreman running";
-    nodes.push(line);
-  }
-  return nodes;
+  el.className = `band-cell ${cell.key}`;
+  el.title = cell.title;
+  el.append(span("band-value", cell.value), span("band-noun", cell.noun));
+  return el;
 }
 
-function stripItem(item: StripItem): HTMLElement {
-  const li = document.createElement("li");
-  li.className = `strip-item ${item.kind}`;
-  // The gutter mark: `!` for a failure, `?` for anything that waits on a
-  // person. The item's first word says which; the mark is decoration.
-  li.append(mark(item.kind === "failed" ? "failed" : item.kind === "approval" ? "approval" : "attention"));
-  if (item.kind === "approval") {
-    li.append(approvalContent(item.approval, item.row));
-    return li;
-  }
-  if (item.kind === "proposed") {
-    li.append(proposedContent(item));
-    return li;
-  }
-  const row = item.row;
-  const top = stripTop(item.kind === "needs-input" ? "needs input" : stateLabel(row), headlineOf(row), stripWhere(row));
-  // How long it has waited, or how long ago it failed: the row's own span,
-  // since the last output (`rowLine`).
-  const since = rowLine(row, Date.now()).since;
-  if (since) top.append(span("strip-waited", since));
-  li.append(top);
-  const detail = row.agent?.message ?? (row.lastCommand ? `$ ${row.lastCommand}` : null);
-  if (detail) {
-    const line = document.createElement("div");
-    line.className = "strip-detail";
-    line.textContent = detail;
-    li.append(line);
-  }
-  li.append(openLink(row.id, "Open the pane"));
-  return li;
-}
+// --- an approval on its line ------------------------------------------------
 
-/** One waiting tool call: what it wants to run, where, and the two answers.
- * The loudest thing on the page, because an agent is stopped until it is
- * answered and on a phone only the top of the page gets read. */
-function approvalContent(approval: Approval, row: SessionRow | null): DocumentFragment {
-  const fragment = document.createDocumentFragment();
+/** One waiting tool call as a line under its session's row, or alone in a
+ * row under "No project" when its session is gone: the amber mark, what it
+ * wants to run, the arguments cut at the line's end with the whole summary
+ * as the tooltip, how long it has waited, the pane when it has one, and
+ * the two answers. The loudest thing in the tree, because an agent is
+ * stopped until it is answered. */
+function approvalLine(approval: Approval, row: SessionRow | null): HTMLElement {
+  const line = document.createElement("div");
+  line.className = "line-approval";
+  line.dataset.needs = "approval";
+  line.append(mark("attention"), span("line-approval-what", `approve ${approval.tool}`));
+  const input = span("line-approval-input", summarize(approval.input));
+  input.title = summarize(approval.input);
+  line.append(input, span("line-waited", waitedLabel(approval.waitingMs)));
   const who = row ? headlineOf(row) : (approval.session?.slice(0, 8) ?? "");
-  const top = stripTop(`approve ${approval.tool}`, who, row ? stripWhere(row) : null);
-  const waited = document.createElement("span");
-  waited.className = "strip-waited";
-  waited.textContent = waitedLabel(approval.waitingMs);
-  top.append(waited);
-  fragment.append(top);
-
-  // The arguments are what you are approving, so they are the body of the
-  // item rather than a tooltip.
-  const detail = document.createElement("pre");
-  detail.className = "approval-input";
-  detail.textContent = summarize(approval.input);
-  fragment.append(detail);
-
-  if (approval.session) fragment.append(openLink(approval.session, "Open the pane"));
+  if (approval.session) line.append(openLink(approval.session, "Open the pane"));
   // A watch token cannot decide, and the daemon would refuse it anyway.
   if (!watchOnly) {
     const actions = document.createElement("div");
-    actions.className = "approval-actions";
+    actions.className = "line-actions";
     const deny = button("Deny", "approval-deny", () => void decide(approval.id, "deny"));
     const allow = button("Allow", "approval-allow", () => void decide(approval.id, "allow"));
     deny.dataset.focus = `approval:${approval.id}:deny`;
@@ -1107,54 +1094,23 @@ function approvalContent(approval: Approval, row: SessionRow | null): DocumentFr
     deny.setAttribute("aria-label", approvalName("Deny", approval.tool, who));
     allow.setAttribute("aria-label", approvalName("Allow", approval.tool, who));
     actions.append(deny, allow);
-    fragment.append(actions);
+    line.append(actions);
   }
-  return fragment;
+  return line;
 }
 
-/** A goal whose `STATE.md` lists proposals: how many, the goal, the
- * project, the record's decision line when it proposes, and the record
- * itself through the knowledge route, else the `STATE.md` the proposals
- * wait in. The one place on the page a proposal appears. */
-function proposedContent(item: ProposedItem): DocumentFragment {
-  const fragment = document.createDocumentFragment();
-  const goal = goalTitle(item.summary);
-  fragment.append(stripTop(proposedLabel(item.count), goal, item.project.name));
-  if (item.decision) {
-    const line = document.createElement("div");
-    line.className = "strip-detail decision";
-    line.textContent = item.decision;
-    fragment.append(line);
+/** The approvals with no session on the page, each as a row of its own
+ * (`orphanApprovals`), listed under the "No project" heading. */
+function orphanList(orphans: Approval[]): HTMLElement {
+  const list = document.createElement("ul");
+  list.className = "rows";
+  for (const approval of orphans) {
+    const li = document.createElement("li");
+    li.className = "row";
+    li.append(approvalLine(approval, null));
+    list.append(li);
   }
-  const actions = document.createElement("div");
-  actions.className = "proposed-actions";
-  const open = item.record
-    ? knowledgeLink(item.project.id, item.record, `Open record ${recordLabel(item.record)}`, "strip-knowledge")
-    : knowledgeLink(item.project.id, item.path, "Open STATE.md", "strip-knowledge");
-  open.setAttribute(
-    "aria-label",
-    item.record ? recordName(item.record, item.project.name, goal) : proposalsName(item.count, item.project.name, goal),
-  );
-  actions.append(open);
-  // Read it, decided in STATE.md: the item leaves the strip and the count
-  // until the goal's next round.
-  const key = dismissKey(item.project.id, item.summary.slug ?? "", item.round);
-  const dismiss = button("Dismiss", "quiet", () => dismissProposal(key));
-  dismiss.dataset.focus = focusKey("dismiss", key);
-  dismiss.setAttribute("aria-label", dismissName(item.round, item.project.name, goal));
-  actions.append(dismiss);
-  fragment.append(actions);
-  return fragment;
-}
-
-/** The first line of a strip item: what, who, and where when the name
- * does not say it (`stripWhere`). */
-function stripTop(what: string, who: string, where: string | null): HTMLElement {
-  const top = document.createElement("div");
-  top.className = "strip-top";
-  top.append(span("strip-what", what), span("strip-who", who));
-  if (where) top.append(span("strip-where", where));
-  return top;
+  return list;
 }
 
 /** Post one decision. The agent is unblocked by the daemon's response to its
@@ -1181,27 +1137,15 @@ async function decide(id: string, decision: "allow" | "deny"): Promise<void> {
   }
 }
 
-// --- the fleet line ---------------------------------------------------------
-
-/** The one line above the projects: how many sessions are working, and
- * how many are done, idle or gone (`fleetLine`), over the rows the projects
- * list. The strip's sessions are counted in the strip. */
-function fleetCounts(rows: SessionRow[]): HTMLElement {
-  const line = document.createElement("p");
-  line.className = "fleet";
-  line.textContent = fleetLine(rows);
-  return line;
-}
-
 // --- the three levels -------------------------------------------------------
 
-/** The sections under the fleet line: `rows` is what they list (the strip's
- * sessions left out), `owned` is every session, so a project can tell no
- * session from sessions that are all in the strip. `levels` decides the
- * tree; this paints one workspace section or one lone project per entry,
- * then homes the archives whose section is not on the page. */
-function sectionList(rows: SessionRow[], owned: SessionRow[], proposed: ProposedItem[]): Node[] {
-  const sections = levels(rows, owned, projects, (id) => knowledge.get(id)?.goals);
+/** The sections under the band: every session is a line once. `levels`
+ * decides the tree; this paints one workspace section or one lone project
+ * per entry, gives an approval with no session a row under "No project",
+ * making that section when no loose shell would, then homes the archives
+ * whose section is not on the page. */
+function sectionList(rows: SessionRow[], proposed: ProposedItem[]): Node[] {
+  const sections = levels(rows, rows, projects, (id) => knowledge.get(id)?.goals);
   const headed = sections.flatMap((s) => (s.heading?.path ? [s.heading.path] : []));
   const nodes: Node[] = [];
   const homed = new Set<string>();
@@ -1214,6 +1158,20 @@ function sectionList(rows: SessionRow[], owned: SessionRow[], proposed: Proposed
     }
     for (const p of s.projects) homed.add(p.key);
     nodes.push(workspace(s, headed, proposed));
+  }
+  const orphans = orphanApprovals(approvals, rows);
+  if (orphans.length > 0 && !homed.has(NO_PROJECT)) {
+    homed.add(NO_PROJECT);
+    const none: ProjectSection<SessionRow> = {
+      key: NO_PROJECT,
+      heading: { name: NO_PROJECT_NAME, path: null },
+      project: null,
+      rows: [],
+      owned: 0,
+      goals: { working: [], pending: [], done: [] },
+      noGoals: null,
+    };
+    nodes.push(card(none, archivesOf(NO_PROJECT, headed, null), proposed, 2));
   }
   if (nodes.length === 0) {
     const empty = document.createElement("p");
@@ -1326,6 +1284,10 @@ function card(p: ProjectSection<SessionRow>, archived: ArchivedRow[], proposed: 
   section.append(head);
 
   if (p.rows.length > 0) section.append(rowList(p.rows));
+  if (p.key === NO_PROJECT) {
+    const orphans = orphanApprovals(approvals, sessions);
+    if (orphans.length > 0) section.append(orphanList(orphans));
+  }
   if (p.project) {
     const { working, pending, done } = p.goals;
     if (working.length > 0) section.append(bucket("working", working.length, level), goalList(p.project, working, proposed));
@@ -1364,8 +1326,8 @@ function bucket(state: "working" | "pending", count: number, level: 2 | 3): HTML
 }
 
 /** The goals of one bucket: each its line, then the rows that carry its
- * label, set in under it. `proposed` is what the strip carries, so a line
- * knows whether to carry its own proposals (`lineProposals`). */
+ * label, set in under it. `proposed` is what needs the human, so a line
+ * knows whether to wear the mark or the plain count (`lineProposals`). */
 function goalList(project: ProjectRef, entries: GoalEntry<SessionRow>[], proposed: ProposedItem[]): HTMLElement {
   const list = document.createElement("ul");
   list.className = "goal-lines";
@@ -1376,8 +1338,6 @@ function goalList(project: ProjectRef, entries: GoalEntry<SessionRow>[], propose
     li.append(goalLineItem(entry.line, project, proposed));
     // The fourth level: the goal's tasks, each with the listed rows that
     // carry its `task:` label; the rows no task claimed stay under the goal.
-    // `owned` is every session of the project, the strip's included, so a
-    // crew in the strip still holds its task at working.
     const owned = sessions.filter((s) => (s.project?.id ?? NO_PROJECT) === project.id);
     const { tasks, rest } = taskLines(entry.line.summary, entry.rows, owned);
     if (tasks.length > 0) li.append(taskList(tasks));
@@ -1415,13 +1375,22 @@ function taskList(tasks: TaskLine<SessionRow>[]): HTMLElement {
  * end, because on one line with the rest it read "Roun…" at 390 px. A
  * goal whose files still hold the template reads "not written yet" after
  * its slug. No floor word, no slug, no record link: the record is history,
- * and the done fold and the strip's proposal carry it (`goalLine`). The
- * proposals `STATE.md` lists stand at the line's end only when the strip
- * does not carry them: a stopped goal's, or a dismissed item's
- * (`lineProposals`). */
+ * and the done fold carries it (`goalLine`).
+ *
+ * A goal whose proposals need the human wears the amber mark at the
+ * line's start (`proposedItems`): `N proposals` links the record, else the
+ * `STATE.md` they wait in; `[Dismiss]` says the human read them, and the
+ * record's decision line stands under the line when it proposes. A
+ * dismissed item's count stands at the line's end unmarked, like a
+ * stopped goal's (`lineProposals`). One place per proposal. */
 function goalLineItem(line: GoalLine, project: ProjectRef, proposed: ProposedItem[]): HTMLElement {
   const li = document.createElement("div");
   li.className = "goal-line";
+  const item = proposed.find((p) => p.project.id === project.id && p.summary.slug === line.summary.slug) ?? null;
+  if (item) {
+    li.dataset.needs = "proposed";
+    li.append(mark("attention"));
+  }
   li.append(span("goal-name", line.title));
   if (line.unwritten) {
     li.append(span("goal-unwritten", "not written yet"));
@@ -1435,8 +1404,34 @@ function goalLineItem(line: GoalLine, project: ProjectRef, proposed: ProposedIte
     c.title = "the sum of this goal's round records' Cost lines, at the full API rate, and the cache-read share";
     li.append(c);
   }
-  const waiting = lineProposals(project.id, line.summary, proposed);
-  if (waiting) li.append(proposalsLink(project, line.summary, waiting, true));
+  if (item) {
+    const goal = goalTitle(item.summary);
+    // The count and Dismiss are one group at the line's end, so they stay
+    // together when the line wraps at 390 px.
+    const group = document.createElement("span");
+    group.className = "goal-proposals";
+    const open = knowledgeLink(item.project.id, item.path, proposedLabel(item.count), "line-knowledge");
+    open.setAttribute(
+      "aria-label",
+      item.record ? recordName(item.record, item.project.name, goal) : proposalsName(item.count, item.project.name, goal),
+    );
+    // Read it, decided in STATE.md: the mark and the count leave the band
+    // until the goal's next round.
+    const key = dismissKey(item.project.id, item.summary.slug ?? "", item.round);
+    const dismiss = button("Dismiss", "quiet", () => dismissProposal(key));
+    dismiss.dataset.focus = focusKey("dismiss", key);
+    dismiss.setAttribute("aria-label", dismissName(item.round, item.project.name, goal));
+    group.append(open, dismiss);
+    li.append(group);
+  } else {
+    const waiting = lineProposals(project.id, line.summary, proposed);
+    if (waiting) li.append(proposalsLink(project, line.summary, waiting, true));
+  }
+  if (item?.decision) {
+    const decision = span("goal-decision", item.decision);
+    decision.title = item.decision;
+    li.append(decision);
+  }
   if (line.next) {
     const next = span("goal-next", line.next);
     next.title = line.next;
@@ -1446,9 +1441,10 @@ function goalLineItem(line: GoalLine, project: ProjectRef, proposed: ProposedIte
 }
 
 /** The done goals behind one line, "7 done": each with its title, the
- * proposals its `STATE.md` still lists (`lineProposals`; a done goal's are
- * never in the strip), and its record link, unless the strip carries the
- * record already (`cardRecord`). Folded, because a done goal is history. */
+ * proposals its `STATE.md` still lists (`lineProposals`; a done goal's
+ * never need the human), and its record link, unless a proposed item
+ * carries the record already (`cardRecord`). Folded, because a done goal
+ * is history. */
 function doneFold(project: ProjectRef, done: KnowledgeSummary[], proposed: ProposedItem[]): HTMLElement {
   const key = `done:${project.id}`;
   const details = document.createElement("details");
@@ -1482,11 +1478,10 @@ function doneFold(project: ProjectRef, done: KnowledgeSummary[], proposed: Propo
   return details;
 }
 
-/** The proposals a goal's line carries when the strip does not
- * (`lineProposals`): the count, `2 proposals`, linking the `STATE.md` they
- * wait in, named like the strip's own link. `edge` sets it at the line's
- * right end, where the done fold's record link sits; in the fold the
- * record link takes that place and this one stands before it. */
+/** The unmarked proposals count a goal's line carries (`lineProposals`):
+ * `2 proposals`, linking the `STATE.md` they wait in. `edge` sets it at
+ * the line's right end, where the done fold's record link sits; in the
+ * fold the record link takes that place and this one stands before it. */
 function proposalsLink(project: ProjectRef, goal: KnowledgeSummary, waiting: LineProposals, edge: boolean): HTMLAnchorElement {
   const link = knowledgeLink(project.id, waiting.path, proposedLabel(waiting.count), "card-knowledge");
   if (edge) link.classList.add("goal-link");
@@ -1496,14 +1491,14 @@ function proposalsLink(project: ProjectRef, goal: KnowledgeSummary, waiting: Lin
 
 /** A link to one file of a project's package, opened in a new tab. Keyed
  * for focus like every other control, so a repaint does not drop a keyboard
- * user off it; `region` tells the strip's link to a record from the card's
- * link to the same record, so the repaint gives focus back to the one the
- * user was on. */
+ * user off it; `region` tells a marked goal line's link to a record from
+ * the fold's link to the same record, so the repaint gives focus back to
+ * the one the user was on. */
 function knowledgeLink(
-  projectId: string, path: string, text: string, region: "strip-knowledge" | "card-knowledge",
+  projectId: string, path: string, text: string, region: "line-knowledge" | "card-knowledge",
 ): HTMLAnchorElement {
   const a = document.createElement("a");
-  a.className = "strip-open";
+  a.className = "line-link";
   a.href = knowledgeUrl(projectId, path);
   a.target = "_blank";
   a.rel = "noopener";
@@ -1649,6 +1644,10 @@ function row(s: SessionRow, base?: string): HTMLElement {
   link.append(dot, main);
   li.append(link);
   if (!watchOnly) li.append(rowActions(s));
+  // A waiting or failed row is a marked line the band's cell can land on;
+  // a pending tool call is a line of its own under the row.
+  if (rowNeeds(s)) li.dataset.needs = "row";
+  for (const approval of approvalsOf(s, approvals)) li.append(approvalLine(approval, s));
   return li;
 }
 
@@ -1793,9 +1792,10 @@ function span(className: string, text: string): HTMLElement {
   return el;
 }
 
-/** The one-character gutter mark of a state family (`familyOf`, or
- * `approval` for a strip approval). A shape in the family's colour that a
- * screen reader skips: the state's word beside it carries the state. */
+/** The one-character gutter mark of a state family (`familyOf`; an
+ * approval and a proposal wear `attention`). A shape in the family's colour
+ * that a screen reader skips: the state's word beside it carries the
+ * state. */
 function mark(family: string): HTMLElement {
   const el = document.createElement("span");
   el.className = `mark ${family}`;
@@ -1805,7 +1805,7 @@ function mark(family: string): HTMLElement {
 
 function openLink(id: string, text: string): HTMLAnchorElement {
   const a = document.createElement("a");
-  a.className = "strip-open";
+  a.className = "line-link";
   a.href = `/?session=${encodeURIComponent(id)}`;
   a.textContent = text;
   a.dataset.focus = focusKey("open", id);

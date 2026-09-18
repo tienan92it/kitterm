@@ -116,11 +116,10 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
   background: var(--ui-accent);
   --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 13'><path d='M2 3.5l3.5 3L2 9.5' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/></svg>");
 }
-.mark.attention, .mark.approval {
+.mark.attention {
   background: var(--ui-warning);
   --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 13'><path d='M1.6 4.6A2.4 2.4 0 1 1 4 7V8.6' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round'/><path d='M4 11.2v.01' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'/></svg>");
 }
-.mark.approval { background: var(--ui-accent); }
 .mark.failed {
   background: var(--ui-danger);
   --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 13'><path d='M4 2.2V8.2' fill='none' stroke='black' stroke-width='1.9' stroke-linecap='round'/><path d='M4 11.2v.01' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'/></svg>");
@@ -134,63 +133,68 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
   --glyph: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 13'><circle cx='4' cy='6.5' r='1.3' fill='black'/></svg>");
 }
 
-/* --- the attention strip -------------------------------------------------
-   Sticky, so the answer buttons stay under the thumb while the list scrolls.
-   Capped at half the viewport and scrolls inside, so three approvals with
-   their argument blocks cannot push the sections off a phone for good. */
-.strip {
-  position: sticky; top: 0; z-index: 2;
-  background: var(--ui-bg); padding: 0 0 var(--space-2); margin: 0 0 var(--space-2);
-  max-height: 50vh; overflow: auto;
+/* --- the band ---------------------------------------------------------------
+   One row, one height, always: four cells, a count and its noun each,
+   whatever the fleet is doing (`design-foundation.md`, principle 2). The
+   height is set, not a minimum, and the box clips, so no count and no noun
+   can move the frame; a cell is one line and cuts rather than wraps. Below
+   768 px the four cells wrap to two rows of two, and the height is still
+   fixed because the cells are. The "need you" cell is a link to the first
+   marked line in the tree, not a list; the noun is underlined when it is
+   one, so a reader tells "goes somewhere" without colour. */
+.band {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: var(--line-h);
+  height: var(--line-h); overflow: hidden;
+  margin: 0 0 var(--space-3); border-bottom: 1px solid var(--ui-border);
 }
-.strip-quiet, .strip-foreman { margin: 0; padding: var(--space-1) 0; color: var(--ui-text-muted); }
-.strip-list { list-style: none; margin: 0; padding: 0; }
-/* One item is one line, or two with its message: the mark in the gutter,
-   the rest in the column beside it. The kind is the mark's colour and the
-   item's first word; nothing is tinted. */
-.strip-item {
-  display: grid; grid-template-columns: 8px 1fr; column-gap: var(--space-2); align-items: start;
-  padding: var(--space-1) 0;
+@media (max-width: 767px) {
+  .band { grid-template-columns: repeat(2, minmax(0, 1fr)); height: calc(2 * var(--line-h)); }
 }
-.strip-item > :not(.mark) { grid-column: 2; min-width: 0; }
-.strip-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); }
-.strip-what, .strip-who { font-weight: 600; }
-.strip-where { color: var(--ui-text-muted); }
-.strip-waited { color: var(--ui-text-muted); font-variant-numeric: tabular-nums; margin-left: auto; }
-.strip-detail {
-  color: var(--ui-text-muted);
+/* A cell is exactly one line tall, its row's track, with the count and the
+   noun centred in it: a glyph from a fallback face cannot move the row. */
+.band-cell {
+  display: flex; align-items: center; gap: var(--space-1); min-width: 0; height: var(--line-h);
+  white-space: nowrap; overflow: hidden; color: inherit; text-decoration: none;
+}
+.band-value { font-weight: 600; color: var(--ui-text); font-variant-numeric: tabular-nums; }
+.band-noun { color: var(--ui-text-muted); overflow: hidden; text-overflow: ellipsis; }
+a.band-cell .band-noun { text-decoration: underline; text-underline-offset: 2px; }
+a.band-cell:hover .band-noun { color: var(--ui-text); }
+
+/* --- an approval on its line -------------------------------------------------
+   A pending tool call sits under its session's row, or alone in a row under
+   "No project" when its session is gone: the amber mark, `approve <tool>`,
+   the arguments cut at the line's end (the title holds them whole), how
+   long it has waited, the pane link, then `[Deny]` `[Allow]`. One line at
+   768 px and above; on a phone it wraps like a row. The two answers are
+   tapped in a hurry, so each is one line tall. */
+.line-approval {
+  flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-2);
+  padding: 0 var(--space-2) 0 var(--space-3); min-height: var(--line-h); min-width: 0;
+  border-top: 1px solid var(--ui-border);
+}
+.row > .line-approval:first-child { border-top: none; }
+.line-approval .mark { margin-top: 0; }
+.line-approval-what { font-weight: 600; white-space: nowrap; }
+.line-approval-input {
+  flex: 1 1 14em; min-width: 0; color: var(--ui-text-muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-/* The decision line is what the human decides on: it wraps to two lines,
-   and the record link holds the rest. */
-.strip-detail.decision {
-  white-space: normal; overflow-wrap: anywhere;
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
-}
-.strip-open {
-  display: inline-flex; align-items: center; min-height: var(--line-h);
+.line-waited { color: var(--ui-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.line-link {
+  display: inline-flex; align-items: center; min-height: var(--line-h); white-space: nowrap;
   color: var(--ui-text-muted); text-decoration: underline; text-underline-offset: 2px;
 }
-.strip-open:hover { color: var(--ui-text); }
-.proposed-actions { display: flex; align-items: center; gap: var(--space-3); }
-.approval-input {
-  color: var(--ui-text);
-  margin: var(--space-1) 0 0; white-space: pre-wrap; word-break: break-word;
-  /* A Write's arguments are long even after the daemon's cap; keep the item
-     scannable and let the pane show the rest. */
-  max-height: 7.5em; overflow: auto;
-}
-.approval-actions { display: flex; gap: var(--space-2); margin-top: var(--space-1); }
-/* The two answers, each a bracketed word that fills half the line; these
-   are tapped on a phone in a hurry, so each is one line tall. */
-.approval-actions button {
-  flex: 1; font-weight: 600; cursor: pointer;
+.line-link:hover { color: var(--ui-text); }
+.line-actions { display: flex; gap: var(--space-2); margin-left: auto; }
+.line-actions button {
+  font-weight: 600; cursor: pointer;
   background: none; border: none; color: var(--ui-text); padding: 0 var(--space-1);
   min-height: var(--line-h);
 }
-.approval-actions button::before { content: "["; }
-.approval-actions button::after { content: "]"; }
-.approval-actions button:hover { text-decoration: underline; text-underline-offset: 2px; }
+.line-actions button::before { content: "["; }
+.line-actions button::after { content: "]"; }
+.line-actions button:hover { text-decoration: underline; text-underline-offset: 2px; }
 
 /* --- the push line, under the sections -----------------------------------
    The one tool on the page: a thing the reader does, not a thing the
@@ -222,7 +226,7 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
 
 /* The notice and the restart line: one reports an action that failed, the
    other a previous run that died and took its sessions with it. Both read
-   like a failed strip item, the danger mark in the gutter and the text in
+   like a failed row, the danger mark in the gutter and the text in
    the text colour, because each reports the same kind of thing: a loss that
    already happened. The colour is on the mark alone; the danger red never
    paints text or a border. */
@@ -320,9 +324,6 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
 .workspace .nested { padding-left: var(--space-4); }
 .workspace .nested .card:first-child { border-top: none; }
 .workspace > .rows + .nested, .workspace > .archived + .nested { border-top: 1px solid var(--ui-border); }
-/* The one line of counts above the projects: how many sessions are
-   working, done, idle. --ui-text on the body, the page's own pair. */
-.cards .fleet { margin: 0 0 var(--space-2); color: var(--ui-text); font-variant-numeric: tabular-nums; }
 /* A project is a section under a hairline rule, on the lifted surface the
    rows share. No `overflow: hidden`: it clipped the open row menu and the
    focus outline of the last row at 390 px. */
@@ -405,6 +406,18 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
   flex: 1 1 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis;
   color: var(--ui-text-muted);
 }
+/* A live goal's proposals mark its own line: the amber mark at the line's
+   start, `N proposals` linking the record, `[Dismiss]`, and the record's
+   decision line under it when it proposes, wrapped to two lines because
+   it is what the human decides on. A closed or dismissed goal's count is
+   the same link with no mark. */
+.card .goal-line .mark { margin-top: 0; align-self: center; }
+.card .goal-line .goal-proposals { display: flex; align-items: center; gap: var(--space-2); margin-left: auto; }
+.card .goal-line .goal-decision {
+  flex: 1 1 100%; min-width: 0; color: var(--ui-text);
+  white-space: normal; overflow-wrap: anywhere; overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+}
 /* The fourth level (`design-foundation.md`, Hierarchy): a goal's tasks,
    one line each, set in by one indent level under the goal's line, and the
    crew's rows under a working task by one more. The line is `--line-h`
@@ -425,7 +438,7 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
 
 /* --- rows ----------------------------------------------------------------- */
 .rows { list-style: none; margin: 0; padding: 0; }
-.row { display: flex; align-items: flex-start; gap: var(--space-1); border-top: 1px solid var(--ui-border); padding: 0 var(--space-2) 0 var(--space-3); }
+.row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-1); border-top: 1px solid var(--ui-border); padding: 0 var(--space-2) 0 var(--space-3); }
 /* One line tall through the padding: the first line of text (1.5em) sits
    centred in --line-h, and a row that wraps at 390 px grows from there. */
 .open {
@@ -483,6 +496,9 @@ button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visib
      third. At 390 px a title of fifty characters is wider than the line,
      and the title is what the reader scans for. */
   .card .goal-line .goal-name { flex: 1 1 100%; white-space: normal; overflow-wrap: anywhere; }
+  /* A marked goal keeps its mark on the title's line: the title takes what
+     the mark and the gap leave, and wraps under itself, not under the mark. */
+  .card .goal-line .mark + .goal-name { flex-basis: calc(100% - 8px - var(--space-2)); }
 }
 
 /* The folds: the done goals ("7 done") and the archived sessions, collapsed

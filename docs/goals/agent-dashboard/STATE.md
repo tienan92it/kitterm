@@ -1,18 +1,17 @@
 # STATE: agent-dashboard
 
 - Status: active
-- Round: 3 of 3 in this budget (first budget)
-- Rounds total: 3
-- Last floor: green (2026-09-18, round 3 after: Linux green, swift test 788, vitest 1276 in 42 files, bench p95 2.58 ms)
-- Updated: 2026-09-18, round 3 closed
+- Round: 1 of 3 in this budget (second budget)
+- Rounds total: 4
+- Last floor: green (2026-09-18, round 4 after: swift test 788, vitest 1295 in 44 files)
+- Updated: 2026-09-18, round 4 closed
 
 ## Queue
 
-1. `the-band-replaces-the-strip` (capability 4)
-2. `every-agent-says-its-model` (capability 6)
-3. `the-page-says-what-the-spend-bought` (capability 7)
-4. `every-line-is-one-line` (capability 5, last: it shapes the lines the
-   others create, and it owes 76 px at 390)
+1. `every-agent-says-its-model` (capability 6)
+2. `the-page-says-what-the-spend-bought` (capability 7)
+3. `every-line-is-one-line` (capability 5, last: it shapes the lines the
+   others create, and it owes 101 px at 390)
 
 ## Failures
 
@@ -31,6 +30,12 @@ None.
 
 ## Done
 
+- `the-band-replaces-the-strip` (capability 4), round 4, PR #128. See
+  `rounds/004.md`. One fixed row of four counts replaces the strip; its
+  items became marks on the lines they belong to. The band's height held
+  at 89 px and 29 px across 0, 4, 20 and 2000 items and 60-character
+  nouns — principle 2 measured, not asserted. Three strip-shape assertion
+  groups were named and replaced with one that pins the promise.
 - `a-task-is-the-fourth-level` (capability 3), round 3, PR #127. See
   `rounds/003.md`. `KnowledgeSummary` parses `## Queue`, `## Done` and
   `## Failures` into a task list the knowledge route serves, and the page
@@ -114,14 +119,11 @@ It is capability 7.
 
 ## Next action
 
-Round 4, `the-band-replaces-the-strip`, from `plan.md` row 4.
+Round 5, `every-agent-says-its-model`, from `plan.md` row 6. It is
+independent of the rest and is the smallest of the three left.
 
-The budget is spent at round 3 and the human's standing direction is to
-run the goal to the end, so it continues into a second budget rather
-than waiting.
-
-Capability 5 now owes 76 px: round 3 left the 390 px page at 1276,
-against a completion condition of 1200.
+Capability 5 owes 101 px: round 4 left the 390 px page at 1301, against
+a completion condition of 1200.
 
 The design is settled and frozen: `corpus/design-foundation.md` holds
 the contract, `corpus/palette.md` holds five palette rounds and the

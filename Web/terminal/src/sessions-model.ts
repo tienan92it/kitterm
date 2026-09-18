@@ -343,9 +343,11 @@ export function group<R extends ModelRow>(rows: R[], projects: ProjectSummary[])
 }
 
 /**
- * What the strip lists, in order: every pending approval (with its row when
+ * What needs a person, in order: every pending approval (with its row when
  * the session is still listed), then the rows that need input, then the
- * failed rows. The two row lists take `sortInGroup`'s order.
+ * failed rows. The two row lists take `sortInGroup`'s order. The band
+ * counts these items (`band`); the tree marks each one on the line it
+ * belongs to, so no item is listed twice.
  */
 export function attention<R extends ModelRow>(rows: R[], approvals: Approval[]): AttentionItem<R>[] {
   const byId = new Map(rows.map((row) => [row.id, row] as const));
@@ -409,7 +411,7 @@ export function proposalsName(count: number, project: string, goal?: string): st
   return `${count} ${noun} waiting on the human in STATE.md of ${whose(project, goal)}`;
 }
 
-/** The first word of a proposed strip item: how many wait. */
+/** What a goal's line says about its proposals: how many wait. */
 export function proposedLabel(count: number): string {
   return count === 1 ? "1 proposal" : `${count} proposals`;
 }
@@ -610,24 +612,25 @@ export function dismissKey(projectId: string, slug: string, round: number): stri
 
 /** Is the goal closed: its status is `done` or `stopped`, the two words
  * `LOOP.md` never schedules again. A closed goal's proposals block no
- * round, so the strip does not carry them; the goal's own line does
- * (`lineProposals`). A `waiting` goal is open: it waits for the human's
- * direction, and its proposals are what the human decides on. A summary
- * with no status word is open too, so a daemon that sends none loses
- * nothing. */
+ * round, so they need no person: the goal's line carries the count
+ * unmarked (`lineProposals`). A `waiting` goal is open: it waits for the
+ * human's direction, and its proposals are what the human decides on. A
+ * summary with no status word is open too, so a daemon that sends none
+ * loses nothing. */
 export function isClosed(summary: KnowledgeSummary): boolean {
   const word = statusWord(summary.status);
   return word === "done" || word === "stopped";
 }
 
 /**
- * One attention item per open goal whose `STATE.md` counts proposals
- * waiting on the human, in the order given (one entry per goal of each
- * project, the route's order), less the ones in `dismissed` (keys from
- * `dismissKey`) and less every closed goal (`isClosed`): the strip holds
- * only what still needs the human, and a done or stopped goal has no round
- * for a proposal to block. Its count stands on the goal's own line instead
- * (`lineProposals`).
+ * One item per open goal whose `STATE.md` counts proposals waiting on the
+ * human, in the order given (one entry per goal of each project, the
+ * route's order), less the ones in `dismissed` (keys from `dismissKey`)
+ * and less every closed goal (`isClosed`): the band counts only what
+ * still needs the human, and a done or stopped goal has no round for a
+ * proposal to block. A proposed item marks its goal's own line in the
+ * tree, with the count, the record and Dismiss; a closed or dismissed
+ * goal's count stands on the line unmarked (`lineProposals`).
  *
  * The count is the trigger, because `STATE.md` is the foreman's source of
  * truth: it writes a proposal there at close, and the record's decision
@@ -635,7 +638,7 @@ export function isClosed(summary: KnowledgeSummary): boolean {
  * with its proposal in `STATE.md` alone). A decision that starts with
  * `propose` is only the item's one-line text, and a goal with no proposals
  * in `STATE.md` yields nothing whatever the decision says, so a proposal
- * the human pruned leaves the strip on the next poll.
+ * the human pruned leaves the count on the next poll.
  */
 export function proposedItems(
   entries: { project: ProjectRef; summary: KnowledgeSummary }[],
@@ -659,9 +662,10 @@ export function proposedItems(
 }
 
 /**
- * The strip's order: the attention items with the proposed ones inserted
- * before the first failed row. A proposal counts as "needs you" and a
- * failed row does not, so the order agrees with the count.
+ * Everything that needs a person, as one list: the attention items with
+ * the proposed ones inserted before the first failed row, so what waits
+ * on a decision comes before what broke. The band's "need you" count is
+ * this list's length (`band`).
  */
 export function withProposed<R extends ModelRow>(
   items: AttentionItem<R>[],
@@ -672,34 +676,11 @@ export function withProposed<R extends ModelRow>(
   return [...items.slice(0, at), ...proposed, ...items.slice(at)];
 }
 
-/** The ids of the sessions the strip shows: the row of every approval
- * that still has one, and every needs-input and failed row. */
-export function stripIds<R extends ModelRow>(items: (AttentionItem<R> | ProposedItem)[]): Set<string> {
-  const ids = new Set<string>();
-  for (const item of items) {
-    if (item.kind === "proposed") continue;
-    if (item.row) ids.add(item.row.id);
-  }
-  return ids;
-}
-
 /**
- * The rows the cards list: every row the strip does not show, in the order
- * given. A session that needs a person, or failed, is in the strip with
- * its project's name, so its card does not print it again; the card's
- * count is over these rows, and a project whose every session is in the
- * strip lists nothing and counts nothing.
- */
-export function cardRows<R extends ModelRow>(rows: R[], items: (AttentionItem<R> | ProposedItem)[]): R[] {
-  const shown = stripIds(items);
-  return rows.filter((row) => !shown.has(row.id));
-}
-
-/**
- * The record a goal's card links, or null when the strip already links it:
- * a proposal in the strip carries the record it comes from, so the card
- * keeps only the title and the status until the human dismisses it, and
- * the link then returns to the card.
+ * The record a done goal's fold links, or null when a proposed item links
+ * it already: a proposed item on the goal's own line carries the record it
+ * comes from, so the fold keeps only the title until the human dismisses
+ * it, and the link then returns to the fold.
  */
 export function cardRecord(projectId: string, summary: KnowledgeSummary, proposed: ProposedItem[]): string | null {
   const path = recordPath(summary);
@@ -710,18 +691,18 @@ export function cardRecord(projectId: string, summary: KnowledgeSummary, propose
   return inStrip ? null : path;
 }
 
-/** What a goal's own line says about its proposals when the strip does
- * not: how many `STATE.md` lists, and the `STATE.md` they wait in. */
+/** What a goal's own line says about its proposals when no proposed item
+ * marks it: how many `STATE.md` lists, and the `STATE.md` they wait in. */
 export type LineProposals = { count: number; path: string };
 
 /**
- * The proposals a goal's own line carries: the count and the `STATE.md`
- * path when `STATE.md` lists any and the strip does not show them, because
- * the goal is closed (`isClosed`) or the human dismissed the item. Null
- * when the goal lists none or the strip carries them: a proposal appears
- * in the strip or on the goal's line, never in both places. The count is
- * `STATE.md`'s bullet count whole; the page has no per-proposal state, so
- * a proposal stands until the human prunes its bullet.
+ * The unmarked count a goal's line carries: the count and the `STATE.md`
+ * path when `STATE.md` lists proposals and no proposed item marks the
+ * line, because the goal is closed (`isClosed`) or the human dismissed
+ * the item. Null when the goal lists none or a proposed item marks it: a
+ * proposal is a marked item or an unmarked count, never both. The count
+ * is `STATE.md`'s bullet count whole; the page has no per-proposal state,
+ * so a proposal stands until the human prunes its bullet.
  */
 export function lineProposals(projectId: string, summary: KnowledgeSummary, proposed: ProposedItem[]): LineProposals | null {
   const count = summary.proposals ?? 0;
@@ -829,41 +810,6 @@ export function rowLine(row: ModelRow, now: number, base: string | undefined = r
     what: row.agent?.message ?? row.note ?? command,
     since: typeof row.lastOutputAt === "number" ? spanLabel(now - row.lastOutputAt) : null,
   };
-}
-
-/**
- * The project word beside a strip item's name, or null when the name says
- * it already. A row named after its folder, `NgheNhanTrading` in
- * `/w/NgheNhanTrading`, would otherwise print the word twice; a row with no
- * project is named by its folder, so there is nothing else to say.
- */
-export function stripWhere(row: ModelRow): string | null {
-  const project = row.project?.name;
-  if (!project || project === rowName(row)) return null;
-  return project;
-}
-
-/** The states the fleet line counts, in the order it prints them. These
- * are the states the strip does not hold. */
-const FLEET_STATES: MergedState[] = ["working", "completed", "idle", "exited", "unknown"];
-
-/**
- * The one line above the projects: how many sessions are working, and how
- * many are done, idle, exited or without integration. `working` prints
- * even at zero, because "0 working" is the answer a returning reader came
- * for; the other counts print only when they are not zero. The rows are
- * the ones the projects list, so a session in the strip is counted there
- * and not here again.
- */
-export function fleetLine(rows: ModelRow[]): string {
-  const counts = tally(rows);
-  const parts: string[] = [];
-  for (const state of FLEET_STATES) {
-    const n = counts[state] ?? 0;
-    if (n === 0 && state !== "working") continue;
-    parts.push(`${n} ${stateName(state)}`);
-  }
-  return parts.join(" · ");
 }
 
 // --- the restart line -------------------------------------------------------
@@ -1223,8 +1169,8 @@ export type ProjectSection<R extends ModelRow> = {
   project: ProjectRef | null;
   /** The listed rows under no goal, in `sortInGroup`'s order. */
   rows: R[];
-  /** Every session the project owns, the strip's included; 0 prints
-   * "no live session" on the heading. */
+  /** Every session the project owns; 0 prints "no live session" on the
+   * heading. */
   owned: number;
   goals: GoalBuckets<R>;
   noGoals: NoGoals;
@@ -1272,10 +1218,10 @@ export function workspaceHome(cwd: string, headed: readonly string[]): string | 
  * with no round open. Done is `status: done`, and wins over a lingering
  * label, because the status word is the human's and the loop never opens a
  * round on a done goal. Pending is the rest: active with no crew, waiting,
- * stopped. `owned` is every session the project owns, so a crew that sits
- * in the strip still holds its goal at working; `listed` is what the
- * section prints, so the crew's row nests under the goal only when the
- * strip does not carry it.
+ * stopped. `owned` is every session the project owns and decides the
+ * state; `listed` is what the section prints and nests under the goal.
+ * The page passes the same rows as both; a caller that lists a subset
+ * still holds the goal at working.
  */
 export function goalBuckets<R extends ModelRow>(
   goals: KnowledgeSummary[] | null | undefined,
@@ -1416,10 +1362,10 @@ function projectSection<R extends ModelRow>(
  * goes to a last "No project" section, which is a lone project section
  * with no `project`, and which exists only when it has a row to list.
  *
- * `listed` is what the sections print; `owned` is every session, so a
- * project whose sessions are all in the strip still counts them and a
- * crew in the strip still holds its goal at working. `goalsOf` answers a
- * project's knowledge, null or undefined when the page has none.
+ * `listed` is what the sections print; `owned` is every session and
+ * decides the counts and the goal states. The page passes the same rows
+ * as both, so every session is a line once. `goalsOf` answers a project's
+ * knowledge, null or undefined when the page has none.
  */
 export function levels<R extends ModelRow>(
   listed: R[],
@@ -1964,4 +1910,172 @@ export function usageChartName(panel: UsagePanel): string {
   if (panel.empty || panel.peak === null) return `No ${panel.mode === "cost" ? "cost" : "tokens"} per day, ${panel.range}.`;
   const unit = panel.mode === "cost" ? "Cost" : "Tokens";
   return `${unit} per day, ${panel.range}; the most on ${dayLabel(panel.peak.day)}, ${usageAmount(panel.peak.value, panel.mode)}.`;
+}
+
+// --- the band ------------------------------------------------------------------
+
+/** The four cells, in the order they print (`design-foundation.md`, The
+ * frame): agents working, items needing a person, spend over the range,
+ * quota used. */
+export type BandCellKey = "working" | "needs" | "spend" | "quota";
+
+/** One cell: a count and its noun. The count is the text the eye reads;
+ * the noun says what it counts; `title` is the sentence a tooltip gets. */
+export type BandCell = {
+  key: BandCellKey;
+  /** `2`, `4`, `$2,316.45`, `19%`; `–` for a cell whose source the page
+   * does not have, never a zero that would read as a measurement. */
+  value: string;
+  /** `working`, `need you`, `30d`, `7d quota`. */
+  noun: string;
+  title: string;
+};
+
+/** The band as the page prints it. Always four cells, whatever the fleet
+ * is doing: the frame does not move (principle 2). */
+export type Band = {
+  cells: BandCell[];
+  /** How many items need a person: the second cell's count. */
+  needs: number;
+  /** The id the "need you" cell links, the first marked line in the tree;
+   * null when nothing needs a person, and the cell is a word, not a link. */
+  target: string | null;
+};
+
+/** The id the page gives the first marked line, the "need you" cell's
+ * link target. One id, so the link is a plain fragment and needs no
+ * script to scroll. */
+export const NEEDS_YOU_ID = "needs-you";
+
+/** How many rows are working: a shell running a command or an agent
+ * holding the tty, whatever else the fleet holds. */
+export function workingCount(rows: ModelRow[]): number {
+  return rows.filter((row) => stateOf(row) === "working").length;
+}
+
+/** The noun of the "need you" cell: `needs you` for one item, `need you`
+ * otherwise, zero included. */
+export function needsNoun(count: number): string {
+  return count === 1 ? "needs you" : "need you";
+}
+
+/** Does a row's own state need a person: it waits for input or it
+ * failed. These are the rows `attention` counts; a pending approval is
+ * counted from the approvals list and marks its own line under the row. */
+export function rowNeeds(row: ModelRow): boolean {
+  const state = stateOf(row);
+  return state === "needs-input" || state === "failed";
+}
+
+/** The approvals that block one session: the row's own approval lines. */
+export function approvalsOf(row: ModelRow, approvals: readonly Approval[]): Approval[] {
+  return approvals.filter((approval) => approval.session === row.id);
+}
+
+/**
+ * The approvals with no row on the page: one whose session the daemon no
+ * longer lists (a hook can name a session id from before a restart,
+ * `facts.md`), or one that names no session. Each is still an item that
+ * needs a person, so it gets a line of its own under the "No project"
+ * heading, which is where a thing with no place in the tree goes; the
+ * page makes that section for them when no loose shell would.
+ */
+export function orphanApprovals(approvals: readonly Approval[], rows: readonly ModelRow[]): Approval[] {
+  const ids = new Set(rows.map((row) => row.id));
+  return approvals.filter((approval) => !approval.session || !ids.has(approval.session));
+}
+
+/** The short noun of a quota window in the band: `5h quota`, `7d quota`,
+ * `spend limit`; any other key with its underscores opened. */
+const BAND_QUOTA_NOUNS: Record<string, string> = {
+  five_hour: "5h quota",
+  seven_day: "7d quota",
+  spend_limit: "spend limit",
+};
+
+export function bandQuotaNoun(key: string): string {
+  return BAND_QUOTA_NOUNS[key] ?? `${key.replace(/_/g, " ")} quota`;
+}
+
+/**
+ * The quota cell: the most-used window that has not reset, because that
+ * is the one that decides whether more work can start. `–` with the
+ * noun `quota` when the page has no reading, the reading carries no
+ * window, or every window has reset; the quota panel below says which
+ * in words.
+ */
+export function bandQuota(limits: UsageLimits | null | undefined, now: number): BandCell {
+  const none: BandCell = { key: "quota", value: "–", noun: "quota", title: "No quota reading." };
+  if (!limits || !limits.ok || !limits.hasReading) return none;
+  let top: [string, LimitWindow] | null = null;
+  for (const entry of Object.entries(limits.rateLimits ?? {})) {
+    const [, window] = entry;
+    if (window.resets_at * 1000 <= now) continue;
+    if (top === null || window.used_percentage > top[1].used_percentage) top = entry;
+  }
+  if (top === null) return none;
+  const [key, window] = top;
+  const percent = Math.round(Math.min(999, Math.max(0, window.used_percentage)));
+  const stale = limits.stale === true ? ", from a stale reading" : "";
+  return {
+    key: "quota",
+    value: `${percent}%`,
+    noun: bandQuotaNoun(key),
+    title: `${quotaLabel(key)}: ${percent}% used, resets in ${countdown(window.resets_at * 1000 - now)}${stale}.`,
+  };
+}
+
+/** The spend cell: the range's total at the full API rate, with the span
+ * as its noun; `–` with the noun `spend` when the page has no rollup (a
+ * watch token, or a daemon without the route). */
+export function bandSpend(report: UsageDaily | null | undefined, choice: UsageChoice): BandCell {
+  if (!report || !report.ok) return { key: "spend", value: "–", noun: "spend", title: "No usage rollup." };
+  const total = report.totals?.costUSD ?? 0;
+  return {
+    key: "spend",
+    value: dollars(total),
+    noun: `${choice.span}d`,
+    title: `What the last ${choice.span} days cost, if billed at full API rate.`,
+  };
+}
+
+/**
+ * The band: four cells, always, in one order. `items` is everything that
+ * needs a person (`withProposed(attention(rows, approvals), proposed)`):
+ * every pending approval, every session waiting for input, every failed
+ * session, and every live goal's proposals. A failed session counts,
+ * because no agent can move it and a returning reader must see it on
+ * the first screen (`fleet-catch-up`, request 01). The count is the
+ * number of marked lines the reader can walk to from the cell's link.
+ */
+export function band<R extends ModelRow>(
+  rows: R[],
+  items: readonly (AttentionItem<R> | ProposedItem)[],
+  report: UsageDaily | null | undefined,
+  choice: UsageChoice,
+  limits: UsageLimits | null | undefined,
+  now: number,
+): Band {
+  const working = workingCount(rows);
+  const needs = items.length;
+  return {
+    cells: [
+      {
+        key: "working",
+        value: String(working),
+        noun: "working",
+        title: `${working} ${working === 1 ? "session is" : "sessions are"} running a command or an agent.`,
+      },
+      {
+        key: "needs",
+        value: String(needs),
+        noun: needsNoun(needs),
+        title: "Pending approvals, sessions waiting for input, failed sessions, and live goals' proposals.",
+      },
+      bandSpend(report, choice),
+      bandQuota(limits, now),
+    ],
+    needs,
+    target: needs > 0 ? NEEDS_YOU_ID : null,
+  };
 }

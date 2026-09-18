@@ -3,13 +3,15 @@ import { describe, expect, it } from "vitest";
 import {
   actionName,
   approvalName,
+  approvalsOf,
   attention,
-  cardRows,
   crews,
   needsYouMessage,
-  fleetLine,
   group,
+  levels,
+  orphanApprovals,
   pickForeman,
+  rowNeeds,
   restartDismissKey,
   restartDismissName,
   restartNotice,
@@ -17,8 +19,6 @@ import {
   rowName,
   sortInGroup,
   spanLabel,
-  stripIds,
-  stripWhere,
   stampFormat,
   stateLabel,
   stateOf,
@@ -214,9 +214,11 @@ describe("attention", () => {
   });
 });
 
-describe("cardRows", () => {
+describe("every session is one line", () => {
   // The corpus fixture `01-back-after-lunch`: two sessions that need input,
-  // two that failed, a done foreman, and two idle shells.
+  // two that failed, a done foreman, and two idle shells. Every one of them
+  // is a line in the tree, once, marked or not; the band counts the marked
+  // ones (`fleet-catch-up`, capability 2, kept without the strip).
   const nnt = "/w/NgheNhanTrading";
   const mdp = { id: "mdp", name: "market-data-pipeline", root: `${nnt}/market-data-pipeline`, registered: true };
   const tda = { id: "tda", name: "trading-data-api", root: `${nnt}/trading-data-api`, registered: true };
@@ -232,35 +234,44 @@ describe("cardRows", () => {
   ];
   const projects: ProjectSummary[] = [kitterm, mdp, tda];
 
-  it("lists no session in both the strip and a card", () => {
+  it("lists each session in exactly one place, the marked ones included", () => {
+    const sections = levels(fixture, fixture, projects, () => null);
+    const listed = sections.flatMap((s) => [
+      ...s.rows.map((r) => r.id),
+      ...s.projects.flatMap((p) => [...p.rows.map((r) => r.id), ...p.goals.working.flatMap((e) => e.rows.map((r) => r.id))]),
+    ]);
+    expect([...listed].sort()).toEqual(fixture.map((r) => r.id).sort());
+    expect(new Set(listed).size).toBe(fixture.length);
+  });
+
+  it("marks the rows it counts: the ones that need input and the ones that failed", () => {
     const items = attention(fixture, []);
-    const inStrip = stripIds(items);
-    expect([...inStrip].sort()).toEqual(["mdp-failed", "nnt-input", "ws-failed", "ws-input"]);
-    const listed = cardRows(fixture, items);
-    expect(listed.filter((row) => inStrip.has(row.id))).toEqual([]);
-    expect(listed.map((row) => row.id)).toEqual(["foreman", "postman", "nnt-idle"]);
-    expect(items.length + listed.length).toBe(fixture.length);
+    expect(items.map((item) => item.row?.id)).toEqual(["nnt-input", "ws-input", "mdp-failed", "ws-failed"]);
+    expect(fixture.filter(rowNeeds).map((r) => r.id).sort()).toEqual(["mdp-failed", "nnt-input", "ws-failed", "ws-input"]);
+    expect(fixture.filter((r) => !rowNeeds(r)).map((r) => r.id)).toEqual(["foreman", "postman", "nnt-idle"]);
   });
 
-  it("counts on a card only what the card lists", () => {
-    const groups = group(cardRows(fixture, attention(fixture, [])), projects);
-    const counts = Object.fromEntries(groups.map((g) => [g.key, tally(g.rows)]));
-    expect(counts).toEqual({ "p-kitterm": {}, mdp: {}, tda: { idle: 1 }, "": { completed: 1, idle: 1 } });
-  });
-
-  it("keeps a needs-approval row in the strip only while its approval is listed", () => {
+  it("marks a needs-approval row through its approval, which stands on its own line under the row", () => {
     const held = state("held", "needs-approval");
     const approval: Approval = { id: "ap", tool: "Bash", input: "{}", session: "held", waitingMs: 1 };
-    expect(cardRows([held], attention([held], [approval]))).toEqual([]);
-    expect(cardRows([held], attention([held], []))).toEqual([held]);
+    expect(rowNeeds(held)).toBe(false);
+    expect(approvalsOf(held, [approval])).toEqual([approval]);
+    expect(orphanApprovals([approval], [held])).toEqual([]);
+    // The session is gone: the approval is nobody's line, so it gets one
+    // of its own under "No project".
     const orphan: Approval = { ...approval, session: "gone" };
-    expect(stripIds(attention([held], [orphan]))).toEqual(new Set());
+    expect(approvalsOf(held, [orphan])).toEqual([]);
+    expect(orphanApprovals([orphan], [held])).toEqual([orphan]);
+    expect(orphanApprovals([{ ...approval, session: undefined }], [held])).toHaveLength(1);
+    expect(orphanApprovals([], [])).toEqual([]);
   });
 
-  it("lists every row when nothing needs the human", () => {
+  it("counts nothing when nothing needs the human, and every row is still a line", () => {
     const rows = [state("a", "working"), state("b", "idle")];
-    expect(cardRows(rows, attention(rows, []))).toEqual(rows);
-    expect(cardRows([], [])).toEqual([]);
+    expect(attention(rows, [])).toEqual([]);
+    expect(rows.filter(rowNeeds)).toEqual([]);
+    const sections = levels(rows, rows, [kitterm], () => null);
+    expect(sections.flatMap((s) => s.projects.flatMap((p) => p.rows.map((r) => r.id)))).toEqual(["a", "b"]);
   });
 });
 
@@ -531,35 +542,3 @@ describe("spanLabel", () => {
   });
 });
 
-describe("stripWhere", () => {
-  it("prints the project only when the row's name does not say it", () => {
-    const nnt = { id: "nnt", name: "NgheNhanTrading", root: "/w/NgheNhanTrading", registered: true };
-    // Named after its folder, which is the project's name: the word once.
-    expect(stripWhere({ id: "a", cwd: "/w/NgheNhanTrading", project: nnt })).toBeNull();
-    expect(stripWhere({ id: "a", cwd: "/w/NgheNhanTrading", name: "NgheNhanTrading", project: nnt })).toBeNull();
-    // A named row, or one in a subfolder, still needs the project.
-    expect(stripWhere({ id: "a", cwd: "/w/NgheNhanTrading", name: "foreman", project: nnt })).toBe("NgheNhanTrading");
-    expect(stripWhere({ id: "a", cwd: "/w/NgheNhanTrading/docs", project: nnt })).toBe("NgheNhanTrading");
-  });
-
-  it("prints nothing for a row outside every project, which its folder names", () => {
-    expect(stripWhere({ id: "a", cwd: "/Users/antran/Workspace" })).toBeNull();
-    expect(stripWhere({ id: "a", cwd: "/Users/antran/Workspace", name: "Workspace" })).toBeNull();
-  });
-});
-
-describe("fleetLine", () => {
-  it("counts the working rows even at zero, and the rest only when there are any", () => {
-    // The corpus fixture's rows once the strip has taken its four.
-    const listed = [
-      state("foreman", "completed", { labels: { crew: "foreman" } }),
-      state("postman", "idle"),
-      state("nnt-idle", "idle"),
-    ];
-    expect(fleetLine(listed)).toBe("0 working · 1 done · 2 idle");
-    expect(fleetLine([])).toBe("0 working");
-    expect(fleetLine([state("a", "working"), state("b", "working"), state("c", "exited"), state("d", "unknown")])).toBe(
-      "2 working · 1 exited · 1 no integration",
-    );
-  });
-});
