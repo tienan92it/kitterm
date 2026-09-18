@@ -616,7 +616,7 @@ function noticeContent(text: string): DocumentFragment {
     lastSignature = "";
     render();
   });
-  fragment.append(span, dismiss);
+  fragment.append(mark("failed"), span, dismiss);
   return fragment;
 }
 

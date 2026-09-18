@@ -1094,10 +1094,14 @@ const HEADING_SLACK_PX = 4;
 const CELL_EM = 0.6;
 const NAME_FONT_PX = 13;
 const TEXT_FONT_PX = 12;
-/** `.card .head { gap }` and `.card .spawn { gap }`. */
+/** An upper bound of `.card .head { gap }` and `.card .spawn { gap }`, which
+ * the sheet sets at --space-2 and --space-1. The model counts the wider
+ * gaps it was measured with, so it gives the count and the select away a
+ * few px early rather than late. */
 const HEAD_GAP_PX = 10;
 const SPAWN_GAP_PX = 6;
-/** `[new]`: five cells and 2 px of padding each side. */
+/** `[new]`: five cells, plus the 4 px of padding the sheet no longer adds,
+ * kept as slack for the same reason. */
 const NEW_PX = 5 * TEXT_FONT_PX * CELL_EM + 4;
 /** The select's padding, border and arrow: `--profile-chrome` in the sheet. */
 export const PROFILE_CHROME_PX = 30;

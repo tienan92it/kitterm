@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { type CssRule, parseCss } from "./theme-contrast-derive";
+import { contrastRatio, type CssRule, parseCss, readSource, resolveColor, rootVariables } from "./theme-contrast-derive";
+import { themeTokens } from "./theme-tokens";
+import { TERMINAL_THEMES } from "./themes";
 
 /**
  * The fleet view's surface is the terminal's (`fleet-catch-up`, capability
@@ -96,5 +98,113 @@ describe("sessions.css is the terminal's surface", () => {
         .some((part) => /(^|[\s>+~])(input|textarea)\b/.test(part) || /\.reply(-|\b)/.test(part)),
     ).map(at);
     expect(typed, "a rule for a field the page no longer draws").toEqual([]);
+  });
+});
+
+/**
+ * The design foundation (`agent-dashboard`, capability 2;
+ * `corpus/design-foundation.md`, frozen): one space scale, three type sizes,
+ * one line height chosen by width, and four owned colours over an inherited
+ * ground. Each is pinned below from the sheet's own `:root` layer, the
+ * unconditional block at the top of the file.
+ */
+const ROOT = RULES.filter((rule) => rule.selector === ":root" && rule.conditions.length === 0);
+const token = (name: string): string | undefined => ROOT.map((rule) => rule.decls.get(name)).find((v) => v !== undefined);
+
+/** A `margin`, `padding` or `gap` property, longhands included. */
+const isSpacing = (property: string): boolean =>
+  /^(margin|padding)(-(top|right|bottom|left|block|inline)(-(start|end))?)?$/.test(property) || /^(row-|column-)?gap$/.test(property);
+
+/** The six ground tokens rule C leaves to the terminal's theme. */
+const GROUND = ["--ui-bg", "--ui-surface", "--ui-surface-2", "--ui-border", "--ui-text", "--ui-text-muted", "--ui-text-faint", "--ui-lift"];
+const OWNED = ["--ui-accent", "--ui-warning", "--ui-danger", "--ui-success"];
+
+/** The dark value of a `light-dark(light, dark)` token. */
+const darkOf = (value: string | undefined): string => {
+  const m = /^light-dark\(#[0-9a-f]{6},\s*(#[0-9a-f]{6})\)$/i.exec(value ?? "");
+  if (!m) throw new Error(`not a light-dark() pair: ${value}`);
+  return m[1];
+};
+
+describe("sessions.css carries the design foundation", () => {
+  it("defines the five space tokens and the three type tokens", () => {
+    expect([1, 2, 3, 4, 5].map((n) => token(`--space-${n}`))).toEqual(["4px", "8px", "12px", "16px", "24px"]);
+    // A type token is a `font` shorthand: weight, size, line height, family.
+    expect(token("--type-headline")).toMatch(/^600 18px\/[\d.]+ var\(--font-mono\)$/);
+    expect(token("--type-heading")).toMatch(/^600 13px\/[\d.]+ var\(--font-mono\)$/);
+    expect(token("--type-body")).toMatch(/^400 12px\/[\d.]+ var\(--font-mono\)$/);
+  });
+
+  it("writes no bare pixel for margin, padding or gap", () => {
+    const bare = declarations(isSpacing)
+      .filter(([, , value]) => /(^|[^\w.-])-?\d*\.?\d+px\b/.test(value))
+      .map(([where, name, value]) => `${where} ${name}: ${value}`);
+    expect(bare, "space comes from the scale: var(--space-1) to var(--space-5)").toEqual([]);
+  });
+
+  it("sets no font size outside the three type tokens", () => {
+    const sizes = declarations((p) => p === "font-size").map(([where, , value]) => `${where} font-size: ${value}`);
+    expect(sizes, "a fourth size; hierarchy comes from weight and colour").toEqual([]);
+    const fonts = declarations((p) => p === "font")
+      .filter(([, , value]) => !/^(inherit|var\(--type-(headline|heading|body)\))$/.test(value.trim()))
+      .map(([where, , value]) => `${where} font: ${value}`);
+    expect(fonts, "a font that is not one of the three tokens").toEqual([]);
+  });
+
+  it("chooses the line height by width: 44 px below 768 px, 28 px at and above it", () => {
+    expect(token("--line-h")).toBe("44px");
+    const wide = RULES.filter((rule) => rule.decls.has("--line-h") && rule.conditions.length > 0).map((rule) => [
+      rule.selector,
+      rule.conditions.join(" "),
+      rule.decls.get("--line-h"),
+    ]);
+    expect(wide).toEqual([[":root", "@media (min-width: 768px)", "28px"]]);
+    // No control and no other rule sets it: density follows the width alone.
+    expect(RULES.filter((rule) => rule.decls.has("--line-h") && rule.selector !== ":root").map(at)).toEqual([]);
+  });
+
+  it("owns the four state colours and inherits the ground from the terminal (rule C)", () => {
+    // `corpus/palette.md`: `light-dark()` takes the light value first.
+    expect(token("--ui-accent")).toBe("light-dark(#1d7268, #2a9d8f)");
+    expect(token("--ui-warning")).toBe("light-dark(#8a6415, #e9c46a)");
+    expect(token("--ui-danger")).toBe("light-dark(#b0472c, #e76f51)");
+    // A finished thing is grey.
+    expect(token("--ui-success")).toBe("var(--ui-text-faint)");
+    const redeclared = RULES.flatMap((rule) =>
+      [...rule.decls.keys()].filter((name) => GROUND.includes(name)).map((name) => `${at(rule)} ${name}`),
+    );
+    expect(redeclared, "the ground and the three greys keep deriving from the terminal in tokens.css").toEqual([]);
+  });
+
+  it("paints an owned colour on the mark alone, never as text, a background or a border", () => {
+    const owned = new RegExp(`var\\((${OWNED.join("|")})\\)`);
+    const misuse = RULES.flatMap((rule) =>
+      [...rule.decls]
+        .filter(([name, value]) => owned.test(value) && (name === "color" || name.startsWith("border") || name.startsWith("background")))
+        .filter(([name]) => !(name === "background" && /^\.mark\b/.test(rule.selector)))
+        .map(([name, value]) => `${at(rule)} ${name}: ${value}`),
+    );
+    expect(misuse, "principle 5: colour marks what needs attention, on the one-character mark").toEqual([]);
+  });
+
+  it("clears 3:1 for each owned hue on the ground and the surface of every bundled theme", () => {
+    // WCAG 1.4.11: a state mark is a non-text element and takes 3:1. The hues
+    // are constants; the ground under them is the terminal's, so every theme
+    // is a different pair. `corpus/palette.md` measured the palette's own
+    // ground; this measures the seventeen the page can sit on.
+    const tokens = rootVariables(readSource("tokens.css"));
+    const hues = ["--ui-accent", "--ui-warning", "--ui-danger"].map((name) => [name, darkOf(token(name))] as const);
+    const under: string[] = [];
+    for (const theme of TERMINAL_THEMES) {
+      const vars = new Map([...tokens, ...Object.entries(themeTokens(theme.colors, { accent: theme.accent }))]);
+      for (const surface of ["var(--ui-bg)", "var(--ui-surface)"]) {
+        const ground = resolveColor(surface, vars);
+        for (const [name, hex] of hues) {
+          const ratio = contrastRatio(resolveColor(hex, vars), ground);
+          if (ratio < 3) under.push(`${name} on ${surface} on ${theme.id}: ${ratio.toFixed(2)}`);
+        }
+      }
+    }
+    expect(under).toEqual([]);
   });
 });
