@@ -136,6 +136,24 @@ public struct TranscriptBill: Codable, Equatable, Sendable {
     /// is read as it is at that moment: a partial last line is
     /// `.noBill(.lastLineIncomplete)`, never an error.
     public static func read(path: String, window: Int = tailWindowBytes) -> Outcome {
+        switch readTail(path: path, window: window) {
+        case .tail(let tail, let wholeFile):
+            return parseTail(tail, tailIsWholeFile: wholeFile)
+        case .unreadable(let reason):
+            return .unreadable(reason)
+        }
+    }
+
+    /// The last `window` bytes of a file, or fewer when the file is shorter.
+    enum TailRead {
+        /// `wholeFile` says the window reached the start of the file.
+        case tail(ArraySlice<UInt8>, wholeFile: Bool)
+        case unreadable(String)
+    }
+
+    /// One `pread` of the file's tail. Shared with `TranscriptModel`, which
+    /// reads the same file for a different line.
+    static func readTail(path: String, window: Int) -> TailRead {
         let fd = open(path, O_RDONLY | O_CLOEXEC)
         guard fd >= 0 else {
             return .unreadable("cannot open \(path): \(String(cString: strerror(errno)))")
@@ -160,7 +178,7 @@ public struct TranscriptBill: Codable, Equatable, Sendable {
             if n == 0 { break }
             filled += n
         }
-        return parseTail(tail[0..<filled], tailIsWholeFile: start == 0)
+        return .tail(tail[0..<filled], wholeFile: start == 0)
     }
 
     /// The last line of a transcript's tail bytes, parsed. `tailIsWholeFile`

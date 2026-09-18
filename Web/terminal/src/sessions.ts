@@ -42,6 +42,7 @@ import {
   restartDismissName,
   restartNotice,
   rowLine,
+  rowModel,
   rowName,
   rowNeeds,
   sameServerKey,
@@ -1639,6 +1640,13 @@ function row(s: SessionRow, base?: string): HTMLElement {
     const what = span("what", line.what);
     what.title = line.what;
     main.append(what);
+  }
+  // The model is a fact before the time; absent when the session has none.
+  const model = rowModel(s);
+  if (model) {
+    const fact = span("model", model);
+    if (s.agentModel) fact.title = s.agentModel;
+    main.append(fact);
   }
   if (line.since) main.append(span("since", line.since));
   link.append(dot, main);

@@ -45,6 +45,12 @@ export type ModelRow = {
   note?: string;
   /** The session's latest Claude Code hook report; the row reads the message. */
   agent?: { message?: string };
+  /** The model id the session's transcript last answered with, as Claude
+   * Code wrote it; absent until the session has an assistant turn. */
+  agentModel?: string;
+  /** The name the daemon derives from `agentModel` by the naming rule of
+   * `design-foundation.md`: `Fable 5.1`, `Opus 5 · 1M`, or the id unchanged. */
+  agentModelName?: string;
 };
 
 export type Approval = {
@@ -810,6 +816,18 @@ export function rowLine(row: ModelRow, now: number, base: string | undefined = r
     what: row.agent?.message ?? row.note ?? command,
     since: typeof row.lastOutputAt === "number" ? spanLabel(now - row.lastOutputAt) : null,
   };
+}
+
+/**
+ * The model fact of a session row: the name the daemon derived, printed
+ * beside the row's other facts before the time (`design-foundation.md`,
+ * "The model"). The id unchanged when the daemon sent one with no name,
+ * which is the rule's own last step. Null for a session with no assistant
+ * turn yet and for one that never ran `claude`: nothing, never a guess.
+ */
+export function rowModel(row: ModelRow): string | null {
+  const name = row.agentModelName?.trim() || row.agentModel?.trim();
+  return name ? name : null;
 }
 
 // --- the restart line -------------------------------------------------------
@@ -1597,14 +1615,33 @@ export type UsageTokens = {
 export type UsageBucket = {
   costUSD: number;
   apportionedUSD: number;
+  /** The part of `costUSD` from a record the rollup read before it kept
+   * the per-model map, whose transcript is gone: in the total, in no
+   * model's row. Absent from a daemon before `agent-dashboard` round 5. */
+  unsplitUSD?: number;
   tokens: UsageTokens;
   sessions: number;
   unbilledSessions: number;
 };
 
+/** One model's part of a day or of the range: the bill's own field names,
+ * and the name the daemon derived by the naming rule. The `MODELS` panel
+ * (capability 7) reads these; this round serves them. */
+export type UsageModel = {
+  model: string;
+  name: string;
+  costUSD: number;
+  apportionedUSD: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
+  sessions: number;
+};
+
 export type UsageProject = UsageBucket & { id: string; name: string; root: string; registered: boolean };
 
-export type UsageDay = UsageBucket & { day: string; projects: UsageProject[] };
+export type UsageDay = UsageBucket & { day: string; models?: UsageModel[]; projects: UsageProject[] };
 
 /** The route's answer: one entry per day in the range, zero-filled, the
  * totals, and the totals per project over the range. */
@@ -1618,6 +1655,9 @@ export type UsageDaily = {
   recordedSessions: number;
   days: UsageDay[];
   totals: UsageBucket;
+  /** The range's split per model, dearest first; its dollars sum to
+   * `totals.costUSD` less `totals.unsplitUSD`. */
+  models?: UsageModel[];
   projects: UsageProject[];
 };
 

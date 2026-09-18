@@ -217,6 +217,9 @@ public final class DaemonServer: @unchecked Sendable {
             projects: .shared
         )
         self.usageRollup = usageRollup
+        // The model per live session's transcript, one cache for every
+        // connection, so a session list reads a transcript only when it grew.
+        let transcriptModels = TranscriptModelCache()
         // The newest quota reading a statusline posted, read back from
         // `usage-limits.json` so its age is true after a restart.
         let usageLimits = UsageLimitsStore(file: DaemonPaths.usageLimitsFile)
@@ -364,7 +367,8 @@ public final class DaemonServer: @unchecked Sendable {
                         pushNotifier: pushNotifier,
                         vapidKeys: vapidKeys,
                         usageRollup: usageRollup,
-                        usageLimits: usageLimits
+                        usageLimits: usageLimits,
+                        transcriptModels: transcriptModels
                     )
                     connections.track(channel)
                     let upgradeConfig = NIOHTTPServerUpgradeConfiguration(

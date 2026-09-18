@@ -97,6 +97,14 @@ public final class UsageRollup: @unchecked Sendable {
         /// The bill's `startTime` as a day, for a bill with no turns.
         public var startDay: String?
         public var days: [String: TokenCounts]
+        /// The bill's `modelUsage` map, as `TranscriptBill` read it: dollars
+        /// and tokens per model id. Nil on a record written before the
+        /// rollup kept it (format version 1 before 2026-09-18) and on an
+        /// unbilled session; a bill of zero holds an empty map. A billed
+        /// record with nil is read again on the next refresh while its
+        /// transcript is on disk, and stays whole but unsplit once it is
+        /// gone: the report counts its dollars under `unsplitUSD`.
+        public var models: [String: TranscriptBill.ModelUsage]?
     }
 
     struct FileShape: Codable {
@@ -181,8 +189,11 @@ public final class UsageRollup: @unchecked Sendable {
         var replaced: [String: SessionRecord] = [:]
         var skipped = 0
         for entry in listed {
+            // A billed record with no per-model map was written before the
+            // rollup kept one; it is read once more so the split fills in.
             if !zoneChanged, let record = before.0[entry.key], record.size == entry.size, record.mtime == entry.mtime,
-               record.subagentFiles == entry.subagents.count, record.subagentBytes == entry.subagentBytes {
+               record.subagentFiles == entry.subagents.count, record.subagentBytes == entry.subagentBytes,
+               record.models != nil || !record.billed {
                 skipped += 1
                 continue
             }
@@ -261,9 +272,11 @@ public final class UsageRollup: @unchecked Sendable {
         var billed = false
         var total = 0.0
         var startDay: String?
+        var models: [String: TranscriptBill.ModelUsage]?
         if case .bill(let bill) = usage.bill {
             billed = true
             total = bill.totalCostUSD
+            models = bill.modelUsage
             if let start = bill.startTime {
                 startDay = DayKey(Date(timeIntervalSince1970: Double(start) / 1000), in: zone).description
             }
@@ -279,7 +292,8 @@ public final class UsageRollup: @unchecked Sendable {
             billed: billed,
             totalCostUSD: total,
             startDay: startDay,
-            days: usage.days
+            days: usage.days,
+            models: models
         )
     }
 
@@ -306,6 +320,10 @@ public final class UsageRollup: @unchecked Sendable {
     public struct Bucket: Codable, Equatable, Sendable {
         public var costUSD: Double = 0
         public var apportionedUSD: Double = 0
+        /// The part of `costUSD` from a record read before the rollup kept
+        /// the per-model map, whose transcript is gone: it is in the total
+        /// and in no model's row, so the rows plus this equal the total.
+        public var unsplitUSD: Double = 0
         public var tokens: TokenCounts = .zero
         public var sessions: Int = 0
         public var unbilledSessions: Int = 0
@@ -316,6 +334,33 @@ public final class UsageRollup: @unchecked Sendable {
             tokens += share.tokens
             sessions += 1
             if !billed { unbilledSessions += 1 }
+        }
+    }
+
+    /// One model's part of a day or of the range: the bill's own field
+    /// names, and the name the page prints (`ModelName`). A session on two
+    /// days puts each day's share of its per-model dollars and tokens here,
+    /// by the same token share that splits its total.
+    public struct ModelBucket: Codable, Equatable, Sendable {
+        public var model: String
+        public var name: String
+        public var costUSD: Double = 0
+        public var apportionedUSD: Double = 0
+        public var inputTokens: Double = 0
+        public var outputTokens: Double = 0
+        public var cacheReadInputTokens: Double = 0
+        public var cacheCreationInputTokens: Double = 0
+        /// Sessions that used the model in the range, or on the day.
+        public var sessions: Int = 0
+
+        mutating func add(_ usage: TranscriptBill.ModelUsage, fraction: Double, apportioned: Bool) {
+            costUSD += usage.costUSD * fraction
+            if apportioned { apportionedUSD += usage.costUSD * fraction }
+            inputTokens += Double(usage.inputTokens) * fraction
+            outputTokens += Double(usage.outputTokens) * fraction
+            cacheReadInputTokens += Double(usage.cacheReadInputTokens) * fraction
+            cacheCreationInputTokens += Double(usage.cacheCreationInputTokens) * fraction
+            sessions += 1
         }
     }
 
@@ -335,9 +380,13 @@ public final class UsageRollup: @unchecked Sendable {
         public var day: String
         public var costUSD: Double
         public var apportionedUSD: Double
+        public var unsplitUSD: Double
         public var tokens: TokenCounts
         public var sessions: Int
         public var unbilledSessions: Int
+        /// The day's dollars per model, dearest first; they sum to
+        /// `costUSD` less `unsplitUSD`.
+        public var models: [ModelBucket]
         public var projects: [ProjectBucket]
     }
 
@@ -353,6 +402,9 @@ public final class UsageRollup: @unchecked Sendable {
         /// One entry per day in the range, zero-filled, oldest first.
         public var days: [Day]
         public var totals: Bucket
+        /// The range's dollars and tokens per model, dearest first. Their
+        /// dollars sum to `totals.costUSD` less `totals.unsplitUSD`.
+        public var models: [ModelBucket]
         /// The range's totals per project, dearest first.
         public var projects: [ProjectBucket]
     }
@@ -378,10 +430,14 @@ public final class UsageRollup: @unchecked Sendable {
         // in a project's, so those count keys, not shares.
         var projectSessions: [String: Set<String>] = [:]
         var projectUnbilled: [String: Set<String>] = [:]
+        var perDayModel: [String: [String: ModelBucket]] = [:]
+        var perModel: [String: ModelBucket] = [:]
+        var modelSessions: [String: Set<String>] = [:]
         for (key, record) in records {
             let shares = TranscriptUsage.apportion(
                 days: record.days, totalCostUSD: record.billed ? record.totalCostUSD : nil, fallbackDay: record.startDay
             )
+            let sessionTokens = record.days.values.reduce(0) { $0 + $1.total }
             for (day, share) in shares where wanted.contains(day) {
                 perDay[day, default: Bucket()].add(share, billed: record.billed)
                 let project = record.project ?? ProjectRef(id: "unknown", name: "unknown", root: "", registered: false)
@@ -394,24 +450,53 @@ public final class UsageRollup: @unchecked Sendable {
                 totals.tokens += share.tokens
                 if counted.insert(key).inserted { totals.sessions += 1 }
                 if !record.billed, countedUnbilled.insert(key).inserted { totals.unbilledSessions += 1 }
+                // The per-model split, by the day's share of the session's
+                // tokens: the fraction `apportion` gives the dollars.
+                guard record.billed else { continue }
+                guard let models = record.models else {
+                    perDay[day, default: Bucket()].unsplitUSD += share.costUSD
+                    totals.unsplitUSD += share.costUSD
+                    continue
+                }
+                let fraction = sessionTokens > 0 ? Double(share.tokens.total) / Double(sessionTokens) : 1
+                for (id, usage) in models {
+                    perDayModel[day, default: [:]][id, default: Self.empty(id)]
+                        .add(usage, fraction: fraction, apportioned: share.apportioned)
+                    perModel[id, default: Self.empty(id)].add(usage, fraction: fraction, apportioned: share.apportioned)
+                    modelSessions[id, default: []].insert(key)
+                }
             }
         }
         for root in perProject.keys {
             perProject[root]?.sessions = projectSessions[root]?.count ?? 0
             perProject[root]?.unbilledSessions = projectUnbilled[root]?.count ?? 0
         }
+        for id in perModel.keys {
+            perModel[id]?.sessions = modelSessions[id]?.count ?? 0
+        }
         let days = range.map { day -> Day in
             let bucket = perDay[day.description] ?? Bucket()
             return Day(
                 day: day.description, costUSD: bucket.costUSD, apportionedUSD: bucket.apportionedUSD,
-                tokens: bucket.tokens, sessions: bucket.sessions, unbilledSessions: bucket.unbilledSessions,
+                unsplitUSD: bucket.unsplitUSD, tokens: bucket.tokens, sessions: bucket.sessions,
+                unbilledSessions: bucket.unbilledSessions,
+                models: Self.sorted(perDayModel[day.description] ?? [:]),
                 projects: Self.sorted(perDayProject[day.description] ?? [:])
             )
         }
         return DailyReport(
             timeZone: zone.identifier, from: from.description, to: to.description, refreshedAt: stamp,
-            recordedSessions: records.count, days: days, totals: totals, projects: Self.sorted(perProject)
+            recordedSessions: records.count, days: days, totals: totals,
+            models: Self.sorted(perModel), projects: Self.sorted(perProject)
         )
+    }
+
+    private static func empty(_ model: String) -> ModelBucket {
+        ModelBucket(model: model, name: ModelName.name(for: model))
+    }
+
+    private static func sorted(_ buckets: [String: ModelBucket]) -> [ModelBucket] {
+        buckets.values.sorted { ($0.costUSD, $1.model) > ($1.costUSD, $0.model) }
     }
 
     private static func empty(_ project: ProjectRef) -> ProjectBucket {

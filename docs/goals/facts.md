@@ -64,6 +64,15 @@ decision moves to `docs/adr/`.
 
 ## Daemon and API
 
+- A transcript's last **assistant** line is not near the end of the
+  file. Over the 40 newest on 2026-09-18 it sat within 4 KiB in 3 of 40,
+  within 64 KiB in 39, and within 256 KiB in 40 — p50 6.8 KiB, p90
+  13 KiB, max 101 KiB. The tail is tool results, the `cost-state` line,
+  the last prompt and attachments. A search for `"model":"` anywhere in
+  the tail matches lines that are not assistant turns and will report a
+  short tail as sufficient when it is not.
+  (2026-09-18, agent-dashboard round 5)
+
 - `--lan` with no `--trusted-host` grants unauthenticated full access to
   anything that reaches the daemon through a loopback proxy. In
   `AccessPolicy.decide`, an empty `trustedHosts` makes `viaTrustedHost`
