@@ -17,7 +17,8 @@ import NIOConcurrencyHelpers
 /// - **A merged pull request** is a first-parent commit on that branch in the
 ///   range whose subject ends in `(#N)` (a squash merge, which is how this
 ///   repository merges) or starts with `Merge pull request #N`. The range
-///   is by committer date, which is when the merge happened.
+///   is by committer date, which is when the merge happened, with the
+///   day bounds resolved in the zone the caller names.
 /// - **Merged lines** are the insertions of those commits, from
 ///   `--shortstat` against the first parent.
 /// - **A release** is a tag whose creation date falls in the range.
@@ -91,9 +92,13 @@ public struct RepositoryYield: Codable, Equatable, Sendable {
             }
         }
         var yield = RepositoryYield(checkout: true, remote: remote, branch: branch)
+        // Epoch seconds, so `git` cannot read the bounds in the machine's
+        // zone: a range ending on the 4th in `+07` ends at `16:59:59Z`.
+        let since = Int(firstInstant(of: from, in: zone).timeIntervalSince1970)
+        let until = Int(firstInstant(of: to.advanced(by: 1), in: zone).timeIntervalSince1970) - 1
         if remote, let branch, let log = at([
             "log", branch == "HEAD" ? "HEAD" : "refs/remotes/" + branch, "--first-parent", "--diff-merges=first-parent",
-            "--shortstat", "--since=\(from.description)T00:00:00", "--until=\(to.description)T23:59:59",
+            "--shortstat", "--since=@\(since)", "--until=@\(until)",
             "--format=\(separator)%H\(field)%s",
         ]), log.status == 0 {
             let merged = parseLog(log.output).filter { isPullRequest($0.subject) }
@@ -108,6 +113,15 @@ public struct RepositoryYield: Codable, Equatable, Sendable {
             }.count
         }
         return yield
+    }
+
+    /// The first instant of `day` in `zone`, DST-aware: the inverse of
+    /// `DayKey(_:in:)`. The offset is read at the guessed instant and once
+    /// more at the corrected one, so a transition at midnight lands right.
+    static func firstInstant(of day: DayKey, in zone: TimeZone) -> Date {
+        let naive = TimeInterval(day.number * 86_400)
+        let guess = naive - TimeInterval(zone.secondsFromGMT(for: Date(timeIntervalSince1970: naive)))
+        return Date(timeIntervalSince1970: naive - TimeInterval(zone.secondsFromGMT(for: Date(timeIntervalSince1970: guess))))
     }
 
     /// A squash merge's `(#N)` suffix, or a merge commit's subject.

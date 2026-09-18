@@ -96,6 +96,29 @@ final class RepositoryYieldTests: XCTestCase {
         XCTAssertEqual(empty.releases, 0)
     }
 
+    /// The day bounds follow `zone`, not the machine's zone: a merge at
+    /// `00:10+07` on the 5th is outside a range that ends on the 4th in
+    /// Saigon and inside it in UTC, whatever `TZ` the test runs under. Both
+    /// reads share one fixture, so one of them fails on any machine when
+    /// `git` is handed a bound with no zone.
+    func testTheRangeBoundsFollowTheZoneNotTheMachine() throws {
+        let root = try repo("zoned")
+        try git(root, ["remote", "add", "origin", "https://example.invalid/z.git"])
+        try commit(root, "Early in Saigon (#1)", lines: 100, at: "2026-09-01T00:10:00+07:00")
+        try commit(root, "Inside both (#2)", lines: 10, at: "2026-09-04T23:30:00+07:00")
+        try commit(root, "Late in Saigon (#3)", lines: 3, at: "2026-09-05T00:10:00+07:00")
+        try git(root, ["update-ref", "refs/remotes/origin/main", "HEAD"])
+        let from = DayKey("2026-09-01")!, to = DayKey("2026-09-04")!
+
+        let saigon = RepositoryYield.read(root: root, from: from, to: to, zone: Self.saigon)
+        XCTAssertEqual(saigon.mergedPullRequests, 2, "the early and the inside commits")
+        XCTAssertEqual(saigon.mergedLines, 110)
+
+        let utc = RepositoryYield.read(root: root, from: from, to: to, zone: TimeZone(identifier: "UTC")!)
+        XCTAssertEqual(utc.mergedPullRequests, 2, "the inside and the late commits: 16:30Z and 17:10Z on the 4th")
+        XCTAssertEqual(utc.mergedLines, 13, "the early commit is 17:10Z on August 31st, before the range")
+    }
+
     func testACheckoutWithNoRemoteCountsReleasesAndNoPullRequests() throws {
         let root = try repo("noremote")
         try commit(root, "Local merge (#9)", lines: 10, at: "2026-09-03T10:00:00+07:00")
