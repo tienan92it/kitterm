@@ -118,13 +118,14 @@ describe("the usage panel", () => {
 
   it("says plainly what part is apportioned across midnight and how many sessions have no bill", () => {
     const panel = usagePanel(report, { mode: "cost", span: 30 }, NOW)!;
-    expect(panel.note).toBe(
-      "$329.67 of it is apportioned across midnight by token share, not measured; 50 sessions have no bill yet, so their tokens are in and their dollars are not.",
-    );
+    // One line that names the number (`design-foundation.md`, "The panels"):
+    // the apportioned part and the unbilled count, under 46 characters.
+    expect(panel.note).toBe("$329.67 apportioned · 50 sessions unbilled");
     expect(panel.age).toBe("rollup refreshed 4m ago");
-    expect(usageNote({ ...report.totals, apportionedUSD: 0 }, "cost")).toBe("50 sessions have no bill yet, so their tokens are in and their dollars are not.");
-    expect(usageNote({ ...report.totals, unbilledSessions: 1, apportionedUSD: 0 }, "cost")).toBe("1 session has no bill yet, so their tokens are in and their dollars are not.");
-    expect(usageNote({ ...report.totals, apportionedUSD: 0, unbilledSessions: 0 }, "cost")).toBe("Every dollar is a session's own bill on the day it ran.");
+    expect(usageNote({ ...report.totals, apportionedUSD: 0 }, "cost")).toBe("50 sessions unbilled: tokens in, dollars not");
+    expect(usageNote({ ...report.totals, unbilledSessions: 1, apportionedUSD: 0 }, "cost")).toBe("1 session unbilled: tokens in, dollars not");
+    expect(usageNote({ ...report.totals, unbilledSessions: 0 }, "cost")).toBe("$329.67 apportioned across midnight");
+    expect(usageNote({ ...report.totals, apportionedUSD: 0, unbilledSessions: 0 }, "cost")).toBe("every dollar measured on its day");
   });
 
   it("tokens: the headline is every token in the range and the series counts tokens, with no dollar in sight", () => {
@@ -134,9 +135,9 @@ describe("the usage panel", () => {
     expect(panel.series[panel.days.indexOf("2026-09-10")]).toBe(totalTokens(tokens(40_000, 100_000, 1_500_000, 10_000_000)));
     expect(panel.series[panel.days.indexOf("2026-09-13")]).toBe(0);
     expect(panel.peak).toEqual({ day: "2026-09-11", value: 16_210_000 });
-    expect(panel.note).toBe("50 sessions have no bill yet; their tokens are counted.");
+    expect(panel.note).toBe("50 sessions unbilled: tokens counted");
     expect(panel.note).not.toContain("$");
-    expect(usageNote({ ...report.totals, unbilledSessions: 0 }, "tokens")).toBe("Every session in the range has its bill.");
+    expect(usageNote({ ...report.totals, unbilledSessions: 0 }, "tokens")).toBe("every session billed");
     expect(panel.modes.map((t) => t.checked)).toEqual([false, true]);
   });
 

@@ -441,7 +441,7 @@ describe("rowLine", () => {
   it("prints an idle shell at the project root as its folder, the state and the span", () => {
     expect(rowLine(inKitterm({ mergedState: "idle", lastExit: 0, lastOutputAt: at(2 * hour) }), now)).toEqual({
       name: "kitterm",
-      state: "idle",
+      state: "[idle]",
       place: null,
       what: null,
       since: "2h",
@@ -458,7 +458,7 @@ describe("rowLine", () => {
     });
     expect(rowLine(working, now)).toEqual({
       name: "crew",
-      state: "working",
+      state: "[working]",
       place: null,
       what: "Running the floor",
       since: "now",
@@ -469,7 +469,7 @@ describe("rowLine", () => {
     const failed = inKitterm({ mergedState: "failed", lastExit: 1, lastCommand: "swift test", lastOutputAt: at(90 * minute) });
     expect(rowLine(failed, now)).toEqual({
       name: "kitterm",
-      state: "failed (1)",
+      state: "[failed (1)]",
       place: null,
       what: "$ swift test",
       since: "1h",
@@ -480,7 +480,7 @@ describe("rowLine", () => {
     const named = inKitterm({ name: "postman", cwd: "/w/kitterm/docs/postman", mergedState: "idle", lastExit: 0, lastOutputAt: at(3 * 24 * hour) });
     expect(rowLine(named, now)).toEqual({
       name: "postman",
-      state: "idle",
+      state: "[idle]",
       place: "docs/postman",
       what: null,
       since: "3d",

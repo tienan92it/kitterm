@@ -556,6 +556,13 @@ const BLOCK_SURFACES: Array<{ block: string; stack: string[]; why: string }> = [
   { block: "line-actions", stack: ["var(--ui-surface)"], why: "in .line-approval, on the card" },
   { block: "approval-deny", stack: ["var(--ui-surface)"], why: "a .line-actions button, on the card" },
   { block: "approval-allow", stack: ["var(--ui-surface)"], why: "a .line-actions button, on the card" },
+  // --- sessions.css: the tree's header, on the body; a line, on the card ---
+  { block: "tree-head", stack: ["var(--ui-bg)"], why: "above the cards, on the body; it paints nothing" },
+  { block: "tree-label", stack: ["var(--ui-bg)"], why: "in .tree-head, on the body" },
+  { block: "tree-key", stack: ["var(--ui-bg)"], why: "in .tree-head, on the body" },
+  { block: "line", stack: ["var(--ui-surface)"], why: "a line of the tree: a head, a goal, a task, a row, an approval, on the card" },
+  { block: "row-line", stack: ["var(--ui-surface)"], why: "the line of a row, on the card" },
+  { block: "name-text", stack: ["var(--ui-surface)"], why: "in a heading's .name, on the card" },
   // --- sessions.css: the pinned foreman row, on the body ---
   { block: "pinned", stack: ["var(--ui-bg)"], why: "above the cards, on the body" },
   { block: "foreman", stack: ["var(--ui-bg)"], why: "above the cards, on the body; it paints nothing" },

@@ -743,9 +743,11 @@ export function lineProposals(projectId: string, summary: KnowledgeSummary, prop
 
 // --- a session row -----------------------------------------------------------
 
-/** What one row prints, in order: the name, the state word, where the shell
- * is when the name does not say, what it is doing, and how long. A null
- * field is not printed. */
+/** What one row prints, in order: the name, the state as a bracketed word
+ * (`stateTag`), where the shell is when the name does not say, what it is
+ * doing, and how long. A null field is not printed. The name is the only
+ * cell that truncates; `place`, `what` and the model are facts the line
+ * drops, in `ROW_DROP_ORDER`, when it is too narrow for them. */
 export type RowLine = {
   name: string;
   state: string;
@@ -781,11 +783,32 @@ export function stateName(state: MergedState): string {
  * the last command failed or the shell exited with one, so `failed (1)`
  * says the number once and `exit 0` is never printed. */
 export function stateLabel(row: ModelRow): string {
+  return stateName(stateOf(row)) + exitSuffix(row);
+}
+
+/** ` (1)` after a failed or exited state whose code is not zero; nothing
+ * otherwise, so `exit 0` is never printed. */
+function exitSuffix(row: ModelRow): string {
   const state = stateOf(row);
-  const word = stateName(state);
-  if (state !== "failed" && state !== "exited") return word;
+  if (state !== "failed" && state !== "exited") return "";
   const code = row.lastExit;
-  return typeof code === "number" && code !== 0 ? `${word} (${code})` : word;
+  return typeof code === "number" && code !== 0 ? ` (${code})` : "";
+}
+
+/** The vocabulary word of a row's state (`design-foundation.md`,
+ * Hierarchy): `needs you` for an agent waiting on a person, whether its
+ * hook report or a pending approval says so; `stateName` for the rest. */
+export function stateWord(state: MergedState): string {
+  return state === "needs-approval" || state === "needs-input" ? "needs you" : stateName(state);
+}
+
+/** The state of a row as its line prints it: the vocabulary word in
+ * brackets, never bare, with the exit code inside them when the last
+ * command failed or the shell exited with one: `[working]`, `[needs you]`,
+ * `[failed (1)]`. The brackets are what make a state unmistakable in a
+ * column of names that are also lower-case and hyphenated. */
+export function stateTag(row: ModelRow): string {
+  return `[${stateWord(stateOf(row))}${exitSuffix(row)}]`;
 }
 
 /** Where a shell is, once: the path under `base`, the directory the heading
@@ -835,7 +858,7 @@ export function rowLine(row: ModelRow, now: number, base: string | undefined = r
   const command = row.lastCommand ? `$ ${row.lastCommand}` : null;
   return {
     name: rowName(row),
-    state: stateLabel(row),
+    state: stateTag(row),
     place: row.name ? whereOf(row, base) : null,
     what: row.agent?.message ?? row.note ?? command,
     since: typeof row.lastOutputAt === "number" ? spanLabel(now - row.lastOutputAt) : null,
@@ -852,6 +875,143 @@ export function rowLine(row: ModelRow, now: number, base: string | undefined = r
 export function rowModel(row: ModelRow): string | null {
   const name = row.agentModelName?.trim() || row.agentModel?.trim();
   return name ? name : null;
+}
+
+// --- the line ---------------------------------------------------------------
+//
+// Every level of the tree is one line (`design-foundation.md`, "The line, in
+// detail"): a mark, the indent, a name, its facts, its time, its actions.
+// The name is the only cell that grows and the only one that truncates. A
+// fact that does not fit is dropped, not wrapped, and the facts drop in a
+// fixed order as the line narrows. The model here names the mark, the word
+// and the drop order of each level; `sessions.ts` measures the line and
+// hides the facts that do not fit, in that order (`keptFacts`).
+
+/** The families a gutter mark can wear: the class beside `mark`, which is
+ * what colours it. `running` is the accent, `attention` the amber,
+ * `failed` the red; the other four are grey, because a finished, waiting
+ * or unknown thing needs nothing from the reader. */
+export type MarkFamily = "running" | "attention" | "failed" | "done" | "idle" | "pending" | "unknown";
+
+/** The mark's family for a row's merged state. A pending approval and a
+ * hook report that waits on a person wear the same amber. */
+export function markFamily(state: MergedState): MarkFamily {
+  switch (state) {
+    case "working":
+      return "running";
+    case "needs-approval":
+    case "needs-input":
+      return "attention";
+    case "completed":
+      return "done";
+    case "failed":
+      return "failed";
+    case "idle":
+      return "idle";
+    default:
+      return "unknown";
+  }
+}
+
+/** The one character a mark prints (`design-foundation.md`, Hierarchy):
+ * `?` for what waits on a person, `!` for what failed, `✓` for what is
+ * done, `·` for what is pending, `–` for what is idle or unknown. A working
+ * mark turns through the spinner's frames (`spinner.ts`) and rests on the
+ * cycle's full glyph; the `>` here is what it prints when no cycle's glyphs
+ * fit the mark column, so the page never shows a box. */
+export function markGlyph(family: MarkFamily): string {
+  switch (family) {
+    case "running":
+      return ">";
+    case "attention":
+      return "?";
+    case "failed":
+      return "!";
+    case "done":
+      return "✓";
+    case "pending":
+      return "·";
+    default:
+      return "–";
+  }
+}
+
+/** One entry of the vocabulary the tree's header prints: the mark and the
+ * bracketed word it always appears beside. */
+export type VocabularyEntry = { family: MarkFamily; tag: string };
+
+/** The whole vocabulary, in the foundation's order, so a reader never has
+ * to infer a mark. */
+export const VOCABULARY: readonly VocabularyEntry[] = [
+  { family: "running", tag: "[working]" },
+  { family: "attention", tag: "[needs you]" },
+  { family: "pending", tag: "[pending]" },
+  { family: "done", tag: "[done]" },
+  { family: "failed", tag: "[failed]" },
+  { family: "idle", tag: "[idle]" },
+];
+
+/** The word and the mark of a goal's line. `[needs you]` with the amber
+ * mark when its proposals wait on the human, because that is what the
+ * band counts and the reader opens; `[waiting]`, also amber, for a goal
+ * whose budget is spent; `[stopped]`, or any other status word, in grey;
+ * else the bucket's own word, `[working]` on the accent or `[pending]` on
+ * the faint dot. One state per line: the mark carries the colour, the
+ * word carries the meaning. */
+export function goalTag(bucket: "working" | "pending", status: string | null, marked: boolean): VocabularyEntry {
+  if (marked) return { family: "attention", tag: "[needs you]" };
+  if (status === "waiting") return { family: "attention", tag: "[waiting]" };
+  if (status !== null) return { family: "idle", tag: `[${status}]` };
+  return bucket === "working" ? { family: "running", tag: "[working]" } : { family: "pending", tag: "[pending]" };
+}
+
+/** The facts of a goal's line after its state word, in the order they
+ * stand and the reverse of the order they drop: the cost, the round
+ * counter, then the first line of the next action, which goes first. */
+export function goalFacts(line: GoalLine, cost: string | null): string[] {
+  const facts: string[] = [];
+  if (cost !== null) facts.push(cost);
+  if (line.round) facts.push(line.round);
+  if (line.next) facts.push(line.next);
+  return facts;
+}
+
+/** The cells of a row's line that drop, first to last, when the line is
+ * too narrow: what it is doing, then where it is, then the model. The
+ * state word never drops. The DOM keeps the model beside the time, which
+ * is where the foundation puts it, so the drop order is a list here rather
+ * than the cells' order. */
+export const ROW_DROP_ORDER: readonly ("what" | "place" | "model")[] = ["what", "place", "model"];
+
+/** The facts of a heading that drop, first to last: the count ("no live
+ * session"), then the cost. The name stays whole until nothing else can
+ * give way. */
+export const HEADING_DROP_ORDER: readonly ("tally" | "cost")[] = ["tally", "cost"];
+
+/**
+ * How many of a line's facts stay when the line is `need` px too narrow
+ * for all of them. `widths` are the facts' widths in the order they drop,
+ * each with one `gap` before it; the facts drop from the front of that
+ * order until the room they free covers the need. Zero need keeps every
+ * fact; a need no fact can cover drops them all, and the name truncates.
+ * Never a partial fact: a fact is shown whole or not at all.
+ */
+export function keptFacts(widths: readonly number[], need: number, gap: number): number {
+  let freed = 0;
+  let dropped = 0;
+  while (freed < need && dropped < widths.length) {
+    freed += widths[dropped] + gap;
+    dropped += 1;
+  }
+  return widths.length - dropped;
+}
+
+/** A goal's tasks split for a phone: the ones a reader may act on stay
+ * open, the done ones fold behind one line, the way a project's done
+ * goals do. Every state but `done` stays open, `failed` included, because
+ * a failed task needs a person. */
+export function foldDoneTasks<R extends ModelRow>(tasks: readonly TaskLine<R>[]): { open: TaskLine<R>[]; done: TaskLine<R>[] } {
+  return { open: tasks.filter((t) => t.state !== "done"), done: tasks.filter((t) => t.state === "done") };
 }
 
 // --- the restart line -------------------------------------------------------
@@ -1927,25 +2087,24 @@ function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-/** The note under the chart, so the numbers say what they are made of. */
+/**
+ * The note under the chart: one line that names a fact
+ * (`design-foundation.md`, "The panels"). In cost mode, the part of the
+ * total that is apportioned across midnight by token share rather than
+ * measured, and the sessions that have turns and no bill yet, whose tokens
+ * are in and whose dollars are not; in tokens mode only the unbilled
+ * count, because every token is counted. Under 46 characters, which is
+ * what one line holds at 390 px; the page's title on the note carries the
+ * long form.
+ */
 export function usageNote(totals: UsageBucket, mode: UsageMode): string {
-  const parts: string[] = [];
-  if (mode === "cost" && totals.apportionedUSD > 0) {
-    parts.push(`${dollars(totals.apportionedUSD)} of it is apportioned across midnight by token share, not measured`);
-  }
-  if (totals.unbilledSessions > 0) {
-    parts.push(
-      mode === "cost"
-        ? `${plural(totals.unbilledSessions, "session has", "sessions have")} no bill yet, so their tokens are in and their dollars are not`
-        : `${plural(totals.unbilledSessions, "session has", "sessions have")} no bill yet; their tokens are counted`,
-    );
-  }
-  if (parts.length === 0) {
-    return mode === "cost"
-      ? "Every dollar is a session's own bill on the day it ran."
-      : "Every session in the range has its bill.";
-  }
-  return parts.join("; ") + ".";
+  const unbilled = totals.unbilledSessions > 0 ? `${plural(totals.unbilledSessions, "session", "sessions")} unbilled` : null;
+  if (mode === "tokens") return unbilled ? `${unbilled}: tokens counted` : "every session billed";
+  const apportioned = totals.apportionedUSD > 0 ? dollars(totals.apportionedUSD) : null;
+  if (apportioned && unbilled) return `${apportioned} apportioned · ${unbilled}`;
+  if (apportioned) return `${apportioned} apportioned across midnight`;
+  if (unbilled) return `${unbilled}: tokens in, dollars not`;
+  return "every dollar measured on its day";
 }
 
 /**

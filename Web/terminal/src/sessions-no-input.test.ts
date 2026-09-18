@@ -92,7 +92,7 @@ describe("the fleet view takes no typed work", () => {
   it("rendered the fleet it was given: a working agent, one waiting for input, and an approval", () => {
     const text = root.textContent;
     expect(root.querySelectorAll(".row").length + root.querySelectorAll(".strip-item").length).toBeGreaterThanOrEqual(4);
-    expect(text).toContain("needs input");
+    expect(text).toContain("[needs you]");
     expect(text).toContain("approve Bash");
     expect(text).toContain("symbol-onboarding round 1");
     expect(root.querySelectorAll("a").map((a) => a.textContent)).toContain("Open the pane");

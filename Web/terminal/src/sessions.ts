@@ -9,7 +9,6 @@ import {
   approvalsOf,
   attention,
   band,
-  bucketLabel,
   cardRecord,
   costLabel,
   dayLabel,
@@ -17,13 +16,20 @@ import {
   dismissName,
   doneLabel,
   focusKey,
+  foldDoneTasks,
   folderOf,
   headingLine,
+  HEADING_DROP_ORDER,
+  keptFacts,
   goalCost,
+  goalFacts,
+  goalTag,
   goalTitle,
   group,
   knowledgeUrl,
   levels,
+  markFamily,
+  markGlyph,
   needsYouMessage,
   NEEDS_YOU_ID,
   NESTED_INDENT_PX,
@@ -45,12 +51,14 @@ import {
   rowModel,
   rowName,
   rowNeeds,
+  ROW_DROP_ORDER,
   sameServerKey,
   stateOf,
   usageAmount,
   usageChartName,
   usagePanel,
   usageRange,
+  VOCABULARY,
   withProposed,
   workspaceHome,
   workspaceUsage,
@@ -67,13 +75,13 @@ import {
   type Heading,
   type KnowledgeAnswer,
   type KnowledgeSummary,
-  type MergedState,
   type ModelRow,
   type ProfileWidth,
   type ProjectRef,
   type ProjectSection,
   type ProjectSummary,
   type LineProposals,
+  type MarkFamily,
   type ProposedItem,
   type PushFacts,
   type PushSupport,
@@ -100,6 +108,7 @@ import {
   type WherePanel,
   type YieldReport,
 } from "./sessions-value";
+import { canvasMeasure, type Cycle, FRAME_MS, frameAt, pickCycle } from "./spinner";
 import { loadSettings } from "./settings-store";
 import { applyThemeTokens } from "./theme-tokens";
 import { findThemeById } from "./themes";
@@ -566,6 +575,23 @@ let modelsPainted = "";
 let leaksPainted = "";
 /** The text on the line right now, so an unchanged line is left alone. */
 let restartPainted = "";
+/** The tree's header: `SESSIONS`, then the whole state vocabulary, each
+ * mark beside the bracketed word it always appears with, so a reader never
+ * has to infer a mark (`design-foundation.md`, Hierarchy). The working
+ * mark here stands still; only a line whose agent holds the tty turns. */
+const treeHead = document.createElement("div");
+treeHead.className = "tree-head";
+function treeLegend(): Node[] {
+  return [
+    span("tree-label", "SESSIONS"),
+    ...VOCABULARY.map((entry) => {
+      const key = document.createElement("span");
+      key.className = "tree-key";
+      key.append(mark(entry.family, true), span(`tag-state ${entry.family}`, entry.tag));
+      return key;
+    }),
+  ];
+}
 const cards = document.createElement("div");
 cards.className = "cards";
 let skeletonMounted = false;
@@ -573,6 +599,7 @@ let skeletonMounted = false;
 function mountSkeleton(): void {
   if (!root || skeletonMounted) return;
   skeletonMounted = true;
+  treeHead.replaceChildren(...treeLegend());
   // Status first, the push switch last: it is a thing the reader does, not
   // a thing the reader came to learn.
   root.replaceChildren(
@@ -670,12 +697,58 @@ function paint(): void {
   paintPush();
   // Every session is a line once; the foreman is a row of its own project
   // or workspace, first among them (`sortInGroup`).
-  cards.replaceChildren(...sectionList(sessions, proposed));
+  cards.replaceChildren(treeHead, ...sectionList(sessions, proposed));
   // The first marked line, in the page's own order, is where the band's
   // "need you" cell lands. One id, set after the tree is built, so the
   // cell's link is a plain fragment.
   cards.querySelector("[data-needs]")?.setAttribute("id", NEEDS_YOU_ID);
+  fitLines();
+  syncSpinner();
   if (focusKey) restoreFocus(focusKey);
+}
+
+// --- every line is one line ---------------------------------------------------
+//
+// A line's name is the only cell that truncates; its facts drop, whole, from
+// the right when the line is too narrow for them. CSS cannot hide a flex
+// item that does not fit without cutting it, so the page measures: with
+// every fact shown and every cell at its content width (`.measure`), how
+// far the line's cells run past its content edge is what the facts must
+// give back, and `keptFacts` says how many stay. Facts carry `data-drop`, their place in the drop
+// order (0 first); the name carries `data-name`. Two passes over the page,
+// one read and one write, so the layout runs twice, not once per line.
+
+/** One measured line: its facts in drop order and what they must free. */
+type Fit = { facts: HTMLElement[]; widths: number[]; need: number; gap: number };
+
+function fitLines(): void {
+  if (!root) return;
+  const lines = [...root.querySelectorAll<HTMLElement>(".line")];
+  if (lines.length === 0 || typeof lines[0].getBoundingClientRect !== "function") return;
+  // Show every fact and let nothing shrink, so the overflow is the truth.
+  for (const line of lines) {
+    line.classList.add("measure");
+    for (const fact of line.querySelectorAll<HTMLElement>("[data-drop]")) fact.hidden = false;
+  }
+  const fits: Fit[] = lines.map((line) => {
+    const facts = [...line.querySelectorAll<HTMLElement>("[data-drop]")].sort(
+      (a, b) => Number(a.dataset.drop) - Number(b.dataset.drop),
+    );
+    // The content edge: a cell past it is a cell the line has no room for.
+    const edge = line.getBoundingClientRect().right - (Number.parseFloat(getComputedStyle(line).paddingRight) || 0);
+    let right = edge;
+    for (const cell of line.querySelectorAll<HTMLElement>("*")) right = Math.max(right, cell.getBoundingClientRect().right);
+    const gap = Number.parseFloat(getComputedStyle(line).columnGap) || 0;
+    return { facts, widths: facts.map((f) => f.getBoundingClientRect().width), need: right - edge, gap };
+  });
+  lines.forEach((line, i) => {
+    line.classList.remove("measure");
+    const { facts, widths, need, gap } = fits[i];
+    const kept = keptFacts(widths, need, gap);
+    facts.forEach((fact, j) => {
+      fact.hidden = j < facts.length - kept;
+    });
+  });
 }
 
 function restoreFocus(key: string): void {
@@ -808,9 +881,11 @@ function usageContent(panel: UsagePanel): Node[] {
   if (panel.peak) axis.append(span("usage-peak", `most ${usageAmount(panel.peak.value, panel.mode)} on ${dayLabel(panel.peak.day)}`));
   axis.append(span("usage-to", panel.days.length > 1 ? dayLabel(panel.days[panel.days.length - 1]) : ""));
 
+  // One line that names the number; the long form is its title.
   const note = document.createElement("p");
   note.className = "usage-note";
   note.textContent = panel.note;
+  note.title = "Apportioned: a session across midnight is split by each day's token share, not measured. Unbilled: a session with turns and no bill yet, so its tokens are in and its dollars are not.";
   const age = document.createElement("p");
   age.className = "usage-age";
   age.textContent = panel.age;
@@ -928,9 +1003,10 @@ function paintPanel(block: HTMLElement, painted: string, model: unknown, content
 
 /** `VALUE`: four tiles, a count and its noun and what one unit cost, and
  * the one line that says a line and a PR are proxies. A tile with no
- * source prints a dash. */
+ * source prints a dash. Below 768 px it folds behind its summary line
+ * like every measure panel: the band carries the headline spend. */
 function paintValue(panel: ValuePanel | null): void {
-  valuePainted = paintPanel(valueBlock, valuePainted, panel, () => {
+  valuePainted = paintPanel(valueBlock, valuePainted, [panel, narrow()], () => {
     const tiles = document.createElement("div");
     tiles.className = "yield";
     for (const tile of panel!.tiles) {
@@ -943,7 +1019,7 @@ function paintValue(panel: ValuePanel | null): void {
     const body = document.createElement("div");
     body.className = "panel-body";
     body.append(tiles, panelNote(panel!.note));
-    return [panelLabel("VALUE"), body];
+    return panelContent("VALUE", "panel:value", panel!.summary, body);
   });
 }
 
@@ -960,7 +1036,10 @@ function splitRow(key: string, name: string, remainder: boolean, fill: number, f
   const track = document.createElement("span");
   track.className = "split-bar";
   track.setAttribute("aria-hidden", "true");
-  const bar = mark(remainder ? "bar attention" : "bar");
+  // The bar is a mark with no character: a shape whose length is the value.
+  const bar = document.createElement("span");
+  bar.className = remainder ? "mark bar attention" : "mark bar";
+  bar.setAttribute("aria-hidden", "true");
   bar.style.width = `${Math.round(fill * 1000) / 10}%`;
   track.append(bar);
   li.append(track);
@@ -1330,11 +1409,16 @@ function bandCell(cell: BandCell, target: string | null): HTMLElement {
  * stopped until it is answered. */
 function approvalLine(approval: Approval, row: SessionRow | null): HTMLElement {
   const line = document.createElement("div");
-  line.className = "line-approval";
+  line.className = "line-approval line";
   line.dataset.needs = "approval";
-  line.append(mark("attention"), span("line-approval-what", `approve ${approval.tool}`));
+  const what = span("line-approval-what", `approve ${approval.tool}`);
+  what.dataset.name = "";
+  line.append(mark("attention"), what);
+  // The arguments are the line's one fact: whole in the title, dropped
+  // when the line is too narrow for them.
   const input = span("line-approval-input", summarize(approval.input));
   input.title = summarize(approval.input);
+  input.dataset.drop = "0";
   line.append(input, span("line-waited", waitedLabel(approval.waitingMs)));
   const who = row ? headlineOf(row) : (approval.session?.slice(0, 8) ?? "");
   if (approval.session) line.append(openLink(approval.session, "Open the pane"));
@@ -1470,7 +1554,7 @@ function workspace(s: WorkspaceSection<SessionRow>, headed: string[], proposed: 
   section.className = "workspace";
   section.setAttribute("aria-label", heading.name);
   const head = document.createElement("div");
-  head.className = "head";
+  head.className = "head line";
   head.append(headingName(heading, 2, usage ? costLabel(workspaceUsage(usage, heading.path, headed)) : null));
   section.append(head);
   if (s.rows.length > 0) section.append(rowList(s.rows, heading.path ?? undefined));
@@ -1493,12 +1577,15 @@ function workspace(s: WorkspaceSection<SessionRow>, headed: string[], proposed: 
 function headingName(heading: Heading, level: 2 | 3, cost: string | null): HTMLElement {
   const h = document.createElement(`h${level}`);
   h.className = "name";
-  h.textContent = heading.name;
-  if (heading.path) h.title = heading.path;
+  const text = span("name-text", heading.name);
+  text.dataset.name = "";
+  if (heading.path) text.title = heading.path;
+  h.append(text);
   if (cost !== null) {
     const c = span("cost", cost);
     c.title = `${heading.name}: what the range cost here, at the full API rate`;
-    h.append(" ", c);
+    c.dataset.drop = String(HEADING_DROP_ORDER.indexOf("cost"));
+    h.append(c);
   }
   return h;
 }
@@ -1521,7 +1608,7 @@ function card(p: ProjectSection<SessionRow>, archived: ArchivedRow[], proposed: 
   section.setAttribute("aria-label", p.heading.name);
 
   const head = document.createElement("div");
-  head.className = "head";
+  head.className = "head line";
   head.append(headingName(p.heading, level, usage && p.project ? costLabel(projectUsage(usage, p.project.root)) : null));
   // The counts live on the fleet line above the projects; the rows say
   // their own state. A project with no session at all says so, once.
@@ -1535,7 +1622,11 @@ function card(p: ProjectSection<SessionRow>, archived: ArchivedRow[], proposed: 
     profiles: spawnIn ? [LOCAL_SHELL, ...profiles.map((pr) => pr.name)] : null,
     indent: level === 3 ? NESTED_INDENT_PX : 0,
   });
-  if (tallyText) head.append(span(line.tally ? "tally" : "tally gives-way", tallyText));
+  if (tallyText) {
+    const tally = span(line.tally ? "tally" : "tally gives-way", tallyText);
+    tally.dataset.drop = String(HEADING_DROP_ORDER.indexOf("tally"));
+    head.append(tally);
+  }
   if (spawnIn) head.append(spawnControls(spawnIn, line.profile));
   section.append(head);
 
@@ -1545,11 +1636,11 @@ function card(p: ProjectSection<SessionRow>, archived: ArchivedRow[], proposed: 
     if (orphans.length > 0) section.append(orphanList(orphans));
   }
   if (p.project) {
+    // The goals by state, working first: each line says its own state in
+    // brackets, so no label stands over a bucket.
     const { working, pending, done } = p.goals;
-    if (working.length > 0) section.append(bucket("working", working.length, level), goalList(p.project, working, proposed));
-    if (pending.length > 0) {
-      section.append(bucket("pending", pending.length, level), goalList(p.project, pending.map((line) => ({ line, rows: [] })), proposed));
-    }
+    if (working.length > 0) section.append(goalList(p.project, working, proposed, "working"));
+    if (pending.length > 0) section.append(goalList(p.project, pending.map((line) => ({ line, rows: [] })), proposed, "pending"));
     if (done.length > 0) section.append(doneFold(p.project, done, proposed));
   }
   if (p.noGoals) {
@@ -1572,42 +1663,61 @@ function rowList(rows: SessionRow[], base?: string): HTMLElement {
   return list;
 }
 
-/** The label over a bucket of goals, one heading level under the project's:
- * `1 working`, `2 pending`. The done bucket is a fold instead (`doneFold`). */
-function bucket(state: "working" | "pending", count: number, level: 2 | 3): HTMLElement {
-  const h = document.createElement(`h${level + 1}`);
-  h.className = "bucket";
-  h.textContent = bucketLabel(state, count);
-  return h;
-}
-
 /** The goals of one bucket: each its line, then the rows that carry its
  * label, set in under it. `proposed` is what needs the human, so a line
  * knows whether to wear the mark or the plain count (`lineProposals`). */
-function goalList(project: ProjectRef, entries: GoalEntry<SessionRow>[], proposed: ProposedItem[]): HTMLElement {
+function goalList(project: ProjectRef, entries: GoalEntry<SessionRow>[], proposed: ProposedItem[], bucket: "working" | "pending"): HTMLElement {
   const list = document.createElement("ul");
   list.className = "goal-lines";
   for (const entry of entries) {
     const li = document.createElement("li");
     li.className = "goal";
     li.setAttribute("aria-label", `${entry.line.title} in ${project.name}`);
-    li.append(goalLineItem(entry.line, project, proposed));
+    li.append(goalLineItem(entry.line, project, proposed, bucket));
     // The fourth level: the goal's tasks, each with the listed rows that
     // carry its `task:` label; the rows no task claimed stay under the goal.
     const owned = sessions.filter((s) => (s.project?.id ?? NO_PROJECT) === project.id);
     const { tasks, rest } = taskLines(entry.line.summary, entry.rows, owned);
-    if (tasks.length > 0) li.append(taskList(tasks));
+    if (tasks.length > 0) li.append(...taskLists(project, entry.line.summary.slug ?? "", tasks));
     if (rest.length > 0) li.append(rowList(rest));
     list.append(li);
   }
   return list;
 }
 
-/** The tasks under a goal's line, one line each, set in by one indent
- * level: the mark in the state's colour, the slug, the state as a
- * bracketed word, then its facts (`round 1`, `PR #118`). A working task
- * wears the accent mark a working row wears; the turning mark is
- * capability 5's. The crew's row nests under its working task. */
+/** The tasks under a goal's line. Below 768 px the done ones fold behind
+ * one line, `6 done`, the way a project's done goals do: a finished thing
+ * needs nothing from the reader and has not earned a phone line. At 768 px
+ * and up every task is drawn. The fold is built here rather than in the
+ * sheet because a stylesheet cannot open a closed `details`. */
+function taskLists(project: ProjectRef, slug: string, tasks: TaskLine<SessionRow>[]): Node[] {
+  if (!narrow()) return [taskList(tasks)];
+  const { open, done } = foldDoneTasks(tasks);
+  const nodes: Node[] = [];
+  if (open.length > 0) nodes.push(taskList(open));
+  if (done.length > 0) {
+    const key = `tasks:${project.id}:${slug}`;
+    const details = document.createElement("details");
+    details.className = "archived done-tasks";
+    details.open = archivedOpen.has(key);
+    details.addEventListener("toggle", () => {
+      if (details.open) archivedOpen.add(key);
+      else archivedOpen.delete(key);
+    });
+    const summary = document.createElement("summary");
+    summary.textContent = doneLabel(done.length);
+    summary.dataset.focus = `archived:${key}`;
+    details.append(summary, taskList(done));
+    nodes.push(details);
+  }
+  return nodes;
+}
+
+/** The tasks of one list, one line each, set in by one indent level: the
+ * mark in the state's colour, the slug, the state as a bracketed word,
+ * then its facts (`round 1`, `PR #118`), which drop from the right. A
+ * working task's mark turns. The crew's row nests under its working
+ * task. */
 function taskList(tasks: TaskLine<SessionRow>[]): HTMLElement {
   const list = document.createElement("ul");
   list.className = "tree-tasks";
@@ -1615,9 +1725,15 @@ function taskList(tasks: TaskLine<SessionRow>[]): HTMLElement {
     const li = document.createElement("li");
     li.className = "tree-task";
     const line = document.createElement("div");
-    line.className = "line-task";
-    line.append(mark(taskMark(task.state)), span("line-name", task.slug), span(`tag-state ${task.state}`, task.tag));
-    for (const fact of task.facts) line.append(span("line-fact", fact));
+    line.className = "line-task line";
+    const name = span("line-name", task.slug);
+    name.dataset.name = "";
+    line.append(mark(taskMark(task.state)), name, span(`tag-state ${task.state}`, task.tag));
+    task.facts.forEach((fact, i) => {
+      const cell = span("line-fact", fact);
+      cell.dataset.drop = String(task.facts.length - 1 - i);
+      line.append(cell);
+    });
     li.append(line);
     if (task.rows.length > 0) li.append(rowList(task.rows));
     list.append(li);
@@ -1625,41 +1741,52 @@ function taskList(tasks: TaskLine<SessionRow>[]): HTMLElement {
   return list;
 }
 
-/** One goal that is not done, on two lines: the title, the status word
- * when it is not active, the round counter and what its rounds cost
- * (`goalCost`); then the next action on its own line, cut at the line's
- * end, because on one line with the rest it read "Roun…" at 390 px. A
+/** One goal that is not done, on one line: the mark and the state word
+ * (`goalTag`: `[working]`, `[pending]`, `[needs you]`, `[waiting]`, or
+ * the status word), the title, then the facts that drop from the right
+ * when the line narrows — the next action first, then the round counter,
+ * then what its rounds cost (`goalCost`, `goalFacts`). The title is the
+ * only cell that truncates and carries the next action as its tooltip. A
  * goal whose files still hold the template reads "not written yet" after
  * its slug. No floor word, no slug, no record link: the record is history,
  * and the done fold carries it (`goalLine`).
  *
- * A goal whose proposals need the human wears the amber mark at the
- * line's start (`proposedItems`): `N proposals` links the record, else the
- * `STATE.md` they wait in; `[Dismiss]` says the human read them, and the
- * record's decision line stands under the line when it proposes. A
- * dismissed item's count stands at the line's end unmarked, like a
- * stopped goal's (`lineProposals`). One place per proposal. */
-function goalLineItem(line: GoalLine, project: ProjectRef, proposed: ProposedItem[]): HTMLElement {
+ * A goal whose proposals need the human wears the amber mark and
+ * `[needs you]` (`proposedItems`): `N proposals` links the record, else the
+ * `STATE.md` they wait in, with the record's decision line as its title;
+ * `[Dismiss]` says the human read them. A dismissed item's count stands
+ * at the line's end unmarked, like a stopped goal's (`lineProposals`). One
+ * place per proposal. */
+function goalLineItem(line: GoalLine, project: ProjectRef, proposed: ProposedItem[], bucket: "working" | "pending"): HTMLElement {
   const li = document.createElement("div");
-  li.className = "goal-line";
+  li.className = "goal-line line";
   const item = proposed.find((p) => p.project.id === project.id && p.summary.slug === line.summary.slug) ?? null;
-  if (item) {
-    li.dataset.needs = "proposed";
-    li.append(mark("attention"));
-  }
-  li.append(span("goal-name", line.title));
+  if (item) li.dataset.needs = "proposed";
+  const word = goalTag(bucket, line.status, item !== null);
+  li.append(mark(word.family));
+  const name = span("goal-name", line.title);
+  name.dataset.name = "";
+  if (line.next) name.title = line.next;
+  li.append(name);
   if (line.unwritten) {
     li.append(span("goal-unwritten", "not written yet"));
     return li;
   }
-  if (line.status) li.append(span("goal-status", line.status));
-  if (line.round) li.append(span("goal-round", line.round));
+  li.append(span(`tag-state ${word.family}`, word.tag));
+  // The facts stand cost, round, next action, and drop in the reverse
+  // order (`goalFacts`); each is one cell the line hides whole.
   const cost = goalCost(line.summary);
-  if (cost !== null) {
-    const c = span("goal-cost", cost);
-    c.title = "the sum of this goal's round records' Cost lines, at the full API rate";
-    li.append(c);
-  }
+  const facts = goalFacts(line, cost);
+  const classes = [cost !== null ? "goal-cost" : null, line.round ? "goal-round" : null, line.next ? "goal-next" : null].filter(
+    (c): c is string => c !== null,
+  );
+  facts.forEach((fact, i) => {
+    const cell = span(classes[i], fact);
+    cell.dataset.drop = String(facts.length - 1 - i);
+    if (classes[i] === "goal-cost") cell.title = "the sum of this goal's round records' Cost lines, at the full API rate";
+    if (classes[i] === "goal-next") cell.title = fact;
+    li.append(cell);
+  });
   if (item) {
     const goal = goalTitle(item.summary);
     // The count and Dismiss are one group at the line's end, so they stay
@@ -1671,6 +1798,9 @@ function goalLineItem(line: GoalLine, project: ProjectRef, proposed: ProposedIte
       "aria-label",
       item.record ? recordName(item.record, item.project.name, goal) : proposalsName(item.count, item.project.name, goal),
     );
+    // The record's decision line is what the human decides on; it rides on
+    // the link's title, because a line is one line.
+    if (item.decision) open.title = item.decision;
     // Read it, decided in STATE.md: the mark and the count leave the band
     // until the goal's next round.
     const key = dismissKey(item.project.id, item.summary.slug ?? "", item.round);
@@ -1682,16 +1812,6 @@ function goalLineItem(line: GoalLine, project: ProjectRef, proposed: ProposedIte
   } else {
     const waiting = lineProposals(project.id, line.summary, proposed);
     if (waiting) li.append(proposalsLink(project, line.summary, waiting, true));
-  }
-  if (item?.decision) {
-    const decision = span("goal-decision", item.decision);
-    decision.title = item.decision;
-    li.append(decision);
-  }
-  if (line.next) {
-    const next = span("goal-next", line.next);
-    next.title = line.next;
-    li.append(next);
   }
   return li;
 }
@@ -1865,9 +1985,17 @@ function archivedFold(key: string, list: ArchivedRow[]): HTMLElement {
 
 // --- rows -------------------------------------------------------------------
 
+/** One session, one line (`design-foundation.md`, "The line, in detail"):
+ * the mark, the name, the state as a bracketed word, then the facts that
+ * drop when the line is too narrow for them, in `ROW_DROP_ORDER` — what
+ * it is doing, where it is, its model — then how long, then the actions.
+ * The name is the only cell that truncates. The line is the link; a
+ * pending tool call is a line of its own under it. */
 function row(s: SessionRow, base?: string): HTMLElement {
   const li = document.createElement("li");
   li.className = "row";
+  const lineEl = document.createElement("div");
+  lineEl.className = "line row-line";
 
   const link = document.createElement("a");
   link.href = `/?session=${encodeURIComponent(s.id)}`;
@@ -1875,10 +2003,10 @@ function row(s: SessionRow, base?: string): HTMLElement {
   link.dataset.focus = `${s.id}:open`;
 
   // The state is the text beside it; the gutter mark is decoration.
-  const dot = mark(familyOf(stateOf(s)));
+  const family = markFamily(stateOf(s));
+  const dot = mark(family);
 
-  // One line: name, state, place, what, how long. The model decides each
-  // field; a null one is not painted.
+  // The model decides each field; a null one is not painted.
   const line = rowLine(s, Date.now(), base ?? s.project?.root);
   const main = document.createElement("div");
   main.className = "main";
@@ -1886,27 +2014,33 @@ function row(s: SessionRow, base?: string): HTMLElement {
   name.className = "folder";
   name.textContent = line.name;
   name.title = s.cwd;
+  name.dataset.name = "";
   const state = document.createElement("span");
-  state.className = `state ${familyOf(stateOf(s))}`;
+  state.className = `state ${family}`;
   state.textContent = line.state;
   main.append(name, state);
-  if (line.place) main.append(span("place", line.place));
+  const drop = (cell: HTMLElement, key: (typeof ROW_DROP_ORDER)[number]): HTMLElement => {
+    cell.dataset.drop = String(ROW_DROP_ORDER.indexOf(key));
+    return cell;
+  };
+  if (line.place) main.append(drop(span("place", line.place), "place"));
   if (line.what) {
     const what = span("what", line.what);
     what.title = line.what;
-    main.append(what);
+    main.append(drop(what, "what"));
   }
   // The model is a fact before the time; absent when the session has none.
   const model = rowModel(s);
   if (model) {
     const fact = span("model", model);
     if (s.agentModel) fact.title = s.agentModel;
-    main.append(fact);
+    main.append(drop(fact, "model"));
   }
   if (line.since) main.append(span("since", line.since));
   link.append(dot, main);
-  li.append(link);
-  if (!watchOnly) li.append(rowActions(s));
+  lineEl.append(link);
+  if (!watchOnly) lineEl.append(rowActions(s));
+  li.append(lineEl);
   // A waiting or failed row is a marked line the band's cell can land on;
   // a pending tool call is a line of its own under the row.
   if (rowNeeds(s)) li.dataset.needs = "row";
@@ -2055,15 +2189,76 @@ function span(className: string, text: string): HTMLElement {
   return el;
 }
 
-/** The one-character gutter mark of a state family (`familyOf`; an
- * approval and a proposal wear `attention`). A shape in the family's colour
- * that a screen reader skips: the state's word beside it carries the
- * state. */
-function mark(family: string): HTMLElement {
+/** The one-character gutter mark of a state family (`markFamily`; an
+ * approval and a proposal wear `attention`). One character in the family's
+ * colour that a screen reader skips: the state's word beside it carries
+ * the state. A working mark prints the spinner's current frame, and the
+ * ticker keeps it turning; `rest` is a mark that stands still, the
+ * vocabulary's. */
+function mark(family: MarkFamily, rest = false): HTMLElement {
   const el = document.createElement("span");
-  el.className = `mark ${family}`;
+  el.className = rest ? `mark ${family} rest` : `mark ${family}`;
   el.setAttribute("aria-hidden", "true");
+  el.textContent = family === "running" ? workingGlyph(rest) : markGlyph(family);
   return el;
+}
+
+// --- the working mark turns ---------------------------------------------------
+//
+// The one thing on the page that moves (`design-foundation.md`, principle
+// 4): a character cycle at `FRAME_MS`, not a CSS transition. The cycle is
+// picked once, by measuring each candidate's glyphs against the mark
+// column in the page's own font (`pickCycle`), so a face without braille
+// gets the quadrants or the block ramp and never a box. Under
+// `prefers-reduced-motion` the ticker does not run and every working mark
+// rests on the cycle's full glyph.
+
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+/** The cycle the page's font fits; undefined until measured, null when
+ * none fits and the mark stays on the model's `>`. */
+let cycle: Cycle | null | undefined;
+let tick = 0;
+let ticker: ReturnType<typeof setInterval> | null = null;
+
+function reducedMotion(): boolean {
+  return typeof matchMedia === "function" ? matchMedia(REDUCED_MOTION_QUERY).matches : false;
+}
+
+/** The cycle, measured on first use: the body's computed font is the
+ * marks' font, and the column is one cell of it. */
+function spinnerCycle(): Cycle | null {
+  if (cycle !== undefined) return cycle;
+  const font = typeof getComputedStyle === "function" ? getComputedStyle(document.body).font : "";
+  const measure = font ? canvasMeasure(font) : null;
+  cycle = measure ? pickCycle(measure, measure("0")) : null;
+  return cycle;
+}
+
+/** What a working mark prints now: the current frame, or the rest glyph
+ * when motion is reduced or the mark is one that stands still. */
+function workingGlyph(rest: boolean): string {
+  const picked = spinnerCycle();
+  if (!picked) return markGlyph("running");
+  return rest || reducedMotion() ? picked.rest : frameAt(picked, tick);
+}
+
+/** Start or stop the ticker to match the motion preference. Every working
+ * mark on the page takes the frame on each tick; a repaint paints the
+ * same frame, so the marks never disagree. */
+function syncSpinner(): void {
+  const picked = spinnerCycle();
+  const run = picked !== null && !reducedMotion();
+  if (run && ticker === null) {
+    ticker = setInterval(() => {
+      tick += 1;
+      const frame = frameAt(picked, tick);
+      for (const el of root?.querySelectorAll(".mark.running:not(.rest)") ?? []) el.textContent = frame;
+    }, FRAME_MS);
+  } else if (!run && ticker !== null) {
+    clearInterval(ticker);
+    ticker = null;
+    for (const el of root?.querySelectorAll(".mark.running") ?? []) el.textContent = workingGlyph(false);
+  }
 }
 
 function openLink(id: string, text: string): HTMLAnchorElement {
@@ -2077,25 +2272,6 @@ function openLink(id: string, text: string): HTMLAnchorElement {
 
 function headlineOf(s: SessionRow): string {
   return rowName(s);
-}
-
-/** The visual family (dot and label colour) of a merged state. */
-function familyOf(state: MergedState): string {
-  switch (state) {
-    case "working":
-      return "running";
-    case "needs-approval":
-    case "needs-input":
-      return "attention";
-    case "completed":
-      return "done";
-    case "failed":
-      return "failed";
-    case "idle":
-      return "idle";
-    default:
-      return "unknown";
-  }
 }
 
 function fail(text: string): void {
@@ -2148,11 +2324,25 @@ function renderError(): void {
   root.append(p);
 }
 
-// Crossing the phone breakpoint folds or unfolds WHERE and MODELS.
+// Crossing the phone breakpoint folds or unfolds WHERE, MODELS and a goal's
+// done tasks; a change in the motion preference stops or starts the mark.
 if (typeof matchMedia === "function") {
   matchMedia(NARROW_QUERY).addEventListener("change", () => {
     lastSignature = "";
     render();
+  });
+  matchMedia(REDUCED_MOTION_QUERY).addEventListener("change", syncSpinner);
+}
+// A narrower window drops facts; a wider one brings them back.
+if (typeof addEventListener === "function") {
+  let queued = false;
+  addEventListener("resize", () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      fitLines();
+    });
   });
 }
 

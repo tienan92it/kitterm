@@ -171,7 +171,7 @@ describe("the four panels", () => {
 });
 
 describe("on a phone", () => {
-  it("folds WHERE and MODELS behind the done goals' fold, one summary line each, and keeps VALUE open", async () => {
+  it("folds VALUE, WHERE and MODELS behind the done goals' fold, one summary line each", async () => {
     phone = true;
     await page.poll();
     const where = panelNamed("where");
@@ -186,8 +186,11 @@ describe("on a phone", () => {
     expect((foldOf(where)[0] as unknown as { open: boolean }).open).toBe(false);
     expect(rowsOf(where)).toHaveLength(2);
     expect(rowsOf(models)).toHaveLength(2);
-    // VALUE does not fold: the headline earns its height on a phone.
-    expect(foldOf(panelNamed("value"))).toHaveLength(0);
+    // Every measure panel folds at 390 px (round 7 reversed round 6's
+    // exception for VALUE): the band carries the headline spend, and the
+    // tiles are inside the fold, whole.
+    expect(foldOf(panelNamed("value"))).toHaveLength(1);
+    expect(foldOf(panelNamed("value"))[0].querySelector("summary")?.textContent).toBe("what the spend bought · 5 merged PRs");
     expect(panelNamed("value").querySelectorAll(".yield-tile")).toHaveLength(4);
     phone = false;
     await page.poll();
