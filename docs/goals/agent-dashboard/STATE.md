@@ -1,16 +1,14 @@
 # STATE: agent-dashboard
 
-- Status: active
-- Round: 1 of 3 in this budget (third budget)
-- Rounds total: 8
-- Last floor: green (2026-09-18, round 8 after: swift test 823, vitest 1384 in 50 files)
-- Updated: 2026-09-18, reopened for the Others label
+- Status: waiting
+- Round: 2 of 3 in this budget (third budget)
+- Rounds total: 9
+- Last floor: green (2026-09-18, round 9 after: swift test 823, vitest 1384 in 50 files)
+- Updated: 2026-09-18, round 9 closed
 
 ## Queue
 
-1. `others-not-a-count` (the human's on 2026-09-18). The summed model row
-   reads `4 more models`. It should read `Others`: the count of models a
-   reader cannot name is not a fact they can act on.
+Empty.
 
 ## Failures
 
@@ -52,6 +50,11 @@ None.
 
 ## Done
 
+- `others-not-a-count` (round 9), PR #133. See `rounds/009.md`. The
+  summed model row reads `Others`; the names it covers stay in its
+  `title`. Four assertions updated, all round 8's own, two of them
+  stronger than before. Nothing moved: the summary line, the title and
+  the panel's height are unchanged on both builds.
 - `models-top-three` (capability 8), round 8, PR #132. See
   `rounds/008.md`. The `MODELS` panel shows the top three by cost and
   sums the rest into one row, `4 more models`, which is a row with a bar
