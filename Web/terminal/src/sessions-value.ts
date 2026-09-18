@@ -404,33 +404,67 @@ export type ModelsPanel = {
   rows: ModelRow[];
   note: string | null;
   /** The one line the panel folds to on a phone: `by model · Fable 5.1
-   * $1,388.50`, the dearest. */
+   * $1,388.50`, the dearest model. The summed row never names it. */
   summary: string;
 };
 
+/** How many models the panel names. The rest sum into one row, `4 more
+ * models`, unless the rest is one model: a summary of one hides a name
+ * for the height of the row it replaces, so exactly four models print
+ * four rows. */
+export const MODELS_NAMED = 3;
+
 /**
- * One row per model over the range, dearest first, from the split
- * `GET /api/usage/daily` answers (`models`): the name, a bar scaled to
- * the dearest, the spend and the session count. Null when the page has
- * no rollup, the daemon sends no split, or no model appears: a model
- * with no reading prints nothing rather than a guess. The note names the
- * dollars of records read before the rollup kept the map, which are in
- * the total and in no row, when there are any.
+ * The top `MODELS_NAMED` models by cost over the range, from the split
+ * `GET /api/usage/daily` answers (`models`), and one summed row for the
+ * rest: the name, a bar, the spend and the session count on every row.
+ * The summed row's spend is the range's split total less the named
+ * rows, its session count the sum of its models' counts, and its title
+ * names them. Every bar is scaled to the longest row, the summed row
+ * included, and the rows sort by spend, so the first bar is always the
+ * longest: a tail that sums past the leader is real, and it is the
+ * first row. Null when the page has no rollup, the daemon sends no
+ * split, or no model appears: a model with no reading prints nothing
+ * rather than a guess. The note names the dollars of records read
+ * before the rollup kept the map, which are in the total and in no row,
+ * when there are any.
  */
 export function modelsPanel(report: UsageDaily | null | undefined): ModelsPanel | null {
   if (!report || !report.ok || !report.models || report.models.length === 0) return null;
-  const max = Math.max(0, ...report.models.map((m) => m.costUSD));
+  const byCost = [...report.models].sort((a, b) => b.costUSD - a.costUSD);
   const unsplit = report.totals?.unsplitUSD ?? 0;
-  const dearest = report.models[0];
+  const dearest = byCost[0];
+  const named = byCost.length > MODELS_NAMED + 1 ? byCost.slice(0, MODELS_NAMED) : byCost;
+  const rest = byCost.slice(named.length);
+  const raws = named.map((m) => ({
+    key: m.model,
+    name: m.name,
+    costUSD: m.costUSD,
+    sessions: m.sessions,
+    title: `${m.model}: ${dollars(m.costUSD)} over ${plural(m.sessions, "session", "sessions")}`,
+  }));
+  if (rest.length > 0) {
+    const costUSD = rest.reduce((sum, m) => sum + m.costUSD, 0);
+    const sessions = rest.reduce((sum, m) => sum + m.sessions, 0);
+    raws.push({
+      key: "more",
+      name: `${rest.length} more models`,
+      costUSD,
+      sessions,
+      title: `${dollars(costUSD)} over ${plural(sessions, "session", "sessions")}: ${rest.map((m) => `${m.name} ${dollars(m.costUSD)}`).join(", ")}`,
+    });
+  }
+  raws.sort((a, b) => b.costUSD - a.costUSD);
+  const max = Math.max(0, ...raws.map((r) => r.costUSD));
   return {
     summary: `by model · ${dearest.name} ${dollars(dearest.costUSD)}`,
-    rows: report.models.map((m) => ({
-      key: m.model,
-      name: m.name,
-      fill: max > 0 ? Math.max(0, Math.min(1, m.costUSD / max)) : 0,
-      spend: dollars(m.costUSD),
-      sessions: plural(m.sessions, "session", "sessions"),
-      title: `${m.model}: ${dollars(m.costUSD)} over ${plural(m.sessions, "session", "sessions")}`,
+    rows: raws.map((r) => ({
+      key: r.key,
+      name: r.name,
+      fill: max > 0 ? Math.max(0, Math.min(1, r.costUSD / max)) : 0,
+      spend: dollars(r.costUSD),
+      sessions: plural(r.sessions, "session", "sessions"),
+      title: r.title,
     })),
     note: unsplit > 0.005 ? `${dollars(unsplit)} is from records read before the rollup kept the per-model map, in the total and in no row.` : null,
   };

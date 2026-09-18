@@ -1110,8 +1110,8 @@ function paintWhere(panel: WherePanel | null): void {
   });
 }
 
-/** `MODELS`: one bar per model, scaled to the dearest, with the spend and
- * the session count. */
+/** `MODELS`: one bar per named model and one for the rest summed, scaled
+ * to the longest, with the spend and the session count. */
 function paintModels(panel: ModelsPanel | null): void {
   modelsPainted = paintPanel(modelsBlock, modelsPainted, [panel, narrow()], () => {
     const list = document.createElement("ul");
