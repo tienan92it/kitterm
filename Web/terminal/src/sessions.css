@@ -312,6 +312,81 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
 }
 .quota-note { margin: var(--space-1) 0 0; color: var(--ui-text-muted); overflow-wrap: anywhere; }
 
+/* --- the panels: VALUE, WHERE, MODELS, LEAKS ----------------------------------
+   What the spend bought, between the meters and the tree
+   (`design-foundation.md`, "The panels"; `corpus/valuemaxxing.md`). Each
+   panel is one row: its label in an 84 px gutter on the left, its content
+   filling the rest, so the stack reads as one dashboard. Below 768 px the
+   gutter goes and the label becomes a small heading over the content, and
+   LEAKS, the least urgent measure, drops whole. A panel's note is one line
+   that names a fact. The rows share the `split` shape: a name, a bar, then
+   the facts right-aligned; the bar is a `mark`, a shape and not text, so it
+   wears the accent, and the unattributed remainder's wears the amber with
+   the amber mark before its name. The rate is the first fact to drop at
+   390 px, as a line's facts drop from the right. */
+.panel[hidden] { display: none; }
+.panel {
+  display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: var(--space-3);
+  margin: 0 0 var(--space-3); color: var(--ui-text);
+}
+.panel-label { font: var(--type-body); color: var(--ui-text-muted); margin: 0; padding: var(--space-1) 0; }
+.panel-body { min-width: 0; }
+.panel-note { margin: var(--space-1) 0 0; color: var(--ui-text-muted); overflow-wrap: anywhere; }
+.panel-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.panel-by { color: var(--ui-text-muted); }
+/* The grouping selector: a radio that prints `[ ]` or `[x]`, the usage
+   panel's toggle, so it reads as a control without colour. */
+.panel-toggle {
+  display: inline-flex; align-items: center;
+  background: none; color: var(--ui-text-muted); border: none;
+  padding: 0; cursor: pointer; white-space: nowrap;
+  min-height: var(--line-h);
+}
+.panel-toggle::before { content: "[ ] "; white-space: pre; }
+.panel-toggle[aria-checked="true"] { color: var(--ui-text); }
+.panel-toggle[aria-checked="true"]::before { content: "[x] "; }
+.panel-toggle:hover { text-decoration: underline; text-underline-offset: 2px; color: var(--ui-text); }
+/* The yield tiles: a count in the headline size, its noun, what one cost. */
+.yield { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); }
+.yield-tile {
+  display: flex; flex-direction: column; min-width: 0;
+  padding: 0 0 0 var(--space-2); border-left: 1px solid var(--ui-border);
+  white-space: nowrap; overflow: hidden;
+}
+.yield-count { font: var(--type-headline); font-variant-numeric: tabular-nums; }
+.yield-noun { color: var(--ui-text-muted); overflow: hidden; text-overflow: ellipsis; }
+.yield-rate { color: var(--ui-text-muted); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
+/* A split row: the name, the bar, the facts. */
+.split { list-style: none; margin: 0; padding: 0; }
+.split-row { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) 0; min-width: 0; white-space: nowrap; }
+.split-row .mark { margin-top: 0; }
+.split-name { flex: 0 1 24ch; min-width: 8ch; overflow: hidden; text-overflow: ellipsis; color: var(--ui-text); }
+.split-bar { flex: 1 1 auto; min-width: 4ch; display: flex; align-items: center; height: 13px; }
+/* The bar wears an owned colour because it is a mark, not text: a shape
+   whose length is the value, with the number beside it. */
+.mark.bar { width: 0; height: 8px; margin: 0; -webkit-mask: none; mask: none; background: var(--ui-accent); }
+.mark.bar.attention { background: var(--ui-warning); }
+.split-spend { flex: none; min-width: 9ch; text-align: right; font-variant-numeric: tabular-nums; color: var(--ui-text); }
+.split-units { flex: none; min-width: 9ch; text-align: right; color: var(--ui-text-muted); font-variant-numeric: tabular-nums; }
+.split-rate { flex: none; min-width: 14ch; text-align: right; color: var(--ui-text-muted); font-variant-numeric: tabular-nums; }
+/* A leak line: the mark, then the fact. */
+.leak-lines { list-style: none; margin: 0; padding: 0; }
+.leak-line { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) 0; min-width: 0; }
+.leak-line .mark { margin-top: 0; }
+.leak-text { color: var(--ui-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* On a phone WHERE and MODELS sit behind the fold the done goals use, one
+   summary line each, closed by default; the page builds the fold only
+   below 768 px, because a stylesheet cannot open a closed details. */
+.panel-fold > .panel-body { padding: 0 var(--space-3) var(--space-2); }
+.panel-fold[open] > summary { color: var(--ui-text); }
+@media (max-width: 767px) {
+  .panel { grid-template-columns: minmax(0, 1fr); }
+  .panel.leaks { display: none; }
+  .yield { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .split-name { flex-basis: 12ch; }
+  .split-rate { display: none; }
+}
+
 /* --- the three levels ------------------------------------------------------
    A workspace is a section under a hairline with one heading line and the
    shells that sit in its directory; its projects are set in by

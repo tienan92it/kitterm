@@ -235,6 +235,46 @@ describe("a task line follows the foundation", () => {
 });
 
 /**
+ * The panels (`agent-dashboard`, capability 7; `design-foundation.md`, "The
+ * panels"; `corpus/valuemaxxing.md`): a label in an 84 px gutter beside the
+ * content at 768 px and above, stacked below it, where LEAKS drops whole;
+ * a bar is a mark, so the accent and the amber paint it and nothing else
+ * new; and the cache share is on no heading, which the sheet expresses by
+ * naming no class for one.
+ */
+describe("the panels say what the spend bought", () => {
+  const panel = RULES.filter((rule) => rule.selector === ".panel");
+
+  it("put the label in an 84 px gutter at 768 px and stack it below", () => {
+    expect(panel.filter((rule) => rule.conditions.length === 0).map((rule) => rule.decls.get("grid-template-columns"))).toEqual(["84px minmax(0, 1fr)"]);
+    expect(panel.filter((rule) => rule.conditions.length > 0).map((rule) => [rule.conditions.join(" "), rule.decls.get("grid-template-columns")])).toEqual([
+      ["@media (max-width: 767px)", "minmax(0, 1fr)"],
+    ]);
+  });
+
+  it("drop LEAKS below 768 px and no other panel", () => {
+    const dropped = RULES.filter((rule) => rule.conditions.length > 0 && rule.decls.get("display") === "none" && /^\.panel\./.test(rule.selector));
+    expect(dropped.map((rule) => [rule.selector, rule.conditions.join(" ")])).toEqual([[".panel.leaks", "@media (max-width: 767px)"]]);
+  });
+
+  it("draw a bar as a mark, in the accent, and the remainder's in the amber", () => {
+    const bar = RULES.filter((rule) => rule.selector === ".mark.bar");
+    expect(bar.map((rule) => rule.decls.get("background"))).toEqual(["var(--ui-accent)"]);
+    expect(bar.map((rule) => rule.decls.get("mask"))).toEqual(["none"]);
+    expect(RULES.filter((rule) => rule.selector === ".mark.bar.attention").map((rule) => rule.decls.get("background"))).toEqual(["var(--ui-warning)"]);
+  });
+
+  it("name no class for a cache share: no heading carries one", () => {
+    // The share left every workspace, project and goal heading; it lives
+    // in the LEAKS line's text alone, which no selector styles apart.
+    const share = RULES.filter((rule) => /cache|share/i.test(rule.selector)).map(at);
+    expect(share, "a rule for a cache share on a heading").toEqual([]);
+    const headingCost = RULES.filter((rule) => /\.(cost|goal-cost)\b/.test(rule.selector));
+    expect(headingCost.length, "the heading's cost rule still exists; the share left it").toBeGreaterThan(0);
+  });
+});
+
+/**
  * The band (`agent-dashboard`, capability 4; `design-foundation.md`,
  * principle 2): one row, one height, always. The height is set, not a
  * minimum, and the box clips, so no count and no noun can move the frame;

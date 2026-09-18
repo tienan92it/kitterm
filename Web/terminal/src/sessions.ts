@@ -87,6 +87,19 @@ import {
   type UsagePanel,
   type WorkspaceSection,
 } from "./sessions-model";
+import {
+  leakLines,
+  modelsPanel,
+  readWhereGrouping,
+  valuePanel,
+  wherePanel,
+  type LeakLine,
+  type ModelsPanel,
+  type ValuePanel,
+  type WhereGrouping,
+  type WherePanel,
+  type YieldReport,
+} from "./sessions-value";
 import { loadSettings } from "./settings-store";
 import { applyThemeTokens } from "./theme-tokens";
 import { findThemeById } from "./themes";
@@ -103,10 +116,13 @@ import { findThemeById } from "./themes";
  * title, the band (four counts in one fixed-height row: working, need you,
  * spend, quota; the "need you" count links to the first marked line), the
  * restart line if the previous run died, the usage panel (the range's
- * total at the full API rate, the per-day chart, the quota bars), then the
- * work in four levels: a workspace, its projects, each project's goals by
- * state (working, pending, done), and each goal's tasks, each heading with
- * what it cost and how much of its input came from cache. Everything that
+ * total at the full API rate, the per-day chart, the quota bars), the four
+ * panels that say what the spend bought (`VALUE`, `WHERE`, `MODELS`,
+ * `LEAKS`; `sessions-value.ts`), then the work in four levels: a
+ * workspace, its projects, each project's goals by state (working,
+ * pending, done), and each goal's tasks, each heading with what it cost.
+ * The cache share is on no heading: it is a constant, and it appears only
+ * as a `LEAKS` line when a session falls under 95%. Everything that
  * needs a person is a mark on the line it belongs to: an approval under
  * its session's row, a waiting or failed session on its own row, a live
  * goal's proposals on the goal's line. No session is on the page twice.
@@ -237,6 +253,24 @@ let usageChoice: UsageChoice = readUsageChoice(readStorage(USAGE_KEY));
 let usageAsked = "";
 let usageAskedAt = 0;
 const USAGE_REFRESH_MS = 30_000;
+/** What the repositories' own history delivered over the same range
+ * (`GET /api/yield`), asked beside the rollup; null when the daemon has
+ * no route or refused. */
+let yieldReport: YieldReport | null = null;
+/** The `WHERE` panel's grouping, kept across loads like the usage choice. */
+const WHERE_KEY = "kitterm.sessions.where";
+let whereGrouping: WhereGrouping = readWhereGrouping(readStorage(WHERE_KEY));
+/** The width below which `WHERE` and `MODELS` fold (`design-foundation.md`,
+ * "The panels": a measure is not what a phone reader opens the page for;
+ * `VALUE`'s four tiles are the headline and stay). The sheet's own
+ * breakpoint, read here because a closed `details` cannot be opened by a
+ * stylesheet. */
+const NARROW_QUERY = "(max-width: 767px)";
+
+/** True on a phone-width page; false where the page cannot ask. */
+function narrow(): boolean {
+  return typeof matchMedia === "function" ? matchMedia(NARROW_QUERY).matches : false;
+}
 /** The newest quota reading the daemon holds (`GET /api/usage/limits`), or
  * null when the route did not answer: a daemon too old to have it, or a
  * watch token, which it refuses. */
@@ -275,12 +309,28 @@ async function fetchUsage(now: number): Promise<void> {
   usageAsked = query;
   usageAskedAt = now;
   try {
-    const res = await fetch(`/api/usage/daily?${query}`, { headers: { accept: "application/json" } });
+    const headers = { accept: "application/json" };
+    const [res, yielded] = await Promise.all([
+      fetch(`/api/usage/daily?${query}`, { headers }),
+      fetch(`/api/yield?${query}`, { headers }),
+    ]);
     usage = res.ok ? ((await res.json()) as UsageDaily) : null;
+    yieldReport = yielded.ok ? ((await yielded.json()) as YieldReport) : null;
   } catch {
     // A failed request keeps the last answer; the next poll asks again.
     usageAsked = "";
   }
+}
+
+function setWhereGrouping(grouping: WhereGrouping): void {
+  whereGrouping = grouping;
+  try {
+    localStorage.setItem(WHERE_KEY, grouping);
+  } catch {
+    // Storage blocked: the choice lives for this page only.
+  }
+  lastSignature = "";
+  render();
 }
 
 function loadDismissed(storageKey: string): Set<string> {
@@ -495,6 +545,25 @@ quotaBlock.className = "quota";
 quotaBlock.hidden = true;
 quotaBlock.setAttribute("aria-label", "Quota");
 let quotaPainted = "";
+/** The four panels that say what the spend bought, between the meters and
+ * the tree (`design-foundation.md`, "The panels"): each a label in an
+ * 84 px gutter and its content. Built once; each `paint*` replaces its
+ * content when its model changes. */
+function panelBlock(name: string): HTMLElement {
+  const block = document.createElement("section");
+  block.className = `panel ${name}`;
+  block.hidden = true;
+  block.setAttribute("aria-label", name.toUpperCase());
+  return block;
+}
+const valueBlock = panelBlock("value");
+const whereBlock = panelBlock("where");
+const modelsBlock = panelBlock("models");
+const leaksBlock = panelBlock("leaks");
+let valuePainted = "";
+let wherePainted = "";
+let modelsPainted = "";
+let leaksPainted = "";
 /** The text on the line right now, so an unchanged line is left alone. */
 let restartPainted = "";
 const cards = document.createElement("div");
@@ -506,7 +575,10 @@ function mountSkeleton(): void {
   skeletonMounted = true;
   // Status first, the push switch last: it is a thing the reader does, not
   // a thing the reader came to learn.
-  root.replaceChildren(header(), announce, bandBlock, noticeLine, restartLine, usageBlock, quotaBlock, cards, pushLine);
+  root.replaceChildren(
+    header(), announce, bandBlock, noticeLine, restartLine, usageBlock, quotaBlock,
+    valueBlock, whereBlock, modelsBlock, leaksBlock, cards, pushLine,
+  );
 }
 
 function render(): void {
@@ -542,6 +614,9 @@ function render(): void {
     notice,
     quota,
     panel,
+    yieldReport,
+    whereGrouping,
+    narrow(),
   ]);
   if (signature === lastSignature) return;
   lastSignature = signature;
@@ -584,6 +659,14 @@ function paint(): void {
   paintRestart();
   paintUsage(usagePanel(usage, usageChoice, now));
   paintQuota(quotaPanel(limits, now));
+  const goals = knowledgeEntries();
+  paintValue(valuePanel(usage, yieldReport));
+  paintWhere(wherePanel(whereGrouping, {
+    report: usage, yield: yieldReport, projects, goals,
+    range: { from: usage?.from ?? "", to: usage?.to ?? "" },
+  }));
+  paintModels(modelsPanel(usage));
+  paintLeaks(leakLines(usage, goals));
   paintPush();
   // Every session is a line once; the foreman is a row of its own project
   // or workspace, first among them (`sortInGroup`).
@@ -811,6 +894,177 @@ function quotaContent(panel: QuotaPanel): Node[] {
   note.textContent = panel.note;
   nodes.push(note);
   return nodes;
+}
+
+// --- the panels: what the spend bought --------------------------------------
+
+/** The label in a panel's gutter, a heading so a reader who moves by
+ * heading finds the panel. */
+function panelLabel(text: string): HTMLElement {
+  const h = document.createElement("h2");
+  h.className = "panel-label";
+  h.textContent = text;
+  return h;
+}
+
+function panelNote(text: string): HTMLElement {
+  const p = document.createElement("p");
+  p.className = "panel-note";
+  p.textContent = text;
+  return p;
+}
+
+/** Show, hide, or leave one panel; rebuilt only when its model changes,
+ * so a toggle a keyboard user sits on survives the polls. */
+function paintPanel(block: HTMLElement, painted: string, model: unknown, content: () => Node[]): string {
+  const signature = JSON.stringify(model ?? null);
+  if (signature === painted) return painted;
+  // A panel folded by width passes `[panel, narrow]`; the panel decides.
+  const empty = model === null || (Array.isArray(model) && model[0] === null);
+  block.hidden = empty;
+  block.replaceChildren(...(empty ? [] : content()));
+  return signature;
+}
+
+/** `VALUE`: four tiles, a count and its noun and what one unit cost, and
+ * the one line that says a line and a PR are proxies. A tile with no
+ * source prints a dash. */
+function paintValue(panel: ValuePanel | null): void {
+  valuePainted = paintPanel(valueBlock, valuePainted, panel, () => {
+    const tiles = document.createElement("div");
+    tiles.className = "yield";
+    for (const tile of panel!.tiles) {
+      const cell = document.createElement("div");
+      cell.className = `yield-tile ${tile.key}`;
+      cell.title = tile.title;
+      cell.append(span("yield-count", tile.count), span("yield-noun", tile.noun), span("yield-rate", tile.rate));
+      tiles.append(cell);
+    }
+    const body = document.createElement("div");
+    body.className = "panel-body";
+    body.append(tiles, panelNote(panel!.note));
+    return [panelLabel("VALUE"), body];
+  });
+}
+
+/** One `split` row: the mark when the row is the remainder, the name, the
+ * bar as a mark that wears the accent or the amber (the bar is not text,
+ * so the owned colour may paint it), then the facts, right-aligned. */
+function splitRow(key: string, name: string, remainder: boolean, fill: number, facts: string[], title: string): HTMLElement {
+  const li = document.createElement("li");
+  li.className = remainder ? "split-row remainder" : "split-row";
+  li.dataset.key = key;
+  li.title = title;
+  if (remainder) li.append(mark("attention"));
+  li.append(span("split-name", name));
+  const track = document.createElement("span");
+  track.className = "split-bar";
+  track.setAttribute("aria-hidden", "true");
+  const bar = mark(remainder ? "bar attention" : "bar");
+  bar.style.width = `${Math.round(fill * 1000) / 10}%`;
+  track.append(bar);
+  li.append(track);
+  const classes = ["split-spend", "split-units", "split-rate"];
+  facts.forEach((fact, i) => li.append(span(classes[i] ?? "split-rate", fact)));
+  return li;
+}
+
+/**
+ * A panel's content on a phone: behind the fold the done goals use, closed
+ * by default, with one summary line in place of the label; open, the
+ * panel is exactly what it is at 1200 px. At 768 px and up nothing folds
+ * and the label sits in its gutter. `key` keeps the open state across
+ * repaints, like every other fold.
+ */
+function panelContent(label: string, key: string, summary: string, body: HTMLElement): Node[] {
+  if (!narrow()) return [panelLabel(label), body];
+  const details = document.createElement("details");
+  details.className = "archived panel-fold";
+  details.open = archivedOpen.has(key);
+  details.addEventListener("toggle", () => {
+    if (details.open) archivedOpen.add(key);
+    else archivedOpen.delete(key);
+  });
+  const line = document.createElement("summary");
+  line.textContent = summary;
+  line.dataset.focus = `archived:${key}`;
+  details.append(line, body);
+  return [details];
+}
+
+/** `WHERE`: the grouping selector, one row per group, the note. The
+ * selector is a radio group that prints `[ ]`/`[x]` like the usage
+ * toggles; the grouping is kept in storage. */
+function paintWhere(panel: WherePanel | null): void {
+  wherePainted = paintPanel(whereBlock, wherePainted, [panel, narrow()], () => {
+    const head = document.createElement("div");
+    head.className = "panel-head";
+    head.append(span("panel-by", "by"));
+    const group = document.createElement("div");
+    group.className = "usage-toggles";
+    group.setAttribute("role", "radiogroup");
+    group.setAttribute("aria-label", "Group the spend by");
+    for (const toggle of panel!.toggles) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "panel-toggle";
+      b.setAttribute("role", "radio");
+      b.setAttribute("aria-checked", String(toggle.checked));
+      b.setAttribute("aria-label", toggle.name);
+      b.textContent = toggle.label;
+      b.dataset.focus = focusKey("where", toggle.label);
+      b.addEventListener("click", () => {
+        if (!toggle.checked) setWhereGrouping(toggle.label);
+      });
+      group.append(b);
+    }
+    head.append(group);
+    const list = document.createElement("ul");
+    list.className = "split";
+    for (const row of panel!.rows) {
+      list.append(splitRow(row.key, row.name, row.remainder, row.fill, [row.spend, row.units, row.rate], row.title));
+    }
+    const body = document.createElement("div");
+    body.className = "panel-body";
+    body.append(head, list, panelNote(panel!.note));
+    return panelContent("WHERE", "panel:where", panel!.summary, body);
+  });
+}
+
+/** `MODELS`: one bar per model, scaled to the dearest, with the spend and
+ * the session count. */
+function paintModels(panel: ModelsPanel | null): void {
+  modelsPainted = paintPanel(modelsBlock, modelsPainted, [panel, narrow()], () => {
+    const list = document.createElement("ul");
+    list.className = "split";
+    for (const row of panel!.rows) list.append(splitRow(row.key, row.name, false, row.fill, [row.spend, row.sessions], row.title));
+    const body = document.createElement("div");
+    body.className = "panel-body";
+    body.append(list);
+    if (panel!.note) body.append(panelNote(panel!.note));
+    return panelContent("MODELS", "panel:models", panel!.summary, body);
+  });
+}
+
+/** `LEAKS`: one marked line each. Below 768 px the sheet drops the panel
+ * whole, the least urgent measure. */
+function paintLeaks(lines: LeakLine[]): void {
+  const model = lines.length === 0 ? null : lines;
+  leaksPainted = paintPanel(leaksBlock, leaksPainted, model, () => {
+    const list = document.createElement("ul");
+    list.className = "leak-lines";
+    for (const line of model!) {
+      const li = document.createElement("li");
+      li.className = `leak-line ${line.key}`;
+      li.title = line.title;
+      li.append(mark(line.mark), span("leak-text", line.text));
+      list.append(li);
+    }
+    const body = document.createElement("div");
+    body.className = "panel-body";
+    body.append(list);
+    return [panelLabel("LEAKS"), body];
+  });
 }
 
 /** What the page knows about push, less `watchOnly`, which `fetchProfiles`
@@ -1230,8 +1484,9 @@ function workspace(s: WorkspaceSection<SessionRow>, headed: string[], proposed: 
 }
 
 /** The heading's name as an `h2` or `h3`, with the directory it stands for
- * as its tooltip, and after it what the range cost there with the cache
- * share, `$850.51 · 91% cached` (`costLabel`), when the rollup answered.
+ * as its tooltip, and after it what the range cost there, `$850.51`
+ * (`costLabel`), when the rollup answered. No cache share: it is a
+ * constant, and the `LEAKS` panel names the exceptions.
  * The two are one heading, so a reader who moves by heading hears the
  * number with the name; the sheet puts the cost on its own line under the
  * name on a phone, where the heading line has no room left. */
@@ -1242,7 +1497,7 @@ function headingName(heading: Heading, level: 2 | 3, cost: string | null): HTMLE
   if (heading.path) h.title = heading.path;
   if (cost !== null) {
     const c = span("cost", cost);
-    c.title = `${heading.name}: what the range cost here, at the full API rate, and the cache-read share of its input`;
+    c.title = `${heading.name}: what the range cost here, at the full API rate`;
     h.append(" ", c);
   }
   return h;
@@ -1402,7 +1657,7 @@ function goalLineItem(line: GoalLine, project: ProjectRef, proposed: ProposedIte
   const cost = goalCost(line.summary);
   if (cost !== null) {
     const c = span("goal-cost", cost);
-    c.title = "the sum of this goal's round records' Cost lines, at the full API rate, and the cache-read share";
+    c.title = "the sum of this goal's round records' Cost lines, at the full API rate";
     li.append(c);
   }
   if (item) {
@@ -1891,6 +2146,14 @@ function renderError(): void {
   p.className = "empty";
   p.textContent = "Can't reach the daemon.";
   root.append(p);
+}
+
+// Crossing the phone breakpoint folds or unfolds WHERE and MODELS.
+if (typeof matchMedia === "function") {
+  matchMedia(NARROW_QUERY).addEventListener("change", () => {
+    lastSignature = "";
+    render();
+  });
 }
 
 // A tap anywhere outside an open menu closes it.

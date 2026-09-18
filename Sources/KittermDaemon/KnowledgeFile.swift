@@ -158,19 +158,22 @@ public enum KnowledgeFile {
         // describes and the file the card links to.
         var record: String?
         var latestRound: String?
-        var records: [String] = []
+        var records: [(number: Int, text: String)] = []
         if let rounds = try? openComponent(at: folder, "rounds", directory: true) {
             defer { close(rounds) }
             let names = entries(of: rounds).filter { KnowledgeSummary.roundNumber($0) != nil }.sorted()
             record = KnowledgeSummary.latestRecordName(names)
             for name in names {
-                guard let text = (try? text(at: rounds, name)) ?? nil else { continue }
-                records.append(text)
+                guard let number = KnowledgeSummary.roundNumber(name),
+                      let text = (try? text(at: rounds, name)) ?? nil
+                else { continue }
+                records.append((number, text))
                 if name == record { latestRound = text }
             }
         }
         var summary = KnowledgeSummary.parse(state: state, goal: goal, latestRecord: record, latestRound: latestRound)
-        summary.sumCosts(records: records)
+        summary.sumCosts(records: records.map(\.text))
+        summary.readRounds(records)
         return summary
     }
 

@@ -189,11 +189,15 @@ describe("the usage panel", () => {
 });
 
 describe("the numbers on the headings", () => {
-  it("prints a project's dollars and cache share from the bucket at its root", () => {
-    // 260M read of 301.2M in: input, cache creation and cache read together.
-    expect(costLabel(projectUsage(report, `${W}/kitterm`))).toBe("$850.51 · 86% cached");
-    expect(costLabel(projectUsage(report, `${W}/kitterm/`))).toBe("$850.51 · 86% cached");
-    expect(costLabel(projectUsage(report, `${NNT}/market-data-pipeline`))).toBe("$13.35 · 85% cached");
+  it("prints a project's dollars from the bucket at its root, and no cache share", () => {
+    // Chartered by `agent-dashboard` round 6 (plan.md row 7: "The cache
+    // share leaves every heading"): the three strings read `$850.51 · 86%
+    // cached` and `$13.35 · 85% cached` before; the dollars and the lookup
+    // by root are what the assertion keeps.
+    expect(costLabel(projectUsage(report, `${W}/kitterm`))).toBe("$850.51");
+    expect(costLabel(projectUsage(report, `${W}/kitterm/`))).toBe("$850.51");
+    expect(costLabel(projectUsage(report, `${NNT}/market-data-pipeline`))).toBe("$13.35");
+    expect(costLabel(projectUsage(report, `${W}/kitterm`))).not.toContain("cached");
   });
 
   it("prints $0.00 for a project the report does not name and no share for one with no input", () => {
@@ -209,8 +213,8 @@ describe("the numbers on the headings", () => {
     expect(sum.costUSD).toBeCloseTo(68.43 + 13.35, 2);
     expect(sum.sessions).toBe(nnt.sessions + mdp.sessions + mt5.sessions);
     expect(sum.unbilledSessions).toBe(1);
-    // 15M read of 17.56M in over the three buckets.
-    expect(costLabel(sum)).toBe("$81.78 · 85% cached");
+    // Chartered by `agent-dashboard` round 6: read `$81.78 · 85% cached`.
+    expect(costLabel(sum)).toBe("$81.78");
     // A workspace that holds `Workspace/kitterm` and the discovered
     // `diagram-generation`, were it headed, would take both and not the
     // deeper workspace's projects.
@@ -242,8 +246,9 @@ describe("the numbers on the headings", () => {
 });
 
 describe("the number on a goal", () => {
-  it("prints the records' summed Cost lines with the cache share, and nothing for a goal without one", () => {
-    expect(goalCost({ costUSD: 12.34, inTokens: 4_432_000, cacheReadTokens: 3_900_000 })).toBe("$12.34 · 88% cached");
+  it("prints the records' summed Cost lines, no cache share, and nothing for a goal without one", () => {
+    // Chartered by `agent-dashboard` round 6: read `$12.34 · 88% cached`.
+    expect(goalCost({ costUSD: 12.34, inTokens: 4_432_000, cacheReadTokens: 3_900_000 })).toBe("$12.34");
     expect(goalCost({ costUSD: 0.41, inTokens: 0, cacheReadTokens: 0 })).toBe("$0.41");
     expect(goalCost({ costUSD: 7.79 })).toBe("$7.79");
     expect(goalCost({})).toBeNull();

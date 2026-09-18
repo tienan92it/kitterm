@@ -105,7 +105,66 @@ public final class UsageRollup: @unchecked Sendable {
         /// transcript is on disk, and stays whole but unsplit once it is
         /// gone: the report counts its dollars under `unsplitUSD`.
         public var models: [String: TranscriptBill.ModelUsage]?
+        /// The bill's `totalAPIDuration`, milliseconds waiting on the API:
+        /// the hours of model time the `VALUE` tile counts. Nil on a record
+        /// written before the rollup kept it (2026-09-18) and on an unbilled
+        /// session; such a billed record is read again once while its
+        /// transcript is on disk, like `models`, and stays without it once
+        /// the transcript is gone: its dollars are in every total and in no
+        /// rate, which is what `Bucket.measuredUSD` leaves out.
+        public var apiDurationMs: Int?
+        /// The bill's `totalLinesAdded`, for a role's lines.
+        public var linesAdded: Int?
     }
+
+    /// Where a session ran, read from its own directory: a crew in a
+    /// worktree, or a session in a checkout's root. The lever
+    /// `corpus/valuemaxxing.md` measured (finding 2): a crew costs $42 an
+    /// API hour against $61 in the root. There is no third role: a path
+    /// outside every project (a job session in `~`) is a root session,
+    /// which is how the research counted it.
+    public enum SessionRole: String, Codable, CaseIterable, Sendable {
+        case root, crew
+
+        /// `crew` when the cwd sits under a `.claude/worktrees/` directory,
+        /// which is where every crew session runs (`LOOP.md`); `root`
+        /// otherwise, and for a record with no cwd.
+        public static func of(cwd: String?) -> SessionRole {
+            guard let cwd else { return .root }
+            let path = cwd.hasSuffix("/") ? cwd : cwd + "/"
+            return path.contains("/.claude/worktrees/") ? .crew : .root
+        }
+    }
+
+    /// One role's part of the range.
+    public struct RoleBucket: Codable, Equatable, Sendable {
+        public var role: SessionRole
+        public var costUSD: Double = 0
+        public var apportionedUSD: Double = 0
+        public var sessions: Int = 0
+        /// API milliseconds, each session's share by the day's token share.
+        public var apiMs: Int = 0
+        /// The dollars of the sessions whose record carries a duration; the
+        /// rate a page prints is this over `apiMs`, never `costUSD`.
+        public var measuredUSD: Double = 0
+        public var linesAdded: Int = 0
+    }
+
+    /// A billed session in the range over `lowCacheFloorUSD` whose cache
+    /// read is under `lowCacheThreshold` of its input. The `LEAKS` line:
+    /// `corpus/valuemaxxing.md` measured 53 of 56 sessions over $5 between
+    /// 95% and 99%, so the share left every heading and only the exceptions
+    /// are named. The share is over the whole session, every kind of input
+    /// weighted equally, from the turns the rollup counted.
+    public struct LowCacheSession: Codable, Equatable, Sendable {
+        public var sessionId: String?
+        public var project: String
+        public var costUSD: Double
+        public var cacheShare: Double
+    }
+
+    public static let lowCacheFloorUSD = 5.0
+    public static let lowCacheThreshold = 0.95
 
     struct FileShape: Codable {
         var version: Int
@@ -189,11 +248,12 @@ public final class UsageRollup: @unchecked Sendable {
         var replaced: [String: SessionRecord] = [:]
         var skipped = 0
         for entry in listed {
-            // A billed record with no per-model map was written before the
-            // rollup kept one; it is read once more so the split fills in.
+            // A billed record with no per-model map, or no API duration, was
+            // written before the rollup kept them; it is read once more so
+            // the split and the hours fill in.
             if !zoneChanged, let record = before.0[entry.key], record.size == entry.size, record.mtime == entry.mtime,
                record.subagentFiles == entry.subagents.count, record.subagentBytes == entry.subagentBytes,
-               record.models != nil || !record.billed {
+               (record.models != nil && record.apiDurationMs != nil) || !record.billed {
                 skipped += 1
                 continue
             }
@@ -273,10 +333,14 @@ public final class UsageRollup: @unchecked Sendable {
         var total = 0.0
         var startDay: String?
         var models: [String: TranscriptBill.ModelUsage]?
+        var apiDurationMs: Int?
+        var linesAdded: Int?
         if case .bill(let bill) = usage.bill {
             billed = true
             total = bill.totalCostUSD
             models = bill.modelUsage
+            apiDurationMs = bill.totalAPIDuration
+            linesAdded = bill.totalLinesAdded
             if let start = bill.startTime {
                 startDay = DayKey(Date(timeIntervalSince1970: Double(start) / 1000), in: zone).description
             }
@@ -293,7 +357,9 @@ public final class UsageRollup: @unchecked Sendable {
             totalCostUSD: total,
             startDay: startDay,
             days: usage.days,
-            models: models
+            models: models,
+            apiDurationMs: apiDurationMs,
+            linesAdded: linesAdded
         )
     }
 
@@ -327,6 +393,14 @@ public final class UsageRollup: @unchecked Sendable {
         public var tokens: TokenCounts = .zero
         public var sessions: Int = 0
         public var unbilledSessions: Int = 0
+        /// API milliseconds of the billed sessions whose record carries a
+        /// duration, each session's share by the day's token share: the
+        /// hours of model time.
+        public var apiMs: Int = 0
+        /// The dollars of those sessions, so a rate per hour divides the
+        /// dollars the hours belong to; a record read before the rollup
+        /// kept the duration is in `costUSD` and not here.
+        public var measuredUSD: Double = 0
 
         mutating func add(_ share: TranscriptUsage.Share, billed: Bool) {
             costUSD += share.costUSD
@@ -384,6 +458,10 @@ public final class UsageRollup: @unchecked Sendable {
         public var tokens: TokenCounts
         public var sessions: Int
         public var unbilledSessions: Int
+        /// The day's API milliseconds and the dollars they belong to
+        /// (`Bucket.apiMs`, `Bucket.measuredUSD`).
+        public var apiMs: Int
+        public var measuredUSD: Double
         /// The day's dollars per model, dearest first; they sum to
         /// `costUSD` less `unsplitUSD`.
         public var models: [ModelBucket]
@@ -407,6 +485,11 @@ public final class UsageRollup: @unchecked Sendable {
         public var models: [ModelBucket]
         /// The range's totals per project, dearest first.
         public var projects: [ProjectBucket]
+        /// The range per role, `root` then `crew`, both always present.
+        public var roles: [RoleBucket]
+        /// The billed sessions over `lowCacheFloorUSD` under
+        /// `lowCacheThreshold` cached, dearest first.
+        public var lowCache: [LowCacheSession]
     }
 
     /// The range, summed from the records. Pure over memory; the route runs
@@ -433,12 +516,33 @@ public final class UsageRollup: @unchecked Sendable {
         var perDayModel: [String: [String: ModelBucket]] = [:]
         var perModel: [String: ModelBucket] = [:]
         var modelSessions: [String: Set<String>] = [:]
+        var perRole: [SessionRole: RoleBucket] = [:]
+        for role in SessionRole.allCases { perRole[role] = RoleBucket(role: role) }
+        var roleSessions: [SessionRole: Set<String>] = [:]
+        var lowCache: [LowCacheSession] = []
         for (key, record) in records {
             let shares = TranscriptUsage.apportion(
                 days: record.days, totalCostUSD: record.billed ? record.totalCostUSD : nil, fallbackDay: record.startDay
             )
             let sessionTokens = record.days.values.reduce(0) { $0 + $1.total }
+            let role = SessionRole.of(cwd: record.cwd)
+            var inRange = false
             for (day, share) in shares where wanted.contains(day) {
+                inRange = true
+                let fraction = sessionTokens > 0 ? Double(share.tokens.total) / Double(sessionTokens) : 1
+                perRole[role]!.costUSD += share.costUSD
+                if share.apportioned { perRole[role]!.apportionedUSD += share.costUSD }
+                roleSessions[role, default: []].insert(key)
+                if record.billed, let apiDurationMs = record.apiDurationMs {
+                    let ms = Int((Double(apiDurationMs) * fraction).rounded())
+                    perDay[day, default: Bucket()].apiMs += ms
+                    perDay[day, default: Bucket()].measuredUSD += share.costUSD
+                    totals.apiMs += ms
+                    totals.measuredUSD += share.costUSD
+                    perRole[role]!.apiMs += ms
+                    perRole[role]!.measuredUSD += share.costUSD
+                    perRole[role]!.linesAdded += Int((Double(record.linesAdded ?? 0) * fraction).rounded())
+                }
                 perDay[day, default: Bucket()].add(share, billed: record.billed)
                 let project = record.project ?? ProjectRef(id: "unknown", name: "unknown", root: "", registered: false)
                 perDayProject[day, default: [:]][project.root, default: Self.empty(project)].add(share, billed: record.billed)
@@ -458,7 +562,6 @@ public final class UsageRollup: @unchecked Sendable {
                     totals.unsplitUSD += share.costUSD
                     continue
                 }
-                let fraction = sessionTokens > 0 ? Double(share.tokens.total) / Double(sessionTokens) : 1
                 for (id, usage) in models {
                     perDayModel[day, default: [:]][id, default: Self.empty(id)]
                         .add(usage, fraction: fraction, apportioned: share.apportioned)
@@ -466,7 +569,26 @@ public final class UsageRollup: @unchecked Sendable {
                     modelSessions[id, default: []].insert(key)
                 }
             }
+            // The exception line: a session's cache share is the session's,
+            // not a day's, so it is judged whole once any of it is in range.
+            if inRange, record.billed, record.totalCostUSD > Self.lowCacheFloorUSD {
+                let tokens = record.days.values.reduce(into: TokenCounts.zero) { $0 += $1 }
+                let input = tokens.input + tokens.cacheCreation + tokens.cacheRead
+                if input > 0 {
+                    let cacheShare = Double(tokens.cacheRead) / Double(input)
+                    if cacheShare < Self.lowCacheThreshold {
+                        lowCache.append(LowCacheSession(
+                            sessionId: record.sessionId, project: record.project?.name ?? "unknown",
+                            costUSD: record.totalCostUSD, cacheShare: cacheShare
+                        ))
+                    }
+                }
+            }
         }
+        for role in SessionRole.allCases {
+            perRole[role]?.sessions = roleSessions[role]?.count ?? 0
+        }
+        lowCache.sort { ($0.costUSD, $1.sessionId ?? "") > ($1.costUSD, $0.sessionId ?? "") }
         for root in perProject.keys {
             perProject[root]?.sessions = projectSessions[root]?.count ?? 0
             perProject[root]?.unbilledSessions = projectUnbilled[root]?.count ?? 0
@@ -479,7 +601,7 @@ public final class UsageRollup: @unchecked Sendable {
             return Day(
                 day: day.description, costUSD: bucket.costUSD, apportionedUSD: bucket.apportionedUSD,
                 unsplitUSD: bucket.unsplitUSD, tokens: bucket.tokens, sessions: bucket.sessions,
-                unbilledSessions: bucket.unbilledSessions,
+                unbilledSessions: bucket.unbilledSessions, apiMs: bucket.apiMs, measuredUSD: bucket.measuredUSD,
                 models: Self.sorted(perDayModel[day.description] ?? [:]),
                 projects: Self.sorted(perDayProject[day.description] ?? [:])
             )
@@ -487,7 +609,8 @@ public final class UsageRollup: @unchecked Sendable {
         return DailyReport(
             timeZone: zone.identifier, from: from.description, to: to.description, refreshedAt: stamp,
             recordedSessions: records.count, days: days, totals: totals,
-            models: Self.sorted(perModel), projects: Self.sorted(perProject)
+            models: Self.sorted(perModel), projects: Self.sorted(perProject),
+            roles: SessionRole.allCases.map { perRole[$0]! }, lowCache: lowCache
         )
     }
 

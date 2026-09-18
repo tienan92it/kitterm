@@ -55,6 +55,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// The daily cost and token rollup behind `GET /api/usage/daily`; nil
     /// in a handler built without one, where the route answers 503.
     private let usageRollup: UsageRollup?
+    /// The repositories' own history behind `GET /api/yield`; nil in a
+    /// handler built without one, where the route answers 503.
+    private let repositoryYields: RepositoryYields?
     /// The newest quota reading behind `POST` and `GET /api/usage/limits`;
     /// nil in a handler built without one, where the routes answer 503.
     private let usageLimits: UsageLimitsStore?
@@ -90,6 +93,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         pushNotifier: PushNotifier? = nil,
         vapidKeys: VAPIDKeys? = nil,
         usageRollup: UsageRollup? = nil,
+        repositoryYields: RepositoryYields? = nil,
         usageLimits: UsageLimitsStore? = nil,
         transcriptModels: TranscriptModelCache? = nil
     ) {
@@ -110,6 +114,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.pushNotifier = pushNotifier
         self.vapidKeys = vapidKeys
         self.usageRollup = usageRollup
+        self.repositoryYields = repositoryYields
         self.usageLimits = usageLimits
         self.transcriptModels = transcriptModels
     }
@@ -384,6 +389,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             serveArchiveOutput(path: path, head: head, context: context)
         case (.GET, "/api/usage/daily"):
             serveUsageDaily(grade: grade, head: head, context: context)
+        case (.GET, "/api/yield"):
+            serveYield(grade: grade, head: head, context: context)
         case (.GET, "/api/usage/limits"):
             serveUsageLimits(grade: grade, head: head, context: context)
         case (.POST, "/api/usage/limits"):
@@ -1067,6 +1074,111 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 context: bound.value, version: head.version, keepAlive: head.isKeepAlive
             )
         }
+    }
+
+    /// `GET /api/yield?from=YYYY-MM-DD&to=YYYY-MM-DD` — what every project's
+    /// own history delivered over the range (`RepositoryYield`): one entry
+    /// per project `GET /api/projects` lists, registered or discovered,
+    /// with its merged pull requests, merged lines and releases, or the
+    /// counts absent for a root that is not a checkout or has no remote;
+    /// then the totals over the projects that had them. The bounds take
+    /// the usage route's defaults and refusals. Full grade only, like the
+    /// usage route it is read beside: what the spend bought is the spend's
+    /// own information class. The `git` runs happen on
+    /// `RepositoryYields.queue`, never on the loop, and are cached five
+    /// minutes per root and range.
+    private func serveYield(grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let yields = repositoryYields else {
+            writeJSON(
+                status: .serviceUnavailable,
+                body: #"{"ok":false,"error":"repository yield unavailable"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let (from, to) = dayRange(head: head, context: context, zone: usageRollup?.timeZone ?? .current) else { return }
+        let loop = context.eventLoop
+        let bound = NIOLoopBound(context, eventLoop: loop)
+        let projects = self.projects
+        let promise = loop.makePromise(of: String.self)
+        promise.completeWithTask {
+            let summaries = await self.registry.summaries()
+            let registered = projects.registered()
+            var byID: [String: RepositoryYields.ProjectRef] = [:]
+            for project in registered {
+                byID[project.id] = .init(id: project.id, name: project.name, root: project.root, registered: true)
+            }
+            for project in summaries.compactMap(\.project) where byID[project.id] == nil {
+                guard let root = project.root else { continue }
+                byID[project.id] = .init(id: project.id, name: project.name, root: root, registered: project.registered)
+            }
+            let listed = byID.values.sorted { ($0.name.lowercased(), $0.id) < ($1.name.lowercased(), $1.id) }
+            return await withCheckedContinuation { continuation in
+                RepositoryYields.queue.async {
+                    continuation.resume(returning: Self.yieldBody(yields.report(projects: listed, from: from, to: to)))
+                }
+            }
+        }
+        promise.futureResult.whenComplete { result in
+            let body = (try? result.get()) ?? #"{"ok":false,"error":"could not read the repositories"}"#
+            self.writeJSON(
+                status: .ok, body: body,
+                context: bound.value, version: head.version, keepAlive: head.isKeepAlive
+            )
+        }
+    }
+
+    static func yieldBody(_ report: RepositoryYields.Report) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(report), let body = String(data: data, encoding: .utf8) else {
+            return #"{"ok":false,"error":"encoding failed"}"#
+        }
+        return body
+    }
+
+    /// The `from` and `to` days of a range query, with the usage route's
+    /// defaults (`to` today, `from` 29 days before) and refusals; nil once
+    /// a 400 has been written.
+    private func dayRange(head: HTTPRequestHead, context: ChannelHandlerContext, zone: TimeZone) -> (DayKey, DayKey)? {
+        let today = DayKey(Date(), in: zone)
+        let to: DayKey
+        if let text = DaemonServer.queryValue("to", fromRequestURI: head.uri) {
+            guard let parsed = DayKey(text) else {
+                badRequest("to must be a day, YYYY-MM-DD", head: head, context: context)
+                return nil
+            }
+            to = parsed
+        } else {
+            to = today
+        }
+        let from: DayKey
+        if let text = DaemonServer.queryValue("from", fromRequestURI: head.uri) {
+            guard let parsed = DayKey(text) else {
+                badRequest("from must be a day, YYYY-MM-DD", head: head, context: context)
+                return nil
+            }
+            from = parsed
+        } else {
+            from = to.advanced(by: -29)
+        }
+        guard from <= to else {
+            badRequest("from must not be after to", head: head, context: context)
+            return nil
+        }
+        guard to.number - from.number < UsageRollup.maxRangeDays else {
+            badRequest("range must be at most \(UsageRollup.maxRangeDays) days", head: head, context: context)
+            return nil
+        }
+        return (from, to)
     }
 
     /// `POST /api/usage/limits` — take the `rate_limits` object a Claude
