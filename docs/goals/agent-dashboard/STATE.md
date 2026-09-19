@@ -1,14 +1,20 @@
 # STATE: agent-dashboard
 
-- Status: waiting
-- Round: 3 of 3 in this budget (fourth budget)
+- Status: active
+- Round: 0 of 3 in this budget (fifth budget)
 - Rounds total: 12
 - Last floor: green (2026-09-19, round 12 after: vitest 1425 in 53 files)
-- Updated: 2026-09-19, round 12 closed; the fourth budget is spent
+- Updated: 2026-09-19, continued: the range rule and two WHERE changes
 
 ## Queue
 
-Empty. Capabilities 10, 11 and the WHERE columns are on PR #134.
+1. `every-figure-follows-the-range` (the human's on 2026-09-19). Three
+   changes: the WHERE task filter's count is the task's working time
+   again, not `1 round`; the goal filter lists every goal with no
+   `N more goals` row; and every figure on the page follows the USAGE
+   range (7d, 30d, 90d): VALUE, WHERE at each filter, MODELS, LEAKS and
+   the tree's costs. The Components frame's task rows now draw the
+   working time.
 
 ## Failures
 
@@ -177,7 +183,7 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-The fourth budget is spent; the goal waits. Merge PR #134. Then the human decides `goal.md` condition 6 (390 px
+Round 13, `every-figure-follows-the-range`, on PR #134's branch. Then the human decides `goal.md` condition 6 (390 px
 under 1200; the design measures 2147 on the real tree) and whether to
 set the goal `done`. Then the human decides: `goal.md` condition 6 (390 px under
 1200) against the frame's shape, which measures 2499 on the real tree;
