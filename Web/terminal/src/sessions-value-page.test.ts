@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-import { installFakePage, type FakePage } from "./fake-page";
+import { type FakeElement, installFakePage, type FakePage } from "./fake-page";
 
 /**
  * The page with the four panels in place (`agent-dashboard`, capability
@@ -111,15 +111,19 @@ const rowsOf = (panel: ReturnType<typeof panelNamed>) =>
   ]);
 
 describe("the panels", () => {
-  it("sit between the band and the tree, in one order, each with its label in the gutter", () => {
-    // Round 10 (the frame `Dashboard 1200`): USAGE and QUOTA are panels
-    // with a label like the four under them; the header and the tree
-    // follow, then the folds.
+  it("sit between the band and the tree, in one order with one divider, each with its label in the gutter", () => {
+    // Round 11 (the approved frames): USAGE, QUOTA, MODELS, one hairline
+    // divider, VALUE, WHERE, LEAKS; the header and the tree follow, then
+    // the folds. No notice line: the page holds no action that could
+    // fail. Chartered: round 10's order (VALUE, WHERE, MODELS, LEAKS) and
+    // its notice.
     const order = page.root.children
       .filter((child): child is Exclude<typeof child, string> => typeof child !== "string")
-      .map((child) => child.className.split(" ")[0]);
-    expect(order.slice(order.indexOf("band"))).toEqual(["band", "notice", "restart", "panel", "panel", "panel", "panel", "panel", "panel", "tree-head", "tree", "folds"]);
-    expect(panels().map((p) => p.querySelector(".panel-label")?.textContent)).toEqual(["USAGE", "QUOTA", "VALUE", "WHERE", "MODELS", "LEAKS"]);
+      .map((child) => `${child.tagName.toLowerCase()}.${child.className.split(" ")[0]}`);
+    expect(order.slice(order.indexOf("section.band"))).toEqual([
+      "section.band", "p.restart", "section.panel", "section.panel", "section.panel", "hr.panel-divider", "section.panel", "section.panel", "section.panel", "div.tree-head", "div.tree", "div.folds",
+    ]);
+    expect(panels().map((p) => p.querySelector(".panel-label")?.textContent)).toEqual(["USAGE", "QUOTA", "MODELS", "VALUE", "WHERE", "LEAKS"]);
     expect(panels().map((p) => p.querySelector(".panel-label")?.tagName)).toEqual(["H2", "H2", "H2", "H2", "H2", "H2"]);
   });
 
@@ -146,6 +150,41 @@ describe("the panels", () => {
       "No quota reading yet. Run kitterm statusline install, then open a Claude Code session; its statusline posts one.",
     );
     expect(quota.querySelectorAll(".quota-bar")).toEqual([]);
+  });
+
+  it("QUOTA draws one bar per window as a track with its fill a mark, accent under 80% and caution from it, the percentage too", async () => {
+    // The Components frame, "Quota bar": `Session (5h) [====      ] 19%
+    // resets 3h 16m` in the accent, `Weekly [========  ] 87% resets 1d
+    // 12h · read just now` in the caution, the label and the reset never
+    // coloured. Chartered: the ASCII `[####····]` cells of rounds 4–10.
+    const now = Math.floor(Date.now() / 1000);
+    routes["/api/usage/limits"] = {
+      ok: true, hasReading: true, receivedAt: Date.now() - 20_000, ageSeconds: 20, stale: false,
+      rateLimits: { five_hour: { used_percentage: 19, resets_at: now + 3 * 3600 + 16 * 60 + 30 }, seven_day: { used_percentage: 87, resets_at: now + 36 * 3600 + 30 } },
+    };
+    await page.poll();
+    const quota = panelNamed("quota");
+    const bars = quota.querySelectorAll(".quota-bar");
+    expect(bars.map((b) => b.children.filter((c): c is FakeElement => typeof c !== "string").map((c) => c.className))).toEqual([
+      ["quota-label", "quota-track", "quota-percent", "quota-reset"],
+      ["quota-label", "quota-track", "quota-percent", "quota-reset", "quota-age"],
+    ]);
+    expect(bars.map((b) => [b.querySelector(".quota-label")?.textContent, b.querySelector(".quota-percent")?.textContent, b.querySelector(".quota-reset")?.textContent])).toEqual([
+      ["Session (5h)", "19%", "resets 3h 16m"], ["Weekly", "87%", "resets 1d 12h"],
+    ]);
+    expect(bars[1].querySelector(".quota-age")?.textContent).toBe("· read just now");
+    // The fill: a bar mark inside the track, sized to the share.
+    expect(bars.map((b) => b.querySelector(".quota-track")?.children.map((c) => (typeof c === "string" ? c : `${c.className} ${(c.style as { width?: string }).width}`)))).toEqual([
+      ["mark bar quota-fill 19%"], ["mark bar quota-fill caution 87%"],
+    ]);
+    expect(bars.map((b) => b.querySelector(".quota-track")?.getAttribute("aria-hidden"))).toEqual(["true", "true"]);
+    // The percentage is a run of caution text at 80% and over, plain under.
+    expect(bars.map((b) => b.querySelector(".quota-percent")?.querySelectorAll(".mark").map((m) => m.className))).toEqual([[], ["mark caution wide"]]);
+    expect(bars.map((b) => b.querySelector(".quota-label")?.querySelectorAll(".mark"))).toEqual([[], []]);
+    expect(bars.map((b) => b.querySelector(".quota-reset")?.querySelectorAll(".mark"))).toEqual([[], []]);
+    expect(quota.textContent).not.toContain("#");
+    routes["/api/usage/limits"] = { ok: true, hasReading: false };
+    await page.poll();
   });
 
   it("VALUE prints four tiles behind an accent rule, their nouns in two forms, and one note naming the scope and the span", () => {
@@ -240,7 +279,11 @@ describe("on a phone", () => {
     phone = true;
     await page.poll();
     expect(page.root.querySelectorAll(".panel-fold")).toEqual([]);
-    expect(panels().map((p) => p.querySelector(".panel-label")?.textContent)).toEqual(["USAGE", "QUOTA", "VALUE", "WHERE", "MODELS", "LEAKS"]);
+    // Round 11: the same order at both widths, the divider between MODELS
+    // and VALUE (chartered: round 10's order).
+    expect(panels().map((p) => p.querySelector(".panel-label")?.textContent)).toEqual(["USAGE", "QUOTA", "MODELS", "VALUE", "WHERE", "LEAKS"]);
+    const order = page.root.children.filter((c): c is FakeElement => typeof c !== "string").map((c) => c.className.split(" ")[0]);
+    expect(order.slice(order.indexOf("panel"), order.indexOf("tree-head"))).toEqual(["panel", "panel", "panel", "panel-divider", "panel", "panel", "panel"]);
     expect(panelNamed("value").querySelectorAll(".yield-tile")).toHaveLength(4);
     expect(panelNamed("models").querySelectorAll(".split-short").map((s) => s.textContent)).toEqual(["$100", "$90", "$80", "$130"]);
     phone = false;

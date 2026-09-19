@@ -241,15 +241,16 @@ object as posted with `ageSeconds`, and `stale` past an hour: a statusline rende
 while a session is active, so a reading ages whenever the human is away from every pane,
 stays exact while no other device spends the same account, and goes wrong silently when
 one does; an hour is a fifth of the shortest window. The page draws one bar per window
-as twenty text cells with the countdown to its reset, prints the age under the bars,
-keeps a stale reading's bars with the fill muted, draws a window past its reset empty,
-and says in words when no reading has ever arrived. Full grade only on both routes, like
-the bill and the rollup.
+as a track with a fill and the percentage beside it, the fill in the accent under 80 %
+and the fill and the percentage in the caution colour at 80 % and over, with the
+countdown to its reset, prints the age after the last bar, keeps a stale reading's
+fill grey, draws a window past its reset empty, and says in words when no reading has
+ever arrived. Full grade only on both routes, like the bill and the rollup.
 
 ### The numbers on the page
 
 The fleet view puts the rollup where the reader holds the work. Above the quota sits
-one panel: the range's total, marked `if billed at full API rate` because
+one panel, `USAGE`: the range's total, marked `if billed at full API rate` because
 `totalCostUSD` is the pay-as-you-go price on any plan and a subscriber pays a flat fee,
 one bar per day, and two radio groups, cost or tokens and 7, 30 or 90 days, whose
 choice the browser keeps. Under the bars the panel says what the numbers are made of:

@@ -926,7 +926,7 @@ export function markFamily(state: MergedState): MarkFamily {
 
 /** The one character a mark prints (`design-foundation.md`, Hierarchy):
  * `?` for what waits on a person, `!` for what failed, `✓` for what is
- * done, `·` for what is pending, `–` for what is idle or unknown. A working
+ * done, `•` for what is pending, `–` for what is idle or unknown. A working
  * mark turns through the spinner's frames (`spinner.ts`) and rests on the
  * cycle's full glyph; the `>` here is what it prints when no cycle's glyphs
  * fit the mark column, so the page never shows a box. */
@@ -941,7 +941,7 @@ export function markGlyph(family: MarkFamily): string {
     case "done":
       return "✓";
     case "pending":
-      return "·";
+      return "•";
     default:
       return "–";
   }
@@ -1695,10 +1695,9 @@ export type UsageLimits = {
   rateLimits?: Record<string, LimitWindow>;
 };
 
-/** How many cells a bar has. Twenty is 5% a cell, and the number beside
- * the bar carries the rest; at 12 px it leaves room for the label and the
- * countdown on one 390 px line. */
-export const QUOTA_CELLS = 20;
+/** The share of a window at which its bar and its number turn caution
+ * (`corpus/dashboard.pen`, the Components frame): 80 % and over. */
+export const QUOTA_CAUTION_PERCENT = 80;
 
 /** The windows in the order the page lists them; any other key follows,
  * by name, with its key as its label. */
@@ -1711,15 +1710,19 @@ const QUOTA_LABELS: Record<string, string> = {
 
 export type QuotaState = "fresh" | "stale" | "reset";
 
-/** One bar: the label, the cells, the number, and the countdown, each a
- * string the page prints as is. `filled` is how many of `QUOTA_CELLS` are
- * full, so the page can colour the fill apart from the track. */
+/** The colour a bar's fill and its number wear: the accent under
+ * `QUOTA_CAUTION_PERCENT`, the caution at and over it. */
+export type QuotaLevel = "accent" | "caution";
+
+/** One bar: the label, the fill, the number, and the countdown, each a
+ * string the page prints as is. `fill` is the window's share of the bar,
+ * 0 to 1, clamped; `level` is the colour the fill and the number wear. */
 export type QuotaBar = {
   key: string;
   label: string;
-  filled: number;
-  /** `#####···············`, `QUOTA_CELLS` long, without the brackets. */
-  cells: string;
+  /** The share of the bar that is full, 0 to 1. */
+  fill: number;
+  level: QuotaLevel;
   /** `24%`, or `reset` once `resets_at` has passed. */
   percent: string;
   /** `resets 49m`, or `12m ago` once the window has reset. */
@@ -1737,12 +1740,18 @@ export function quotaLabel(key: string): string {
   return QUOTA_LABELS[key] ?? key.replace(/_/g, " ");
 }
 
-/** The cells for a percentage, rounded to the nearest cell and clamped to
- * the bar: `#` for a full cell, `·` for an empty one. */
-export function quotaCells(percent: number, cells: number = QUOTA_CELLS): { filled: number; cells: string } {
+/** The fill for a percentage, clamped to the bar, and the colour it
+ * wears: the accent under 80 %, the caution from 80 % (`quotaLevel`). */
+export function quotaFill(percent: number): { fill: number; level: QuotaLevel } {
   const clamped = Math.min(100, Math.max(0, Number.isFinite(percent) ? percent : 0));
-  const filled = Math.round((clamped / 100) * cells);
-  return { filled, cells: "#".repeat(filled) + "·".repeat(cells - filled) };
+  return { fill: clamped / 100, level: quotaLevel(percent) };
+}
+
+/** The colour a window's fill and number wear: `caution` at and over
+ * `QUOTA_CAUTION_PERCENT`, `accent` under it. The label and the reset
+ * never change colour. */
+export function quotaLevel(percent: number): QuotaLevel {
+  return Number.isFinite(percent) && percent >= QUOTA_CAUTION_PERCENT ? "caution" : "accent";
 }
 
 /** A span ahead in its two largest units: `49m`, `3h 12m`, `1d 14h`; under
@@ -1808,8 +1817,8 @@ export function quotaPanel(limits: UsageLimits | null | undefined, now: number):
       return {
         key,
         label: quotaLabel(key),
-        filled: 0,
-        cells: "·".repeat(QUOTA_CELLS),
+        fill: 0,
+        level: "accent",
         percent: "reset",
         reset: `${countdown(now - resetAt)} ago`,
         state: "reset",
@@ -1819,7 +1828,7 @@ export function quotaPanel(limits: UsageLimits | null | undefined, now: number):
     return {
       key,
       label: quotaLabel(key),
-      ...quotaCells(window.used_percentage),
+      ...quotaFill(window.used_percentage),
       percent: `${percent}%`,
       reset: `resets ${countdown(resetAt - now)}`,
       state: stale ? "stale" : "fresh",

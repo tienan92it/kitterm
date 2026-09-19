@@ -20,6 +20,11 @@
  * whose `goal:` label names a done goal nests under that goal, which is
  * then shown open too. Idle shells are not lines of the tree: they are
  * returned apart, for the `N idle shells` fold at the page's foot.
+ *
+ * A workspace wears no mark. A project and a goal wear the disclosure
+ * triangle alone, never a state (round 11, the Components frame):
+ * `children` says whether there is anything under the line to fold, and
+ * `visibleLines` hides what sits under a closed one.
  */
 
 import {
@@ -92,19 +97,18 @@ export type TreeLineBase = {
 
 export type TreeLine<R extends ModelRow> =
   | (TreeLineBase & { kind: "workspace"; path: string })
-  /** `working` is whether a session of the project holds the tty: the
-   * project's mark turns. `noGoals` is the reason the project lists no
-   * goal, on the name's tooltip. */
-  | (TreeLineBase & { kind: "project"; project: ProjectRef | null; working: boolean })
-  /** `mark` is the disclosure glyph's family: amber when the goal needs
-   * the human, faint otherwise; null for a goal with nothing under it.
-   * `href` opens the latest record, else `STATE.md`. `proposed` is the
-   * item whose `N proposals` and `[Dismiss]` sit in the actions cell. */
+  /** `children` is whether anything sits under the line, which is what
+   * the disclosure triangle folds; a project with nothing under it wears
+   * a blank mark. The reason a project lists no goal is on the name's
+   * tooltip. */
+  | (TreeLineBase & { kind: "project"; project: ProjectRef | null; children: boolean })
+  /** `href` opens the latest record, else `STATE.md`. `proposed` is the
+   * item whose `N proposals` ride on the name's tooltip. */
   | (TreeLineBase & {
       kind: "goal";
       project: ProjectRef;
       summary: KnowledgeSummary;
-      mark: MarkFamily | null;
+      children: boolean;
       href: string;
       proposed: ProposedItem | null;
     })
@@ -251,7 +255,7 @@ export function tree<R extends ModelRow>(input: TreeInput<R>): Tree<R> {
       facts: line.unwritten ? [] : goalFactColumns(goalCost(summary), roundCounter(summary)),
       project,
       summary,
-      mark: children.length === 0 ? null : word.family === "attention" ? "attention" : "pending",
+      children: children.length > 0,
       href: knowledgeUrl(project.id, item?.path ?? recordPath(summary) ?? statePath(summary)),
       proposed: item,
     };
@@ -271,11 +275,13 @@ export function tree<R extends ModelRow>(input: TreeInput<R>): Tree<R> {
         state: null,
         facts: headingFactColumns(usage && p.project ? costLabel(bucket) : null, agentsLabel(working(owned)), p.heading.name),
         project: p.project,
-        working: working(owned) > 0,
+        children: false,
       },
     ];
+    const head = lines[0] as Extract<TreeLine<R>, { kind: "project" }>;
     if (!p.project) {
       for (const row of p.rows) lines.push(sessionLine(row, depth + 1));
+      head.children = lines.length > 1;
       return lines;
     }
     const { working: live, pending, done } = p.goals;
@@ -307,6 +313,7 @@ export function tree<R extends ModelRow>(input: TreeInput<R>): Tree<R> {
         lines: folded.map((goal) => goalLines(doneGoalLine(goal), [], p.project!, owned, depth + 1, "pending")[0]),
       });
     }
+    head.children = lines.length > 1;
     return lines;
   };
 
@@ -350,7 +357,7 @@ export function tree<R extends ModelRow>(input: TreeInput<R>): Tree<R> {
       none = {
         key: NO_PROJECT,
         label: NO_PROJECT_NAME,
-        lines: [{ kind: "project", key: `project:${NO_PROJECT}`, depth: 0, name: NO_PROJECT_NAME, title: null, state: null, facts: [], project: null, working: false }],
+        lines: [{ kind: "project", key: `project:${NO_PROJECT}`, depth: 0, name: NO_PROJECT_NAME, title: null, state: null, facts: [], project: null, children: true }],
       };
       out.push(none);
     }
@@ -373,4 +380,24 @@ export function tree<R extends ModelRow>(input: TreeInput<R>): Tree<R> {
 /** A done goal as a line: `[done]` in grey, its cost and its counter. */
 function doneGoalLine(summary: KnowledgeSummary): GoalLine {
   return { summary, title: goalTitle(summary), unwritten: false, status: "done", round: null, next: nextLine(summary.nextAction) };
+}
+
+/**
+ * The lines a section paints: every line, less what sits under a project
+ * or a goal in `closed` (by `key`). A line is under another when it
+ * follows it at a greater depth, until the next line at the same depth or
+ * less, so a closed goal hides its tasks and their sessions, and a closed
+ * project hides everything down to its `N done` fold. A workspace is
+ * always open and a closed key of any other kind changes nothing.
+ */
+export function visibleLines<R extends ModelRow>(lines: readonly TreeLine<R>[], closed: ReadonlySet<string>): TreeLine<R>[] {
+  const out: TreeLine<R>[] = [];
+  let hideBelow: number | null = null;
+  for (const line of lines) {
+    if (hideBelow !== null && line.depth > hideBelow) continue;
+    hideBelow = null;
+    out.push(line);
+    if ((line.kind === "project" || line.kind === "goal") && closed.has(line.key)) hideBelow = line.depth;
+  }
+  return out;
 }

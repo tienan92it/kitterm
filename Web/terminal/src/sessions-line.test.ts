@@ -32,7 +32,10 @@ import {
  * they drop in; how many survive a given shortfall; and the fold a phone
  * puts a goal's done tasks behind. The last block renders the page and
  * checks that every line names one cell to truncate and numbers its facts
- * in drop order, which is what `fitLines` reads.
+ * in drop order, which is what `fitLines` reads. Chartered in round 11
+ * (the Components frame): the `·` pending glyph became `•`, the goal's
+ * amber `▾` became the faint `▼` that never carries a state, and the
+ * approval's actions cell went with every other action on the page.
  */
 
 const NOW = 1_758_000_000_000;
@@ -59,8 +62,10 @@ describe("the state vocabulary", () => {
 
   it("prints one character per mark, and never a box: the working mark's rest is the spinner's", () => {
     expect((["attention", "failed", "done", "pending", "idle", "unknown", "running"] as const).map(markGlyph)).toEqual([
-      "?", "!", "✓", "·", "–", "–", ">",
+      "?", "!", "✓", "•", "–", "–", ">",
     ]);
+    // The pending mark is the bullet, U+2022, not the middle dot.
+    expect(markGlyph("pending").codePointAt(0)).toBe(0x2022);
   });
 
   it("reads every task state as its word and its mark", () => {
@@ -80,7 +85,7 @@ describe("the state vocabulary", () => {
 
   it("prints the whole vocabulary in the tree's header, in the foundation's order", () => {
     expect(VOCABULARY.map((v) => v.tag)).toEqual(["[working]", "[needs you]", "[pending]", "[done]", "[failed]", "[idle]"]);
-    expect(VOCABULARY.map((v) => markGlyph(v.family))).toEqual([">", "?", "·", "✓", "!", "–"]);
+    expect(VOCABULARY.map((v) => markGlyph(v.family))).toEqual([">", "?", "•", "✓", "!", "–"]);
   });
 });
 
@@ -244,10 +249,11 @@ describe("the page's lines", () => {
 
   it("prints a goal's line as disclosure, title, word, then its cost and its counter in their columns", () => {
     // `workspace-ledger [done] $75.11 r6/3`: the cost in the number column,
-    // the counter in the last; the next action is the title's tooltip.
+    // the counter in the last; the next action is the title's tooltip. The
+    // triangle carries no state: the word does.
     const goal = page.root.querySelector(".goal-line")!;
-    expect(goal.querySelector(".mark")?.className).toBe("mark pending disclosure");
-    expect(goal.querySelector(".mark")?.textContent).toBe("▾");
+    expect(goal.querySelector(".mark")?.className).toBe("mark disclosure");
+    expect(goal.querySelector(".mark")?.textContent).toBe("▼");
     expect(goal.querySelector(".state")?.textContent).toBe("[working]");
     expect(cellsOf(goal.querySelector(".main")!)).toEqual([
       ["line-name", "/sessions is a dashboard for workspaces and agents", null], ["state running", "[working]", null], ["cost", "$65.72", "2"], ["counter", "r7/3", "4"],
@@ -299,7 +305,8 @@ describe("the page's lines", () => {
     expect(line.querySelector("[data-name]")?.textContent).toBe("approve Bash");
     expect(textOf(line.querySelectorAll("[data-drop]"))).toEqual(["swift test"]);
     expect(line.querySelector(".mark")?.textContent).toBe("?");
-    expect(line.querySelector(".actions")?.querySelectorAll("a").map((a) => a.textContent)).toEqual(["Open the pane"]);
+    expect(line.querySelectorAll("a").map((a) => [a.className, a.textContent])).toEqual([["line-link", "Open the pane"]]);
+    expect(line.querySelectorAll("button"), "no answer on the page: the pane is where it is given").toEqual([]);
   });
 
   it("stands no label over a bucket: each goal line says its own state", () => {

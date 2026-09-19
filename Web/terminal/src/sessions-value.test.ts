@@ -217,11 +217,13 @@ describe("VALUE", () => {
 describe("WHERE by project", () => {
   const panel = wherePanel("project", { report, yield: yieldReport, projects, goals, range })!;
 
-  it("lists every project with its spend, its sessions, its merged PRs and its cost a line, dearest first", () => {
-    // Round 10 (the frame's columns): spend | count | PRs | unit, the unit
-    // a line, and the remainder's count its share.
+  it("lists every project with its spend, its sessions, its merged PRs and its cost a PR, dearest first", () => {
+    // Round 10 (the frame's columns): spend | count | PRs | unit, and the
+    // remainder's count its share. Round 11 (the Components frame, WHERE by
+    // project): the unit is a merged pull request, `$11.77/PR`, the noun
+    // after a slash; chartered, it replaced `$0.017 a line`.
     expect(panel.rows.map((r) => [r.name, r.spend, r.count, r.units, r.rate, r.remainder])).toEqual([
-      ["kitterm", "$976.74", "92 sessions", "83 PRs", "$0.017 a line", false],
+      ["kitterm", "$976.74", "92 sessions", "83 PRs", "$11.77/PR", false],
       ["market-data-pipeline", "$38.91", "10 sessions", DASH, DASH, false],
       ["notes", DASH, DASH, DASH, DASH, false],
       ["no project", "$89.47", "8%", DASH, DASH, true],
@@ -251,10 +253,11 @@ describe("WHERE by goal", () => {
   const panel = wherePanel("goal", { report, yield: yieldReport, projects, goals, range })!;
 
   it("sums the Cost lines of the rounds started in the range, counts them as tasks and their PRs, and prices a line from the PRs' lines", () => {
-    // `workspace-ledger $75.11 6 tasks 4 PRs $0.018 a line` in the frame:
-    // here 4 rounds, 2 PRs of 3,000 lines together.
+    // `workspace-ledger $75.11 6 tasks 4 PRs $0.018/line` in the frame:
+    // here 4 rounds, 2 PRs of 3,000 lines together. Round 11: `/line`
+    // replaced `a line` (chartered).
     expect(panel.rows.map((r) => [r.name, r.spend, r.count, r.units, r.rate])).toEqual([
-      ["workspace-ledger", "$75.12", "4 tasks", "2 PRs", "$0.025 a line"],
+      ["workspace-ledger", "$75.12", "4 tasks", "2 PRs", "$0.025/line"],
       ["cost-per-round", "$33.46", "1 task", DASH, DASH],
       ["contrast-tokens", DASH, "2 tasks", "1 PR", DASH],
       ["2 more goals", DASH, DASH, DASH, DASH],
@@ -299,8 +302,8 @@ describe("WHERE by task", () => {
     expect(panel.rows.map((r) => [r.name, r.spend, r.count, r.units, r.rate])).toEqual([
       ["answer-from-the-page", "$34.66", "45m", DASH, DASH],
       ["the-line", "$33.46", "20m", DASH, DASH],
-      ["capture-the-spend", "$27.74", "1h", "PR #122", "$0.028 a line"],
-      ["the-ledger", "$12.72", "30m", "PR #123", "$0.006 a line"],
+      ["capture-the-spend", "$27.74", "1h", "PR #122", "$0.028/line"],
+      ["the-ledger", "$12.72", "30m", "PR #123", "$0.006/line"],
       ["the-floor", DASH, DASH, "PR #100", DASH],
       ["the-numbers-on-the-page", DASH, DASH, "PR #123", DASH],
       ["2 more rounds", DASH, DASH, DASH, DASH],
@@ -318,10 +321,13 @@ describe("WHERE by task", () => {
 
 describe("WHERE by role", () => {
   it("prints root and crew with their sessions, their API hours and dollars an API hour, and names the lever", () => {
+    // Round 11 (the Components frame, WHERE by role): `$61/API hour`, whole
+    // dollars and the noun after a slash; chartered, it replaced `$54.69 an
+    // API hour`.
     const panel = wherePanel("role", { report, yield: yieldReport, projects, goals, range })!;
     expect(panel.rows.map((r) => [r.name, r.spend, r.count, r.units, r.rate, r.remainder])).toEqual([
-      ["root session", "$765.59", "114 sessions", "12.8 API h", "$54.69 an API hour", false],
-      ["crew, worktree", "$339.53", "36 sessions", "8.1 API h", "$24.69 an API hour", false],
+      ["root session", "$765.59", "114 sessions", "12.8 API h", "$54/API hour", false],
+      ["crew, worktree", "$339.53", "36 sessions", "8.1 API h", "$24/API hour", false],
     ]);
     expect(panel.note).toBe("A crew is 55% cheaper an API hour");
     expect(panel.summary).toBe("$1,015.65 in 2 repositories · 83 merged PRs · 58,853 lines · 24 releases");

@@ -2,17 +2,21 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { type FakeElement, installFakePage, type FakePage } from "./fake-page";
 import { type Approval, type KnowledgeSummary, type ModelRow, type ProjectSummary, type UsageDaily } from "./sessions-model";
-import { goalFactColumns, headingFactColumns, sessionFactColumns, taskFactColumns, tree, type TreeLine } from "./sessions-tree";
+import { goalFactColumns, headingFactColumns, sessionFactColumns, taskFactColumns, tree, visibleLines, type TreeLine } from "./sessions-tree";
 
 /**
  * The tree as the frames `Dashboard 1200` and `Dashboard 390` draw it
- * (`agent-dashboard`, round 10): flat lines, the mark at the far left, an
- * indent per level, then the state word and three fact columns; a project's
- * most recent done goal open with its last two done tasks and the rest
- * behind `N done`; idle shells folded at the page's foot beside the
- * archives and the push switch. The first block pins the pure model over a
- * fleet shaped like the frame's fixture; the second renders the page
- * through `sessions.ts` and pins the columns, the folds and the absences.
+ * (`agent-dashboard`, round 10; the marks and the folding of round 11, the
+ * Components frame): flat lines, the mark at the far left, an indent per
+ * level, then the state word and three fact columns; a project's most
+ * recent done goal open with its last two done tasks and the rest behind
+ * `N done`; idle shells folded at the page's foot beside the archives and
+ * the push switch. The first block pins the pure model over a fleet shaped
+ * like the frame's fixture; the second renders the page through
+ * `sessions.ts` and pins the columns, the folds and the absences.
+ * Chartered in round 11: the project's `working` spinner, the goal's amber
+ * disclosure (`mark`), the `▸` glyph and the actions cell with `[new]`,
+ * `⋯` and the two answers, all of round 10's shape.
  */
 
 /** The page reads the clock, so the fixture's moments sit against it. */
@@ -150,16 +154,35 @@ describe("the tree over a fleet shaped like the frame", () => {
       [1, "fleet-catch-up", "[done]", ["$35.79@2!", "r4/4@4"]],
       [1, "cost-per-round", "[done]", ["r4/4@2!"]],
     ]);
+    // A project and a goal carry whether anything sits under them, which
+    // is what their triangle folds; the state stays on the word.
     const project = section.lines[0];
-    expect(project.kind === "project" && project.working).toBe(true);
+    expect(project.kind === "project" && project.children).toBe(true);
     const blocked = section.lines[1];
     expect(blocked.kind === "session" && [blocked.needs, blocked.approvals.map((a) => a.id), blocked.mark]).toEqual([false, ["a-1"], "attention"]);
     const waiting = section.lines[3];
-    expect(waiting.kind === "goal" && [waiting.mark, waiting.state?.family, waiting.href, waiting.title]).toEqual([
-      "attention", "attention", "/api/projects/kitterm/knowledge/agent-dashboard/STATE.md", "Round 10, `the-page-is-the-pen-design`.",
+    expect(waiting.kind === "goal" && [waiting.children, waiting.state?.family, waiting.href, waiting.title]).toEqual([
+      true, "attention", "/api/projects/kitterm/knowledge/agent-dashboard/STATE.md", "Round 10, `the-page-is-the-pen-design`.",
     ]);
     const done = section.lines[9];
-    expect(done.kind === "goal" && [done.mark, done.href]).toEqual(["pending", "/api/projects/kitterm/knowledge/workspace-ledger/rounds/006.md"]);
+    expect(done.kind === "goal" && [done.children, done.href]).toEqual([true, "/api/projects/kitterm/knowledge/workspace-ledger/rounds/006.md"]);
+    const folded = section.lines[12];
+    expect(folded.kind === "fold" && folded.lines.map((l) => l.kind === "goal" && l.children)).toEqual([false, false]);
+  });
+
+  it("hides what sits under a closed project or goal, down to the next line at its depth", () => {
+    const [section] = built.sections;
+    const names = (closed: string[]) => visibleLines(section.lines, new Set(closed)).map((l) => `${l.depth}:${l.name}`);
+    // A closed goal hides its tasks and their sessions; the next goal shows.
+    expect(names(["goal:kitterm:agent-dashboard"])).toEqual([
+      "0:kitterm", "1:review", "1:kitterm", "1:agent-dashboard", "1:workspace-ledger",
+      "2:the-strip-holds-only-what-needs-you", "2:the-numbers-on-the-page", "1:2 done",
+    ]);
+    // A closed project hides everything down to its fold.
+    expect(names(["project:kitterm"])).toEqual(["0:kitterm"]);
+    // A key of another kind, or of a line not here, changes nothing.
+    expect(names(["task:kitterm:agent-dashboard:no-input-on-the-page", "goal:mdp:symbol-onboarding"])).toEqual(names([]));
+    expect(names([]).length).toBe(section.lines.length);
   });
 
   it("draws the workspace as the frame does: its cost and agents, the project's done goal open with the crew under it, and a project with no goal", () => {
@@ -175,7 +198,7 @@ describe("the tree over a fleet shaped like the frame", () => {
     const crew = section.lines[4];
     expect(crew.kind === "session" && crew.title).toBe(`Mapping the path\n${mdp.root}/.claude/worktrees/x`);
     const empty = section.lines[5];
-    expect(empty.kind === "project" && [empty.working, empty.title]).toEqual([false, `${mt5.root}\nno goal folder`]);
+    expect(empty.kind === "project" && [empty.children, empty.title]).toEqual([false, `${mt5.root}\nno goal folder`]);
   });
 
   it("gives an approval whose session is gone a line under No project, and draws nothing for no fleet", () => {
@@ -220,10 +243,23 @@ describe("the painted tree", () => {
     expect(sections.map((s) => s.getAttribute("aria-label"))).toEqual(["kitterm", "NgheNhanTrading"]);
     const [kittermSection, workspace] = sections;
     const lines = kittermSection.querySelectorAll(".line").filter((l) => !l.classList.contains("line-approval"));
+    // Rule A of the Components frame: a project and a goal wear the
+    // triangle alone, a task and a session their state mark.
     expect(lines.map((l) => l.querySelector(".mark")?.className)).toEqual([
-      "mark running", "mark attention", "mark running", "mark attention disclosure", "mark pending", "mark pending", "mark pending", "mark done", "mark done",
-      "mark pending disclosure", "mark done", "mark done", "mark pending disclosure", "mark blank", "mark blank",
+      "mark disclosure", "mark attention", "mark running", "mark disclosure", "mark pending", "mark pending", "mark pending", "mark done", "mark done",
+      "mark disclosure", "mark done", "mark done", "mark disclosure", "mark blank", "mark blank",
     ]);
+    expect(lines.map((l) => l.querySelector(".mark")?.textContent)).toEqual([
+      "▼", "?", ">", "▼", "•", "•", "•", "✓", "✓", "▼", "✓", "✓", "▶", "", "",
+    ]);
+    // The triangle on a project or a goal is a button that says what it
+    // folds; a fold's is its summary's glyph.
+    expect(lines.map((l) => l.querySelector(".mark")?.tagName)).toEqual([
+      "BUTTON", "SPAN", "SPAN", "BUTTON", "SPAN", "SPAN", "SPAN", "SPAN", "SPAN", "BUTTON", "SPAN", "SPAN", "SPAN", "SPAN", "SPAN",
+    ]);
+    expect(lines[0].querySelector(".mark")?.getAttribute("aria-expanded")).toBe("true");
+    expect(lines[0].querySelector(".mark")?.getAttribute("aria-label")).toBe("Fold kitterm");
+    expect(lines[3].querySelector(".mark")?.getAttribute("data-focus")).toBe("fold:goal:kitterm:agent-dashboard");
     expect(cellsOf(lines[0])).toEqual(["line-name=kitterm", "cost=$926.21@2!", "agents=1 agent@4"]);
     expect(lines[0].querySelector(".line-name")?.tagName).toBe("H2");
     expect(cellsOf(lines[3])).toEqual(["line-name=agent-dashboard", "state attention=[waiting]", "counter=r0/3@2!"]);
@@ -234,11 +270,15 @@ describe("the painted tree", () => {
     expect(fold.tagName).toBe("DETAILS");
     expect((fold as unknown as { open: boolean }).open).toBe(false);
     expect(fold.querySelector("summary")?.querySelector(".line-name")?.textContent).toBe("2 done");
-    expect(fold.querySelector("summary")?.querySelector(".mark")?.textContent).toBe("▸");
+    expect(fold.querySelector("summary")?.querySelector(".mark")?.textContent).toBe("▶");
     expect(fold.querySelectorAll(".goal-line").map((g) => g.querySelector(".line-name")?.textContent)).toEqual(["fleet-catch-up", "cost-per-round"]);
     // The workspace: an h2 over h3 projects, the crew under the done goal.
+    // The workspace wears no mark; a project with nothing under it wears
+    // none either.
     const heads = workspace.querySelectorAll(".line-name").filter((n) => n.tagName === "H2" || n.tagName === "H3");
     expect(heads.map((h) => [h.tagName, h.textContent])).toEqual([["H2", "NgheNhanTrading"], ["H3", "market-data-pipeline"], ["H3", "nghenhan-mt5"]]);
+    expect(workspace.querySelectorAll(".line-workspace").map((l) => l.querySelector(".mark")?.className)).toEqual(["mark blank"]);
+    expect(workspace.querySelectorAll(".line-project").map((l) => l.querySelector(".mark")?.className)).toEqual(["mark disclosure", "mark blank"]);
     const crew = workspace.querySelectorAll(".row-line")[0];
     expect(cellsOf(crew)).toEqual(["folder line-name=path-mapping-real-terminal", "state running=[working]", "model=Fable 5.1@2", "since=4m@4!"]);
   });
@@ -253,14 +293,18 @@ describe("the painted tree", () => {
     expect(page.root.querySelector(".tree")!.querySelectorAll("[data-drop]").map((d) => d.textContent), "only an approval's arguments drop").toEqual(["swift test"]);
   });
 
-  it("puts every action in the actions cell as quiet text: [new] on a project, ⋯ on a session, the answers on an approval", () => {
+  it("holds no action on any line: no actions cell, no [new], no ⋯, no answers; the approval keeps Open the pane", () => {
+    // Round 11: the page presents and monitors. Every line is five cells,
+    // and the one way to act on an agent is its pane.
+    expect(page.root.querySelectorAll(".actions")).toEqual([]);
     const project = page.root.querySelectorAll(".line-project")[0];
-    expect(project.querySelector(".actions")?.querySelectorAll("button").map((b) => [b.className, b.textContent])).toEqual([["quiet spawn-button", "new"]]);
+    expect(project.querySelectorAll("button").map((b) => b.className)).toEqual(["mark disclosure"]);
     const row = page.root.querySelectorAll(".row-line")[0];
-    expect(row.querySelector(".actions")?.querySelectorAll("button").map((b) => b.textContent)).toEqual(["⋯", "Rename", "Archive", "Kill"]);
+    expect(row.querySelectorAll("button")).toEqual([]);
+    expect(row.children.filter((c): c is FakeElement => typeof c !== "string").map((c) => c.className)).toEqual(["mark attention", "open"]);
     const approvalLine = page.root.querySelector(".line-approval")!;
-    expect(approvalLine.querySelector(".actions")?.querySelectorAll("a").map((a) => a.textContent)).toEqual(["Open the pane"]);
-    expect(approvalLine.querySelector(".actions")?.querySelectorAll("button").map((b) => b.textContent)).toEqual(["Deny", "Allow"]);
+    expect(approvalLine.querySelectorAll("a").map((a) => [a.className, a.textContent])).toEqual([["line-link", "Open the pane"]]);
+    expect(approvalLine.querySelectorAll("button")).toEqual([]);
     expect(approvalLine.getAttribute("data-needs")).toBe("approval");
     // A goal name opens its record or its STATE.md in a new tab.
     const goal = page.root.querySelectorAll(".goal-line")[0];

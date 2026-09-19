@@ -130,15 +130,17 @@ describe("the band replaces the strip", () => {
     const heldRow = rows.find((row) => row.querySelector(".open")?.href === "/?session=s-held")!;
     expect(heldRow.querySelector(".line-approval")?.textContent).toContain("approve Bash");
     const goal = page.root.querySelector('[data-needs="proposed"]')!;
-    // Round 10: a goal's mark is its disclosure glyph, amber when the goal
-    // needs the human; the count and Dismiss sit in the actions cell.
-    expect(goal.querySelector(".mark")?.className).toBe("mark attention disclosure");
+    // Round 11 (the Components frame): a goal's mark is the disclosure
+    // triangle alone, faint, never a state; the word carries `[needs you]`.
+    // There is no `[Dismiss]` and no actions cell: the page holds no
+    // action. Chartered: round 10's amber disclosure and its Dismiss.
+    expect(goal.querySelector(".mark")?.className).toBe("mark disclosure");
     expect(goal.querySelector(".state")?.textContent).toBe("[needs you]");
     // The name opens the record the proposals wait in; the count is its tooltip.
     expect(goal.querySelector(".line-name")?.href).toBe("/api/projects/kitterm/knowledge/agent-dashboard/rounds/003.md");
     expect(goal.querySelector(".line-name")?.title, "the decision line joins it when it proposes").toBe("2 proposals");
-    expect(goal.querySelector(".actions")?.querySelectorAll("a")).toEqual([]);
-    expect(goal.querySelector(".actions")?.querySelectorAll("button").map((b) => b.textContent)).toEqual(["Dismiss"]);
+    expect(goal.querySelectorAll(".actions")).toEqual([]);
+    expect(goal.querySelectorAll("button").map((b) => b.className)).toEqual(["mark disclosure"]);
   });
 
   it("gives an approval whose session is gone a line under No project", () => {

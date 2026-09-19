@@ -215,7 +215,8 @@ export function readWhereGrouping(raw: string | null | undefined): WhereGrouping
 /** One row: a name, a bar, then four columns — the spend, a count (`6
  * tasks`, `92 sessions`, a round's `1h 46m`; the remainder's share,
  * `85%`), the pull requests (`4 PRs`, `PR #124`, a role's API hours), and
- * a unit cost (`$0.018 a line`, `$54.69 an API hour`). `fill` is the
+ * a unit cost (`$11.17/PR`, `$0.018/line`, `$61/API hour`: the noun after
+ * a slash, no article, as the Components frame draws it). `fill` is the
  * bar's share of the panel's longest, 0 to 1. `remainder` marks the
  * unattributed row, whose name, bar and spend wear the amber and whose
  * bar is the longest at the goal grouping. A column with no source is
@@ -264,9 +265,11 @@ type Raw = {
   count: string | null;
   /** The pull requests column, already worded; null for no source. */
   units: string | null;
-  /** The unit the rate divides the spend by: the lines merged, an API
-   * hour; null for no source. */
-  per: { n: number; unit: string } | null;
+  /** The unit the rate divides the spend by — the pull requests merged,
+   * the lines merged, an API hour — as `/PR`, `/line`, `/API hour`, and
+   * whether the rate prints whole dollars (an API hour does, as the frame
+   * draws `$61/API hour`); null for no source. */
+  per: { n: number; unit: "/PR" | "/line" | "/API hour" } | null;
   title: string;
   remainder?: boolean;
   /** The folded dash row, which sorts after the named rows. */
@@ -300,7 +303,10 @@ export function linesOf(yieldReport: YieldReport | null | undefined, projectId: 
 function format(raw: Raw, max: number): WhereRow {
   const spend = raw.spendUSD;
   let rate = DASH;
-  if (spend !== null && spend > 0 && raw.per && raw.per.n > 0) rate = `${unitCost(spend / raw.per.n)} ${raw.per.unit}`;
+  if (spend !== null && spend > 0 && raw.per && raw.per.n > 0) {
+    const each = spend / raw.per.n;
+    rate = `${raw.per.unit === "/API hour" ? wholeDollars(each) : unitCost(each)}${raw.per.unit}`;
+  }
   return {
     key: raw.key,
     name: raw.name,
@@ -376,7 +382,8 @@ export function wherePanel(grouping: WhereGrouping, input: WhereInput): WherePan
         spendUSD: bucket ? bucket.costUSD : null,
         count: bucket ? plural(bucket.sessions, "session", "sessions") : null,
         units: prs === null ? null : plural(prs, "PR", "PRs"),
-        per: typeof y?.mergedLines === "number" && y.mergedLines > 0 ? { n: y.mergedLines, unit: "a line" } : null,
+        // What one merged pull request cost here, `$11.17/PR`.
+        per: prs !== null && prs > 0 ? { n: prs, unit: "/PR" } : null,
         title: !y ? `${p.name}: no yield read yet` : !y.checkout ? `${p.name}: ${p.root} is not a git checkout, so nothing is counted` : !y.remote ? `${p.name}: no remote, so no pull request to count` : `${p.name}: merged on ${y.branch ?? "HEAD"}, ${count(y.mergedLines ?? 0)} lines, ${count(y.releases ?? 0)} releases`,
       });
     }
@@ -407,7 +414,7 @@ export function wherePanel(grouping: WhereGrouping, input: WhereInput): WherePan
           spendUSD: spend,
           count: rounds.length > 0 ? plural(rounds.length, "task", "tasks") : null,
           units: prs.length === 0 ? null : plural(prs.length, "PR", "PRs"),
-          per: lines !== null && lines > 0 ? { n: lines, unit: "a line" } : null,
+          per: lines !== null && lines > 0 ? { n: lines, unit: "/line" } : null,
           title: `${name} in ${project.name}: ${plural(rounds.length, "round", "rounds")} started in the range, ${priced.length} with a Cost line${lines !== null ? `, ${count(lines)} lines merged` : ""}`,
         });
       } else {
@@ -426,7 +433,7 @@ export function wherePanel(grouping: WhereGrouping, input: WhereInput): WherePan
             spendUSD: spend,
             count: typeof r.durationMs === "number" && r.durationMs > 0 ? countdown(r.durationMs) : null,
             units: typeof r.pr === "number" ? `PR #${r.pr}` : null,
-            per: lines !== null && lines > 0 ? { n: lines, unit: "a line" } : null,
+            per: lines !== null && lines > 0 ? { n: lines, unit: "/line" } : null,
             title: `round ${r.number} of ${nameOf(project, summary)} in ${project.name}, started ${r.started ?? "on no recorded day"}`,
           });
         }
@@ -465,7 +472,7 @@ export function wherePanel(grouping: WhereGrouping, input: WhereInput): WherePan
         count: role.sessions > 0 ? plural(role.sessions, "session", "sessions") : null,
         units: h > 0 ? `${hours(role.apiMs)} API h` : null,
         // The rate divides the measured dollars, not the whole spend.
-        per: h > 0 && role.measuredUSD > 0 ? { n: h * (role.costUSD / role.measuredUSD), unit: "an API hour" } : null,
+        per: h > 0 && role.measuredUSD > 0 ? { n: h * (role.costUSD / role.measuredUSD), unit: "/API hour" } : null,
         title: `${plural(role.sessions, "session", "sessions")}, ${count(role.linesAdded)} lines added; the role is the transcript's directory, a crew being one under .claude/worktrees`,
       });
     }

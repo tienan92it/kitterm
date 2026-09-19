@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { countdown, QUOTA_CELLS, quotaAge, quotaCells, quotaLabel, quotaPanel, type UsageLimits } from "./sessions-model";
+import { countdown, QUOTA_CAUTION_PERCENT, quotaAge, quotaFill, quotaLabel, quotaLevel, quotaPanel, type UsageLimits } from "./sessions-model";
 
 /**
- * The quota bars (`workspace-ledger`, capability 3): what the page draws
- * from `GET /api/usage/limits`. Every case runs against a fixed clock, the
- * corpus fixture's: a reading four minutes old, the session window at 24%
- * resetting in 49 minutes, the weekly at 27% resetting in a day and 14
- * hours, which is the human's own screenshot.
+ * The quota bars (`workspace-ledger`, capability 3; reshaped in
+ * `agent-dashboard` round 11 to the Components frame's bar): what the page
+ * draws from `GET /api/usage/limits`. Every case runs against a fixed
+ * clock, the corpus fixture's: a reading four minutes old, the session
+ * window at 24% resetting in 49 minutes, the weekly at 27% resetting in a
+ * day and 14 hours, which is the human's own screenshot. A bar is a fill,
+ * 0 to 1, and the colour it wears: the accent under 80%, the caution at
+ * 80% and over. Chartered in round 11: the twenty ASCII cells
+ * (`quotaCells`, `QUOTA_CELLS`, `filled`) pinned the `[####····]` form
+ * the frame replaced.
  */
 const NOW = Date.UTC(2026, 8, 16, 8, 0, 0);
 const MIN = 60_000;
@@ -45,12 +50,22 @@ describe("quotaPanel", () => {
   it("draws one bar per window with its countdown, the screenshot's two", () => {
     const panel = quotaPanel(reading(), NOW);
     expect(panel?.note).toBe("read 4m ago");
-    expect(panel?.bars.map((b) => [b.label, `[${b.cells}]`, b.percent, b.reset, b.state])).toEqual([
-      ["Session (5h)", "[#####···············]", "24%", "resets 49m", "fresh"],
-      ["Weekly", "[#####···············]", "27%", "resets 1d 14h", "fresh"],
+    expect(panel?.bars.map((b) => [b.label, Math.round(b.fill * 1000), b.level, b.percent, b.reset, b.state])).toEqual([
+      ["Session (5h)", 240, "accent", "24%", "resets 49m", "fresh"],
+      ["Weekly", 274, "accent", "27%", "resets 1d 14h", "fresh"],
     ]);
-    expect(panel?.bars[0].filled).toBe(5);
-    expect(panel?.bars.every((b) => b.cells.length === QUOTA_CELLS)).toBe(true);
+  });
+
+  it("turns the fill and the number caution at 80% and not at 79%", () => {
+    // The Components frame: `Weekly 87% ... 80% and over: caution`. The
+    // label and the reset carry no level; the page never colours them.
+    const at = (percent: number) => quotaPanel(reading({ rateLimits: { five_hour: { used_percentage: percent, resets_at: seconds(NOW + 49 * MIN) } } }), NOW)!.bars[0];
+    expect(QUOTA_CAUTION_PERCENT).toBe(80);
+    expect([79, 79.9, 80, 87, 100, 140].map((p) => at(p).level)).toEqual(["accent", "accent", "caution", "caution", "caution", "caution"]);
+    expect(at(80)).toMatchObject({ fill: 0.8, level: "caution", percent: "80%", reset: "resets 49m", state: "fresh" });
+    expect(at(79)).toMatchObject({ fill: 0.79, level: "accent", percent: "79%" });
+    // A stale reading keeps its level: the page greys the fill by state.
+    expect(quotaPanel(reading({ stale: true, rateLimits: { five_hour: { used_percentage: 91, resets_at: seconds(NOW + HOUR) } } }), NOW)!.bars[0]).toMatchObject({ level: "caution", state: "stale" });
   });
 
   it("lists the three known windows in order, then any other by key", () => {
@@ -84,8 +99,8 @@ describe("quotaPanel", () => {
     expect(panel?.bars[0]).toEqual({
       key: "five_hour",
       label: "Session (5h)",
-      filled: 0,
-      cells: "·".repeat(QUOTA_CELLS),
+      fill: 0,
+      level: "accent",
       percent: "reset",
       reset: "12m ago",
       state: "reset",
@@ -114,19 +129,16 @@ describe("quotaPanel", () => {
   });
 });
 
-describe("quotaCells", () => {
-  it("rounds to the nearest cell and clamps to the bar", () => {
-    expect(quotaCells(0)).toEqual({ filled: 0, cells: "·".repeat(20) });
-    expect(quotaCells(2.4)).toEqual({ filled: 0, cells: "·".repeat(20) });
-    expect(quotaCells(2.5).filled).toBe(1);
-    expect(quotaCells(24).filled).toBe(5);
-    expect(quotaCells(27.4).filled).toBe(5);
-    expect(quotaCells(50).cells).toBe("##########··········");
-    expect(quotaCells(100)).toEqual({ filled: 20, cells: "#".repeat(20) });
-    expect(quotaCells(140).filled).toBe(20);
-    expect(quotaCells(-5).filled).toBe(0);
-    expect(quotaCells(Number.NaN).filled).toBe(0);
-    expect(quotaCells(50, 8).cells).toBe("####····");
+describe("quotaFill", () => {
+  it("is the share of the bar, clamped, with the level the share earns", () => {
+    expect(quotaFill(0)).toEqual({ fill: 0, level: "accent" });
+    expect(quotaFill(24)).toEqual({ fill: 0.24, level: "accent" });
+    expect(quotaFill(50)).toEqual({ fill: 0.5, level: "accent" });
+    expect(quotaFill(100)).toEqual({ fill: 1, level: "caution" });
+    expect(quotaFill(140)).toEqual({ fill: 1, level: "caution" });
+    expect(quotaFill(-5)).toEqual({ fill: 0, level: "accent" });
+    expect(quotaFill(Number.NaN)).toEqual({ fill: 0, level: "accent" });
+    expect([79.99, 80].map(quotaLevel)).toEqual(["accent", "caution"]);
   });
 });
 

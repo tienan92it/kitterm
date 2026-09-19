@@ -11,34 +11,38 @@
    a state is a one-character mark at the far left of the page, drawn as a
    shape so it can wear the state's colour, with the state's word beside it
    in the muted grey (an ANSI red at 12 px sits under 3:1 on half the
-   themes). A button prints in brackets, a toggle prints a checkbox, and a
-   link is underlined on hover, so a reader tells "does something" from
-   "goes somewhere" without colour.
+   themes). A toggle prints a checkbox, a disclosure is a triangle, and a
+   link is underlined on hover, so a reader tells "folds something" from
+   "goes somewhere" without colour. The page holds no action: nothing on
+   it starts, ends, answers or dismisses anything (round 11), and `Open
+   the pane` is the way to act on an agent.
 
    The layout is the two frames `Dashboard 1200` and `Dashboard 390` of
-   `docs/goals/agent-dashboard/corpus/dashboard.pen` (round 10). */
+   `docs/goals/agent-dashboard/corpus/dashboard.pen` (rounds 10 and 11),
+   with the Components frame for the quota bar, WHERE and the marks. */
 
 /* --- the foundation ---------------------------------------------------------
    `docs/goals/agent-dashboard/corpus/design-foundation.md`, frozen. One space
-   scale, three type sizes, one line height chosen by width, and the four
-   colours that carry meaning. `sessions-css.test.ts` pins each.
+   scale, three type sizes and the two mark sizes, one line height chosen by
+   width, and the five colours that carry meaning. `sessions-css.test.ts`
+   pins each.
 
    This block is the fleet page's own layer over `tokens.css`. It loads only
    with `sessions.ts`, after `tokens.css`, so it reaches nothing at `/`. Rule C
    of the foundation: the page keeps inheriting the ground (`--ui-bg`,
    `--ui-surface`, `--ui-border`) and the three text greys from the terminal's
-   theme, and none of those six is re-declared here; it owns the four colours
+   theme, and none of those six is re-declared here; it owns the five colours
    that mark a state, so a mark reads the same on every terminal theme. The
-   owned three are hues chosen for separation (`corpus/palette.md`): they
-   paint a mark's `background` and nothing else, never `color`, a background
-   behind text or a border. A mark is a one-character glyph at the start of a
-   line, a bar, the 2 px rule at a tile's edge, or a run of text that carries
-   a state (`.mark.wide`: the band's counts, the quota's fill, the
-   unattributed row's name and spend), each coloured through a clipped
-   background. `--ui-success` is the faint grey, because a finished thing
-   needs nothing from the reader. `light-dark()` follows the `color-scheme`
-   the theme layer sets on the root, so a light terminal gets the light
-   values. */
+   owned five are hues chosen for separation (`corpus/palette.md`, amended
+   2026-09-19): they paint a mark's `background` and nothing else, never
+   `color`, a background behind text or a border. A mark is a one-character
+   glyph at the start of a line, a bar, the 2 px rule at a tile's edge, or a
+   run of text that carries a state (`.mark.wide`: the band's counts, the
+   quota's percentage at caution, the unattributed row's name and spend),
+   each coloured through a clipped background. `--ui-success` paints the `✓`
+   mark and nothing else; `--ui-caution` the quota's fill and percentage at
+   80 % and over. `light-dark()` follows the `color-scheme` the theme layer
+   sets on the root, so a light terminal gets the light values. */
 :root {
   /* Space. No rule below writes a raw pixel for margin, padding or gap. */
   --space-1: 4px;   /* inside a line: between a mark and a name */
@@ -53,18 +57,25 @@
   --type-headline: 600 18px/1.4 var(--font-mono);  /* the page title, the one headline number */
   --type-heading: 600 13px/1.5 var(--font-mono);   /* a workspace name, a project name */
   --type-body: 400 12px/1.5 var(--font-mono);      /* everything else */
+  /* The marks, beside the type: a state mark (`◐ ? ✓ ! – •`) at 14 px in a
+     16 px column, the disclosure triangle at 11 px in the same column
+     (round 11, the Components frame). The only two `font-size`s the sheet
+     writes; `sessions-css.test.ts` admits them and nothing else. */
+  --mark-size: 14px;
+  --mark-size-disclosure: 11px;
 
   /* Density, chosen by width and never by a control. Every interactive target
      below 768 px is 44 px tall (WCAG 2.2 SC 2.5.8 is a touch rule); a pointer
      gets 28 px. */
   --line-h: 44px;
 
-  /* The four owned colours, light then dark, as `light-dark()` takes them
-     (`corpus/palette.md`). */
-  --ui-accent: light-dark(#1d7268, #2a9d8f);   /* working, the bars */
+  /* The five owned colours, light then dark, as `light-dark()` takes them
+     (`corpus/palette.md`, amended 2026-09-19). */
+  --ui-accent: light-dark(#1d7268, #2a9d8f);   /* working, the bars, the quota fill under 80 % */
+  --ui-success: light-dark(#2d6a4f, #52b788);  /* done: the ✓ mark alone */
   --ui-warning: light-dark(#8a6415, #e9c46a);  /* needs you */
   --ui-danger: light-dark(#b0472c, #e76f51);   /* failed */
-  --ui-success: var(--ui-text-faint);          /* done: grey, like pending and idle */
+  --ui-caution: light-dark(#b8641f, #f4a261);  /* the quota fill and its percentage at 80 % and over */
 }
 @media (min-width: 768px) {
   :root { --line-h: 28px; }
@@ -101,42 +112,58 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 
 /* --- the mark ---------------------------------------------------------------
    One character at the far left of a line, in the state's colour
-   (`design-foundation.md`, Hierarchy): the turning spinner for what is
-   working, `?` for what waits on a person (input, an approval, a proposal),
-   `!` for what failed, `✓` for what is done, `·` for what is pending, `–`
-   for what is quiet, `▾` and `▸` for a goal's disclosure and a fold's. The
-   glyph carries the state without the colour, and the state's own word
-   sits beside it, so a reader who does not see colour reads the same page.
-   The character is text in the page's own font, one cell wide, and the
-   colour reaches it as a background clipped to the glyph: the owned colours
-   paint a mark's `background` and nothing else, never `color`, so an accent
-   that would fail the contrast floor as text is measured as the non-text
-   mark it is. The page sets the character (`markGlyph`, `spinner.ts`); the
-   sheet only colours it. */
+   (`design-foundation.md`, Hierarchy; the Components frame, "Row marks"):
+   the turning spinner for what is working, `?` for what waits on a person
+   (input, an approval, a proposal), `!` for what failed, `✓` for what is
+   done, `•` for what is pending, `–` for what is quiet. The glyph carries
+   the state without the colour, and the state's own word sits beside it,
+   so a reader who does not see colour reads the same page. The character
+   is text in the page's own font at `--mark-size` in a 16 px column, and
+   the colour reaches it as a background clipped to the glyph: the owned
+   colours paint a mark's `background` and nothing else, never `color`, so
+   an accent that would fail the contrast floor as text is measured as the
+   non-text mark it is. The page sets the character (`markGlyph`,
+   `spinner.ts`); the sheet only colours it. */
 .mark {
-  flex: none; width: 1ch; text-align: center; font-variant-ligatures: none;
+  flex: none; width: 16px; text-align: left; font-variant-ligatures: none;
+  font-size: var(--mark-size);
   background: var(--ui-text-faint);
   -webkit-text-fill-color: transparent;
 }
 .mark.running { background: var(--ui-accent); }
 .mark.attention { background: var(--ui-warning); }
 .mark.failed { background: var(--ui-danger); }
-.mark.idle, .mark.done { background: var(--ui-success); }
-/* A pending task: the faint grey, because it needs nothing yet. */
+/* The one green thing on the page: a finished task or session. */
+.mark.done { background: var(--ui-success); }
+/* A pending task and an idle shell: the faint grey, because neither needs
+   anything from the reader. */
+.mark.idle { background: var(--ui-text-faint); }
 .mark.pending { background: var(--ui-text-faint); }
+/* The quota's fill and percentage at 80 % and over. */
+.mark.caution { background: var(--ui-caution); }
 /* The clip comes after the colours and at their specificity, because the
    `background` shorthand above resets it, and a mark whose background is
    not clipped to its glyph paints a box. */
-.mark.running, .mark.attention, .mark.failed, .mark.idle, .mark.done, .mark.pending, .mark.unknown {
+.mark.running, .mark.attention, .mark.failed, .mark.idle, .mark.done, .mark.pending, .mark.unknown, .mark.caution {
   -webkit-background-clip: text; background-clip: text;
 }
 /* The empty mark cell of a heading with nothing to say: the cell keeps the
    names aligned and paints nothing. */
 .mark.blank { background: none; }
-/* A run of text that is a mark: the band's `2` and `4`, the quota's `####`,
+/* The disclosure triangle, `▼` open and `▶` closed, on a project's line, a
+   goal's and a fold's: the faint grey, never a state, at its own smaller
+   size in the same column. On a project or a goal it is a button that folds
+   what sits under the line; on a fold it is the summary's glyph. */
+.mark.disclosure {
+  font-size: var(--mark-size-disclosure); background: var(--ui-text-faint);
+  -webkit-background-clip: text; background-clip: text;
+  border: none; padding: 0; margin: 0; cursor: pointer; appearance: none;
+  min-height: var(--line-h); font-family: inherit; font-weight: inherit;
+}
+/* A run of text that is a mark: the band's `2` and `4`, the quota's `87%`,
    the unattributed row's name and spend. Inline, as wide as its text, in
-   the colour of its family. */
-.mark.wide { display: inline; width: auto; text-align: inherit; }
+   its parent's font and the colour of its family. */
+.mark.wide { display: inline; width: auto; text-align: inherit; font: inherit; }
 
 /* --- the band ---------------------------------------------------------------
    One row, one height, always (`design-foundation.md`, principle 2): the
@@ -171,34 +198,43 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
   .band-cell { align-self: center; }
 }
 
-/* The notice and the restart line: one reports an action that failed, the
-   other a previous run that died and took its sessions with it. Both read
-   like a failed row, the danger mark at the left and the text in the text
-   colour, because each reports the same kind of thing: a loss that already
-   happened. The colour is on the mark alone; the danger red never paints
-   text or a border. */
-.notice[hidden], .restart[hidden] { display: none; }
-.notice, .restart {
+/* The restart line: a previous run that died and took its sessions with
+   it. It reads like a failed row, the danger mark at the left and the text
+   in the text colour, because it reports a loss that already happened. The
+   colour is on the mark alone; the danger red never paints text or a
+   border. Its `[Dismiss]` clears the line and nothing else: it is the one
+   bracketed button left on the page. */
+.restart[hidden] { display: none; }
+.restart {
   display: flex; align-items: flex-start; gap: var(--space-2); margin: 0 0 var(--space-3);
   padding: var(--space-1) 0; color: var(--ui-text);
 }
-.notice span, .restart span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.notice .quiet, .restart .quiet { align-self: center; }
+.restart span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.restart .quiet { align-self: center; }
 
-/* --- the panels: USAGE, QUOTA, VALUE, WHERE, MODELS, LEAKS -------------------
+/* --- the panels: USAGE, QUOTA, MODELS | VALUE, WHERE, LEAKS -------------------
    Every measure sits in one stack of panels between the band and the tree
-   (`design-foundation.md`, "The panels"; `corpus/valuemaxxing.md`). Each
-   panel is one row: its label in an 84 px gutter on the left, in the label
-   style (12/600, letter-spaced, muted), its content filling the rest, so
-   the stack reads as one dashboard. Below 768 px the gutter goes: USAGE and
-   QUOTA lose their label, VALUE and MODELS keep theirs as a small heading
+   (`design-foundation.md`, "The panels"; `corpus/valuemaxxing.md`), in the
+   frame's order: USAGE, QUOTA, MODELS, one hairline divider, VALUE, WHERE,
+   LEAKS. Each panel is one row: its label in an 84 px gutter on the left,
+   in the label style (12/600, letter-spaced, muted), its content filling
+   the rest, so the stack reads as one dashboard. QUOTA, MODELS and WHERE
+   share one name column, `--name-col`, so every bar starts on one x; the
+   quota's bar is `--quota-bar` wide and does not fill the row; MODELS's and
+   WHERE's last column is `--last-col`, so their right edges line up. Below
+   768 px the gutter goes: MODELS alone keeps its label, as a small heading
    over the content, and WHERE and LEAKS drop whole. A panel's note is one
    line that names a fact, in a long form and a short one for the phone. */
 .panel[hidden] { display: none; }
 .panel {
+  --name-col: 140px;
+  --quota-bar: 220px;
+  --last-col: 108px;
   display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: var(--space-4);
   margin: 0 0 var(--space-4); color: var(--ui-text);
 }
+/* The one divider in the stack: a hairline between MODELS and VALUE. */
+.panel-divider { border: none; border-top: 1px solid var(--ui-border); margin: 0 0 var(--space-4); height: 0; }
 .panel-label {
   font: var(--type-body); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
   color: var(--ui-text-muted); margin: 0; padding: var(--space-1) 0;
@@ -248,19 +284,20 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
    the long form is the note's title. */
 .usage-note { margin: var(--space-2) 0 0; color: var(--ui-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* QUOTA: one line per window the statusline last reported: the label, a
-   bar, the number, the countdown, and the reading's age after the last
-   line. The bar is a row of twenty cells in the terminal's own idiom,
-   `[####················]`, not a filled track: it is text, so it is exact
-   at 5 % a cell with the number beside it, it copies as text, and it
-   cannot become a pill. The fill is a mark in the accent and the track the
-   muted grey, so the shape carries the value without colour; a stale
-   reading's fill is grey. */
+/* QUOTA: one line per window the statusline last reported: the label in
+   the shared name column, a bar `--quota-bar` wide drawn as a track on the
+   surface with the fill a mark in the accent, the percentage, the
+   countdown, and the reading's age after the last line. At 80 % and over
+   the fill and the percentage wear the caution and nothing else does: the
+   label and the reset never change colour (the Components frame). A stale
+   reading's fill is grey. The number beside the bar carries the value
+   without colour. */
 .quota-bars { list-style: none; margin: 0; padding: 0; }
-.quota-bar { display: flex; align-items: baseline; gap: var(--space-2); padding: var(--space-1) 0; white-space: nowrap; min-width: 0; }
-.quota-label { flex: none; min-width: 16ch; }
-.quota-cells { flex: none; color: var(--ui-text-muted); }
-.quota-percent { flex: none; min-width: 5ch; text-align: right; font-variant-numeric: tabular-nums; }
+.quota-bar { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) 0; white-space: nowrap; min-width: 0; }
+.quota-label { flex: none; width: var(--name-col); overflow: hidden; }
+.quota-track { flex: none; width: var(--quota-bar); height: 8px; background: var(--ui-surface); display: flex; }
+.quota-track > .mark.bar { height: 100%; }
+.quota-percent { flex: none; margin-left: var(--space-4); font-variant-numeric: tabular-nums; }
 .quota-reset, .quota-age { color: var(--ui-text-muted); font-variant-numeric: tabular-nums; }
 .quota-age { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .quota-note { margin: 0; padding: var(--space-1) 0; color: var(--ui-text-muted); overflow-wrap: anywhere; }
@@ -278,24 +315,32 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
 .yield-rate { font-variant-numeric: tabular-nums; }
 .yield-noun-short { display: none; }
 
-/* A split row: the name, the bar, then the facts, right-aligned in fixed
-   columns. The bar wears an owned colour because it is a mark, not text: a
-   shape whose length is the value, with the number beside it. The
+/* A split row: the name in the shared name column, the bar, then the facts,
+   right-aligned in fixed columns (the Components frame, WHERE at each
+   filter: spend, a count, the pull requests, a unit cost; MODELS: spend,
+   sessions). The bar wears an owned colour because it is a mark, not
+   text: a shape whose length is the value, with the number beside it. The
    unattributed remainder's name, bar and spend wear the amber. */
 .split { list-style: none; margin: 0; padding: 0; }
 .split-row { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) 0; min-width: 0; white-space: nowrap; }
-.split-name { flex: 0 1 24ch; min-width: 8ch; overflow: hidden; text-overflow: ellipsis; color: var(--ui-text); }
-.models .split-name { flex-basis: 16ch; }
+.split-name { flex: none; width: var(--name-col); overflow: hidden; text-overflow: ellipsis; color: var(--ui-text); }
 .split-bar { flex: 1 1 auto; min-width: 4ch; display: flex; align-items: center; height: 13px; }
 .mark.bar { width: 0; height: 8px; margin: 0; -webkit-mask: none; mask: none; -webkit-background-clip: border-box; background-clip: border-box; background: var(--ui-accent); }
 .mark.bar.attention { background: var(--ui-warning); }
+.mark.bar.caution { background: var(--ui-caution); }
+/* A stale reading's fill: the faint grey. */
+.mark.bar.idle { background: var(--ui-text-faint); }
 /* The tile's rule: the bar mark stood on end at the tile's left edge. */
 .mark.bar.rule { position: absolute; left: 0; top: 0; bottom: 0; width: 2px; height: auto; }
-.split-spend { flex: none; min-width: 9ch; text-align: right; font-variant-numeric: tabular-nums; color: var(--ui-text); }
-.split-count, .split-units, .split-rate { flex: none; text-align: right; color: var(--ui-text-muted); font-variant-numeric: tabular-nums; }
-.split-count { min-width: 9ch; }
-.split-units { min-width: 8ch; }
-.split-rate { min-width: 15ch; }
+.split-spend { flex: none; width: 80px; text-align: right; font-variant-numeric: tabular-nums; color: var(--ui-text); overflow: hidden; }
+.split-count, .split-units, .split-rate { flex: none; text-align: right; color: var(--ui-text-muted); font-variant-numeric: tabular-nums; overflow: hidden; }
+.split-count { width: 68px; }
+.split-units { width: 60px; }
+.split-rate { width: var(--last-col); }
+/* MODELS: the spend ends where WHERE's pull requests end, and its sessions
+   take the last column, so the two panels' right edges line up. */
+.models .split-spend { width: 140px; }
+.models .split-units { width: var(--last-col); }
 .split-short { display: none; flex: none; min-width: 7ch; text-align: right; font-variant-numeric: tabular-nums; color: var(--ui-text); }
 /* A leak line: the mark, then the fact. */
 .leak-lines { list-style: none; margin: 0; padding: 0; }
@@ -305,23 +350,24 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
 
 @media (max-width: 767px) {
   #sessions { padding: var(--space-4) var(--space-3) var(--space-5); }
-  .panel { grid-template-columns: minmax(0, 1fr); margin: 0 0 var(--space-3); }
+  .panel { --name-col: 92px; --quota-bar: 160px; grid-template-columns: minmax(0, 1fr); margin: 0 0 var(--space-3); }
+  .panel-divider { margin: 0 0 var(--space-3); }
   /* Only MODELS keeps its label on a phone, as the frame draws it. */
   .panel.usage > .panel-label, .panel.quota > .panel-label, .panel.value > .panel-label { display: none; }
   .panel.where, .panel.leaks { display: none; }
-  /* Hairlines above VALUE and MODELS, as the frame draws them. */
-  .panel.value, .panel.models { border-top: 1px solid var(--ui-border); padding-top: var(--space-3); }
+  /* A hairline above MODELS, as the frame draws it; the divider below it
+     is the stack's own. */
+  .panel.models { border-top: 1px solid var(--ui-border); padding-top: var(--space-3); }
   .note-long { display: none; }
   .note-short { display: inline; }
   .usage-fact, .usage-peak, .usage-note { display: none; }
   .usage-span { display: inline; }
   .usage-toggle-groups { margin-left: 0; flex: 1 0 100%; justify-content: space-between; }
   .quota-window, .quota-reset, .quota-age { display: none; }
-  .quota-label { min-width: 8ch; }
+  .quota-percent { margin-left: 0; }
   .yield { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
   .yield-noun { display: none; }
   .yield-noun-short { display: block; }
-  .split-name { flex-basis: 15ch; }
   .split-spend, .split-units { display: none; }
   .split-short { display: block; }
 }
@@ -348,11 +394,12 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
 
 /* --- every line is one line -----------------------------------------------
    Every level of the tree is one `line` (`design-foundation.md`, "The line,
-   in detail"): the mark at the far left, the indent, the name, then the
-   four fact columns of fixed width right-aligned — the state word, a
-   number, a pull request, a time — and the actions. The name is the only
-   cell that grows and the only one that truncates. `--depth` is set on the
-   line by the page: one `--space-4` per level. */
+   in detail"; the anatomy frame, five cells): the mark at the far left,
+   the indent, the name, then the four fact columns of fixed width
+   right-aligned — the state word, a number, a pull request, a time. There
+   is no actions cell (round 11). The name is the only cell that grows and
+   the only one that truncates. `--depth` is set on the line by the page:
+   one `--space-4` per level. */
 .line {
   display: flex; align-items: center; gap: var(--space-3);
   min-height: var(--line-h); min-width: 0; white-space: nowrap;
@@ -382,39 +429,23 @@ a.line-name:hover { text-decoration: underline; text-underline-offset: 2px; }
 .main > [data-col="2"] { grid-column: 3; }
 .main > [data-col="3"] { grid-column: 4; }
 .main > [data-col="4"] { grid-column: 5; }
-/* The line's actions: quiet text at its end — `[new]`, `⋯`, `[Dismiss]`,
-   or nothing. Every line has the cell, at one width, so the columns of
-   `.main` line up whether or not the line has an action; the approval
-   line's holds `Open the pane` `[Deny]` `[Allow]` and grows. */
-.actions { position: relative; flex: none; display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); min-height: var(--line-h); width: 10ch; }
-.line-approval .actions { width: auto; }
 /* A fold's summary line has no columns. */
 .line-fold .main { display: flex; }
 .line-fold .line-name { color: var(--ui-text-muted); }
 
 /* An approval on its line: the amber mark, `approve <tool>`, the arguments
    cut at the line's end (the title holds them whole), how long it has
-   waited, then the pane link and `[Deny]` `[Allow]`. One line at every
-   width: the arguments are the fact that drops, and `approve <tool>` is the
-   name that truncates. The two answers are tapped in a hurry, so each is
-   one line tall. */
+   waited, then the pane link at the line's end, which is the one way to
+   act on it. One line at every width: the arguments are the fact that
+   drops, and `approve <tool>` is the name that truncates. */
 .line-approval-what { font-weight: 600; flex: 0 1 auto; min-width: 12ch; }
 .line-approval-input { flex: none; color: var(--ui-text-muted); }
 .line-waited { color: var(--ui-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.line-approval .actions { margin-left: auto; }
 .line-link {
   display: inline-flex; align-items: center; min-height: var(--line-h); white-space: nowrap;
-  color: var(--ui-text-muted); text-decoration: underline; text-underline-offset: 2px;
+  margin-left: auto; color: var(--ui-text-muted); text-decoration: underline; text-underline-offset: 2px;
 }
 .line-link:hover { color: var(--ui-text); }
-.line-actions button {
-  font-weight: 600; cursor: pointer;
-  background: none; border: none; color: var(--ui-text); padding: 0 var(--space-1);
-  min-height: var(--line-h);
-}
-.line-actions button::before { content: "["; }
-.line-actions button::after { content: "]"; }
-.line-actions button:hover { text-decoration: underline; text-underline-offset: 2px; }
 
 /* A fact the line has no room for is hidden whole (`fitLines` in
    `sessions.ts` measures an approval's line and sets `hidden` on the facts
@@ -426,25 +457,6 @@ a.line-name:hover { text-decoration: underline; text-underline-offset: 2px; }
    set their own `flex` with more specific selectors. */
 .line.measure, .line.measure * { flex: 0 0 auto !important; }
 
-/* Row actions: one `⋯` in the actions cell, which opens name, archive and
-   kill below the line. The open menu is the one raised surface on the page:
-   it must cover the lines under it, so it paints --ui-surface-2 inside a
-   hairline. */
-.more {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 36px; min-height: var(--line-h); font: var(--type-headline); line-height: 1;
-  color: var(--ui-text-muted); background: none; border: none; cursor: pointer;
-}
-.more:hover, .more[aria-expanded="true"] { color: var(--ui-text); }
-.menu { display: none; }
-.menu.open {
-  display: flex; flex-direction: column; align-items: stretch;
-  position: absolute; right: 0; top: var(--line-h); z-index: 3; min-width: 140px;
-  background: var(--ui-surface-2); border: 1px solid var(--ui-border);
-  padding: var(--space-1);
-}
-.menu.open .quiet { text-align: left; }
-
 @media (max-width: 767px) {
   .tree-head { display: none; }
   .tree-section + .tree-section { margin-top: 0; padding-top: 0; border-top: none; }
@@ -453,10 +465,8 @@ a.line-name:hover { text-decoration: underline; text-underline-offset: 2px; }
   .line-name { flex: 1 1 auto; padding-left: calc(var(--depth, 0) * var(--space-3)); }
   .main > .state, .main > [data-col] { flex: none; }
   .main > [data-col]:not([data-narrow]) { display: none; }
-  .actions { width: auto; }
-  /* An approval's line keeps its name and its two answers; the pane link
-     goes, because the row above it is the pane link. */
-  .line-approval .line-link { display: none; }
+  /* An approval's line keeps its name and its pane link; the arguments
+     are what drops. */
   .line-approval-what { min-width: 0; }
 }
 

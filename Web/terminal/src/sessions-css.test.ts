@@ -117,7 +117,10 @@ const isSpacing = (property: string): boolean =>
 
 /** The six ground tokens rule C leaves to the terminal's theme. */
 const GROUND = ["--ui-bg", "--ui-surface", "--ui-surface-2", "--ui-border", "--ui-text", "--ui-text-muted", "--ui-text-faint", "--ui-lift"];
-const OWNED = ["--ui-accent", "--ui-warning", "--ui-danger", "--ui-success"];
+/** The five owned colours (`corpus/palette.md`, amended 2026-09-19). */
+const OWNED = ["--ui-accent", "--ui-success", "--ui-warning", "--ui-danger", "--ui-caution"];
+/** The two mark sizes, beside the type tokens (round 11). */
+const MARK_TOKENS = ["--mark-size", "--mark-size-disclosure"];
 
 /** The dark value of a `light-dark(light, dark)` token. */
 const darkOf = (value: string | undefined): string => {
@@ -142,9 +145,22 @@ describe("sessions.css carries the design foundation", () => {
     expect(bare, "space comes from the scale: var(--space-1) to var(--space-5)").toEqual([]);
   });
 
-  it("sets no font size outside the three type tokens", () => {
-    const sizes = declarations((p) => p === "font-size").map(([where, , value]) => `${where} font-size: ${value}`);
-    expect(sizes, "a fourth size; hierarchy comes from weight and colour").toEqual([]);
+  it("defines the two mark sizes beside the type tokens: 14 px for a state mark, 11 px for the triangle", () => {
+    // Round 11 (the Components frame): the state marks `◐ ? ✓ ! – •` at
+    // 14 px in a 16 px column, the disclosure triangle at 11 px in the
+    // same column.
+    expect(MARK_TOKENS.map(token)).toEqual(["14px", "11px"]);
+  });
+
+  it("sets no font size outside the two mark tokens, and no font outside the three type tokens", () => {
+    // Chartered in round 11: the rule admitted no `font-size` at all. The
+    // two mark tokens are the only sizes a rule may write, and only on a
+    // mark: the text keeps its three sizes from the `font` shorthands.
+    const sizes = RULES.filter((rule) => rule.decls.has("font-size")).map((rule) => `${rule.selector} font-size: ${rule.decls.get("font-size")}`);
+    expect(sizes, "a size that is not one of the two mark tokens, or one on something that is not a mark").toEqual([
+      ".mark font-size: var(--mark-size)",
+      ".mark.disclosure font-size: var(--mark-size-disclosure)",
+    ]);
     const fonts = declarations((p) => p === "font")
       .filter(([, , value]) => !/^(inherit|var\(--type-(headline|heading|body)\))$/.test(value.trim()))
       .map(([where, , value]) => `${where} font: ${value}`);
@@ -163,13 +179,15 @@ describe("sessions.css carries the design foundation", () => {
     expect(RULES.filter((rule) => rule.decls.has("--line-h") && rule.selector !== ":root").map(at)).toEqual([]);
   });
 
-  it("owns the four state colours and inherits the ground from the terminal (rule C)", () => {
-    // `corpus/palette.md`: `light-dark()` takes the light value first.
+  it("owns the five state colours and inherits the ground from the terminal (rule C)", () => {
+    // `corpus/palette.md`, amended 2026-09-19: `light-dark()` takes the
+    // light value first. Round 11 added the green done mark and the
+    // caution; chartered, the green replaced `var(--ui-text-faint)`.
     expect(token("--ui-accent")).toBe("light-dark(#1d7268, #2a9d8f)");
+    expect(token("--ui-success")).toBe("light-dark(#2d6a4f, #52b788)");
     expect(token("--ui-warning")).toBe("light-dark(#8a6415, #e9c46a)");
     expect(token("--ui-danger")).toBe("light-dark(#b0472c, #e76f51)");
-    // A finished thing is grey.
-    expect(token("--ui-success")).toBe("var(--ui-text-faint)");
+    expect(token("--ui-caution")).toBe("light-dark(#b8641f, #f4a261)");
     const redeclared = RULES.flatMap((rule) =>
       [...rule.decls.keys()].filter((name) => GROUND.includes(name)).map((name) => `${at(rule)} ${name}`),
     );
@@ -191,9 +209,10 @@ describe("sessions.css carries the design foundation", () => {
     // WCAG 1.4.11: a state mark is a non-text element and takes 3:1. The hues
     // are constants; the ground under them is the terminal's, so every theme
     // is a different pair. `corpus/palette.md` measured the palette's own
-    // ground; this measures the seventeen the page can sit on.
+    // ground; this measures the seventeen the page can sit on. Round 11
+    // added the green and the caution to the hues measured.
     const tokens = rootVariables(readSource("tokens.css"));
-    const hues = ["--ui-accent", "--ui-warning", "--ui-danger"].map((name) => [name, darkOf(token(name))] as const);
+    const hues = OWNED.map((name) => [name, darkOf(token(name))] as const);
     const under: string[] = [];
     for (const theme of TERMINAL_THEMES) {
       const vars = new Map([...tokens, ...Object.entries(themeTokens(theme.colors, { accent: theme.accent }))]);
@@ -272,6 +291,38 @@ describe("the panels say what the spend bought", () => {
     // Round 10 (the frame `Dashboard 390`): the tiles stand under no label.
     const hidden = RULES.filter((rule) => rule.conditions.length > 0 && rule.decls.get("display") === "none" && /^\.panel\.\w+ > \.panel-label$/.test(rule.selector));
     expect(hidden.map((rule) => rule.selector).sort()).toEqual([".panel.quota > .panel-label", ".panel.usage > .panel-label", ".panel.value > .panel-label"]);
+  });
+
+  it("share one name column across QUOTA, MODELS and WHERE, 140 px at 768 px and 92 px on a phone, and one 108 px last column", () => {
+    // Round 11 (the approved frames): every bar starts on one x; the
+    // quota's bar is 220 px (160 on a phone) and does not fill the row;
+    // MODELS's sessions and WHERE's unit cost end on one x.
+    const panel = RULES.filter((rule) => rule.selector === ".panel");
+    expect(panel.filter((rule) => rule.conditions.length === 0).map((rule) => [rule.decls.get("--name-col"), rule.decls.get("--quota-bar"), rule.decls.get("--last-col")])).toEqual([["140px", "220px", "108px"]]);
+    expect(panel.filter((rule) => rule.conditions.length > 0).map((rule) => [rule.conditions.join(" "), rule.decls.get("--name-col"), rule.decls.get("--quota-bar")])).toEqual([
+      ["@media (max-width: 767px)", "92px", "160px"],
+    ]);
+    // A selector can have several rules; they cascade, so the lookup
+    // merges them in sheet order.
+    const width = (selector: string) => {
+      const decls = new Map(RULES.filter((rule) => rule.selector === selector && rule.conditions.length === 0).flatMap((rule) => [...rule.decls]));
+      return [decls.get("flex"), decls.get("width")];
+    };
+    expect(width(".quota-label")).toEqual(["none", "var(--name-col)"]);
+    expect(width(".split-name")).toEqual(["none", "var(--name-col)"]);
+    expect(width(".quota-track")).toEqual(["none", "var(--quota-bar)"]);
+    expect(width(".split-rate")).toEqual(["none", "var(--last-col)"]);
+    expect(width(".models .split-units")).toEqual([undefined, "var(--last-col)"]);
+    // The track is the surface, the fill a mark: nothing new is painted.
+    expect(RULES.filter((rule) => rule.selector === ".quota-track").map((rule) => rule.decls.get("background"))).toEqual(["var(--ui-surface)"]);
+    expect(RULES.filter((rule) => /quota-cells|quota-fill\b(?!.*bar)/.test(rule.selector)).map(at), "no ASCII cells").toEqual([]);
+  });
+
+  it("draw one divider between MODELS and VALUE, a hairline, and above MODELS on a phone", () => {
+    const divider = RULES.filter((rule) => rule.selector === ".panel-divider");
+    expect(divider.filter((rule) => rule.conditions.length === 0).map((rule) => [rule.decls.get("border-top"), rule.decls.get("margin")])).toEqual([["1px solid var(--ui-border)", "0 0 var(--space-4)"]]);
+    const phone = RULES.filter((rule) => rule.conditions.includes("@media (max-width: 767px)") && rule.decls.has("border-top") && /^\.panel/.test(rule.selector));
+    expect(phone.map((rule) => [rule.selector, rule.decls.get("border-top")])).toEqual([[".panel.models", "1px solid var(--ui-border)"]]);
   });
 
   it("draw a bar as a mark, in the accent, and the remainder's in the amber", () => {
@@ -410,13 +461,21 @@ describe("every line is one line", () => {
   });
 
   it("draws every mark as a character coloured through its background, never through color", () => {
+    // Round 11: a mark is 14 px in a 16 px column; chartered, the 16 px
+    // replaced `1ch`, the 12 px mark. The triangle is 11 px in the same
+    // column, in the faint grey, and never carries a state's colour.
     const mark = treeRule(".mark")!;
     expect(mark.decls.get("-webkit-text-fill-color")).toBe("transparent");
-    expect(mark.decls.get("width")).toBe("1ch");
+    expect(mark.decls.get("width")).toBe("16px");
+    expect(mark.decls.get("font-size")).toBe("var(--mark-size)");
     expect(mark.decls.has("mask") || mark.decls.has("-webkit-mask"), "no masked shape: the glyph is text").toBe(false);
+    const disclosure = treeRule(".mark.disclosure")!;
+    expect(disclosure.decls.get("font-size")).toBe("var(--mark-size-disclosure)");
+    expect(disclosure.decls.get("background")).toBe("var(--ui-text-faint)");
+    expect(disclosure.decls.has("width"), "the triangle sits in the mark's own column").toBe(false);
     // The clip sits on every family, after its colour: the `background`
     // shorthand resets it, and an unclipped mark is a box.
-    const FAMILIES = ["running", "attention", "failed", "idle", "done", "pending", "unknown"];
+    const FAMILIES = ["running", "attention", "failed", "idle", "done", "pending", "unknown", "caution"];
     expect(FAMILIES.map((f) => treeRule(`.mark.${f}`)?.decls.get("background-clip"))).toEqual(FAMILIES.map(() => "text"));
     for (const f of FAMILIES) {
       const rules = RULES.filter((rule) => rule.selector === `.mark.${f}` && rule.conditions.length === 0);
@@ -432,11 +491,14 @@ describe("every line is one line", () => {
     expect(treeRule(".mark.bar.rule")?.decls.get("width")).toBe("2px");
     // A blank mark keeps the column and paints nothing.
     expect(treeRule(".mark.blank")?.decls.get("background")).toBe("none");
-    // The families the model names each have their colour.
-    expect(["running", "attention", "failed", "pending"].map((f) => treeRule(`.mark.${f}`)?.decls.get("background"))).toEqual([
-      "var(--ui-accent)", "var(--ui-warning)", "var(--ui-danger)", "var(--ui-text-faint)",
+    // The families the model names each have their colour. The green
+    // paints the done mark alone: idle and pending are the faint grey
+    // (chartered in round 11: idle wore `--ui-success` while it was grey).
+    expect(["running", "attention", "failed", "pending", "idle", "done", "caution"].map((f) => treeRule(`.mark.${f}`)?.decls.get("background"))).toEqual([
+      "var(--ui-accent)", "var(--ui-warning)", "var(--ui-danger)", "var(--ui-text-faint)", "var(--ui-text-faint)", "var(--ui-success)", "var(--ui-caution)",
     ]);
-    expect([".mark.idle", ".mark.done"].map((f) => treeRule(f)?.decls.get("background"))).toEqual(["var(--ui-success)", "var(--ui-success)"]);
+    const green = RULES.filter((rule) => [...rule.decls.values()].some((v) => v.includes("--ui-success"))).map((rule) => rule.selector);
+    expect(green, "the green paints the ✓ mark and nothing else").toEqual([".mark.done"]);
   });
 
   it("animates nothing but the working mark, and that as a character cycle outside the sheet", () => {

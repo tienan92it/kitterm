@@ -3,13 +3,9 @@ import "./sessions.css";
 import { resolveFontFamily } from "./fonts";
 import { summarize, waitedLabel } from "./approval-format";
 import {
-  actionName,
   applicationServerKey,
-  approvalName,
   attention,
   band,
-  dismissKey,
-  dismissName,
   focusKey,
   folderOf,
   idleShellsLabel,
@@ -79,7 +75,7 @@ import {
   type WherePanel,
   type YieldReport,
 } from "./sessions-value";
-import { sessionFactColumns, tree, type TreeLine, type TreeSection } from "./sessions-tree";
+import { sessionFactColumns, tree, visibleLines, type TreeLine, type TreeSection } from "./sessions-tree";
 import { canvasMeasure, type Cycle, FRAME_MS, frameAt, pickCycle } from "./spinner";
 import { loadSettings } from "./settings-store";
 import { applyThemeTokens } from "./theme-tokens";
@@ -98,20 +94,23 @@ import { findThemeById } from "./themes";
  * fixed-height row; **the panels**, each a label in an 84 px gutter beside
  * its content — `USAGE` (the range's dollars, tokens and model hours, the
  * two toggle groups, one bar per day, the axis, the apportioned note),
- * `QUOTA` (one ASCII bar per window with its reset), `VALUE` (four tiles:
- * what the spend bought and what one unit cost), `WHERE` (the spend by
- * project, goal, task or role, with the counted checkouts' summary at the
- * selector's right), `MODELS` (the top three by cost and `Others`) and
- * `LEAKS` (two lines); **the tree**, under `SESSIONS` and the state
- * vocabulary, as flat lines with fixed fact columns (`sessions-tree.ts`):
- * a workspace, its projects, their goals, tasks and sessions, the most
- * recent done goal open and the rest behind `N done`; then **the folds**
- * on one line: the archives, the idle shells, and the push switch. On a
- * phone the gutters, `WHERE`, `LEAKS` and the vocabulary go, the counts
- * wrap to two rows of two, the tiles to two by two, and every line keeps
- * its state word and one fact. The page presents and monitors; it accepts
- * no typed work, and `Open the pane` is the way to act on an agent. The
- * pure models (`sessions-model.ts`, `sessions-value.ts`,
+ * `QUOTA` (one bar per window with its percentage and its reset, caution
+ * from 80 %), `MODELS` (the top three by cost and `Others`), one hairline
+ * divider, `VALUE` (four tiles: what the spend bought and what one unit
+ * cost), `WHERE` (the spend by project, goal, task or role, with the
+ * counted checkouts' summary at the selector's right) and `LEAKS` (two
+ * lines); **the tree**, under `SESSIONS` and the state vocabulary, as flat
+ * lines with fixed fact columns (`sessions-tree.ts`): a workspace, its
+ * projects, their goals, tasks and sessions, the most recent done goal
+ * open and the rest behind `N done`, a project's and a goal's triangle
+ * folding what sits under it; then **the folds** on one line: the
+ * archives, the idle shells, and the push switch. On a phone the gutters,
+ * `WHERE`, `LEAKS` and the vocabulary go, the counts wrap to two rows of
+ * two, the tiles to two by two, and every line keeps its state word and
+ * one fact. The page presents and monitors: it accepts no typed work and
+ * holds no action (round 11: no `[new]`, no `[Dismiss]`, no `[Allow]` or
+ * `[Deny]`, no `⋯` menu), and `Open the pane` is the way to act on an
+ * agent. The pure models (`sessions-model.ts`, `sessions-value.ts`,
  * `sessions-tree.ts`) decide what goes where; this file only paints it.
  *
  * Deliberately its own page, not the terminal: `/` stays "open a tab, get a
@@ -161,14 +160,10 @@ type KnowledgeEntry = {
 
 const POLL_MS = 2000;
 const KNOWLEDGE_RETRY_POLLS = 30;
-/** The proposals the human dismissed, `dismissKey`s in `localStorage`, so
- * a read proposal loses its mark and leaves the band's count across
- * reloads until the project's next round. */
-const DISMISSED_KEY = "kitterm.sessions.dismissed";
 /** The runs whose restart line the human dismissed, `restartDismissKey`s in
- * `localStorage` beside the proposals above: the same pattern, its own key,
- * so one list does not have to hold two kinds of entry. A dismissal keys on
- * the epoch, so it dies with the run it answers. */
+ * `localStorage`. A dismissal keys on the epoch, so it dies with the run it
+ * answers. A proposal has no dismissal (round 11): the page holds no
+ * action, so a proposal counts until the goal's next round. */
 const RESTART_DISMISSED_KEY = "kitterm.sessions.restart-dismissed";
 /** The brand at the band's left. */
 const BRAND = "kitterm";
@@ -198,23 +193,19 @@ let knowledgeInFlight = false;
  * the page; the second replaces the page with the error. */
 let failedPolls = 0;
 /** This client's token is watch-only (the daemon 403s the profiles route for
- * it). Watch clients cannot start, end, or answer anything, so those buttons
- * are hidden rather than shown and refused. */
+ * it). A watch client cannot subscribe to push, so the switch is hidden
+ * rather than shown and refused. */
 let watchOnly = false;
-/** Ids being acted on right now, so a second tap cannot double-post. */
-const busy = new Set<string>();
 /** The folds the user opened, by key; a rebuild keeps them. */
 const foldsOpen = new Set<string>();
-/** The last action that failed, shown until the next action. */
-let notice: string | null = null;
-/** The row whose action menu is open. Kept across repaints, so a poll
- * between the two taps does not close the menu under the pointer. */
-let openMenu: string | null = null;
+/** The projects and goals whose triangle the reader closed, by the tree
+ * line's key (`visibleLines`); a rebuild keeps them. Every row starts
+ * open, as the frame draws it. */
+const closedRows = new Set<string>();
 /** The knowledge summary of each registered project, by id, with the ETag
  * the daemon gave it: an unchanged package answers 304 and repaints nothing. */
 const knowledge = new Map<string, KnowledgeEntry>();
 
-let dismissed: Set<string> = loadDismissed(DISMISSED_KEY);
 let restartDismissed: Set<string> = loadDismissed(RESTART_DISMISSED_KEY);
 /** The last `daemon.started` the event feed carried: the run's epoch and the
  * previous run's summary on it. Null until the feed answers, and on a daemon
@@ -318,12 +309,6 @@ function saveDismissed(storageKey: string, keys: Set<string>): void {
   }
 }
 
-function dismissProposal(key: string): void {
-  dismissed.add(key);
-  saveDismissed(DISMISSED_KEY, dismissed);
-  render();
-}
-
 function dismissRestart(key: string): void {
   restartDismissed.add(key);
   saveDismissed(RESTART_DISMISSED_KEY, restartDismissed);
@@ -331,8 +316,8 @@ function dismissRestart(key: string): void {
 }
 
 /** The profiles route answers 403 to a watch token, which is how the page
- * learns it may not act; the profiles themselves are not offered, because
- * `[new]` starts a local shell and the pane picks a profile. */
+ * learns it may not act (the push switch); the profiles themselves are
+ * not offered, because the page starts no shell. */
 async function fetchProfiles(): Promise<void> {
   try {
     const res = await fetch("/api/profiles", { headers: { accept: "application/json" } });
@@ -468,12 +453,6 @@ bandBlock.setAttribute("aria-label", "Fleet");
 const bandCells = document.createElement("div");
 bandCells.className = "band-cells";
 let bandPainted = "";
-const noticeLine = document.createElement("p");
-noticeLine.className = "notice";
-noticeLine.hidden = true;
-// A failed action is announced at once; the line is built once, so the
-// role is set once.
-noticeLine.setAttribute("role", "alert");
 /** A visually hidden polite announcement of how many items need the human.
  * The band's cell repaints too often to be a live region. */
 const announce = document.createElement("p");
@@ -511,9 +490,12 @@ function panelBlock(name: string, label: string): HTMLElement {
 }
 const usageBlock = panelBlock("usage", "Usage");
 const quotaBlock = panelBlock("quota", "Quota");
+const modelsBlock = panelBlock("models", "MODELS");
+/** The one divider in the stack, between MODELS and VALUE (the frames). */
+const panelDivider = document.createElement("hr");
+panelDivider.className = "panel-divider";
 const valueBlock = panelBlock("value", "VALUE");
 const whereBlock = panelBlock("where", "WHERE");
-const modelsBlock = panelBlock("models", "MODELS");
 const leaksBlock = panelBlock("leaks", "LEAKS");
 let usagePainted = "";
 let quotaPainted = "";
@@ -553,8 +535,8 @@ function mountSkeleton(): void {
   skeletonMounted = true;
   treeHead.replaceChildren(...treeLegend());
   root.replaceChildren(
-    announce, bandBlock, noticeLine, restartLine, usageBlock, quotaBlock,
-    valueBlock, whereBlock, modelsBlock, leaksBlock, treeHead, treeBlock, foldsBlock,
+    announce, bandBlock, restartLine, usageBlock, quotaBlock, modelsBlock,
+    panelDivider, valueBlock, whereBlock, leaksBlock, treeHead, treeBlock, foldsBlock,
   );
 }
 
@@ -583,11 +565,10 @@ function render(): void {
     approvals.map((a) => a.id),
     archives.map((a) => a.id),
     [...knowledge].map(([id, entry]) => [id, entry.etag, entry.goals === null]),
-    [...dismissed],
     [...restartDismissed],
+    [...closedRows],
     started,
     watchOnly,
-    notice,
     quota,
     panel,
     yieldReport,
@@ -601,17 +582,16 @@ function render(): void {
 /** Paint from the current snapshot. Called by `render` when the snapshot
  * changed.
  *
- * Every control carries a `data-focus` key (session id and action, fold,
- * spawn control, approval button), so the control that had focus before
- * the regions were rebuilt gets it back by key afterwards. Without this a
- * poll that repainted while a keyboard user sat on Kill sent focus to
- * `body`. */
+ * Every control carries a `data-focus` key (a toggle, a fold, a triangle,
+ * a link), so the control that had focus before the regions were rebuilt
+ * gets it back by key afterwards. Without this a poll that repainted while
+ * a keyboard user sat on a toggle sent focus to `body`. */
 function paint(): void {
   if (!root) return;
   mountSkeleton();
   const active = document.activeElement;
   const focusKey = active instanceof HTMLElement ? active.dataset.focus : undefined;
-  const proposed = proposedItems(knowledgeEntries(), dismissed);
+  const proposed = proposedItems(knowledgeEntries(), new Set());
   const items: NeedsItem[] = withProposed(attention(sessions, approvals), proposed);
   const now = Date.now();
   const cells = band(sessions, items, usage, usageChoice, limits, now);
@@ -627,8 +607,6 @@ function paint(): void {
   }
 
   paintBand(cells);
-  noticeLine.hidden = notice === null;
-  noticeLine.replaceChildren(...(notice === null ? [] : [noticeContent(notice)]));
   paintRestart();
   paintUsage(usageHead(usage, usageChoice), usagePanel(usage, usageChoice, now));
   paintQuota(quotaPanel(limits, now));
@@ -712,24 +690,6 @@ function restoreFocus(key: string): void {
   // The control is gone when its row was ended; focus then stays where the
   // browser put it.
   target?.focus({ preventScroll: true });
-}
-
-function noticeContent(text: string): DocumentFragment {
-  const fragment = document.createDocumentFragment();
-  const span = document.createElement("span");
-  span.textContent = text;
-  const dismiss = document.createElement("button");
-  dismiss.type = "button";
-  dismiss.className = "quiet";
-  dismiss.textContent = "Dismiss";
-  dismiss.dataset.focus = "dismiss";
-  dismiss.addEventListener("click", () => {
-    notice = null;
-    lastSignature = "";
-    render();
-  });
-  fragment.append(mark("failed"), span, dismiss);
-  return fragment;
 }
 
 /** Show, hide, or leave the restart line. The line is rebuilt only when its
@@ -883,13 +843,15 @@ function usageToggles(kind: "mode" | "span", panel: UsagePanel): HTMLElement {
 }
 
 /**
- * `QUOTA`: one line per window — the label, the ASCII bar in the accent,
- * the number, the reset — and the reading's age after the last line's
- * reset, `· read just now`. The bar is the terminal's own,
- * `[#####···············]`, the fill a mark so it wears the accent and the
- * track the muted grey; the cells are hidden from a screen reader, which
- * gets the label, the number and the countdown as words. With no bar the
- * panel's content is the sentence that says why (`quotaPanel`).
+ * `QUOTA`: one line per window — the label in the shared name column, a
+ * bar of fixed width drawn as a track on the surface with its fill a mark,
+ * the percentage, the reset — and the reading's age after the last line's
+ * reset, `· read just now`. Under 80 % the fill wears the accent; at 80 %
+ * and over the fill and the percentage wear the caution and the label and
+ * the reset keep their colour (`quotaLevel`); a stale reading's fill is
+ * grey. The track is hidden from a screen reader, which gets the label,
+ * the number and the countdown as words. With no bar the panel's content
+ * is the sentence that says why (`quotaPanel`).
  */
 function paintQuota(panel: QuotaPanel | null): void {
   quotaPainted = paintPanel(quotaBlock, quotaPainted, panel, () => {
@@ -913,24 +875,27 @@ function paintQuota(panel: QuotaPanel | null): void {
       const at = bar.label.indexOf(" (");
       if (at > 0) label.append(bar.label.slice(0, at), span("quota-window", bar.label.slice(at)));
       else label.textContent = bar.label;
-      const cells = document.createElement("span");
-      cells.className = "quota-cells";
-      cells.setAttribute("aria-hidden", "true");
-      const fill = document.createElement("span");
-      fill.className = "quota-fill";
-      const glyphs = span(bar.state === "fresh" ? "mark running wide" : "mark idle wide", bar.cells.slice(0, bar.filled));
-      fill.append(glyphs);
       const track = document.createElement("span");
       track.className = "quota-track";
-      track.textContent = bar.cells.slice(bar.filled);
-      cells.append("[", fill, track, "]");
+      track.setAttribute("aria-hidden", "true");
+      // The fill is a mark with no character: a shape whose length is the
+      // share, in the accent, the caution, or the grey of a stale reading.
+      const fill = document.createElement("span");
+      // No `running` here: `.mark.bar` is the accent, and the spinner's
+      // ticker writes its frame into every `.mark.running`.
+      fill.className = `mark bar quota-fill${bar.state === "stale" ? " idle" : bar.level === "caution" ? " caution" : ""}`;
+      fill.style.width = `${Math.round(bar.fill * 1000) / 10}%`;
+      track.append(fill);
       const percent = document.createElement("span");
       percent.className = "quota-percent";
-      percent.textContent = bar.percent;
+      // The percentage is a run of text that carries the caution, and is
+      // plain text under it.
+      if (bar.level === "caution" && bar.state !== "reset") percent.append(span("mark caution wide", bar.percent));
+      else percent.textContent = bar.percent;
       const reset = document.createElement("span");
       reset.className = "quota-reset";
       reset.textContent = bar.reset;
-      item.append(label, cells, percent, reset);
+      item.append(label, track, percent, reset);
       if (i === panel!.bars.length - 1) item.append(span("quota-age", `· ${panel!.note}`));
       list.append(item);
     });
@@ -1357,7 +1322,7 @@ function sectionElement(section: TreeSection<SessionRow>): HTMLElement {
   const el = document.createElement("section");
   el.className = "tree-section";
   el.setAttribute("aria-label", section.label);
-  el.append(...section.lines.map(lineElement));
+  el.append(...visibleLines(section.lines, closedRows).map(lineElement));
   return el;
 }
 
@@ -1381,21 +1346,14 @@ function lineMain(line: TreeLine<SessionRow>, name: HTMLElement): HTMLElement {
   return main;
 }
 
-/** The shell of a line: the mark, the body, the actions, with the depth
- * on the element for the indent. */
-function lineShell(line: TreeLine<SessionRow>, className: string, markEl: HTMLElement, body: HTMLElement, actions: HTMLElement | null): HTMLElement {
+/** The shell of a line: the mark and the body, with the depth on the
+ * element for the indent. Five cells and no actions cell (the anatomy
+ * frame, round 11). */
+function lineShell(line: TreeLine<SessionRow>, className: string, markEl: HTMLElement, body: HTMLElement): HTMLElement {
   const el = document.createElement("div");
   el.className = `line ${className}`;
   el.style.setProperty("--depth", String(line.depth));
-  el.append(markEl, body, actions ?? emptyActions());
-  return el;
-}
-
-/** The actions cell of a line with no action: the cell is there, at its
- * width, so the columns line up. */
-function emptyActions(): HTMLElement {
-  const el = document.createElement("span");
-  el.className = "actions";
+  el.append(markEl, body);
   return el;
 }
 
@@ -1407,31 +1365,60 @@ function blankMark(): HTMLElement {
   return el;
 }
 
-/** A goal's disclosure glyph or a fold's: `▾` open, `▸` closed, in the
- * family's colour. */
-function disclosure(family: MarkFamily, open: boolean): HTMLElement {
+/** The disclosure triangle: `▼` open, `▶` closed, in the faint grey,
+ * never a state (the Components frame, "Row marks"). */
+function disclosureGlyph(open: boolean): string {
+  return open ? "▼" : "▶";
+}
+
+/** A fold's disclosure glyph, on its summary line. */
+function disclosure(open: boolean): HTMLElement {
   const el = document.createElement("span");
-  el.className = `mark ${family} disclosure`;
+  el.className = "mark disclosure";
   el.setAttribute("aria-hidden", "true");
-  el.textContent = open ? "▾" : "▸";
+  el.textContent = disclosureGlyph(open);
   return el;
+}
+
+/** A project's or a goal's triangle: a button that folds what sits under
+ * the line (`visibleLines`) and opens it again, kept in `closedRows`
+ * across repaints. Not an action: it moves nothing but the page. */
+function disclosureButton(key: string, name: string): HTMLElement {
+  const open = !closedRows.has(key);
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "mark disclosure";
+  b.textContent = disclosureGlyph(open);
+  b.setAttribute("aria-expanded", String(open));
+  b.setAttribute("aria-label", `${open ? "Fold" : "Open"} ${name}`);
+  b.dataset.focus = `fold:${key}`;
+  b.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (closedRows.has(key)) closedRows.delete(key);
+    else closedRows.add(key);
+    lastSignature = "";
+    render();
+  });
+  return b;
 }
 
 function lineElement(line: TreeLine<SessionRow>): HTMLElement {
   switch (line.kind) {
     case "workspace": {
+      // A workspace is always open and wears no mark.
       const name = document.createElement("h2");
       name.textContent = line.name;
-      return lineShell(line, "line-workspace", blankMark(), lineMain(line, name), null);
+      return lineShell(line, "line-workspace", blankMark(), lineMain(line, name));
     }
     case "project": {
       // A heading level per depth, so a reader who moves by heading gets
       // the tree: a workspace or a lone project is an h2, a project under
-      // a workspace an h3.
+      // a workspace an h3. Its mark is the triangle alone; a working agent
+      // is its `1 agent` fact, not a spinner.
       const name = document.createElement(line.depth === 0 ? "h2" : "h3");
       name.textContent = line.name;
-      const actions = !watchOnly && line.project?.root ? spawnControls(line.project) : null;
-      return lineShell(line, "line-project", line.working ? mark("running") : blankMark(), lineMain(line, name), actions);
+      return lineShell(line, "line-project", line.children ? disclosureButton(line.key, line.name) : blankMark(), lineMain(line, name));
     }
     case "goal": {
       const name = document.createElement("a");
@@ -1447,21 +1434,21 @@ function lineElement(line: TreeLine<SessionRow>): HTMLElement {
         name.setAttribute("aria-label", line.proposed.record ? recordName(line.proposed.record, line.project.name, goal) : proposalsName(line.proposed.count, line.project.name, goal));
         name.title = [proposedLabel(line.proposed.count), line.proposed.decision].filter((t): t is string => t !== null).join(": ");
       }
-      const el = lineShell(line, "goal-line", line.mark === null ? blankMark() : disclosure(line.mark, true), lineMain(line, name), line.proposed ? proposalActions(line.proposed) : null);
+      const el = lineShell(line, "goal-line", line.children ? disclosureButton(line.key, line.name) : blankMark(), lineMain(line, name));
       if (line.proposed) el.dataset.needs = "proposed";
       return el;
     }
     case "task": {
       const name = document.createElement("span");
       name.textContent = line.name;
-      return lineShell(line, "line-task", mark(line.mark), lineMain(line, name), null);
+      return lineShell(line, "line-task", mark(line.mark), lineMain(line, name));
     }
     case "session":
       return row(line);
     case "approval": {
       const wrap = document.createElement("div");
       wrap.className = "row";
-      wrap.append(approvalLine(line.approval, null, line.depth));
+      wrap.append(approvalLine(line.approval, line.depth));
       return wrap;
     }
     case "fold":
@@ -1469,7 +1456,7 @@ function lineElement(line: TreeLine<SessionRow>): HTMLElement {
   }
 }
 
-/** A closed group with a count: `▸ 9 done`, `▸ Archived (61)`, `▸ 3 idle
+/** A closed group with a count: `▶ 9 done`, `▶ Archived (61)`, `▶ 3 idle
  * shells`. Its summary is a line at `depth`; `foldsOpen` keeps it open
  * across repaints. */
 function foldElement(key: string, label: string, depth: number, content: () => Node[]): HTMLElement {
@@ -1479,7 +1466,7 @@ function foldElement(key: string, label: string, depth: number, content: () => N
   const summary = document.createElement("summary");
   summary.className = "line line-fold";
   summary.style.setProperty("--depth", String(depth));
-  const glyph = disclosure("pending", details.open);
+  const glyph = disclosure(details.open);
   const main = document.createElement("div");
   main.className = "main";
   const name = span("line-name", label);
@@ -1490,67 +1477,13 @@ function foldElement(key: string, label: string, depth: number, content: () => N
   details.addEventListener("toggle", () => {
     if (details.open) foldsOpen.add(key);
     else foldsOpen.delete(key);
-    glyph.textContent = details.open ? "▾" : "▸";
+    glyph.textContent = disclosureGlyph(details.open);
   });
   const body = document.createElement("div");
   body.className = "fold-body";
   body.append(...content());
   details.append(summary, body);
   return details;
-}
-
-/** The action of a goal whose proposals wait on the human: `[Dismiss]`,
- * which says the human read them. The goal's name is the link to the
- * record they wait in. */
-function proposalActions(item: ProposedItem): HTMLElement {
-  const box = document.createElement("div");
-  box.className = "actions";
-  // Read it, decided in STATE.md: the mark and the count leave the band
-  // until the goal's next round.
-  const key = dismissKey(item.project.id, item.summary.slug ?? "", item.round);
-  const dismiss = button("Dismiss", "quiet", () => dismissProposal(key));
-  dismiss.dataset.focus = focusKey("dismiss", key);
-  dismiss.setAttribute("aria-label", dismissName(item.round, item.project.name, item.summary.goal ?? item.summary.slug ?? "goal"));
-  box.append(dismiss);
-  return box;
-}
-
-/** `[new]` in a project's actions cell: a local shell in the project's
- * root, `POST /api/sessions` with `cwd`. The pane picks a profile. */
-function spawnControls(project: ProjectRef): HTMLElement {
-  const box = document.createElement("div");
-  box.className = "actions";
-  const b = button("new", "quiet spawn-button", () => {
-    void spawn(project, b);
-  });
-  b.setAttribute("aria-label", `New session in ${project.name}`);
-  b.title = `Start a shell in ${project.root ?? project.name}`;
-  b.dataset.focus = `spawn:${project.id}:new`;
-  box.append(b);
-  return box;
-}
-
-async function spawn(project: ProjectRef, b: HTMLButtonElement): Promise<void> {
-  const key = `spawn:${project.id}`;
-  if (busy.has(key) || !project.root) return;
-  busy.add(key);
-  b.disabled = true;
-  try {
-    const res = await fetch("/api/sessions", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ cwd: project.root }),
-    });
-    if (!res.ok) throw new Error(await reasonOf(res));
-    notice = null;
-    lastSignature = "";
-    await poll();
-  } catch (error) {
-    fail(`Could not start a session in ${project.name}: ${describe(error)}`);
-  } finally {
-    busy.delete(key);
-    b.disabled = false;
-  }
 }
 
 /** The folds at the page's foot: the archives, the idle shells, and the
@@ -1599,10 +1532,10 @@ function archivedList(list: ArchivedRow[]): HTMLElement {
 /** One waiting tool call as a line under its session's, or alone under
  * "No project" when its session is gone: the amber mark, what it wants to
  * run, the arguments cut at the line's end with the whole summary as the
- * tooltip, how long it has waited, the pane when it has one, and the two
- * answers in the actions cell. The loudest thing in the tree, because an
- * agent is stopped until it is answered. */
-function approvalLine(approval: Approval, row: SessionRow | null, depth: number): HTMLElement {
+ * tooltip, how long it has waited, and the pane link when it has one. The
+ * loudest thing in the tree, because an agent is stopped until it is
+ * answered, and the pane is where it is answered (round 11). */
+function approvalLine(approval: Approval, depth: number): HTMLElement {
   const line = document.createElement("div");
   line.className = "line line-approval";
   line.style.setProperty("--depth", String(depth));
@@ -1616,55 +1549,18 @@ function approvalLine(approval: Approval, row: SessionRow | null, depth: number)
   input.title = summarize(approval.input);
   input.dataset.drop = "0";
   line.append(input, span("line-waited", waitedLabel(approval.waitingMs)));
-  const who = row ? headlineOf(row) : (approval.session?.slice(0, 8) ?? "");
-  const actions = document.createElement("div");
-  actions.className = "actions line-actions";
-  if (approval.session) actions.append(openLink(approval.session, "Open the pane"));
-  // A watch token cannot decide, and the daemon would refuse it anyway.
-  if (!watchOnly) {
-    const deny = button("Deny", "approval-deny", () => void decide(approval.id, "deny"));
-    const allow = button("Allow", "approval-allow", () => void decide(approval.id, "allow"));
-    deny.dataset.focus = `approval:${approval.id}:deny`;
-    allow.dataset.focus = `approval:${approval.id}:allow`;
-    deny.setAttribute("aria-label", approvalName("Deny", approval.tool, who));
-    allow.setAttribute("aria-label", approvalName("Allow", approval.tool, who));
-    actions.append(deny, allow);
-  }
-  line.append(actions);
+  // The pane is the one way to act on it: the answer is given there.
+  if (approval.session) line.append(openLink(approval.session, "Open the pane"));
   return line;
-}
-
-/** Post one decision. The agent is unblocked by the daemon's response to its
- *  own held request, so there is nothing to do here but report failure. */
-async function decide(id: string, decision: "allow" | "deny"): Promise<void> {
-  if (busy.has(id)) return;
-  busy.add(id);
-  // Drop it locally at once: the poll is 2 s away and a button that stays
-  // live after a tap invites a second one.
-  approvals = approvals.filter((a) => a.id !== id);
-  render();
-  try {
-    const res = await fetch(`/api/approvals/${encodeURIComponent(id)}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ decision }),
-    });
-    // 404 means it expired or someone else answered: not worth alarming over.
-    if (!res.ok && res.status !== 404) throw new Error(String(res.status));
-  } catch (error) {
-    fail(`Could not ${decision} the tool call: ${describe(error)}`);
-  } finally {
-    busy.delete(id);
-  }
 }
 
 // --- rows -------------------------------------------------------------------
 
 /** One session, one line: the mark, the name, the state as a bracketed
- * word, its model and how long since its output in their columns, then
- * the actions. The line is the link; a pending tool call is a line of its
- * own under it, in the same row. `folded` is a row in the idle fold,
- * which lists no approval. */
+ * word, its model and how long since its output in their columns. The
+ * line is the link; a pending tool call is a line of its own under it, in
+ * the same row. `folded` is a row in the idle fold, which lists no
+ * approval. */
 function row(line: Extract<TreeLine<SessionRow>, { kind: "session" }>, folded = false): HTMLElement {
   const s = line.row;
   const wrap = document.createElement("div");
@@ -1677,131 +1573,13 @@ function row(line: Extract<TreeLine<SessionRow>, { kind: "session" }>, folded = 
   name.className = "folder";
   name.textContent = line.name;
   link.append(lineMain(line, name));
-  const lineEl = lineShell(line, "row-line", mark(line.mark), link, watchOnly ? null : rowActions(s));
+  const lineEl = lineShell(line, "row-line", mark(line.mark), link);
   wrap.append(lineEl);
   // A waiting or failed row is a marked line the band's cell can land on;
   // a pending tool call is a line of its own under the row.
   if (line.needs) wrap.dataset.needs = "row";
-  if (!folded) for (const approval of line.approvals) wrap.append(approvalLine(approval, s, line.depth + 1));
+  if (!folded) for (const approval of line.approvals) wrap.append(approvalLine(approval, line.depth + 1));
   return wrap;
-}
-
-/** Name, archive, kill, behind one `⋯` button in the actions cell at every
- * width, so the line stays quiet. The menu closes on Escape, when focus
- * leaves it, and when an item is chosen; each of those hands focus back to
- * the ⋯ button. */
-function rowActions(s: SessionRow): HTMLElement {
-  const box = document.createElement("div");
-  box.className = "actions";
-  const isOpen = openMenu === s.id;
-  const menu = document.createElement("div");
-  menu.id = `menu-${s.id}`;
-  menu.className = isOpen ? "menu open" : "menu";
-  const setOpen = (open: boolean): void => {
-    menu.classList.toggle("open", open);
-    more.setAttribute("aria-expanded", open ? "true" : "false");
-    openMenu = open ? s.id : null;
-  };
-  const more = button("⋯", "more", () => setOpen(!menu.classList.contains("open")));
-  more.setAttribute("aria-label", actionName("Actions for", headlineOf(s)));
-  more.setAttribute("aria-haspopup", "true");
-  more.setAttribute("aria-controls", menu.id);
-  more.setAttribute("aria-expanded", isOpen ? "true" : "false");
-  more.dataset.focus = `${s.id}:more`;
-  // Choosing an item closes the menu and returns focus to ⋯ before the
-  // item's own dialog opens, so the poll that follows the dialog finds ⋯
-  // by its key.
-  const item = (
-    label: "Rename" | "Name" | "Archive" | "Kill",
-    className: string,
-    key: string,
-    action: () => void,
-  ): HTMLButtonElement => {
-    const b = button(label, className, () => {
-      if (menu.classList.contains("open")) {
-        setOpen(false);
-        more.focus();
-      }
-      action();
-    });
-    b.dataset.focus = `${s.id}:${key}`;
-    b.setAttribute("aria-label", actionName(label, headlineOf(s)));
-    return b;
-  };
-  menu.append(
-    item(s.name ? "Rename" : "Name", "quiet", "rename", () => void renameSession(s)),
-    item("Archive", "quiet", "archive", () => void archiveSession(s)),
-    item("Kill", "quiet danger", "kill", () => void killSession(s)),
-  );
-  box.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape" || !menu.classList.contains("open")) return;
-    event.preventDefault();
-    setOpen(false);
-    more.focus();
-  });
-  box.addEventListener("focusout", (event) => {
-    if (!menu.classList.contains("open")) return;
-    const to = event.relatedTarget;
-    if (to instanceof Node && box.contains(to)) return;
-    setOpen(false);
-  });
-  box.append(more, menu);
-  return box;
-}
-
-/** Name or rename one session (`PATCH /api/sessions/<id>`). A prompt keeps
- * this dependency-free and works the same on a phone; the next poll paints
- * the result, and observers' tabs follow via the daemon's title push. */
-async function renameSession(s: SessionRow): Promise<void> {
-  const next = window.prompt("Session name (empty clears it):", s.name ?? "");
-  if (next === null) return;
-  try {
-    const res = await fetch(`/api/sessions/${encodeURIComponent(s.id)}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: next }),
-    });
-    if (!res.ok) throw new Error(await reasonOf(res));
-    notice = null;
-  } catch (error) {
-    fail(`Could not rename ${headlineOf(s)}: ${describe(error)}`);
-  }
-  lastSignature = "";
-  void poll();
-}
-
-/** Keep the session's evidence, then end it. One confirm, then the row moves
- * into the archived fold on the next poll. */
-async function archiveSession(s: SessionRow): Promise<void> {
-  if (!window.confirm(`Archive ${headlineOf(s)}? The shell ends; its output is kept.`)) return;
-  await endSession(s, "archive", `/api/sessions/${encodeURIComponent(s.id)}/archive`, "POST");
-}
-
-/** End the session and its shell now. One confirm, then the row is gone. */
-async function killSession(s: SessionRow): Promise<void> {
-  if (!window.confirm(`Kill ${headlineOf(s)}? The shell ends and nothing is kept.`)) return;
-  await endSession(s, "kill", `/api/sessions/${encodeURIComponent(s.id)}`, "DELETE");
-}
-
-async function endSession(s: SessionRow, verb: string, url: string, method: string): Promise<void> {
-  if (busy.has(s.id)) return;
-  busy.add(s.id);
-  // Drop the row at once, so a second tap has nothing to hit; the poll
-  // reconciles either way.
-  sessions = sessions.filter((r) => r.id !== s.id);
-  render();
-  try {
-    const res = await fetch(url, { method });
-    // 404: already gone, which is the result asked for.
-    if (!res.ok && res.status !== 404) throw new Error(await reasonOf(res));
-    notice = null;
-  } catch (error) {
-    fail(`Could not ${verb} ${headlineOf(s)}: ${describe(error)}`);
-  } finally {
-    busy.delete(s.id);
-    lastSignature = "";
-    void poll();
-  }
 }
 
 // --- small pieces -----------------------------------------------------------
@@ -1907,32 +1685,6 @@ function openLink(id: string, text: string): HTMLAnchorElement {
   return a;
 }
 
-function headlineOf(s: SessionRow): string {
-  return rowName(s);
-}
-
-function fail(text: string): void {
-  notice = text;
-  lastSignature = "";
-  render();
-}
-
-function describe(error: unknown): string {
-  return error instanceof Error && error.message ? error.message : "no answer from the daemon";
-}
-
-/** The daemon's own reason when it sent one, else the status code. */
-async function reasonOf(res: Response): Promise<string> {
-  try {
-    const data = (await res.json()) as { error?: string };
-    if (typeof data.error === "string" && data.error) return data.error;
-  } catch {
-    // Not JSON; the status is the reason.
-  }
-  if (res.status === 403) return "refused (watch-only token, or the daemon runs without --agent-control)";
-  return `HTTP ${res.status}`;
-}
-
 /** A wall-clock label for a moment that stays fixed once set, so the row's
  * text is stable between polls (a duration would go stale between repaints). */
 function clockTime(epochMs: number): string {
@@ -1977,17 +1729,6 @@ if (typeof addEventListener === "function") {
     });
   });
 }
-
-// A tap anywhere outside an open menu closes it.
-document.addEventListener("click", (event) => {
-  if (openMenu === null) return;
-  if (event.target instanceof Element && event.target.closest(".actions")) return;
-  openMenu = null;
-  for (const menu of document.querySelectorAll(".menu.open")) menu.classList.remove("open");
-  for (const more of document.querySelectorAll(".more[aria-expanded=\"true\"]")) {
-    more.setAttribute("aria-expanded", "false");
-  }
-});
 
 void fetchProfiles().then(() => {
   void poll();

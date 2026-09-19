@@ -474,15 +474,14 @@ export interface Surface {
  */
 const BLOCK_SURFACES: Array<{ block: string; stack: string[]; why: string }> = [
   // --- sessions.css: the page itself, on the body; nothing on the page
-  // paints a surface but the open row menu ---
+  // paints a surface but the quota's track, which holds no text ---
   { block: "html", stack: ["var(--ui-bg)"], why: "the page" },
   { block: "body", stack: ["var(--ui-bg)"], why: "the page" },
   { block: "app", stack: ["var(--ui-bg)"], why: "the terminal page's root" },
   { block: "sessions", stack: ["var(--ui-bg)"], why: "the fleet page, on the body" },
   { block: "empty", stack: ["var(--ui-bg)"], why: "in place of the tree, on the body" },
-  { block: "notice", stack: ["var(--ui-bg)"], why: "above the panels, on the body" },
   { block: "restart", stack: ["var(--ui-bg)"], why: "above the panels, on the body" },
-  { block: "quiet", stack: ["var(--ui-bg)"], why: "a text button, on the body; in the open row menu it sits on --ui-surface-2 by ancestry" },
+  { block: "quiet", stack: ["var(--ui-bg)"], why: "the restart line's Dismiss, a text button on the body" },
   // --- sessions.css: the band ---
   { block: "band", stack: ["var(--ui-bg)"], why: "under the top, on the body; it paints nothing" },
   { block: "band-brand", stack: ["var(--ui-bg)"], why: "in .band, on the body" },
@@ -516,9 +515,7 @@ const BLOCK_SURFACES: Array<{ block: string; stack: string[]; why: string }> = [
   { block: "quota-bar", stack: ["var(--ui-bg)"], why: "in .quota-bars, on the body" },
   { block: "quota-label", stack: ["var(--ui-bg)"], why: "in .quota-bar, on the body" },
   { block: "quota-window", stack: ["var(--ui-bg)"], why: "in .quota-label, on the body" },
-  { block: "quota-cells", stack: ["var(--ui-bg)"], why: "in .quota-bar, on the body" },
-  { block: "quota-fill", stack: ["var(--ui-bg)"], why: "in .quota-cells, on the body; its glyphs are a mark" },
-  { block: "quota-track", stack: ["var(--ui-bg)"], why: "in .quota-cells, on the body" },
+  { block: "quota-track", stack: ["var(--ui-bg)"], why: "in .quota-bar, on the body; it paints --ui-surface and holds the fill mark, no text" },
   { block: "quota-percent", stack: ["var(--ui-bg)"], why: "in .quota-bar, on the body" },
   { block: "quota-reset", stack: ["var(--ui-bg)"], why: "in .quota-bar, on the body" },
   { block: "quota-age", stack: ["var(--ui-bg)"], why: "in .quota-bar, on the body" },
@@ -559,7 +556,6 @@ const BLOCK_SURFACES: Array<{ block: string; stack: string[]; why: string }> = [
   { block: "model", stack: ["var(--ui-bg)"], why: "a fact in .main, on the body" },
   { block: "since", stack: ["var(--ui-bg)"], why: "a fact in .main, on the body" },
   { block: "agents", stack: ["var(--ui-bg)"], why: "a fact in .main, on the body" },
-  { block: "actions", stack: ["var(--ui-bg)"], why: "at a line's end, on the body" },
   { block: "line-fold", stack: ["var(--ui-bg)"], why: "a fold's summary line, on the body" },
   { block: "line-workspace", stack: ["var(--ui-bg)"], why: "a workspace's line, on the body" },
   { block: "line-project", stack: ["var(--ui-bg)"], why: "a project's line, on the body" },
@@ -573,13 +569,7 @@ const BLOCK_SURFACES: Array<{ block: string; stack: string[]; why: string }> = [
   { block: "line-approval-what", stack: ["var(--ui-bg)"], why: "in .line-approval, on the body" },
   { block: "line-approval-input", stack: ["var(--ui-bg)"], why: "in .line-approval, on the body" },
   { block: "line-waited", stack: ["var(--ui-bg)"], why: "in .line-approval, on the body" },
-  { block: "line-link", stack: ["var(--ui-bg)"], why: "in .line-approval or a goal's actions, on the body" },
-  { block: "line-actions", stack: ["var(--ui-bg)"], why: "in .line-approval, on the body" },
-  { block: "approval-deny", stack: ["var(--ui-bg)"], why: "a .line-actions button, on the body" },
-  { block: "approval-allow", stack: ["var(--ui-bg)"], why: "a .line-actions button, on the body" },
-  { block: "spawn-button", stack: ["var(--ui-bg)"], why: "[new] in a project's actions, on the body" },
-  { block: "more", stack: ["var(--ui-bg)"], why: "the row's menu button, on the body" },
-  { block: "menu", stack: ["var(--ui-bg)"], why: "the row's actions; .menu.open paints --ui-surface-2" },
+  { block: "line-link", stack: ["var(--ui-bg)"], why: "in .line-approval, on the body" },
   // --- sessions.css: the folds, on the body ---
   { block: "fold", stack: ["var(--ui-bg)"], why: "a closed group, on the body; it paints nothing" },
   { block: "fold-body", stack: ["var(--ui-bg)"], why: "in .fold, on the body" },
@@ -687,9 +677,8 @@ const BLOCK_SURFACES: Array<{ block: string; stack: string[]; why: string }> = [
 const NOT_TEXT: Array<{ selector: string; why: string }> = [
   { selector: ".intro-logo", why: "a 40px box holding the logo svg; it carries no text" },
   // WCAG 1.4.3 exempts text that is part of an inactive user interface
-  // component. The spawn button and the disabled settings fields fade to 0.5
-  // to say they are inactive, which is the exemption, not a defect.
-  { selector: ".spawn-button:disabled", why: "an inactive component; WCAG 1.4.3 exempts it" },
+  // component. The disabled settings fields fade to 0.5 to say they are
+  // inactive, which is the exemption, not a defect.
   {
     selector: '.settings-check input[type="checkbox"]:disabled',
     why: "an inactive component; WCAG 1.4.3 exempts it",
