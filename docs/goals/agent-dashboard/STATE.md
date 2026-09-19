@@ -1,14 +1,14 @@
 # STATE: agent-dashboard
 
-- Status: active
-- Round: 2 of 3 in this budget (fourth budget)
-- Rounds total: 11
-- Last floor: green (2026-09-19, round 11 after: swift test 827, vitest 1421 in 52 files)
-- Updated: 2026-09-19, round 11 closed, PR #134 ready
+- Status: waiting
+- Round: 3 of 3 in this budget (fourth budget)
+- Rounds total: 12
+- Last floor: green (2026-09-19, round 12 after: vitest 1425 in 53 files)
+- Updated: 2026-09-19, round 12 closed; the fourth budget is spent
 
 ## Queue
 
-Empty. Capabilities 10 and 11 are on PR #134.
+Empty. Capabilities 10, 11 and the WHERE columns are on PR #134.
 
 ## Failures
 
@@ -26,6 +26,9 @@ None.
 
 ## Done
 
+- `where-columns-per-filter`, round 12, `6432dae` on PR #134. See
+  `rounds/012.md`. The WHERE count and pull-request cells read per
+  filter as the Components frame draws them.
 - `the-approved-adjustments` (capability 11), round 11, `01bfb87` on PR
   #134. See `rounds/011.md`. The page reproduces the design the human
   approved on 2026-09-19 at both widths; 16 assertions added, 6
@@ -174,7 +177,7 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-Merge PR #134. Then the human decides `goal.md` condition 6 (390 px
+The fourth budget is spent; the goal waits. Merge PR #134. Then the human decides `goal.md` condition 6 (390 px
 under 1200; the design measures 2147 on the real tree) and whether to
 set the goal `done`. Then the human decides: `goal.md` condition 6 (390 px under
 1200) against the frame's shape, which measures 2499 on the real tree;
