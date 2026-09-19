@@ -138,6 +138,10 @@ export type TreeInput<R extends ModelRow> = {
   goalsOf: (projectId: string) => KnowledgeSummary[] | null | undefined;
   approvals: Approval[];
   proposed: ProposedItem[];
+  /** The rollup for the toggles' range: a project's and a workspace's
+   * cost come from its buckets, and a goal's cost sums the round records
+   * that started inside its `from` and `to` (round 13); no rollup, no
+   * cost on any line. */
   usage: UsageDaily | null | undefined;
   now: number;
 };
@@ -151,7 +155,7 @@ const fact = (kind: TreeFactKind, text: string, column: 2 | 3 | 4, narrow = fals
  * r0/3`. The phone keeps the cost, else the counter. */
 export function goalFactColumns(cost: string | null, counter: string | null): TreeFact[] {
   const facts: TreeFact[] = [];
-  if (cost !== null) facts.push(fact("cost", cost, 2, true, "the sum of this goal's round records' Cost lines, at the full API rate"));
+  if (cost !== null) facts.push(fact("cost", cost, 2, true, "the sum of the Cost lines of this goal's round records started in the range, at the full API rate"));
   if (counter !== null) facts.push(fact("counter", counter, cost !== null ? 4 : 2, cost === null));
   return facts;
 }
@@ -252,7 +256,7 @@ export function tree<R extends ModelRow>(input: TreeInput<R>): Tree<R> {
       name: line.unwritten ? line.title : goalTitle(summary),
       title: next,
       state: line.unwritten ? null : word,
-      facts: line.unwritten ? [] : goalFactColumns(goalCost(summary), roundCounter(summary)),
+      facts: line.unwritten ? [] : goalFactColumns(usage ? goalCost(summary, usage) : null, roundCounter(summary)),
       project,
       summary,
       children: children.length > 0,

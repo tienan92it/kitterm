@@ -302,10 +302,22 @@ under `.claude/worktrees/` is a crew, everything else a root session. A unit cos
 divides the spend by the count; the hour's divides only the dollars of the sessions that
 carry a duration. The `WHERE` panel's count and pull-request columns change with the
 filter, as the `Components` frame draws them: a project's goals and merged pull requests,
-a goal's tasks and pull requests, a task's rounds and its one pull request, a role's share
-of the range and its API hours. At every grouping a row with no source prints a
-dash, never a zero, and the dollars nothing claims are a row of their own, which at the
-goal grouping is the largest bar. The page refuses what the research refuses: no quality
+a goal's tasks and pull requests, a task's working time (its rounds' wall time from their
+`Cost:` lines) and its one pull request, a role's share of the range and its API hours.
+The goal grouping lists every goal; the task grouping folds the rounds with no `Cost:`
+line and no pull request into one `N more rounds` row. At every grouping a row with no
+source prints a dash, never a zero, and the dollars nothing claims are a row of their
+own, which at the goal grouping is the largest bar.
+
+Every figure follows the one range the `USAGE` toggles set (7d, 30d, 90d), the same
+`from` and `to` the rollup answers: the band's spend, the four tiles and the summary line
+(the rollup and `GET /api/yield` are asked for it), `MODELS` (the rollup's split), a
+project's and a workspace's cost in the tree (the rollup's buckets), and every figure read
+from a round record — a goal's spend in `WHERE` and in the tree (`goalCost`), a task's
+row, and the `LEAKS` round counts — which `roundsInRange` filters by the record's
+`- Started:` day. A record with no start day is in no range. A toggle change asks the two
+routes and repaints every one of them at once (`sessions-range-page.test.ts`). The page
+refuses what the research refuses: no quality
 rate (every round on record says `done`), no rework rate (two fix commits are noise),
 and no money value for the human's time (nothing here knows their rate, and the page
 takes no input).

@@ -59,7 +59,10 @@ const yieldReport: YieldReport = {
   totals: { checkouts: 3, counted: 3, mergedPullRequests: 93, mergedLines: 59_753, releases: 24 },
 };
 
-const round = (number: number, task: string, costUSD: number | undefined, pr?: number): RoundRecord => ({ number, task, started: "2026-09-10", costUSD, pr, correction: false });
+/** A round record; `minutes` is its wall time, the working time the task
+ * filter prints (round 13), absent for a record with no Cost line. */
+const round = (number: number, task: string, costUSD: number | undefined, pr?: number, minutes?: number): RoundRecord =>
+  ({ number, task, started: "2026-09-10", costUSD, pr, correction: false, ...(minutes === undefined ? {} : { durationMs: minutes * 60_000 }) });
 const goal = (project: ProjectRef, slug: string, rounds: RoundRecord[]): { project: ProjectRef; summary: KnowledgeSummary } => ({ project, summary: { project: project.id, slug, status: "done", rounds } });
 
 /** kitterm's ten goals: three with rounds in the range (the frame's rows)
@@ -67,16 +70,16 @@ const goal = (project: ProjectRef, slug: string, rounds: RoundRecord[]): { proje
  * pipeline; none for the MT5 root. */
 const goals = [
   goal(kitterm, "workspace-ledger", [
-    round(1, "capture-the-quota", 17.74, 122),
-    round(2, "the-ledger", 15.84),
-    round(3, "the-numbers-on-the-page", 12.72, 123),
-    round(4, "answer-from-the-page", 11.44, 121),
-    round(5, "the-floor", 8.0, 124),
+    round(1, "capture-the-quota", 17.74, 122, 45),
+    round(2, "the-ledger", 15.84, undefined, 62),
+    round(3, "the-numbers-on-the-page", 12.72, 123, 60),
+    round(4, "answer-from-the-page", 11.44, 121, 38),
+    round(5, "the-floor", 8.0, 124, 25),
     round(6, "the-ratchet", 9.37),
   ]),
   // A task that took two rounds, the second a correction of the first.
-  goal(kitterm, "fleet-catch-up", [round(1, "catch-up-plan", 10.0), round(2, "catch-up-plan", 8.79), round(3, "catch-up-tree", 9.0), round(4, "catch-up-folds", 8.0)]),
-  goal(kitterm, "cost-per-round", [round(1, "the-line", 10.0), round(2, "the-parser", 10.0), round(3, "the-route", 10.0), round(4, "the-page", 2.95)]),
+  goal(kitterm, "fleet-catch-up", [round(1, "catch-up-plan", 10.0, undefined, 30), round(2, "catch-up-plan", 8.79, undefined, 40), round(3, "catch-up-tree", 9.0, undefined, 20), round(4, "catch-up-folds", 8.0, undefined, 15)]),
+  goal(kitterm, "cost-per-round", [round(1, "the-line", 10.0, undefined, 10), round(2, "the-parser", 10.0, undefined, 10), round(3, "the-route", 10.0, undefined, 10), round(4, "the-page", 2.95, undefined, 5)]),
   ...["a", "b", "c", "d", "e", "f", "g"].map((s) => goal(kitterm, `older-${s}`, [])),
   goal(mdp, "ingest", []),
   goal(mdp, "backfill", []),
@@ -96,31 +99,39 @@ describe("WHERE columns per filter (the Components frame)", () => {
 
   it("by goal: the tasks, the PRs, the cost a line; the remainder's share in the count column", () => {
     const panel = wherePanel("goal", { report, yield: yieldReport, projects, goals, range })!;
+    // Round 13 (the human's word): every goal is a row, the nine with
+    // nothing in the range as dash rows by name; chartered, they replaced
+    // `9 more goals`. The remainder stays last.
     expect(cells("goal")).toEqual([
       ["workspace-ledger", "$75.11", "6 tasks", "4 PRs", "$0.018/line"],
       ["fleet-catch-up", "$35.79", "4 tasks", DASH, DASH],
       ["cost-per-round", "$32.95", "4 tasks", DASH, DASH],
-      ["9 more goals", DASH, DASH, DASH, DASH],
+      ["backfill", DASH, DASH, DASH, DASH],
+      ["ingest", DASH, DASH, DASH, DASH],
+      ...["a", "b", "c", "d", "e", "f", "g"].map((s) => [`older-${s}`, DASH, DASH, DASH, DASH]),
       ["no round record", "$815.56", "85%", DASH, DASH],
     ]);
     expect(panel.note).toBe("85% names no round, so it cannot be valued");
   });
 
-  it("by task: the rounds, the one PR, the cost a line; a task of two rounds says so", () => {
+  it("by task: the working time, the one PR, the cost a line; a task of two rounds sums their time", () => {
+    // Round 13 (the human's word): the count cell is the task's working
+    // time, `45m`, `1h 2m`, its rounds' wall time summed; a task with no
+    // duration prints a dash. Chartered: round 12's `1 round`, `2 rounds`.
     expect(cells("task")).toEqual([
-      ["catch-up-plan", "$18.79", "2 rounds", DASH, DASH],
-      ["capture-the-quota", "$17.74", "1 round", "PR #122", "$0.010/line"],
-      ["the-ledger", "$15.84", "1 round", DASH, DASH],
-      ["the-numbers-on-the-page", "$12.72", "1 round", "PR #123", "$0.009/line"],
-      ["answer-from-the-page", "$11.44", "1 round", "PR #121", "$0.020/line"],
-      ["the-line", "$10.00", "1 round", DASH, DASH],
-      ["the-parser", "$10.00", "1 round", DASH, DASH],
-      ["the-route", "$10.00", "1 round", DASH, DASH],
-      ["the-ratchet", "$9.37", "1 round", DASH, DASH],
-      ["catch-up-tree", "$9.00", "1 round", DASH, DASH],
-      ["catch-up-folds", "$8.00", "1 round", DASH, DASH],
-      ["the-floor", "$8.00", "1 round", "PR #124", "$0.019/line"],
-      ["the-page", "$2.95", "1 round", DASH, DASH],
+      ["catch-up-plan", "$18.79", "1h 10m", DASH, DASH],
+      ["capture-the-quota", "$17.74", "45m", "PR #122", "$0.010/line"],
+      ["the-ledger", "$15.84", "1h 2m", DASH, DASH],
+      ["the-numbers-on-the-page", "$12.72", "1h", "PR #123", "$0.009/line"],
+      ["answer-from-the-page", "$11.44", "38m", "PR #121", "$0.020/line"],
+      ["the-line", "$10.00", "10m", DASH, DASH],
+      ["the-parser", "$10.00", "10m", DASH, DASH],
+      ["the-route", "$10.00", "10m", DASH, DASH],
+      ["the-ratchet", "$9.37", DASH, DASH, DASH],
+      ["catch-up-tree", "$9.00", "20m", DASH, DASH],
+      ["catch-up-folds", "$8.00", "15m", DASH, DASH],
+      ["the-floor", "$8.00", "25m", "PR #124", "$0.019/line"],
+      ["the-page", "$2.95", "5m", DASH, DASH],
       ["no round record", "$815.56", "85%", DASH, DASH],
     ]);
   });

@@ -13,11 +13,14 @@
  */
 
 import {
+  countdown,
   dollars,
   projectUsage,
+  roundsInRange,
   tokenCount,
   totalTokens,
   wholeDollars,
+  type DayRange,
   type KnowledgeSummary,
   type ProjectRef,
   type ProjectSummary,
@@ -212,8 +215,8 @@ export function readWhereGrouping(raw: string | null | undefined): WhereGrouping
 }
 
 /** One row: a name, a bar, then four columns — the spend, a count (`10
- * goals`, `6 tasks`, `1 round`; a role's share of the range and the
- * remainder's, `86%`, the same arithmetic), the pull requests (`83 PRs`,
+ * goals`, `6 tasks`; a task's working time, `45m`, `1h 2m`; a role's
+ * share of the range and the remainder's, `86%`, the same arithmetic), the pull requests (`83 PRs`,
  * `4 PRs`, `PR #124`; a role's API hours, `34.0 h`), and a unit cost
  * (`$11.17/PR`, `$0.018/line`, `$61/API hour`: the noun after a slash, no
  * article), each as the Components frame draws `WHERE` at that filter. `fill` is the
@@ -253,7 +256,7 @@ export type WhereInput = {
   yield: YieldReport | null | undefined;
   projects: readonly ProjectSummary[];
   goals: readonly { project: ProjectRef; summary: KnowledgeSummary }[];
-  range: { from: string; to: string };
+  range: DayRange;
 };
 
 /** A row before it is formatted: the numbers, or null for no source. */
@@ -276,11 +279,9 @@ type Raw = {
   folded?: boolean;
 };
 
-/** The rounds of a goal that started inside the range. A record with no
- * start day cannot be placed and is left out, which is never a guess. */
-export function roundsInRange(summary: KnowledgeSummary, range: { from: string; to: string }): RoundRecord[] {
-  return (summary.rounds ?? []).filter((r) => typeof r.started === "string" && r.started >= range.from && r.started <= range.to);
-}
+/** The rounds of a goal that started inside the range: the one filter
+ * every figure read from a round record goes through (`sessions-model`). */
+export { roundsInRange };
 
 const nameOf = (project: ProjectRef, summary: KnowledgeSummary): string => summary.slug ?? summary.goal ?? project.name;
 
@@ -351,8 +352,9 @@ function order(rows: Raw[]): Raw[] {
  *   the finding the panel exists to show.
  * - **task**: one row per task named by the round records started in the
  *   range (a record with no task is its own row, `round N`); the sum of
- *   its rounds' `Cost:` lines, how many rounds it took (`1 round`; a
- *   task is one round unless it took more), the pull request its
+ *   its rounds' `Cost:` lines, its working time (the rounds' wall time
+ *   from their `Cost:` lines summed, `45m`, `1h 2m`, as `countdown`
+ *   prints it; a dash when no round carries one), the pull request its
  *   `Result:` names (`PR #122`, or `2 PRs` when its rounds name two), and
  *   those pull requests' lines.
  * - **role**: `root` and `crew`, from the rollup's split by the
@@ -360,10 +362,12 @@ function order(rows: Raw[]): Raw[] {
  *   (`86%`, the remainder's arithmetic), its API hours (`34.0 h`) and
  *   dollars an API hour.
  *
- * At the goal and task groupings the rows with neither a spend nor a pull
- * request fold into one dash row that says how many there are, so a
- * fleet with fifty rounds does not print fifty dashes. The remainder's
- * count column is its share of the range, `85%`.
+ * The goal grouping lists every goal (round 13, the human's word): a goal
+ * with neither a spend nor a pull request in the range is a dash row of
+ * its own, after the priced rows and before the remainder. At the task
+ * grouping the rounds with neither fold into one dash row that says how
+ * many there are, so a fleet with fifty rounds does not print fifty
+ * dashes. The remainder's count column is its share of the range, `85%`.
  */
 export function wherePanel(grouping: WhereGrouping, input: WhereInput): WherePanel | null {
   const { report } = input;
@@ -414,10 +418,6 @@ export function wherePanel(grouping: WhereGrouping, input: WhereInput): WherePan
         const spend = priced.length > 0 ? priced.reduce((sum, r) => sum + (r.costUSD ?? 0), 0) : null;
         const prs = [...new Set(rounds.flatMap((r) => (typeof r.pr === "number" ? [r.pr] : [])))];
         const name = nameOf(project, summary);
-        if (spend === null && prs.length === 0) {
-          folded.push(name);
-          continue;
-        }
         attributed += spend ?? 0;
         const lines = linesOf(input.yield, project.id, prs);
         raws.push({
@@ -447,11 +447,15 @@ export function wherePanel(grouping: WhereGrouping, input: WhereInput): WherePan
           }
           attributed += spend ?? 0;
           const lines = linesOf(input.yield, project.id, prs);
+          // The task's working time: its rounds' wall time summed, from
+          // the records that carry one; none is a dash.
+          const timed = own.filter((r) => typeof r.durationMs === "number" && r.durationMs > 0);
+          const durationMs = timed.reduce((sum, r) => sum + (r.durationMs ?? 0), 0);
           raws.push({
             key: `task:${project.id}:${summary.slug ?? ""}:${name}`,
             name,
             spendUSD: spend,
-            count: plural(own.length, "round", "rounds"),
+            count: timed.length > 0 ? countdown(durationMs) : null,
             units: prs.length === 0 ? null : prs.length === 1 ? `PR #${prs[0]}` : plural(prs.length, "PR", "PRs"),
             per: lines !== null && lines > 0 ? { n: lines, unit: "/line" } : null,
             title: `${own.map((r) => `round ${r.number}`).join(", ")} of ${nameOf(project, summary)} in ${project.name}, started ${own.map((r) => r.started ?? "on no recorded day").join(", ")}`,
@@ -460,16 +464,15 @@ export function wherePanel(grouping: WhereGrouping, input: WhereInput): WherePan
       }
     }
     if (folded.length > 0) {
-      const noun = grouping === "goal" ? "goal" : "round";
       raws.push({
         key: "folded",
-        name: `${plural(folded.length, `more ${noun}`, `more ${noun}s`)}`,
+        name: `${plural(folded.length, "more round", "more rounds")}`,
         spendUSD: null,
         count: null,
         units: null,
         per: null,
         folded: true,
-        title: `${grouping === "goal" ? "Goals" : "Rounds"} with no Cost line and no pull request in the range: ${[...new Set(folded)].join(", ")}`,
+        title: `Rounds with no Cost line and no pull request in the range: ${[...new Set(folded)].join(", ")}`,
       });
     }
     const rest = total - attributed;
@@ -614,18 +617,20 @@ export type LeakLine = { key: LeakKey; mark: "attention" | "pending"; text: stri
  * The leaks `corpus/valuemaxxing.md` names, on two lines as the frame
  * draws them: `37 of 51 rounds carry no Cost line`, then `3 corrections
  * in 51 rounds · 3 sessions under 95% cached, $33.54`. The round counts
- * take every round record the page holds, over every range, because a
- * record is priced or not for good. The cache exceptions are the rollup's
- * own list over the range, sessions over $5, the floor the research
- * measured with. A fact whose source the page does not have is left out
- * rather than printed as a zero; a line with no fact is left out whole.
+ * take the round records that started in the range (round 13: the same
+ * `roundsInRange` the `WHERE` panel and the tree read; before it, every
+ * record the page held). The cache exceptions are the rollup's own list
+ * over the range, sessions over $5, the floor the research measured
+ * with. A fact whose source the page does not have is left out rather
+ * than printed as a zero; a line with no fact is left out whole.
  */
 export function leakLines(
   report: UsageDaily | null | undefined,
   goals: readonly { summary: KnowledgeSummary }[],
+  range: DayRange,
 ): LeakLine[] {
   const lines: LeakLine[] = [];
-  const rounds = goals.flatMap(({ summary }) => summary.rounds ?? []);
+  const rounds = goals.flatMap(({ summary }) => roundsInRange(summary, range));
   const rest: string[] = [];
   const titles: string[] = [];
   if (rounds.length > 0) {

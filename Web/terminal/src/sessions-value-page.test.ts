@@ -301,9 +301,11 @@ describe("the cache share left every heading", () => {
     }
     // The workspace heading over the two projects, then kitterm, its goal
     // (round 10: a goal's cost is the same `cost` cell as a heading's),
-    // then notes.
-    expect(page.root.querySelectorAll(".cost").map((c) => c.textContent)).toEqual(["$1,000.00", "$950.00", "$65.72", "$50.00"]);
-    expect(page.root.querySelector(".goal-line")?.querySelector(".cost")?.textContent).toBe("$65.72");
+    // then notes. Round 13 (chartered): the goal's cost is the sum of its
+    // records started in the rollup's range, $7.73 + $11.28, not the
+    // route's all-time `$65.72`.
+    expect(page.root.querySelectorAll(".cost").map((c) => c.textContent)).toEqual(["$1,000.00", "$950.00", "$19.01", "$50.00"]);
+    expect(page.root.querySelector(".goal-line")?.querySelector(".cost")?.textContent).toBe("$19.01");
   });
 
   it("prints the share in one place only: the LEAKS exception line", () => {

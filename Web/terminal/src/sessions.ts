@@ -33,6 +33,7 @@ import {
   usageChartName,
   usagePanel,
   usageRange,
+  type DayRange,
   VOCABULARY,
   withProposed,
   dayLabel,
@@ -279,6 +280,13 @@ async function fetchUsage(now: number): Promise<void> {
     // A failed request keeps the last answer; the next poll asks again.
     usageAsked = "";
   }
+}
+
+/** The days every figure on the page counts over: the range the rollup
+ * answered for the toggles' span, or, before it answers or on a daemon
+ * that refuses it, the same span counted back from today on this clock. */
+function chosenRange(now: number): DayRange {
+  return usage?.ok ? { from: usage.from, to: usage.to } : usageRange(usageChoice.span, now);
 }
 
 function setWhereGrouping(grouping: WhereGrouping): void {
@@ -611,13 +619,14 @@ function paint(): void {
   paintUsage(usageHead(usage, usageChoice), usagePanel(usage, usageChoice, now));
   paintQuota(quotaPanel(limits, now));
   const goals = knowledgeEntries();
+  // Every figure follows the one range (round 13): the rollup and the
+  // yield were asked for it, the tree reads it off the rollup, and the
+  // round records are filtered to it here.
+  const range = chosenRange(now);
   paintValue(valuePanel(usage, yieldReport, usageChoice.span));
-  paintWhere(wherePanel(whereGrouping, {
-    report: usage, yield: yieldReport, projects, goals,
-    range: { from: usage?.from ?? "", to: usage?.to ?? "" },
-  }));
+  paintWhere(wherePanel(whereGrouping, { report: usage, yield: yieldReport, projects, goals, range }));
   paintModels(modelsPanel(usage));
-  paintLeaks(leakLines(usage, goals));
+  paintLeaks(leakLines(usage, goals, range));
   // Every session is a line once: in the tree, or in the idle fold.
   const built = tree({ rows: sessions, projects, goalsOf: (id) => knowledge.get(id)?.goals, approvals, proposed, usage, now });
   if (built.sections.length === 0) {

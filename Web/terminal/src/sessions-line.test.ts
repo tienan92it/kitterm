@@ -250,13 +250,16 @@ describe("the page's lines", () => {
   it("prints a goal's line as disclosure, title, word, then its cost and its counter in their columns", () => {
     // `workspace-ledger [done] $75.11 r6/3`: the cost in the number column,
     // the counter in the last; the next action is the title's tooltip. The
-    // triangle carries no state: the word does.
+    // triangle carries no state: the word does. Round 13 (chartered): the
+    // cost follows the rollup's range, and this page has no rollup, so no
+    // line prints a cost and the counter takes the number column;
+    // `sessions-pen-tree.test.ts` pins the two columns with a rollup.
     const goal = page.root.querySelector(".goal-line")!;
     expect(goal.querySelector(".mark")?.className).toBe("mark disclosure");
     expect(goal.querySelector(".mark")?.textContent).toBe("▼");
     expect(goal.querySelector(".state")?.textContent).toBe("[working]");
     expect(cellsOf(goal.querySelector(".main")!)).toEqual([
-      ["line-name", "/sessions is a dashboard for workspaces and agents", null], ["state running", "[working]", null], ["cost", "$65.72", "2"], ["counter", "r7/3", "4"],
+      ["line-name", "/sessions is a dashboard for workspaces and agents", null], ["state running", "[working]", null], ["counter", "r7/3", "2"],
     ]);
     expect(goal.querySelector(".line-name")?.title).toBe("Round 7, `every-line-is-one-line`, from `plan.md` row 5.");
     expect(goal.querySelector(".line-name")?.tagName).toBe("A");

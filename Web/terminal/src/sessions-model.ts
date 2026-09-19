@@ -2089,13 +2089,25 @@ export function workspaceUsage(
   return sum;
 }
 
-/** What a goal prints beside its round: the sum of its records' `Cost:`
- * lines, `$12.34`, from the field the knowledge route adds; null for a
- * goal whose records carry no line, which is a goal that predates the
- * bill, not a free one. The cache share left the line with the headings'
- * (`costLabel`). */
-export function goalCost(summary: Pick<KnowledgeSummary, "costUSD" | "inTokens" | "cacheReadTokens">): string | null {
-  return typeof summary.costUSD === "number" ? dollars(summary.costUSD) : null;
+/** Two inclusive day keys, `YYYY-MM-DD`: the range the rollup answered
+ * for the toggles' span, which every figure on the page follows. */
+export type DayRange = { from: string; to: string };
+
+/** The rounds of a goal that started inside the range. A record with no
+ * start day cannot be placed and is left out, which is never a guess. */
+export function roundsInRange(summary: Pick<KnowledgeSummary, "rounds">, range: DayRange): RoundRecord[] {
+  return (summary.rounds ?? []).filter((r) => typeof r.started === "string" && r.started >= range.from && r.started <= range.to);
+}
+
+/** What a goal prints beside its round: the sum of the `Cost:` lines of
+ * its records that started in the range, `$12.34` (round 13: the same
+ * rounds the `WHERE` panel sums, never the route's all-time `costUSD`);
+ * null for a goal whose rounds in the range carry no line, which is a
+ * goal that predates the bill, not a free one. The cache share left the
+ * line with the headings' (`costLabel`). */
+export function goalCost(summary: Pick<KnowledgeSummary, "rounds">, range: DayRange): string | null {
+  const priced = roundsInRange(summary, range).filter((r) => typeof r.costUSD === "number");
+  return priced.length > 0 ? dollars(priced.reduce((sum, r) => sum + (r.costUSD ?? 0), 0)) : null;
 }
 
 /** One toggle of the panel: what it prints, whether it is the choice, and

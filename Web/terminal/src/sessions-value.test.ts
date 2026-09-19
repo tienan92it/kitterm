@@ -259,11 +259,15 @@ describe("WHERE by goal", () => {
     // `workspace-ledger $75.11 6 tasks 4 PRs $0.018/line` in the frame:
     // here 4 rounds, 2 PRs of 3,000 lines together. Round 11: `/line`
     // replaced `a line` (chartered).
+    // Round 13 (the human's word): every goal is a row; `2 more goals`
+    // went. A goal with nothing in the range is a dash row, by name,
+    // before the remainder (chartered).
     expect(panel.rows.map((r) => [r.name, r.spend, r.count, r.units, r.rate])).toEqual([
       ["workspace-ledger", "$75.12", "4 tasks", "2 PRs", "$0.025/line"],
       ["cost-per-round", "$33.46", "1 task", DASH, DASH],
       ["contrast-tokens", DASH, "2 tasks", "1 PR", DASH],
-      ["2 more goals", DASH, DASH, DASH, DASH],
+      ["green-ci", DASH, "1 task", DASH, DASH],
+      ["older", DASH, DASH, DASH, DASH],
       ["no round record", "$996.54", "90%", DASH, DASH],
     ]);
     // A daemon that sends no lines per pull request prices no line.
@@ -289,11 +293,11 @@ describe("WHERE by goal", () => {
     expect(rest.count, "the share sits in the count column").toBe("90%");
   });
 
-  it("folds the goals with nothing in the range into one dash row that names them", () => {
-    const folded = panel.rows.find((r) => r.name === "2 more goals")!;
-    expect(folded.spend).toBe(DASH);
-    expect(folded.title).toContain("green-ci");
-    expect(folded.title).toContain("older");
+  it("lists a goal with nothing in the range as a dash row of its own, and folds nothing (round 13, chartered)", () => {
+    expect(panel.rows.some((r) => /more goal/.test(r.name))).toBe(false);
+    const older = panel.rows.find((r) => r.name === "older")!;
+    expect([older.spend, older.count, older.units, older.rate]).toEqual([DASH, DASH, DASH, DASH]);
+    expect(older.title).toContain("0 rounds started in the range");
     expect(roundsInRange(goals[4].summary, range)).toEqual([]);
   });
 });
@@ -302,17 +306,17 @@ describe("WHERE by task", () => {
   const panel = wherePanel("task", { report, yield: yieldReport, projects, goals, range })!;
 
   it("is one row per task started in the range, with its Cost line, its rounds, its PR and its dollars a line", () => {
-    // Round 12 (the Components frame, WHERE by task): the count is the
-    // task's rounds, `1 round`; chartered, it replaced the round's wall
-    // time (`45m`, `1h`).
+    // Round 13 (the human's word): the count is the task's working time
+    // again, the round's wall time from its Cost line (`45m`, `1h`);
+    // chartered, it replaced round 12's `1 round`. A round with no line
+    // has no time and prints a dash.
     expect(panel.rows.map((r) => [r.name, r.spend, r.count, r.units, r.rate])).toEqual([
-      ["answer-from-the-page", "$34.66", "1 round", DASH, DASH],
-      ["the-line", "$33.46", "1 round", DASH, DASH],
-      ["capture-the-spend", "$27.74", "1 round", "PR #122", "$0.028/line"],
-      ["the-ledger", "$12.72", "1 round", "PR #123", "$0.006/line"],
-      // A record with no Cost line is still a round, so the count prints.
-      ["the-floor", DASH, "1 round", "PR #100", DASH],
-      ["the-numbers-on-the-page", DASH, "1 round", "PR #123", DASH],
+      ["answer-from-the-page", "$34.66", "45m", DASH, DASH],
+      ["the-line", "$33.46", "20m", DASH, DASH],
+      ["capture-the-spend", "$27.74", "1h", "PR #122", "$0.028/line"],
+      ["the-ledger", "$12.72", "30m", "PR #123", "$0.006/line"],
+      ["the-floor", DASH, DASH, "PR #100", DASH],
+      ["the-numbers-on-the-page", DASH, DASH, "PR #123", DASH],
       ["2 more rounds", DASH, DASH, DASH, DASH],
       ["no round record", "$996.54", "90%", DASH, DASH],
     ]);
@@ -396,29 +400,33 @@ describe("LEAKS", () => {
   it("names the rounds with no Cost line on one line, then the corrections and the sessions under 95% cached joined on a second", () => {
     // Round 10 (the frame): `? 37 of 51 rounds carry no Cost line`, then
     // `· 3 corrections in 51 rounds · 3 sessions under 95% cached, $33.54`.
-    expect(leakLines(report, goals).map((l) => [l.key, l.mark, l.text])).toEqual([
-      ["unpriced", "attention", "4 of 9 rounds carry no Cost line"],
-      ["rest", "pending", "1 correction in 9 rounds · 3 sessions under 95% cached, $33.54"],
+    // Round 13: the counts take the range's rounds, 8 of the fixture's 9
+    // (`older` started in July); chartered, `9 rounds` was every record.
+    expect(leakLines(report, goals, range).map((l) => [l.key, l.mark, l.text])).toEqual([
+      ["unpriced", "attention", "4 of 8 rounds carry no Cost line"],
+      ["rest", "pending", "1 correction in 8 rounds · 3 sessions under 95% cached, $33.54"],
     ]);
   });
 
   it("reports a zero as a grey line and leaves out a fact it has no source for", () => {
-    const clean = leakLines(empty, [{ summary: { project: "p", rounds: [{ number: 1, costUSD: 1, correction: false }] } }]);
+    // Round 13: a record with no start day cannot be placed in the range
+    // and is not counted (chartered: it counted with no `started`).
+    const clean = leakLines(empty, [{ summary: { project: "p", rounds: [{ number: 1, started: empty.to, costUSD: 1, correction: false }] } }], { from: empty.from, to: empty.to });
     expect(clean.map((l) => [l.mark, l.text])).toEqual([
       ["pending", "0 of 1 round carries no Cost line"],
       ["pending", "0 corrections in 1 round · no session under 95% cached"],
     ]);
     const { lowCache: _l, ...old } = report;
-    expect(leakLines(old, []).map((l) => l.key)).toEqual([]);
-    expect(leakLines(null, goals).map((l) => [l.key, l.text])).toEqual([
-      ["unpriced", "4 of 9 rounds carry no Cost line"],
-      ["rest", "1 correction in 9 rounds"],
+    expect(leakLines(old, [], range).map((l) => l.key)).toEqual([]);
+    expect(leakLines(null, goals, range).map((l) => [l.key, l.text])).toEqual([
+      ["unpriced", "4 of 8 rounds carry no Cost line"],
+      ["rest", "1 correction in 8 rounds"],
     ]);
-    expect(leakLines(report, []).map((l) => [l.key, l.text])).toEqual([["rest", "3 sessions under 95% cached, $33.54"]]);
+    expect(leakLines(report, [], range).map((l) => [l.key, l.text])).toEqual([["rest", "3 sessions under 95% cached, $33.54"]]);
   });
 
   it("claims no quality rate and no rework rate", () => {
-    const text = JSON.stringify(leakLines(report, goals));
+    const text = JSON.stringify(leakLines(report, goals, range));
     expect(text).not.toMatch(/quality|rework/i);
   });
 });

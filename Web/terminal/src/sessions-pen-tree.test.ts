@@ -58,22 +58,25 @@ const kittermGoals: KnowledgeSummary[] = [
     ],
   },
   {
+    // Round 13: a goal's cost is the sum of the Cost lines of its records
+    // started in the range, so the frame's `$75.11` sits on the record
+    // and the route's all-time `costUSD` is not read.
     project: "kitterm", slug: "workspace-ledger", goal: "workspace-ledger", status: "done", round: 6, budget: 3, costUSD: 75.11, lastRound: 6, lastRecord: "workspace-ledger/rounds/006.md",
     tasks: [
       { slug: "the-strip-holds-only-what-needs-you", state: "done", round: 6, pr: 124 },
       { slug: "the-numbers-on-the-page", state: "done", round: 5, pr: 123 },
       { slug: "answer-from-the-page", state: "done", round: 4, pr: 122 },
     ],
-    rounds: [{ number: 6, started: "2026-09-17", correction: false }],
+    rounds: [{ number: 6, started: "2026-09-17", costUSD: 75.11, correction: false }],
   },
-  { project: "kitterm", slug: "fleet-catch-up", goal: "fleet-catch-up", status: "done", round: 4, budget: 4, costUSD: 35.79, rounds: [{ number: 4, started: "2026-09-12", correction: false }] },
+  { project: "kitterm", slug: "fleet-catch-up", goal: "fleet-catch-up", status: "done", round: 4, budget: 4, costUSD: 35.79, rounds: [{ number: 4, started: "2026-09-12", costUSD: 35.79, correction: false }] },
   { project: "kitterm", slug: "cost-per-round", goal: "cost-per-round", status: "done", round: 4, budget: 4, rounds: [{ number: 4, started: "2026-09-13", correction: false }] },
 ];
 const mdpGoals: KnowledgeSummary[] = [
   {
     project: "mdp", slug: "symbol-onboarding", goal: "one command onboards a symbol", status: "done", round: 6, budget: 3, costUSD: 41.02,
     tasks: [{ slug: "path-mapping", state: "done", round: 6, pr: 40 }],
-    rounds: [{ number: 6, started: "2026-09-16", correction: false }],
+    rounds: [{ number: 6, started: "2026-09-16", costUSD: 41.02, correction: false }],
   },
 ];
 const knowledge: Record<string, KnowledgeSummary[]> = { kitterm: kittermGoals, mdp: mdpGoals, mt5: [] };
