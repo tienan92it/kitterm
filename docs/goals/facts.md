@@ -265,6 +265,10 @@ decision moves to `docs/adr/`.
 
 ## Foreman
 
+- The installed daemon serves `Web/terminal/dist` of this checkout
+  (`~/.kitterm/web-root`), so a `vite build` with no `--outDir` swaps the
+  live page for the branch's. A floor builds to a scratch directory
+  (2026-09-19, round 11).
 - A `.pen` file under `corpus/` is the human's design. The foreman reads
   it, exports its frames, and hands the crew the differences; it never
   edits a frame. Round 10 of `agent-dashboard` replaced two frames with a

@@ -1,22 +1,14 @@
 # STATE: agent-dashboard
 
 - Status: active
-- Round: 1 of 3 in this budget (fourth budget)
-- Rounds total: 10
-- Last floor: green (2026-09-18, round 10 after: Linux build, swift test 827, vitest 1411 in 52 files)
-- Updated: 2026-09-19, the human approved the amended design; capability 11 queued
+- Round: 2 of 3 in this budget (fourth budget)
+- Rounds total: 11
+- Last floor: green (2026-09-19, round 11 after: swift test 827, vitest 1421 in 52 files)
+- Updated: 2026-09-19, round 11 closed, PR #134 ready
 
 ## Queue
 
-1. `the-approved-adjustments` (capability 11, the human's on 2026-09-19).
-   The human amended `dashboard.pen` and approved it: `MODELS` under
-   `QUOTA` with a divider below; the quota as bars with a caution state
-   at 80%; one name column across `QUOTA`, `MODELS` and `WHERE`; unit
-   costs as `/PR`, `/line`, `/API hour`; no actions on the page; the
-   disclosure triangle alone on project and goal rows, none on a
-   workspace; `•` pending; a green done mark. The `Components` frame
-   draws the quota bar in both states, `WHERE` at each filter, and the
-   row marks.
+Empty. Capabilities 10 and 11 are on PR #134.
 
 ## Failures
 
@@ -34,6 +26,10 @@ None.
 
 ## Done
 
+- `the-approved-adjustments` (capability 11), round 11, `01bfb87` on PR
+  #134. See `rounds/011.md`. The page reproduces the design the human
+  approved on 2026-09-19 at both widths; 16 assertions added, 6
+  replaced under charter, the ratchet untouched.
 - Corpus cleanup, 2026-09-18, at the human's direction: `dashboard.pen`
   is the single source of truth. Every rendering of the design left the
   corpus (`01-*`, `02-*`, `03-*`, `04-*`); `design-foundation.md` points
@@ -178,7 +174,8 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-Round 11, `the-approved-adjustments`, on the open PR #134's branch so the
-human reviews one page. Then merge. Then the human decides: `goal.md` condition 6 (390 px under
+Merge PR #134. Then the human decides `goal.md` condition 6 (390 px
+under 1200; the design measures 2147 on the real tree) and whether to
+set the goal `done`. Then the human decides: `goal.md` condition 6 (390 px under
 1200) against the frame's shape, which measures 2499 on the real tree;
 and the six crew choices in `rounds/010.md` where the frames are silent.
