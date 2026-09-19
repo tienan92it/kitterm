@@ -217,17 +217,20 @@ describe("VALUE", () => {
 describe("WHERE by project", () => {
   const panel = wherePanel("project", { report, yield: yieldReport, projects, goals, range })!;
 
-  it("lists every project with its spend, its sessions, its merged PRs and its cost a PR, dearest first", () => {
+  it("lists every project with its spend, its goals, its merged PRs and its cost a PR, dearest first", () => {
     // Round 10 (the frame's columns): spend | count | PRs | unit, and the
     // remainder's count its share. Round 11 (the Components frame, WHERE by
     // project): the unit is a merged pull request, `$11.77/PR`, the noun
-    // after a slash; chartered, it replaced `$0.017 a line`.
+    // after a slash; chartered, it replaced `$0.017 a line`. Round 12 (the
+    // same frame): the count is the project's goals, `10 goals`; chartered,
+    // it replaced `92 sessions`, which moved to the tooltip.
     expect(panel.rows.map((r) => [r.name, r.spend, r.count, r.units, r.rate, r.remainder])).toEqual([
-      ["kitterm", "$976.74", "92 sessions", "83 PRs", "$11.77/PR", false],
-      ["market-data-pipeline", "$38.91", "10 sessions", DASH, DASH, false],
+      ["kitterm", "$976.74", "5 goals", "83 PRs", "$11.77/PR", false],
+      ["market-data-pipeline", "$38.91", DASH, DASH, DASH, false],
       ["notes", DASH, DASH, DASH, DASH, false],
       ["no project", "$89.47", "8%", DASH, DASH, true],
     ]);
+    expect(panel.rows[0].title).toContain("92 sessions");
   });
 
   it("prints a dash for a project that is not a checkout, one with no remote, and one with no session", () => {
@@ -298,14 +301,18 @@ describe("WHERE by goal", () => {
 describe("WHERE by task", () => {
   const panel = wherePanel("task", { report, yield: yieldReport, projects, goals, range })!;
 
-  it("is one row per round started in the range, with its Cost line, its wall time, its PR and its dollars a line", () => {
+  it("is one row per task started in the range, with its Cost line, its rounds, its PR and its dollars a line", () => {
+    // Round 12 (the Components frame, WHERE by task): the count is the
+    // task's rounds, `1 round`; chartered, it replaced the round's wall
+    // time (`45m`, `1h`).
     expect(panel.rows.map((r) => [r.name, r.spend, r.count, r.units, r.rate])).toEqual([
-      ["answer-from-the-page", "$34.66", "45m", DASH, DASH],
-      ["the-line", "$33.46", "20m", DASH, DASH],
-      ["capture-the-spend", "$27.74", "1h", "PR #122", "$0.028/line"],
-      ["the-ledger", "$12.72", "30m", "PR #123", "$0.006/line"],
-      ["the-floor", DASH, DASH, "PR #100", DASH],
-      ["the-numbers-on-the-page", DASH, DASH, "PR #123", DASH],
+      ["answer-from-the-page", "$34.66", "1 round", DASH, DASH],
+      ["the-line", "$33.46", "1 round", DASH, DASH],
+      ["capture-the-spend", "$27.74", "1 round", "PR #122", "$0.028/line"],
+      ["the-ledger", "$12.72", "1 round", "PR #123", "$0.006/line"],
+      // A record with no Cost line is still a round, so the count prints.
+      ["the-floor", DASH, "1 round", "PR #100", DASH],
+      ["the-numbers-on-the-page", DASH, "1 round", "PR #123", DASH],
       ["2 more rounds", DASH, DASH, DASH, DASH],
       ["no round record", "$996.54", "90%", DASH, DASH],
     ]);
@@ -320,15 +327,18 @@ describe("WHERE by task", () => {
 });
 
 describe("WHERE by role", () => {
-  it("prints root and crew with their sessions, their API hours and dollars an API hour, and names the lever", () => {
+  it("prints root and crew with their share, their API hours and dollars an API hour, and names the lever", () => {
     // Round 11 (the Components frame, WHERE by role): `$61/API hour`, whole
     // dollars and the noun after a slash; chartered, it replaced `$54.69 an
-    // API hour`.
+    // API hour`. Round 12 (the same frame): the count is the role's share
+    // of the range, `86%`, and the hours read `34.0 h`; chartered, they
+    // replaced `114 sessions` (now in the tooltip) and `12.8 API h`.
     const panel = wherePanel("role", { report, yield: yieldReport, projects, goals, range })!;
     expect(panel.rows.map((r) => [r.name, r.spend, r.count, r.units, r.rate, r.remainder])).toEqual([
-      ["root session", "$765.59", "114 sessions", "12.8 API h", "$54/API hour", false],
-      ["crew, worktree", "$339.53", "36 sessions", "8.1 API h", "$24/API hour", false],
+      ["root session", "$765.59", "69%", "12.8 h", "$54/API hour", false],
+      ["crew, worktree", "$339.53", "31%", "8.1 h", "$24/API hour", false],
     ]);
+    expect(panel.rows[0].title).toContain("114 sessions");
     expect(panel.note).toBe("A crew is 55% cheaper an API hour");
     expect(panel.summary).toBe("$1,015.65 in 2 repositories · 83 merged PRs · 58,853 lines · 24 releases");
   });

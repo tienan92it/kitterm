@@ -13,7 +13,6 @@
  */
 
 import {
-  countdown,
   dollars,
   projectUsage,
   tokenCount,
@@ -212,11 +211,12 @@ export function readWhereGrouping(raw: string | null | undefined): WhereGrouping
   return WHERE_GROUPINGS.find((g) => g === raw) ?? WHERE_DEFAULT;
 }
 
-/** One row: a name, a bar, then four columns — the spend, a count (`6
- * tasks`, `92 sessions`, a round's `1h 46m`; the remainder's share,
- * `85%`), the pull requests (`4 PRs`, `PR #124`, a role's API hours), and
- * a unit cost (`$11.17/PR`, `$0.018/line`, `$61/API hour`: the noun after
- * a slash, no article, as the Components frame draws it). `fill` is the
+/** One row: a name, a bar, then four columns — the spend, a count (`10
+ * goals`, `6 tasks`, `1 round`; a role's share of the range and the
+ * remainder's, `86%`, the same arithmetic), the pull requests (`83 PRs`,
+ * `4 PRs`, `PR #124`; a role's API hours, `34.0 h`), and a unit cost
+ * (`$11.17/PR`, `$0.018/line`, `$61/API hour`: the noun after a slash, no
+ * article), each as the Components frame draws `WHERE` at that filter. `fill` is the
  * bar's share of the panel's longest, 0 to 1. `remainder` marks the
  * unattributed row, whose name, bar and spend wear the amber and whose
  * bar is the longest at the goal grouping. A column with no source is
@@ -339,21 +339,26 @@ function order(rows: Raw[]): Raw[] {
  * VALUE panel groups by the same levels as the tree"):
  *
  * - **project**: one row per project the daemon lists; its spend is the
- *   rollup's bucket at its root, its sessions the bucket's count, its
- *   pull requests and lines its history's. The dollars the rollup keys on
- *   no listed project are the `no project` remainder.
+ *   rollup's bucket at its root, its count the goals the knowledge route
+ *   lists for it (`10 goals`; none is a dash, and the sessions sit in the
+ *   tooltip), its pull requests and lines its history's. The dollars the
+ *   rollup keys on no listed project are the `no project` remainder.
  * - **goal**: one row per goal folder; its spend is the sum of the `Cost:`
  *   lines of its rounds that started in the range, its tasks those
  *   rounds, its pull requests the ones those records name, and its lines
  *   theirs (`linesOf`). The dollars no round record claims are the `no
  *   round record` remainder: at this grouping the largest bar, which is
  *   the finding the panel exists to show.
- * - **task**: one row per round record started in the range; its own
- *   `Cost:` line, its wall time, the pull request its `Result:` names,
- *   and that pull request's lines.
+ * - **task**: one row per task named by the round records started in the
+ *   range (a record with no task is its own row, `round N`); the sum of
+ *   its rounds' `Cost:` lines, how many rounds it took (`1 round`; a
+ *   task is one round unless it took more), the pull request its
+ *   `Result:` names (`PR #122`, or `2 PRs` when its rounds name two), and
+ *   those pull requests' lines.
  * - **role**: `root` and `crew`, from the rollup's split by the
- *   transcript's directory, with sessions, API hours and dollars an API
- *   hour.
+ *   transcript's directory, with the role's share of the range's spend
+ *   (`86%`, the remainder's arithmetic), its API hours (`34.0 h`) and
+ *   dollars an API hour.
  *
  * At the goal and task groupings the rows with neither a spend nor a pull
  * request fold into one dash row that says how many there are, so a
@@ -375,16 +380,23 @@ export function wherePanel(grouping: WhereGrouping, input: WhereInput): WherePan
       const bucket = projectUsage(report, p.root);
       const y = input.yield?.ok ? (input.yield.projects.find((e) => e.id === p.id)?.yield ?? null) : null;
       const prs = typeof y?.mergedPullRequests === "number" ? y.mergedPullRequests : null;
+      const goalCount = input.goals.filter((g) => g.project.id === p.id).length;
       if (bucket) attributed += bucket.costUSD;
       raws.push({
         key: `project:${p.id}`,
         name: p.name,
         spendUSD: bucket ? bucket.costUSD : null,
-        count: bucket ? plural(bucket.sessions, "session", "sessions") : null,
-        units: prs === null ? null : plural(prs, "PR", "PRs"),
+        // The goals the knowledge route lists for the project; `0 goals`
+        // is no source, so it prints a dash.
+        count: goalCount > 0 ? plural(goalCount, "goal", "goals") : null,
+        // A remote with no merged pull request is a dash, never `0 PRs`.
+        units: prs === null || prs === 0 ? null : plural(prs, "PR", "PRs"),
         // What one merged pull request cost here, `$11.17/PR`.
         per: prs !== null && prs > 0 ? { n: prs, unit: "/PR" } : null,
-        title: !y ? `${p.name}: no yield read yet` : !y.checkout ? `${p.name}: ${p.root} is not a git checkout, so nothing is counted` : !y.remote ? `${p.name}: no remote, so no pull request to count` : `${p.name}: merged on ${y.branch ?? "HEAD"}, ${count(y.mergedLines ?? 0)} lines, ${count(y.releases ?? 0)} releases`,
+        title: [
+          bucket ? `${p.name}: ${plural(bucket.sessions, "session", "sessions")} in the range` : `${p.name}: no session in the range`,
+          !y ? "no yield read yet" : !y.checkout ? `${p.root} is not a git checkout, so nothing is counted` : !y.remote ? "no remote, so no pull request to count" : `merged on ${y.branch ?? "HEAD"}, ${count(y.mergedLines ?? 0)} lines, ${count(y.releases ?? 0)} releases`,
+        ].join("; "),
       });
     }
     const rest = total - attributed;
@@ -418,23 +430,31 @@ export function wherePanel(grouping: WhereGrouping, input: WhereInput): WherePan
           title: `${name} in ${project.name}: ${plural(rounds.length, "round", "rounds")} started in the range, ${priced.length} with a Cost line${lines !== null ? `, ${count(lines)} lines merged` : ""}`,
         });
       } else {
+        // A task is the rounds that name it; a record with no task name
+        // stands alone as `round N`.
+        const tasks = new Map<string, RoundRecord[]>();
         for (const r of rounds) {
           const name = r.task ?? `round ${r.number}`;
-          const spend = typeof r.costUSD === "number" ? r.costUSD : null;
-          if (spend === null && typeof r.pr !== "number") {
-            folded.push(name);
+          tasks.set(name, [...(tasks.get(name) ?? []), r]);
+        }
+        for (const [name, own] of tasks) {
+          const priced = own.filter((r) => typeof r.costUSD === "number");
+          const spend = priced.length > 0 ? priced.reduce((sum, r) => sum + (r.costUSD ?? 0), 0) : null;
+          const prs = [...new Set(own.flatMap((r) => (typeof r.pr === "number" ? [r.pr] : [])))];
+          if (spend === null && prs.length === 0) {
+            folded.push(...own.map(() => name));
             continue;
           }
           attributed += spend ?? 0;
-          const lines = typeof r.pr === "number" ? linesOf(input.yield, project.id, [r.pr]) : null;
+          const lines = linesOf(input.yield, project.id, prs);
           raws.push({
-            key: `task:${project.id}:${summary.slug ?? ""}:${r.number}`,
+            key: `task:${project.id}:${summary.slug ?? ""}:${name}`,
             name,
             spendUSD: spend,
-            count: typeof r.durationMs === "number" && r.durationMs > 0 ? countdown(r.durationMs) : null,
-            units: typeof r.pr === "number" ? `PR #${r.pr}` : null,
+            count: plural(own.length, "round", "rounds"),
+            units: prs.length === 0 ? null : prs.length === 1 ? `PR #${prs[0]}` : plural(prs.length, "PR", "PRs"),
             per: lines !== null && lines > 0 ? { n: lines, unit: "/line" } : null,
-            title: `round ${r.number} of ${nameOf(project, summary)} in ${project.name}, started ${r.started ?? "on no recorded day"}`,
+            title: `${own.map((r) => `round ${r.number}`).join(", ")} of ${nameOf(project, summary)} in ${project.name}, started ${own.map((r) => r.started ?? "on no recorded day").join(", ")}`,
           });
         }
       }
@@ -449,7 +469,7 @@ export function wherePanel(grouping: WhereGrouping, input: WhereInput): WherePan
         units: null,
         per: null,
         folded: true,
-        title: `${grouping === "goal" ? "Goals" : "Rounds"} with no Cost line and no pull request in the range: ${folded.join(", ")}`,
+        title: `${grouping === "goal" ? "Goals" : "Rounds"} with no Cost line and no pull request in the range: ${[...new Set(folded)].join(", ")}`,
       });
     }
     const rest = total - attributed;
@@ -469,8 +489,9 @@ export function wherePanel(grouping: WhereGrouping, input: WhereInput): WherePan
         key: `role:${role.role}`,
         name: role.role === "crew" ? "crew, worktree" : "root session",
         spendUSD: role.sessions > 0 ? role.costUSD : null,
-        count: role.sessions > 0 ? plural(role.sessions, "session", "sessions") : null,
-        units: h > 0 ? `${hours(role.apiMs)} API h` : null,
+        // The role's share of the range, `86%`: the remainder's arithmetic.
+        count: role.sessions > 0 ? share(role.costUSD) : null,
+        units: h > 0 ? `${hours(role.apiMs)} h` : null,
         // The rate divides the measured dollars, not the whole spend.
         per: h > 0 && role.measuredUSD > 0 ? { n: h * (role.costUSD / role.measuredUSD), unit: "/API hour" } : null,
         title: `${plural(role.sessions, "session", "sessions")}, ${count(role.linesAdded)} lines added; the role is the transcript's directory, a crew being one under .claude/worktrees`,

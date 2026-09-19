@@ -300,7 +300,10 @@ of model time are the bills' `totalAPIDuration`, which the rollup now keeps per 
 beside `totalLinesAdded`, and the split by role reads the transcript's directory: a cwd
 under `.claude/worktrees/` is a crew, everything else a root session. A unit cost
 divides the spend by the count; the hour's divides only the dollars of the sessions that
-carry a duration. At every grouping of the `WHERE` panel a row with no source prints a
+carry a duration. The `WHERE` panel's count and pull-request columns change with the
+filter, as the `Components` frame draws them: a project's goals and merged pull requests,
+a goal's tasks and pull requests, a task's rounds and its one pull request, a role's share
+of the range and its API hours. At every grouping a row with no source prints a
 dash, never a zero, and the dollars nothing claims are a row of their own, which at the
 goal grouping is the largest bar. The page refuses what the research refuses: no quality
 rate (every round on record says `done`), no rework rate (two fix commits are noise),
