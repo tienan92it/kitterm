@@ -249,11 +249,25 @@ describe("the numbers on the headings", () => {
 describe("the number on a goal", () => {
   it("prints the records' summed Cost lines, no cache share, and nothing for a goal without one", () => {
     // Chartered by `agent-dashboard` round 6: read `$12.34 · 88% cached`.
-    expect(goalCost({ costUSD: 12.34, inTokens: 4_432_000, cacheReadTokens: 3_900_000 })).toBe("$12.34");
-    expect(goalCost({ costUSD: 0.41, inTokens: 0, cacheReadTokens: 0 })).toBe("$0.41");
-    expect(goalCost({ costUSD: 7.79 })).toBe("$7.79");
-    expect(goalCost({})).toBeNull();
-    expect(goalCost({ inTokens: 100 })).toBeNull();
+    // Chartered again by round 13: the sum was the route's all-time
+    // `costUSD`; it is now the `Cost:` lines of the records started in
+    // the range, so the same goal prices differently at 7d and 90d.
+    const range = { from: "2026-09-01", to: "2026-09-30" };
+    const rounds = [
+      { number: 1, started: "2026-08-20", costUSD: 100, correction: false },
+      { number: 2, started: "2026-09-10", costUSD: 12.0, correction: false },
+      { number: 3, started: "2026-09-12", costUSD: 0.34, correction: false },
+      { number: 4, started: "2026-09-14", correction: false },
+    ];
+    expect(goalCost({ rounds }, range)).toBe("$12.34");
+    expect(goalCost({ rounds }, { from: "2026-08-01", to: "2026-09-30" })).toBe("$112.34");
+    expect(goalCost({ rounds: [{ number: 1, started: "2026-09-01", costUSD: 0.41, correction: false }] }, range)).toBe("$0.41");
+    // A goal whose rounds in the range carry no line, one with no round
+    // in the range, one with no record, and a record with no start day.
+    expect(goalCost({ rounds: [rounds[3]] }, range)).toBeNull();
+    expect(goalCost({ rounds: [rounds[0]] }, range)).toBeNull();
+    expect(goalCost({}, range)).toBeNull();
+    expect(goalCost({ rounds: [{ number: 1, costUSD: 5, correction: false }] }, range)).toBeNull();
   });
 });
 

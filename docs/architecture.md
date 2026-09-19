@@ -241,15 +241,16 @@ object as posted with `ageSeconds`, and `stale` past an hour: a statusline rende
 while a session is active, so a reading ages whenever the human is away from every pane,
 stays exact while no other device spends the same account, and goes wrong silently when
 one does; an hour is a fifth of the shortest window. The page draws one bar per window
-as twenty text cells with the countdown to its reset, prints the age under the bars,
-keeps a stale reading's bars with the fill muted, draws a window past its reset empty,
-and says in words when no reading has ever arrived. Full grade only on both routes, like
-the bill and the rollup.
+as a track with a fill and the percentage beside it, the fill in the accent under 80 %
+and the fill and the percentage in the caution colour at 80 % and over, with the
+countdown to its reset, prints the age after the last bar, keeps a stale reading's
+fill grey, draws a window past its reset empty, and says in words when no reading has
+ever arrived. Full grade only on both routes, like the bill and the rollup.
 
 ### The numbers on the page
 
 The fleet view puts the rollup where the reader holds the work. Above the quota sits
-one panel: the range's total, marked `if billed at full API rate` because
+one panel, `USAGE`: the range's total, marked `if billed at full API rate` because
 `totalCostUSD` is the pay-as-you-go price on any plan and a subscriber pays a flat fee,
 one bar per day, and two radio groups, cost or tokens and 7, 30 or 90 days, whose
 choice the browser keeps. Under the bars the panel says what the numbers are made of:
@@ -299,9 +300,24 @@ of model time are the bills' `totalAPIDuration`, which the rollup now keeps per 
 beside `totalLinesAdded`, and the split by role reads the transcript's directory: a cwd
 under `.claude/worktrees/` is a crew, everything else a root session. A unit cost
 divides the spend by the count; the hour's divides only the dollars of the sessions that
-carry a duration. At every grouping of the `WHERE` panel a row with no source prints a
-dash, never a zero, and the dollars nothing claims are a row of their own, which at the
-goal grouping is the largest bar. The page refuses what the research refuses: no quality
+carry a duration. The `WHERE` panel's count and pull-request columns change with the
+filter, as the `Components` frame draws them: a project's goals and merged pull requests,
+a goal's tasks and pull requests, a task's working time (its rounds' wall time from their
+`Cost:` lines) and its one pull request, a role's share of the range and its API hours.
+The goal grouping lists every goal; the task grouping folds the rounds with no `Cost:`
+line and no pull request into one `N more rounds` row. At every grouping a row with no
+source prints a dash, never a zero, and the dollars nothing claims are a row of their
+own, which at the goal grouping is the largest bar.
+
+Every figure follows the one range the `USAGE` toggles set (7d, 30d, 90d), the same
+`from` and `to` the rollup answers: the band's spend, the four tiles and the summary line
+(the rollup and `GET /api/yield` are asked for it), `MODELS` (the rollup's split), a
+project's and a workspace's cost in the tree (the rollup's buckets), and every figure read
+from a round record — a goal's spend in `WHERE` and in the tree (`goalCost`), a task's
+row, and the `LEAKS` round counts — which `roundsInRange` filters by the record's
+`- Started:` day. A record with no start day is in no range. A toggle change asks the two
+routes and repaints every one of them at once (`sessions-range-page.test.ts`). The page
+refuses what the research refuses: no quality
 rate (every round on record says `done`), no rework rate (two fix commits are noise),
 and no money value for the human's time (nothing here knows their rate, and the page
 takes no input).

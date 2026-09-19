@@ -78,6 +78,9 @@ describe("MODELS names the top three and sums the rest", () => {
     for (const m of seven.slice(3)) expect(more.title, `Others covers ${m.name}`).toContain(`${m.name} $`);
     expect(more.fill, "measured against the same longest row as the three above it").toBeCloseTo(111.21 / 1388.5, 10);
     expect(panel.rows.map((r) => r.fill)).toEqual([1, 404.43 / 1388.5, 343.25 / 1388.5, more.fill]);
+    // Round 10 (the frame `Dashboard 390`): the phone prints the spend in
+    // whole dollars, `$1,283`, and no session count.
+    expect(panel.rows.map((r) => r.short)).toEqual(["$1,388", "$404", "$343", "$111"]);
   });
 
   it("the summed row's spend is the split's total less the top three, to the cent", () => {
@@ -127,7 +130,9 @@ describe("MODELS names the top three and sums the rest", () => {
     expect(modelsPanel(report([]))).toBeNull();
   });
 
-  it("a tail that sums past the leader is the first row and the longest bar; no bar is longer than the first", () => {
+  it("a tail that sums past the leader is still the last row, and the longest bar", () => {
+    // Round 10, the human's word: top three by cost, then the others as one
+    // row more, whatever its sum.
     const models = [
       model("a", "A", 100, 1),
       model("b", "B", 90, 1),
@@ -139,16 +144,17 @@ describe("MODELS names the top three and sums the rest", () => {
     ];
     const panel = modelsPanel(report(models))!;
     expect(panel.rows.map((r) => [r.name, r.spend, r.sessions, r.fill])).toEqual([
-      ["Others", "$240.00", "8 sessions", 1],
       ["A", "$100.00", "1 session", 100 / 240],
       ["B", "$90.00", "1 session", 90 / 240],
       ["C", "$80.00", "1 session", 80 / 240],
+      ["Others", "$240.00", "8 sessions", 1],
     ]);
-    expect(panel.rows.every((r) => r.fill <= panel.rows[0].fill)).toBe(true);
-    expect(panel.summary, "the phone's one line still names the dearest model, never the sum").toBe("by model · A $100.00");
+    expect(panel.rows[panel.rows.length - 1].key).toBe("more");
   });
 
-  it("the phone's one line is unchanged: the dearest model and its spend", () => {
-    expect(modelsPanel(report(seven))!.summary).toBe("by model · Fable 5.1 $1,388.50");
+  it("folds behind no summary line: the phone prints the rows themselves (round 10)", () => {
+    // Chartered in round 10: `summary` pinned the fold the frame does not
+    // draw; the panel now has rows and a note and nothing else.
+    expect(Object.keys(modelsPanel(report(seven))!).sort()).toEqual(["note", "rows"]);
   });
 });

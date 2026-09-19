@@ -118,7 +118,8 @@ theme. **Keep this. Build the foundation on it.**
 ## What the reference images show
 
 `00-quota-bars-reference.png` and `00-token-usage-reference.png`, which
-the human gave with the previous goal. Two things carry over and one
+the human gave with the previous goal and which stay beside this file as
+inputs, not as the design. Two things carry over and one
 does not.
 
 - **Carry over: a bar is a measure against a whole.** The quota bars

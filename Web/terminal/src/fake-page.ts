@@ -90,8 +90,19 @@ export class FakeElement {
   hasAttribute(name: string): boolean {
     return this.attributes.has(name);
   }
-  addEventListener(): void {}
-  removeEventListener(): void {}
+  /** The listeners `addEventListener` kept, by type, so a test can
+   * `click()` a control the page wired (round 13: the range toggles). */
+  listeners = new Map<string, Array<(event: unknown) => void>>();
+  addEventListener(type: string, fn: (event: unknown) => void): void {
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), fn]);
+  }
+  removeEventListener(type: string, fn: (event: unknown) => void): void {
+    this.listeners.set(type, (this.listeners.get(type) ?? []).filter((f) => f !== fn));
+  }
+  /** Run the click listeners, as a click on the element would. */
+  click(): void {
+    for (const fn of this.listeners.get("click") ?? []) fn({ preventDefault(): void {}, target: this });
+  }
   focus(): void {}
   closest(): null {
     return null;
@@ -127,6 +138,8 @@ export class FakeElement {
 export type FakePage = {
   /** The `#sessions` element the page paints into. */
   root: FakeElement;
+  /** Every URL the page fetched, query included, in order. */
+  requests: string[];
   /** The `document` the page sees; `title` is what the page set. */
   document: { title: string };
   /** Let the page's pending work run: a poll awaits five routes and the
@@ -140,11 +153,13 @@ export type FakePage = {
 
 /**
  * Install the lent DOM and the route stub before `sessions.ts` is imported.
- * `routes` maps a path (no query) to the JSON body it answers; a path not
- * in it answers 404. The test keeps the object and may replace its entries
- * between polls.
+ * `routes` maps a path (no query) to the JSON body it answers, or to a
+ * function of the query that answers it (round 13: a rollup per range); a
+ * path not in it answers 404. The test keeps the object and may replace
+ * its entries between polls.
  */
 export function installFakePage(routes: Record<string, unknown>): FakePage {
+  const requests: string[] = [];
   const root = new FakeElement("main");
   root.setAttribute("id", "sessions");
   const fakeDocument = {
@@ -181,8 +196,11 @@ export function installFakePage(routes: Record<string, unknown>): FakePage {
     return 0;
   });
   vi.stubGlobal("fetch", async (input: string | URL) => {
-    const path = String(input).replace(/\?.*$/, "");
-    const body = routes[path];
+    const url = String(input);
+    requests.push(url);
+    const path = url.replace(/\?.*$/, "");
+    const entry = routes[path];
+    const body = typeof entry === "function" ? (entry as (query: URLSearchParams) => unknown)(new URLSearchParams(url.replace(/^[^?]*\??/, ""))) : entry;
     if (body === undefined) return new Response("not found", { status: 404 });
     const json = JSON.stringify(body);
     // The daemon's knowledge route answers an ETag that moves with the
@@ -196,6 +214,7 @@ export function installFakePage(routes: Record<string, unknown>): FakePage {
   };
   return {
     root,
+    requests,
     document: fakeDocument,
     settle,
     poll: async () => {
