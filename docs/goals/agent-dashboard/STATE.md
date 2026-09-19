@@ -4,11 +4,19 @@
 - Round: 1 of 3 in this budget (fourth budget)
 - Rounds total: 10
 - Last floor: green (2026-09-18, round 10 after: Linux build, swift test 827, vitest 1411 in 52 files)
-- Updated: 2026-09-18, round 10 closed, PR open
+- Updated: 2026-09-19, the human approved the amended design; capability 11 queued
 
 ## Queue
 
-Empty. Capability 10 is done on `agent-dashboard/round-10`, PR pending merge.
+1. `the-approved-adjustments` (capability 11, the human's on 2026-09-19).
+   The human amended `dashboard.pen` and approved it: `MODELS` under
+   `QUOTA` with a divider below; the quota as bars with a caution state
+   at 80%; one name column across `QUOTA`, `MODELS` and `WHERE`; unit
+   costs as `/PR`, `/line`, `/API hour`; no actions on the page; the
+   disclosure triangle alone on project and goal rows, none on a
+   workspace; `•` pending; a green done mark. The `Components` frame
+   draws the quota bar in both states, `WHERE` at each filter, and the
+   row marks.
 
 ## Failures
 
@@ -170,7 +178,7 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-Merge the round 10 PR after the human reviews the shots beside the
-frames. Then the human decides: `goal.md` condition 6 (390 px under
+Round 11, `the-approved-adjustments`, on the open PR #134's branch so the
+human reviews one page. Then merge. Then the human decides: `goal.md` condition 6 (390 px under
 1200) against the frame's shape, which measures 2499 on the real tree;
 and the six crew choices in `rounds/010.md` where the frames are silent.

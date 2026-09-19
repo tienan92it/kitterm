@@ -20,7 +20,7 @@ so in its record. The file holds six frames:
 | `Palettes` | the palettes tried, and the one chosen, with the spinner candidates below |
 
 The file defines the tokens as document variables, so a round reads them
-from the file rather than from this prose: ten colours on a `theme` axis
+from the file rather than from this prose: eleven colours on a `theme` axis
 with `dark` and `light`, five space steps, three type sizes, two line
 heights, and the mono family. A crew cannot open the file; the foreman
 exports the frames it needs into the round's scratch directory and
@@ -61,12 +61,13 @@ Five, in order. When two conflict, the earlier one wins.
    first whose advance width matches the mark column: braille
    `⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏`, which matches the pane; quadrant `◐ ◓ ◑ ◒`;
    then the block ramp `▁ ▃ ▅ ▇`, which the chart already proves.
-5. **Colour marks what needs attention. A finished thing is grey.** Text
-   is one of three greys. Three colours appear on the one-character mark
-   at the start of a line, and nowhere else: the brand green for what is
-   alive, amber for what is blocked on a person, red for what is broken.
-   Done, pending and idle are grey, because they need nothing from the
-   reader.
+5. **Colour marks a state, and only on the mark.** Text is one of
+   three greys. Four colours appear on the one-character mark at the
+   start of a line, and nowhere else: the accent for what is alive,
+   green for what is done (the human's call of 2026-09-19), amber for
+   what is blocked on a person, red for what is broken. Pending and idle
+   are grey, because they need nothing from the reader. A disclosure
+   triangle is grey too: it is a control, not a state.
 
 ## Hierarchy
 
@@ -101,8 +102,8 @@ A task's state comes from one place each:
 |---|---|---|---|
 | working | `◐` turning, accent | `[working]` | a live session carries `task:<slug>` and `goal:<slug>` |
 | needs you | `?` warning | `[needs you]` | the agent's hook report, or a pending approval |
-| pending | `·` faint | `[pending]` | the slug appears in `## Queue` |
-| done | `✓` success | `[done]` | the slug appears in `## Done` |
+| pending | `•` faint | `[pending]` | the slug appears in `## Queue` |
+| done | `✓` success, green | `[done]` | the slug appears in `## Done` |
 | failed | `!` danger | `[failed]` | the slug appears in `## Failures` |
 | idle | `–` faint | `[idle]` | a session with no agent holding the tty |
 | waiting | `?` warning | `[waiting]` | a goal whose budget is spent |
@@ -220,21 +221,20 @@ theme, so the page sits in its world and a light terminal still works.
 The four colours that carry meaning are the page's own constants,
 chosen for hue separation rather than inherited by accident.
 
-`corpus/palette.md` holds the measurements and three candidates. The
-recommendation is **Flux**, pending the human's pick:
+`corpus/palette.md` holds the measurements. The human chose the Coolors
+palette on 2026-09-17 and amended it on 2026-09-19; the values are the
+`dashboard.pen` variables and this table repeats them:
 
-| Role | Flux | Why |
-|---|---|---|
-| `--ui-accent` working, bars | `#a78bfa` violet | 97° from its nearest state hue, so it never reads as one |
-| `--ui-success` done | `#34d399` | |
-| `--ui-warning` needs you | `#fbbf24` | |
-| `--ui-danger` failed | `#f87171` | |
+| Role | Dark | Light | Where |
+|---|---|---|---|
+| `accent` working, bars | `#2a9d8f` | `#1d7268` | the working mark, every bar, the quota fill under 80% |
+| `success` done | `#52b788` | `#2d6a4f` | the `✓` mark |
+| `warning` needs you | `#e9c46a` | `#8a6415` | the `?` mark, the unattributed WHERE row |
+| `danger` failed | `#e76f51` | `#b0472c` | the `!` mark |
+| `caution` quota high | `#f4a261` | `#b8641f` | the quota fill and its percentage at 80% and over |
 
-They paint the mark glyph. They never paint text, a background, or a
-border. Three hues sit at 128°, 43° and 351°, so the closest pair is
-52°, the widest of any palette drawn — because there are fewer colours
-competing. The lowest contrast ratio is 5.20, against 4.18 for the
-palette the page had, so the ratchet gains no `KNOWN_BELOW` entry.
+They paint a mark: a glyph, a bar, the tile's rule, or the one run of
+text that carries a state. They never paint a background or a border.
 
 ## The frame
 
