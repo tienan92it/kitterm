@@ -1,10 +1,10 @@
 # STATE: landing-page
 
-- Status: active
+- Status: done
 - Round: 2 of 3 in this budget (first budget)
 - Rounds total: 2
 - Last floor: green (2026-09-20, round 2 after: html-validate 0 errors, Chromium clean, Lighthouse 95/100/100/100)
-- Updated: 2026-09-20, round 2 closed, PR open
+- Updated: 2026-09-20, done: PR #135 merged, kitterm.dev serves the page
 
 ## Queue
 
@@ -43,6 +43,6 @@ daemon with a ledger." Approved 2026-09-20. The frames live in
 
 ## Next action
 
-The human reviews the PR's preview and merges; Cloudflare Pages
-deploys `main`. Then the goal is `done` when the six conditions hold
-on kitterm.dev.
+None. PR #135 merged as `47140d6`; kitterm.dev serves the six pages.
+To reopen: set `Status: active` and write a queue (the font proposal
+above is the candidate).
