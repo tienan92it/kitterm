@@ -4,11 +4,15 @@
 - Round: 1 of 3 in this budget (fifth budget)
 - Rounds total: 13
 - Last floor: green (2026-09-19, round 13 after: vitest 1438 in 55 files)
-- Updated: 2026-09-19, round 13 closed
+- Updated: 2026-09-20, four defects from the human's review queued
 
 ## Queue
 
-Empty. Rounds 10–13 are on PR #134.
+1. `four-defects-from-review` (the human's on 2026-09-20): a quota
+   window past its reset reads `resets … ago`; the working mark rests
+   on `●` and tries braille, where the design draws `◐ ◓ ◑ ◒`; the
+   fold rows' triangle sits off the row baseline; a done goal inside
+   the `N done` fold wears a triangle that opens nothing.
 
 ## Failures
 
@@ -181,8 +185,7 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-Merge PR #134. Then the human decides `goal.md` condition 6 and whether
-the goal is `done`. Then the human decides `goal.md` condition 6 (390 px
+Round 14, `four-defects-from-review`, on PR #134's branch. Then the human decides `goal.md` condition 6 (390 px
 under 1200; the design measures 2147 on the real tree) and whether to
 set the goal `done`. Then the human decides: `goal.md` condition 6 (390 px under
 1200) against the frame's shape, which measures 2499 on the real tree;
