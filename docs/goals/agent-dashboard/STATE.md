@@ -1,10 +1,10 @@
 # STATE: agent-dashboard
 
-- Status: active
+- Status: done
 - Round: 2 of 3 in this budget (sixth budget)
 - Rounds total: 17
 - Last floor: green (2026-09-20, round 17 after: vitest 1449 in 58 files)
-- Updated: 2026-09-20, round 17 closed
+- Updated: 2026-09-20, done: PR #134 merged, v0.31.0 released and running
 
 ## Queue
 
@@ -194,10 +194,7 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-Merge PR #134 (rounds 10–17). Then the human decides the proposals
-above and whether the goal is `done`. Then the human decides the proposals
-above and whether the goal is `done`. Then the human decides `goal.md` condition 6 (390 px
-under 1200; the design measures 2147 on the real tree) and whether to
-set the goal `done`. Then the human decides: `goal.md` condition 6 (390 px under
-1200) against the frame's shape, which measures 2499 on the real tree;
-and the six crew choices in `rounds/010.md` where the frames are silent.
+None. Seventeen rounds, PRs #125–#134, released as v0.30.0 and v0.31.0.
+The page is the human's design in `corpus/dashboard.pen`. Four
+proposals wait above; to reopen for one, set `Status: active` and
+write it as the queue.
