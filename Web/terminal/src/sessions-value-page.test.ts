@@ -187,6 +187,32 @@ describe("the panels", () => {
     await page.poll();
   });
 
+  it("QUOTA draws a window past its reset in the faint grey at its last value, its reset cell the word and the reading's age", async () => {
+    // Round 14: a stale reading whose session window reset 1d 17h ago.
+    // The page never prints `resets … ago`; the fill and the percentage
+    // are idle marks, the faint grey, and the weekly prints as today.
+    const now = Math.floor(Date.now() / 1000);
+    routes["/api/usage/limits"] = {
+      ok: true, hasReading: true, receivedAt: Date.now() - (43 * 3600 + 12 * 60) * 1000, ageSeconds: 43 * 3600 + 12 * 60, stale: true,
+      rateLimits: { five_hour: { used_percentage: 91, resets_at: now - (41 * 3600 + 5 * 60) }, seven_day: { used_percentage: 27, resets_at: now + 38 * 3600 + 30 } },
+    };
+    await page.poll();
+    const quota = panelNamed("quota");
+    const bars = quota.querySelectorAll(".quota-bar");
+    expect(bars.map((b) => b.className)).toEqual(["quota-bar reset", "quota-bar stale"]);
+    expect(bars.map((b) => [b.querySelector(".quota-percent")?.textContent, b.querySelector(".quota-reset")?.textContent])).toEqual([
+      ["91%", "reset · read 1d 19h ago"], ["27%", "resets 1d 14h"],
+    ]);
+    expect(quota.textContent).not.toMatch(/resets [^·]* ago/);
+    expect(bars.map((b) => b.querySelector(".quota-track")?.children.map((c) => (typeof c === "string" ? c : `${c.className} ${(c.style as { width?: string }).width}`)))).toEqual([
+      ["mark bar quota-fill idle 91%"], ["mark bar quota-fill idle 27%"],
+    ]);
+    expect(bars.map((b) => b.querySelector(".quota-percent")?.querySelectorAll(".mark").map((m) => m.className))).toEqual([["mark idle wide"], []]);
+    expect(bars.map((b) => b.querySelector(".quota-reset")?.querySelectorAll(".mark"))).toEqual([[], []]);
+    routes["/api/usage/limits"] = { ok: true, hasReading: false };
+    await page.poll();
+  });
+
   it("VALUE prints four tiles behind an accent rule, their nouns in two forms, and one note naming the scope and the span", () => {
     const value = panelNamed("value");
     // kitterm is the one checkout, $950 of the fleet's $1,000: its unit

@@ -101,7 +101,7 @@ export class FakeElement {
   }
   /** Run the click listeners, as a click on the element would. */
   click(): void {
-    for (const fn of this.listeners.get("click") ?? []) fn({ preventDefault(): void {}, target: this });
+    for (const fn of this.listeners.get("click") ?? []) fn({ preventDefault(): void {}, stopPropagation(): void {}, target: this });
   }
   focus(): void {}
   closest(): null {

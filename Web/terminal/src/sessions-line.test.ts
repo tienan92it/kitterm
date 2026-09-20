@@ -60,9 +60,12 @@ describe("the state vocabulary", () => {
     expect(rowLine(row("r", { mergedState: "needs-input", lastOutputAt: NOW }), NOW).state).toBe("[needs you]");
   });
 
-  it("prints one character per mark, and never a box: the working mark's rest is the spinner's", () => {
+  it("prints one character per mark, and never a box: the working mark rests on the quadrant the design draws", () => {
+    // Round 14: `◐`, the rest of the quadrant cycle and the legend's
+    // working mark; chartered, it replaced the `>` of the measured
+    // fallback.
     expect((["attention", "failed", "done", "pending", "idle", "unknown", "running"] as const).map(markGlyph)).toEqual([
-      "?", "!", "✓", "•", "–", "–", ">",
+      "?", "!", "✓", "•", "–", "–", "◐",
     ]);
     // The pending mark is the bullet, U+2022, not the middle dot.
     expect(markGlyph("pending").codePointAt(0)).toBe(0x2022);
@@ -85,7 +88,7 @@ describe("the state vocabulary", () => {
 
   it("prints the whole vocabulary in the tree's header, in the foundation's order", () => {
     expect(VOCABULARY.map((v) => v.tag)).toEqual(["[working]", "[needs you]", "[pending]", "[done]", "[failed]", "[idle]"]);
-    expect(VOCABULARY.map((v) => markGlyph(v.family))).toEqual([">", "?", "•", "✓", "!", "–"]);
+    expect(VOCABULARY.map((v) => markGlyph(v.family))).toEqual(["◐", "?", "•", "✓", "!", "–"]);
   });
 });
 

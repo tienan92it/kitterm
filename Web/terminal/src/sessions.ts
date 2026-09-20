@@ -76,8 +76,8 @@ import {
   type WherePanel,
   type YieldReport,
 } from "./sessions-value";
-import { sessionFactColumns, tree, visibleLines, type TreeLine, type TreeSection } from "./sessions-tree";
-import { canvasMeasure, type Cycle, FRAME_MS, frameAt, pickCycle } from "./spinner";
+import { isOpen, sessionFactColumns, tree, visibleLines, type TreeLine, type TreeSection } from "./sessions-tree";
+import { FRAME_MS, frameAt, QUADRANT } from "./spinner";
 import { loadSettings } from "./settings-store";
 import { applyThemeTokens } from "./theme-tokens";
 import { findThemeById } from "./themes";
@@ -199,10 +199,11 @@ let failedPolls = 0;
 let watchOnly = false;
 /** The folds the user opened, by key; a rebuild keeps them. */
 const foldsOpen = new Set<string>();
-/** The projects and goals whose triangle the reader closed, by the tree
- * line's key (`visibleLines`); a rebuild keeps them. Every row starts
- * open, as the frame draws it. */
-const closedRows = new Set<string>();
+/** The projects and goals whose triangle the reader clicked, by the tree
+ * line's key (`visibleLines`, `isOpen`); a rebuild keeps them. Every row
+ * starts open, as the frame draws it, but a done goal inside the `N done`
+ * fold, which starts closed; a key here flips its line's default. */
+const toggledRows = new Set<string>();
 /** The knowledge summary of each registered project, by id, with the ETag
  * the daemon gave it: an unchanged package answers 304 and repaints nothing. */
 const knowledge = new Map<string, KnowledgeEntry>();
@@ -574,7 +575,7 @@ function render(): void {
     archives.map((a) => a.id),
     [...knowledge].map(([id, entry]) => [id, entry.etag, entry.goals === null]),
     [...restartDismissed],
-    [...closedRows],
+    [...toggledRows],
     started,
     watchOnly,
     quota,
@@ -858,7 +859,9 @@ function usageToggles(kind: "mode" | "span", panel: UsagePanel): HTMLElement {
  * reset, `· read just now`. Under 80 % the fill wears the accent; at 80 %
  * and over the fill and the percentage wear the caution and the label and
  * the reset keep their colour (`quotaLevel`); a stale reading's fill is
- * grey. The track is hidden from a screen reader, which gets the label,
+ * grey, and a window past its reset draws its fill and its percentage in
+ * the faint grey at the last value, with `reset · read 1d 19h ago` in the
+ * reset cell. The track is hidden from a screen reader, which gets the label,
  * the number and the countdown as words. With no bar the panel's content
  * is the sentence that says why (`quotaPanel`).
  */
@@ -888,18 +891,21 @@ function paintQuota(panel: QuotaPanel | null): void {
       track.className = "quota-track";
       track.setAttribute("aria-hidden", "true");
       // The fill is a mark with no character: a shape whose length is the
-      // share, in the accent, the caution, or the grey of a stale reading.
+      // share, in the accent, the caution, or the grey of a stale reading
+      // and of a window past its reset.
       const fill = document.createElement("span");
       // No `running` here: `.mark.bar` is the accent, and the spinner's
       // ticker writes its frame into every `.mark.running`.
-      fill.className = `mark bar quota-fill${bar.state === "stale" ? " idle" : bar.level === "caution" ? " caution" : ""}`;
+      fill.className = `mark bar quota-fill${bar.state !== "fresh" ? " idle" : bar.level === "caution" ? " caution" : ""}`;
       fill.style.width = `${Math.round(bar.fill * 1000) / 10}%`;
       track.append(fill);
       const percent = document.createElement("span");
       percent.className = "quota-percent";
       // The percentage is a run of text that carries the caution, and is
-      // plain text under it.
-      if (bar.level === "caution" && bar.state !== "reset") percent.append(span("mark caution wide", bar.percent));
+      // plain text under it; past the reset it wears the faint grey of an
+      // idle mark, at the last value, like its fill.
+      if (bar.state === "reset") percent.append(span("mark idle wide", bar.percent));
+      else if (bar.level === "caution") percent.append(span("mark caution wide", bar.percent));
       else percent.textContent = bar.percent;
       const reset = document.createElement("span");
       reset.className = "quota-reset";
@@ -1331,7 +1337,7 @@ function sectionElement(section: TreeSection<SessionRow>): HTMLElement {
   const el = document.createElement("section");
   el.className = "tree-section";
   el.setAttribute("aria-label", section.label);
-  el.append(...visibleLines(section.lines, closedRows).map(lineElement));
+  el.append(...visibleLines(section.lines, toggledRows).map(lineElement));
   return el;
 }
 
@@ -1390,10 +1396,11 @@ function disclosure(open: boolean): HTMLElement {
 }
 
 /** A project's or a goal's triangle: a button that folds what sits under
- * the line (`visibleLines`) and opens it again, kept in `closedRows`
+ * the line (`visibleLines`) and opens it again, kept in `toggledRows`
  * across repaints. Not an action: it moves nothing but the page. */
-function disclosureButton(key: string, name: string): HTMLElement {
-  const open = !closedRows.has(key);
+function disclosureButton(line: Extract<TreeLine<SessionRow>, { kind: "project" | "goal" }>): HTMLElement {
+  const { key, name } = line;
+  const open = isOpen(line, toggledRows);
   const b = document.createElement("button");
   b.type = "button";
   b.className = "mark disclosure";
@@ -1404,8 +1411,8 @@ function disclosureButton(key: string, name: string): HTMLElement {
   b.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
-    if (closedRows.has(key)) closedRows.delete(key);
-    else closedRows.add(key);
+    if (toggledRows.has(key)) toggledRows.delete(key);
+    else toggledRows.add(key);
     lastSignature = "";
     render();
   });
@@ -1427,7 +1434,7 @@ function lineElement(line: TreeLine<SessionRow>): HTMLElement {
       // is its `1 agent` fact, not a spinner.
       const name = document.createElement(line.depth === 0 ? "h2" : "h3");
       name.textContent = line.name;
-      return lineShell(line, "line-project", line.children ? disclosureButton(line.key, line.name) : blankMark(), lineMain(line, name));
+      return lineShell(line, "line-project", line.children ? disclosureButton(line) : blankMark(), lineMain(line, name));
     }
     case "goal": {
       const name = document.createElement("a");
@@ -1443,7 +1450,7 @@ function lineElement(line: TreeLine<SessionRow>): HTMLElement {
         name.setAttribute("aria-label", line.proposed.record ? recordName(line.proposed.record, line.project.name, goal) : proposalsName(line.proposed.count, line.project.name, goal));
         name.title = [proposedLabel(line.proposed.count), line.proposed.decision].filter((t): t is string => t !== null).join(": ");
       }
-      const el = lineShell(line, "goal-line", line.children ? disclosureButton(line.key, line.name) : blankMark(), lineMain(line, name));
+      const el = lineShell(line, "goal-line", line.children ? disclosureButton(line) : blankMark(), lineMain(line, name));
       if (line.proposed) el.dataset.needs = "proposed";
       return el;
     }
@@ -1461,7 +1468,8 @@ function lineElement(line: TreeLine<SessionRow>): HTMLElement {
       return wrap;
     }
     case "fold":
-      return foldElement(line.key, line.name, line.depth, () => line.lines.map(lineElement));
+      // The done goals inside, each closed until its triangle is clicked.
+      return foldElement(line.key, line.name, line.depth, () => visibleLines(line.lines, toggledRows).map(lineElement));
   }
 }
 
@@ -1631,16 +1639,10 @@ function mark(family: MarkFamily, rest = false): HTMLElement {
 //
 // The one thing on the page that moves (`design-foundation.md`, principle
 // 4): a character cycle at `FRAME_MS`, not a CSS transition. The cycle is
-// picked once, by measuring each candidate's glyphs against the mark
-// column in the page's own font (`pickCycle`), so a face without braille
-// gets the quadrants or the block ramp and never a box. Under
-// `prefers-reduced-motion` the ticker does not run and every working mark
-// rests on the cycle's full glyph.
+// the quadrants the design draws (`QUADRANT`), and the mark rests on `◐`
+// under `prefers-reduced-motion`, where the ticker does not run.
 
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
-/** The cycle the page's font fits; undefined until measured, null when
- * none fits and the mark stays on the model's `>`. */
-let cycle: Cycle | null | undefined;
 let tick = 0;
 let ticker: ReturnType<typeof setInterval> | null = null;
 
@@ -1648,34 +1650,21 @@ function reducedMotion(): boolean {
   return typeof matchMedia === "function" ? matchMedia(REDUCED_MOTION_QUERY).matches : false;
 }
 
-/** The cycle, measured on first use: the body's computed font is the
- * marks' font, and the column is one cell of it. */
-function spinnerCycle(): Cycle | null {
-  if (cycle !== undefined) return cycle;
-  const font = typeof getComputedStyle === "function" ? getComputedStyle(document.body).font : "";
-  const measure = font ? canvasMeasure(font) : null;
-  cycle = measure ? pickCycle(measure, measure("0")) : null;
-  return cycle;
-}
-
 /** What a working mark prints now: the current frame, or the rest glyph
  * when motion is reduced or the mark is one that stands still. */
 function workingGlyph(rest: boolean): string {
-  const picked = spinnerCycle();
-  if (!picked) return markGlyph("running");
-  return rest || reducedMotion() ? picked.rest : frameAt(picked, tick);
+  return rest || reducedMotion() ? QUADRANT.rest : frameAt(QUADRANT, tick);
 }
 
 /** Start or stop the ticker to match the motion preference. Every working
  * mark on the page takes the frame on each tick; a repaint paints the
  * same frame, so the marks never disagree. */
 function syncSpinner(): void {
-  const picked = spinnerCycle();
-  const run = picked !== null && !reducedMotion();
+  const run = !reducedMotion();
   if (run && ticker === null) {
     ticker = setInterval(() => {
       tick += 1;
-      const frame = frameAt(picked, tick);
+      const frame = frameAt(QUADRANT, tick);
       for (const el of root?.querySelectorAll(".mark.running:not(.rest):not(.wide)") ?? []) el.textContent = frame;
     }, FRAME_MS);
   } else if (!run && ticker !== null) {

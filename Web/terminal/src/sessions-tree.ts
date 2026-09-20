@@ -24,7 +24,10 @@
  * A workspace wears no mark. A project and a goal wear the disclosure
  * triangle alone, never a state (round 11, the Components frame):
  * `children` says whether there is anything under the line to fold, and
- * `visibleLines` hides what sits under a closed one.
+ * `visibleLines` hides what sits under a closed one. A done goal inside
+ * the `N done` fold is the same line shape and opens to all its tasks;
+ * it starts closed (`closed`), and a goal with no task wears no mark
+ * (round 14, rule A).
  */
 
 import {
@@ -103,7 +106,10 @@ export type TreeLine<R extends ModelRow> =
    * tooltip. */
   | (TreeLineBase & { kind: "project"; project: ProjectRef | null; children: boolean })
   /** `href` opens the latest record, else `STATE.md`. `proposed` is the
-   * item whose `N proposals` ride on the name's tooltip. */
+   * item whose `N proposals` ride on the name's tooltip. `closed` is set
+   * on a goal inside the `N done` fold, which starts closed where every
+   * other line starts open; a key in `visibleLines`'s set flips the
+   * line's default either way. */
   | (TreeLineBase & {
       kind: "goal";
       project: ProjectRef;
@@ -111,6 +117,7 @@ export type TreeLine<R extends ModelRow> =
       children: boolean;
       href: string;
       proposed: ProposedItem | null;
+      closed?: true;
     })
   | (TreeLineBase & { kind: "task"; mark: MarkFamily })
   /** A session: the mark is its state's, the approvals are the lines
@@ -227,12 +234,15 @@ export function tree<R extends ModelRow>(input: TreeInput<R>): Tree<R> {
     owned: R[],
     depth: number,
     bucket: "working" | "pending",
+    folded = false,
   ): TreeLine<R>[] => {
     const summary = line.summary;
     const item = proposed.find((p) => p.project.id === project.id && p.summary.slug === summary.slug) ?? null;
     const word = goalTag(bucket, line.status, item !== null);
     const { tasks, rest } = taskLines(summary, goalRows, owned);
-    const shown = shownTasks(tasks);
+    // A goal inside the `N done` fold opens to all its tasks; one outside
+    // it shows its first two done ones.
+    const shown = folded ? tasks : shownTasks(tasks);
     const children: TreeLine<R>[] = [];
     for (const task of shown) {
       children.push({
@@ -263,6 +273,7 @@ export function tree<R extends ModelRow>(input: TreeInput<R>): Tree<R> {
       href: knowledgeUrl(project.id, item?.path ?? recordPath(summary) ?? statePath(summary)),
       proposed: item,
     };
+    if (folded) head.closed = true;
     return [head, ...children];
   };
 
@@ -314,7 +325,7 @@ export function tree<R extends ModelRow>(input: TreeInput<R>): Tree<R> {
         title: null,
         state: null,
         facts: [],
-        lines: folded.map((goal) => goalLines(doneGoalLine(goal), [], p.project!, owned, depth + 1, "pending")[0]),
+        lines: folded.flatMap((goal) => goalLines(doneGoalLine(goal), [], p.project!, owned, depth + 1, "pending", true)),
       });
     }
     head.children = lines.length > 1;
@@ -386,22 +397,31 @@ function doneGoalLine(summary: KnowledgeSummary): GoalLine {
   return { summary, title: goalTitle(summary), unwritten: false, status: "done", round: null, next: nextLine(summary.nextAction) };
 }
 
+/** Whether a project's or a goal's line is open: every line starts open
+ * but a goal inside the `N done` fold (`closed`), and a key in `toggled`
+ * flips its line's default. */
+export function isOpen<R extends ModelRow>(line: TreeLine<R>, toggled: ReadonlySet<string>): boolean {
+  const closedByDefault = line.kind === "goal" && line.closed === true;
+  return closedByDefault === toggled.has(line.key);
+}
+
 /**
  * The lines a section paints: every line, less what sits under a project
- * or a goal in `closed` (by `key`). A line is under another when it
- * follows it at a greater depth, until the next line at the same depth or
- * less, so a closed goal hides its tasks and their sessions, and a closed
- * project hides everything down to its `N done` fold. A workspace is
- * always open and a closed key of any other kind changes nothing.
+ * or a goal that is not open (`isOpen`; `toggled` holds the keys the reader
+ * clicked). A line is under another when it follows it at a greater
+ * depth, until the next line at the same depth or less, so a closed goal
+ * hides its tasks and their sessions, and a closed project hides
+ * everything down to its `N done` fold. A workspace is always open and a
+ * key of any other kind changes nothing.
  */
-export function visibleLines<R extends ModelRow>(lines: readonly TreeLine<R>[], closed: ReadonlySet<string>): TreeLine<R>[] {
+export function visibleLines<R extends ModelRow>(lines: readonly TreeLine<R>[], toggled: ReadonlySet<string>): TreeLine<R>[] {
   const out: TreeLine<R>[] = [];
   let hideBelow: number | null = null;
   for (const line of lines) {
     if (hideBelow !== null && line.depth > hideBelow) continue;
     hideBelow = null;
     out.push(line);
-    if ((line.kind === "project" || line.kind === "goal") && closed.has(line.key)) hideBelow = line.depth;
+    if ((line.kind === "project" || line.kind === "goal") && !isOpen(line, toggled)) hideBelow = line.depth;
   }
   return out;
 }

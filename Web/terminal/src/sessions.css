@@ -153,12 +153,16 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 /* The disclosure triangle, `▼` open and `▶` closed, on a project's line, a
    goal's and a fold's: the faint grey, never a state, at its own smaller
    size in the same column. On a project or a goal it is a button that folds
-   what sits under the line; on a fold it is the summary's glyph. */
+   what sits under the line; on a fold it is the summary's glyph. The cell
+   is `--line-h` tall and centres its glyph, so the triangle sits on the
+   row's centre whether it is a button, which centres its text on its own,
+   or a span, which put the glyph at the top of the cell (round 14). */
 .mark.disclosure {
   font-size: var(--mark-size-disclosure); background: var(--ui-text-faint);
   -webkit-background-clip: text; background-clip: text;
   border: none; padding: 0; margin: 0; cursor: pointer; appearance: none;
   min-height: var(--line-h); font-family: inherit; font-weight: inherit;
+  display: inline-flex; align-items: center;
 }
 /* A run of text that is a mark: the band's `2` and `4`, the quota's `87%`,
    the unattributed row's name and spend. Inline, as wide as its text, in
@@ -429,7 +433,10 @@ a.line-name:hover { text-decoration: underline; text-underline-offset: 2px; }
 .main > [data-col="2"] { grid-column: 3; }
 .main > [data-col="3"] { grid-column: 4; }
 .main > [data-col="4"] { grid-column: 5; }
-/* A fold's summary line has no columns. */
+/* A fold's summary is a `.line` like every other row: the `.line` rule
+   lays it out (the mark cell, the indent on the name, `--line-h` tall,
+   centred), and nothing here sets a display, a height or an alignment of
+   its own. It has no columns. */
 .line-fold .main { display: flex; }
 .line-fold .line-name { color: var(--ui-text-muted); }
 

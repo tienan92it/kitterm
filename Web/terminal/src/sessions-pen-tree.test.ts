@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { type FakeElement, installFakePage, type FakePage } from "./fake-page";
 import { type Approval, type KnowledgeSummary, type ModelRow, type ProjectSummary, type UsageDaily } from "./sessions-model";
-import { goalFactColumns, headingFactColumns, sessionFactColumns, taskFactColumns, tree, visibleLines, type TreeLine } from "./sessions-tree";
+import { goalFactColumns, headingFactColumns, isOpen, sessionFactColumns, taskFactColumns, tree, visibleLines, type TreeLine } from "./sessions-tree";
 
 /**
  * The tree as the frames `Dashboard 1200` and `Dashboard 390` draw it
@@ -253,7 +253,7 @@ describe("the painted tree", () => {
       "mark disclosure", "mark done", "mark done", "mark disclosure", "mark blank", "mark blank",
     ]);
     expect(lines.map((l) => l.querySelector(".mark")?.textContent)).toEqual([
-      "▼", "?", ">", "▼", "•", "•", "•", "✓", "✓", "▼", "✓", "✓", "▶", "", "",
+      "▼", "?", "◐", "▼", "•", "•", "•", "✓", "✓", "▼", "✓", "✓", "▶", "", "",
     ]);
     // The triangle on a project or a goal is a button that says what it
     // folds; a fold's is its summary's glyph.
@@ -333,5 +333,88 @@ describe("the painted tree", () => {
     expect(page.root.querySelector(".tree-head")?.querySelector(".tree-label")?.textContent).toBe("SESSIONS");
     expect(page.root.querySelector('[id="needs-you"]')?.className).toBe("line line-approval");
     expect(page.root.querySelectorAll(".band-cell").find((c) => c.classList.contains("needs"))?.tagName).toBe("A");
+  });
+});
+
+// --- a done goal inside the fold ---------------------------------------------
+
+/** Three done goals under nghenhan-mt5: the latest, which shows open with
+ * two of its three done tasks; `bars`, folded, with two tasks; `bare`,
+ * folded, with none. */
+const mt5Goals: KnowledgeSummary[] = [
+  {
+    project: "mt5", slug: "latest", goal: "latest", status: "done", round: 3, budget: 3,
+    tasks: [{ slug: "l-a", state: "done", round: 3, pr: 9 }, { slug: "l-b", state: "done", round: 2, pr: 8 }, { slug: "l-c", state: "done", round: 1 }],
+    rounds: [{ number: 3, started: "2026-09-18", correction: false }],
+  },
+  {
+    project: "mt5", slug: "bars", goal: "bars", status: "done", round: 2, budget: 3,
+    tasks: [{ slug: "b-a", state: "done", round: 2, pr: 5 }, { slug: "b-b", state: "done", round: 1, pr: 4 }, { slug: "b-c", state: "done", round: 1 }],
+    rounds: [{ number: 2, started: "2026-09-10", correction: false }],
+  },
+  { project: "mt5", slug: "bare", goal: "bare", status: "done", round: 1, budget: 3, rounds: [{ number: 1, started: "2026-09-09", correction: false }] },
+];
+
+describe("a done goal inside the N done fold", () => {
+  // Round 14, rule A of the Components frame: a goal with tasks is a
+  // disclosure and opens to its tasks, inside the fold too; a goal with
+  // no task wears no mark. Chartered, the fold used to hold the goal's
+  // head line alone, its triangle opening nothing.
+  const built = tree({ rows: [], projects: [mt5], goalsOf: (id) => (id === "mt5" ? mt5Goals : null), approvals: [], proposed: [], usage: null, now: NOW });
+  const [section] = built.sections;
+  const fold = section.lines[section.lines.length - 1];
+
+  it("carries all its tasks under it, the same line shape as a goal outside the fold, and starts closed", () => {
+    expect(section.lines.map(shape)).toEqual([
+      [0, "nghenhan-mt5", null, []],
+      [1, "latest", "[done]", ["r3/3@2!"]],
+      [2, "l-a", "[done]", ["round 3@2!", "PR #9@3"]],
+      [2, "l-b", "[done]", ["round 2@2!", "PR #8@3"]],
+      [1, "▸ 2 done", null, []],
+    ]);
+    expect(fold.kind === "fold" && fold.lines.map(shape)).toEqual([
+      [1, "bars", "[done]", ["r2/3@2!"]],
+      [2, "b-a", "[done]", ["round 2@2!", "PR #5@3"]],
+      [2, "b-b", "[done]", ["round 1@2!", "PR #4@3"]],
+      [2, "b-c", "[done]", ["round 1@2!"]],
+      [1, "bare", "[done]", ["r1/3@2!"]],
+    ]);
+    const [bars, , , , bare] = fold.kind === "fold" ? fold.lines : [];
+    expect(bars.kind === "goal" && [bars.children, bars.closed, bars.href]).toEqual([true, true, "/api/projects/mt5/knowledge/bars/STATE.md"]);
+    expect(bare.kind === "goal" && [bare.children, bare.closed]).toEqual([false, true]);
+    // The goal outside the fold starts open, as before.
+    const latest = section.lines[1];
+    expect(latest.kind === "goal" && [latest.children, latest.closed]).toEqual([true, undefined]);
+    expect([isOpen(latest, new Set()), isOpen(bars, new Set()), isOpen(bars, new Set(["goal:mt5:bars"]))]).toEqual([true, false, true]);
+  });
+
+  it("hides its tasks until its key is toggled, and shows them all then", () => {
+    const names = (toggled: string[]) => (fold.kind === "fold" ? visibleLines(fold.lines, new Set(toggled)).map((l) => `${l.depth}:${l.name}`) : []);
+    expect(names([])).toEqual(["1:bars", "1:bare"]);
+    expect(names(["goal:mt5:bars"])).toEqual(["1:bars", "2:b-a", "2:b-b", "2:b-c", "1:bare"]);
+    // The same key on the goal outside the fold closes it.
+    expect(visibleLines(section.lines, new Set(["goal:mt5:latest"])).map((l) => `${l.depth}:${l.name}`)).toEqual(["0:nghenhan-mt5", "1:latest", "1:2 done"]);
+  });
+
+  it("paints the goal with tasks as a closed triangle that opens to them, and the goal without as a blank mark", async () => {
+    const was = routes["/api/projects/mt5/knowledge"];
+    routes["/api/projects/mt5/knowledge"] = { ok: true, project: "mt5", goals: mt5Goals };
+    await page.poll();
+    const workspace = page.root.querySelector(".tree")!.querySelectorAll(".tree-section")[1];
+    const fold = workspace.querySelectorAll(".fold").find((f) => f.querySelector("summary")?.querySelector(".line-name")?.textContent === "2 done")!;
+    expect(fold.querySelector("summary")?.className).toBe("line line-fold");
+    const inside = () => fold.querySelector(".fold-body")!.querySelectorAll(".line").map((l) => `${l.querySelector(".mark")?.tagName}.${l.querySelector(".mark")?.className}:${l.querySelector(".line-name")?.textContent}`);
+    expect(inside()).toEqual(["BUTTON.mark disclosure:bars", "SPAN.mark blank:bare"]);
+    const triangle = fold.querySelector(".fold-body")!.querySelector("button")!;
+    expect([triangle.textContent, triangle.getAttribute("aria-expanded"), triangle.getAttribute("aria-label")]).toEqual(["▶", "false", "Open bars"]);
+    triangle.click();
+    await page.settle();
+    const opened = page.root.querySelector(".tree")!.querySelectorAll(".tree-section")[1].querySelectorAll(".fold").find((f) => f.querySelector("summary")?.querySelector(".line-name")?.textContent === "2 done")!;
+    expect(opened.querySelector(".fold-body")!.querySelectorAll(".line").map((l) => `${l.querySelector(".mark")?.className}:${l.querySelector(".line-name")?.textContent}`)).toEqual([
+      "mark disclosure:bars", "mark done:b-a", "mark done:b-b", "mark done:b-c", "mark blank:bare",
+    ]);
+    expect(opened.querySelector(".fold-body")!.querySelector("button")?.textContent).toBe("▼");
+    routes["/api/projects/mt5/knowledge"] = was;
+    await page.poll();
   });
 });

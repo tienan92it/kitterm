@@ -926,14 +926,13 @@ export function markFamily(state: MergedState): MarkFamily {
 
 /** The one character a mark prints (`design-foundation.md`, Hierarchy):
  * `?` for what waits on a person, `!` for what failed, `✓` for what is
- * done, `•` for what is pending, `–` for what is idle or unknown. A working
- * mark turns through the spinner's frames (`spinner.ts`) and rests on the
- * cycle's full glyph; the `>` here is what it prints when no cycle's glyphs
- * fit the mark column, so the page never shows a box. */
+ * done, `•` for what is pending, `–` for what is idle or unknown, and `◐`
+ * for what is working: the quadrant the mark rests on, which the page
+ * turns through the cycle in `spinner.ts`. */
 export function markGlyph(family: MarkFamily): string {
   switch (family) {
     case "running":
-      return ">";
+      return "◐";
     case "attention":
       return "?";
     case "failed":
@@ -1723,10 +1722,14 @@ export type QuotaBar = {
   /** The share of the bar that is full, 0 to 1. */
   fill: number;
   level: QuotaLevel;
-  /** `24%`, or `reset` once `resets_at` has passed. */
+  /** `24%`; a window past its reset keeps its last number. */
   percent: string;
-  /** `resets 49m`, or `12m ago` once the window has reset. */
+  /** `resets 49m`, or `reset · read 1d 19h ago` once the window has
+   * reset: the word and the reading's age, never a countdown that ran
+   * out. */
   reset: string;
+  /** `reset` once `resets_at` has passed: the page draws the bar and the
+   * number in the faint grey, at the last value. */
   state: QuotaState;
 };
 
@@ -1774,6 +1777,14 @@ export function quotaAge(receivedAt: number, now: number): string {
   return span === "now" ? "read just now" : `read ${span} ago`;
 }
 
+/** The reading's age as a window past its reset prints it, from the
+ * daemon's own `ageSeconds` (else from `receivedAt`), in the countdown's
+ * two units: `read 1d 19h ago`; `read just now` under a minute. */
+export function quotaReadAge(limits: Pick<UsageLimits, "ageSeconds" | "receivedAt">, now: number): string {
+  const ms = typeof limits.ageSeconds === "number" ? limits.ageSeconds * 1000 : now - (limits.receivedAt ?? now);
+  return ms < 60_000 ? "read just now" : `read ${countdown(ms)} ago`;
+}
+
 /**
  * The quota panel, read at `now`, or null when the page has nothing to
  * draw: no answer from the route (a daemon too old to have it, or a watch
@@ -1782,12 +1793,14 @@ export function quotaAge(receivedAt: number, now: number): string {
  * A daemon never given a reading says so in words, and names the command
  * that teaches the statusline to post one. A reading with no window says
  * that too: Claude Code gives an API-key account none, and a session none
- * before its first response. A window whose `resets_at` has passed draws
- * an empty bar and says `reset`, because the number it carried is about a
- * window that no longer exists; the statusline drops such a window on its
- * next render, and the bar goes with it. A stale reading keeps its bars,
- * and the note says how old they are, because a bar from three hours ago
- * is still the account's last known state while the note stands beside it.
+ * before its first response. A window whose `resets_at` has passed keeps
+ * its last number and its bar, both in the faint grey, and its reset cell
+ * says `reset · read 1d 19h ago`: the window is over and this is how old
+ * the word is. Never `resets … ago` (round 14, the human's word). The
+ * statusline drops such a window on its next render, and the bar goes
+ * with it. A stale reading keeps its bars, and the note says how old they
+ * are, because a bar from three hours ago is still the account's last
+ * known state while the note stands beside it.
  */
 export function quotaPanel(limits: UsageLimits | null | undefined, now: number): QuotaPanel | null {
   if (!limits || !limits.ok) return null;
@@ -1813,18 +1826,18 @@ export function quotaPanel(limits: UsageLimits | null | undefined, now: number):
   const stale = limits.stale === true;
   const bars = windows.map(([key, window]): QuotaBar => {
     const resetAt = window.resets_at * 1000;
+    const percent = Math.round(Math.min(999, Math.max(0, window.used_percentage)));
     if (resetAt <= now) {
       return {
         key,
         label: quotaLabel(key),
-        fill: 0,
+        fill: quotaFill(window.used_percentage).fill,
         level: "accent",
-        percent: "reset",
-        reset: `${countdown(now - resetAt)} ago`,
+        percent: `${percent}%`,
+        reset: `reset · ${quotaReadAge(limits, now)}`,
         state: "reset",
       };
     }
-    const percent = Math.round(Math.min(999, Math.max(0, window.used_percentage)));
     return {
       key,
       label: quotaLabel(key),

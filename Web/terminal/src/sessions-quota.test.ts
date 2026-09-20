@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { countdown, QUOTA_CAUTION_PERCENT, quotaAge, quotaFill, quotaLabel, quotaLevel, quotaPanel, type UsageLimits } from "./sessions-model";
+import { countdown, QUOTA_CAUTION_PERCENT, quotaAge, quotaFill, quotaLabel, quotaLevel, quotaPanel, quotaReadAge, type UsageLimits } from "./sessions-model";
 
 /**
  * The quota bars (`workspace-ledger`, capability 3; reshaped in
@@ -86,11 +86,19 @@ describe("quotaPanel", () => {
     expect(panel?.bars[2].reset).toBe("resets 30d");
   });
 
-  it("draws a window past its own reset empty and says so", () => {
+  it("says reset and the reading's age on a window past its reset, and keeps its last value in the faint grey", () => {
+    // Round 14, the human's word: never `resets 1d 17h ago`. Chartered,
+    // this replaced the empty bar with `reset` for its number and `12m
+    // ago` for its reset. The reading is stale, as `GET /api/usage/limits`
+    // answers once the statusline stopped posting: the session window
+    // reset 1d 17h ago and the reading is 1d 19h old.
     const panel = quotaPanel(
       reading({
+        receivedAt: NOW - (43 * HOUR + 12 * MIN),
+        ageSeconds: 43 * 3600 + 12 * 60,
+        stale: true,
         rateLimits: {
-          five_hour: { used_percentage: 91, resets_at: seconds(NOW - 12 * MIN) },
+          five_hour: { used_percentage: 91, resets_at: seconds(NOW - (41 * HOUR + 5 * MIN)) },
           seven_day: { used_percentage: 27, resets_at: seconds(NOW + 38 * HOUR) },
         },
       }),
@@ -99,13 +107,20 @@ describe("quotaPanel", () => {
     expect(panel?.bars[0]).toEqual({
       key: "five_hour",
       label: "Session (5h)",
-      fill: 0,
+      fill: 0.91,
       level: "accent",
-      percent: "reset",
-      reset: "12m ago",
+      percent: "91%",
+      reset: "reset · read 1d 19h ago",
       state: "reset",
     });
-    expect(panel?.bars[1].state).toBe("fresh");
+    expect(panel?.bars.filter((b) => /^resets .* ago$/.test(b.reset)), "no window prints resets … ago").toEqual([]);
+    // The window with a future reset prints as today, stale.
+    expect(panel?.bars[1]).toMatchObject({ percent: "27%", reset: "resets 1d 14h", state: "stale", level: "accent" });
+    // A past window on a fresh reading is the same, its age from `ageSeconds`.
+    const fresh = quotaPanel(reading({ rateLimits: { five_hour: { used_percentage: 91, resets_at: seconds(NOW - 12 * MIN) } } }), NOW);
+    expect(fresh?.bars[0]).toMatchObject({ percent: "91%", reset: "reset · read 4m ago", state: "reset", fill: 0.91 });
+    expect(quotaReadAge({ ageSeconds: 20 }, NOW)).toBe("read just now");
+    expect(quotaReadAge({ receivedAt: NOW - 3 * HOUR }, NOW), "from receivedAt when the daemon sends no age").toBe("read 3h ago");
   });
 
   it("keeps a stale reading's bars and says how old they are", () => {

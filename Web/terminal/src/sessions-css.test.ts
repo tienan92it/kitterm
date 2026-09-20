@@ -517,6 +517,31 @@ describe("every line is one line", () => {
     expect(RULES.filter((rule) => rule.decls.has("transition")).map(at)).toEqual([]);
   });
 
+  it("lays a fold's summary out by the line rule, and centres the triangle in its cell on a summary and on a goal alike", () => {
+    // Round 14: the fold rows' triangle sat 5.75 px above the row's centre
+    // at 1200, because the summary's glyph is a span whose `min-height`
+    // put the glyph at the top of its cell, where a goal's triangle is a
+    // button that centres its own text. The summary is a `.line` (the
+    // page classes it `line line-fold`), so no rule of its own may set a
+    // display, a height or an alignment; and the disclosure cell centres
+    // its glyph, so a span and a button sit alike, at both widths.
+    // The marker pseudo-element is hidden (`display: none`), which is not
+    // the summary's own layout.
+    const own = RULES.filter((rule) => /(^|[\s>])(summary|\.line-fold)(?![\w-])/.test(rule.selector) && !/\.main|\.line-name|::/.test(rule.selector));
+    expect(own.map(at).length, "the fold's summary has rules").toBeGreaterThan(0);
+    for (const rule of own) {
+      for (const prop of ["display", "min-height", "height", "align-items", "line-height", "padding", "margin"]) {
+        expect(rule.decls.has(prop), `${at(rule)} sets ${prop}; the summary shares .line`).toBe(false);
+      }
+    }
+    const disclosure = treeRule(".mark.disclosure")!;
+    expect(disclosure.decls.get("display")).toBe("inline-flex");
+    expect(disclosure.decls.get("align-items")).toBe("center");
+    expect(disclosure.decls.get("min-height")).toBe("var(--line-h)");
+    expect(disclosure.decls.get("font-size")).toBe("var(--mark-size-disclosure)");
+    expect(RULES.filter((rule) => rule.selector === ".mark.disclosure" && rule.conditions.length > 0).map(at), "the same at 390").toEqual([]);
+  });
+
   it("prints the vocabulary in the tree's header under a hairline, not on a phone, and folds nothing but the done goals and the page's foot", () => {
     // Round 10: the header is a panel-shaped row, SESSIONS in the gutter;
     // a goal's last done tasks show at both widths, so there is no
