@@ -1,119 +1,286 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>kitterm — your Mac's terminal, in any browser tab</title>
-<meta name="description" content="A real shell in a browser tab that outlives the tab you opened it in. macOS, local by default.">
-<meta property="og:title" content="kitterm — your Mac's terminal, in any browser tab">
-<meta property="og:description" content="A real shell in a browser tab that outlives the tab you opened it in.">
+<title>kitterm — a terminal daemon with a ledger</title>
+<meta name="description" content="Shells that survive the tab. Sessions that show their cost. Nothing to sign up for. macOS, one binary, MIT.">
+<meta property="og:title" content="kitterm — a terminal daemon with a ledger">
+<meta property="og:description" content="Shells that survive the tab. Sessions that show their cost. Nothing to sign up for.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://kitterm.dev/">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='1' y='1' width='30' height='30' rx='7' fill='%23161b22' stroke='%2330363d' stroke-width='2'/%3E%3Cpath d='M8 9 L14 16 L8 23' fill='none' stroke='%233fb950' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M19 9.5 L19 22.5' fill='none' stroke='%233fb950' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&amp;display=swap">
 <style>
+/* The dashboard's tokens (docs/goals/agent-dashboard/corpus/dashboard.pen). */
 :root{
-  --accent:#3fb950;--bg:#0d1117;--panel:#131922;--line:#232b36;
-  --fg:#e6edf3;--fg-bright:#fff;--muted:#9aa5b1;--dim:#6e7681;
-  /* Display is monospace — with no screenshot, the type carries the terminal.
-     Reading text stays in the system sans (SF Pro on macOS, kitterm's only
-     platform) so the prose is comfortable rather than a wall of fixed pitch. */
-  --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,'Courier New',monospace;
-  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Helvetica,Arial,sans-serif;
+  --bg:#050c10;--surface:#0e1d25;--border:#264653;
+  --text:#e8eef0;--muted:#a7b8bf;--faint:#82969e;
+  --accent:#2a9d8f;--success:#52b788;--warning:#e9c46a;--danger:#e76f51;--caution:#f4a261;
+  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Monaco,monospace;
+  --band-h:44px;--band-pad:4px;--row-h:28px;--line-h:34px;--gutter:16px;
+}
+@media (min-width:768px){
+  :root{--band-h:52px;--band-pad:14px;--row-h:26px;--line-h:28px;--gutter:16px}
 }
 *{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
-body{margin:0;min-height:100vh;display:flex;flex-direction:column;
-  background:var(--bg);color:var(--fg);font-family:var(--sans);
-  font-size:15px;line-height:1.65;-webkit-font-smoothing:antialiased}
+html{-webkit-text-size-adjust:100%;scroll-snap-type:y mandatory;background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--text);font:400 12px/16px var(--mono);
+  -webkit-font-smoothing:antialiased;overflow-x:hidden}
 a{color:inherit;text-decoration:none}
-button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
-code{font-family:var(--mono)}
-:focus-visible{outline:1.5px solid var(--accent);outline-offset:3px;border-radius:3px}
-@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
-.caret{display:inline-block;width:9px;height:1.02em;background:var(--accent);
-  margin-left:9px;vertical-align:-.16em;animation:blink 1.15s step-end infinite}
-@media (prefers-reduced-motion:reduce){.caret{animation:none}}
+a:hover,a:focus-visible{text-decoration:underline}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit;padding:0}
+:focus-visible{outline:1px solid var(--accent);outline-offset:2px}
+b{font-weight:600}
+p,h1,h2{margin:0}
 
-/* One column, centred in the viewport. */
-main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:42px;padding:56px 24px;text-align:center}
+/* Pages: one viewport each, snapping, a centred 880 px column, a hairline under each. */
+.page{position:relative;min-height:100vh;min-height:100svh;scroll-snap-align:start;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:var(--space-5) var(--gutter)}
+.page::after{content:"";position:absolute;left:var(--gutter);right:var(--gutter);bottom:0;
+  max-width:880px;margin:0 auto;height:1px;background:var(--border)}
+.col{width:100%;max-width:880px;display:flex;flex-direction:column;gap:var(--space-4)}
+@media (min-width:768px){.page{padding:64px var(--gutter)}.col{gap:var(--space-5)}}
 
-.brand{display:flex;align-items:center;justify-content:center;gap:10px;
-  margin-bottom:24px;font-family:var(--mono);font-weight:600;
-  color:var(--fg-bright);font-size:15px}
-
-h1{margin:0;font-family:var(--mono);font-size:clamp(25px,5.6vw,36px);line-height:1.3;
-  font-weight:500;letter-spacing:-.6px;color:var(--fg-bright)}
-.sub{margin:20px auto 0;font-size:15.5px;color:var(--muted);max-width:30em;text-wrap:pretty}
-
-.action{width:100%;max-width:520px}
-/* The command itself stays left-aligned inside the centred block — you read a
-   shell line from the prompt, not from the middle. */
-.cmd{display:flex;align-items:center;gap:12px;width:100%;text-align:left;font-family:var(--mono);
-  background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:15px 16px}
-.cmd:hover{border-color:#313b49}
-.cmd code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px}
-.cmd .p{color:var(--accent)}
-.cmd .ic{color:var(--dim);font-size:11.5px;flex-shrink:0;font-family:var(--sans)}
-.cmd:hover .ic{color:var(--muted)}
-.cmd.done{border-color:var(--accent)}
-.cmd.done .ic{color:var(--accent)}
-.under{margin:14px 0 0;font-size:13px;color:var(--dim)}
-.under a{color:var(--accent);border-bottom:1px solid transparent}
-.under a:hover{border-bottom-color:var(--accent)}
-.fallback{margin:11px 0 0;font-size:12.5px;color:var(--dim);
-  display:flex;align-items:center;justify-content:center;gap:7px;flex-wrap:wrap}
-.fallback[hidden]{display:none}
-.port{width:54px;background:var(--bg);border:1px solid var(--line);border-radius:4px;
-  color:var(--fg);font-family:var(--mono);font-size:11.5px;padding:3px 5px;text-align:center}
-
-.meta{display:flex;align-items:center;justify-content:center;gap:10px;
-  margin:26px 0 0;font-family:var(--mono);font-size:12px;color:var(--dim)}
-.meta a{display:flex;align-items:center;gap:6px}
-.meta a:hover{color:var(--fg)}
-
-@media (max-width:520px){
-  main{padding:40px 22px;gap:34px}
-  /* Never ellipsis a `curl | sh` line — hiding half the URL is the one thing
-     a reader needs to see before running it. Wrap instead. */
-  .cmd{align-items:flex-start}
-  .cmd code{white-space:normal;overflow:visible;text-overflow:clip;word-break:break-all}
+/* The band: brand, GitHub, and at 768 px and up the open link. */
+.hero{justify-content:flex-start;padding:0}
+.band{width:100%;display:flex;justify-content:center;padding:0 var(--gutter);flex:none}
+.band>div{width:100%;max-width:880px;height:var(--band-h);padding-top:var(--band-pad);display:flex;align-items:center;
+  justify-content:space-between;border-bottom:1px solid var(--border)}
+.brand{font-size:13px;font-weight:600}
+.band nav{display:flex;gap:var(--space-5);color:var(--muted)}
+.band .open{color:var(--accent)}
+.hero-body{flex:1;width:100%;display:flex;align-items:center;justify-content:center;
+  padding:var(--space-5) var(--gutter)}
+.hero .col{align-items:center;text-align:center}
+h1{font-size:28px;line-height:1.2;font-weight:600}
+.sub{color:var(--muted);font-size:12px;line-height:16px}
+.install{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1) var(--space-4);
+  width:100%;background:var(--surface);border:1px solid var(--border);padding:var(--space-3);
+  text-align:left;font-size:12px;line-height:16px}
+.install code{font-family:inherit;flex:1;white-space:normal;word-break:break-word}
+.install .prompt{color:var(--accent)}
+.copy{color:var(--accent);flex:none;flex-basis:100%;text-align:left}
+.copy.done{color:var(--success)}
+.facts{color:var(--faint)}
+.already a,.miss a{color:var(--accent)}
+.miss{color:var(--faint);margin-top:calc(-1 * var(--space-4))}
+.miss code{font-family:inherit;color:var(--muted)}
+@media (min-width:768px){
+  .band nav{font-size:12px}
+  h1{font-size:40px}
+  .sub{font-size:13px;line-height:20px}
+  .install{width:auto;flex-wrap:nowrap;padding:var(--space-3) 20px;font-size:13px;line-height:20px}
+  .install code{white-space:nowrap}
+  .copy{color:var(--faint);flex-basis:auto}
+  .copy:hover{color:var(--muted)}
 }
+
+/* Feature pages: label, heading, specimen, one fact. */
+.label{color:var(--faint);letter-spacing:.08em;text-transform:uppercase}
+h2{font-size:20px;line-height:1.2;font-weight:600}
+.fact{color:var(--muted)}
+@media (min-width:768px){h2{font-size:24px}}
+/* Words and cells the 390 frame drops (.w) or replaces (.n). */
+@media (max-width:767px){.w,.tree .line.w{display:none}}
+@media (min-width:768px){.n{display:none}}
+
+/* TERMINAL: the pane. */
+.pane{border:1px solid var(--border);background:var(--surface);width:100%}
+.tabs{display:flex;justify-content:space-between;gap:var(--space-4);height:36px;align-items:center;
+  padding:0 var(--space-4);border-bottom:1px solid var(--border);white-space:nowrap}
+.tabs .tab{margin-right:var(--space-3)}
+.tabs .who,.tabs .dim{color:var(--faint)}
+.lines{padding:var(--space-1) var(--space-4)}
+.ln{line-height:24px;white-space:pre}
+.ln .mark{display:inline-block;width:21px}
+.ln.muted{color:var(--muted)}
+.ln.faint{color:var(--faint)}
+.accent{color:var(--accent)}
+.cursor{display:inline-block;width:8px;height:16px;background:var(--text);vertical-align:-3px}
+
+/* VALUE: four tiles. */
+.tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-4)}
+.tile{border-left:2px solid var(--accent);padding:var(--space-1) 0 var(--space-1) var(--space-3);
+  display:flex;flex-direction:column}
+.fig{font-size:24px;line-height:28px;font-weight:600}
+.what{color:var(--muted)}
+.unit{color:var(--faint)}
+@media (min-width:768px){
+  .tiles{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .fig{font-size:32px;line-height:38px}
+}
+
+/* WHERE and MODELS: rows with bars. */
+.by{display:flex;gap:var(--space-2);color:var(--faint);height:22px;align-items:flex-start;white-space:nowrap}
+.row{display:grid;grid-template-columns:110px 150px minmax(0,1fr);gap:0 var(--space-4);
+  align-items:center;height:var(--row-h);white-space:nowrap}
+.models .row{grid-template-columns:110px 170px minmax(0,1fr)}
+.row .name{overflow:hidden;text-overflow:ellipsis}
+.row .val{color:var(--muted);text-align:right}
+.row .f{color:var(--faint);text-align:right}
+.track{display:block;height:10px}
+.bar{display:block;height:10px;background:var(--accent)}
+.where .r1{width:21.7%}.where .r2{width:10%}.where .r3{width:4.7%}.where .r4{width:100%}
+.models .r1{width:100%}.models .r2{width:28.7%}.models .r3{width:22.8%}.models .r4{width:24.9%}
+.row.amber .name,.row.amber .val{color:var(--warning)}
+.row.amber .bar{background:var(--warning)}
+.leak{display:flex;align-items:center;height:var(--row-h);color:var(--muted)}
+.leak .mark{display:inline-block;width:24px;color:var(--warning)}
+@media (min-width:768px){
+  .by{gap:20px}
+  .row{grid-template-columns:168px 360px minmax(0,1fr) 78px 68px 108px;gap:0}
+  .models .row{grid-template-columns:168px 400px minmax(0,1fr) 120px}
+}
+
+/* CREW: the tree, one line per row. */
+.tree .line{display:grid;grid-template-columns:32px minmax(0,1fr) auto 76px;
+  align-items:center;height:var(--line-h);white-space:nowrap}
+/* The turning mark and the check are drawn larger than the text, as the frames have them. */
+.mark.accent,.mark.ok{font-size:20px;line-height:1}
+.line .mark.faint{font-size:16px;line-height:1}
+.line .name{overflow:hidden;text-overflow:ellipsis;padding-right:var(--space-2)}
+.line.l1 .name{padding-left:12px}
+.line.l2 .name{padding-left:24px}
+.line.l3 .name{padding-left:36px}
+.line .state{color:var(--muted);text-align:right}
+.line .cost,.line .last{color:var(--faint);text-align:right}
+.faint{color:var(--faint)}
+.ok{color:var(--success)}
+@media (min-width:768px){
+  .tree .line{grid-template-columns:32px minmax(0,1fr) auto 100px 80px}
+  .line.l1 .name{padding-left:16px}
+  .line.l2 .name{padding-left:32px}
+  .line.l3 .name{padding-left:48px}
+}
+
+/* Footer. */
+.foot{display:flex;justify-content:center;gap:var(--space-4);padding:14px var(--gutter) 22px;
+  color:var(--muted);scroll-snap-align:end}
+.foot .site{color:var(--faint)}
+@media (min-width:768px){.foot{gap:var(--space-5);padding:14px var(--gutter) 26px}}
 </style>
 </head>
 <body>
-
 <main>
 
-  <div>
-    <div class="brand">
-      <svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="7" fill="#161b22" stroke="#30363d" stroke-width="2"/><path d="M8 9 L14 16 L8 23" fill="none" stroke="#3fb950" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M19 9.5 L19 22.5" fill="none" stroke="#3fb950" stroke-width="2.6" stroke-linecap="round"/></svg>
-      kitterm
+<section class="page hero" data-page="hero" aria-labelledby="h-hero">
+  <header class="band">
+    <div>
+      <a class="brand" href="/">kitterm</a>
+      <nav aria-label="Site">
+        <a href="https://github.com/tienan92it/kitterm">GitHub</a>
+        <a class="open w" href="http://kitterm.localhost:3418/" target="_blank" rel="noopener">Open my terminal ↗</a>
+      </nav>
     </div>
-    <h1>Your Mac's terminal,<br>in any browser tab.<span class="caret"></span></h1>
-    <p class="sub">A real shell — job control, TUIs, all of it — that outlives the tab you opened it in.</p>
+  </header>
+  <div class="hero-body">
+    <div class="col">
+      <h1 id="h-hero" data-enter>A terminal daemon<br>with a ledger.</h1>
+      <p class="sub" data-enter>Shells that survive the tab. Sessions that show their cost. Nothing to sign up for.</p>
+      <div class="install" data-enter>
+        <code><span class="prompt" aria-hidden="true">$ </span>curl -fsSL https://kitterm.dev/install.sh | sh</code>
+        <button type="button" class="copy" id="copy" aria-label="Copy the install command">[copy]</button>
+      </div>
+      <p class="facts" data-enter>macOS · one binary · no account · MIT</p>
+      <p class="already" data-enter><a class="open" href="http://kitterm.localhost:3418/" target="_blank" rel="noopener">already installed? open my terminal ↗</a></p>
+      <p class="miss" id="miss" hidden>Nothing there? Run <code>kitterm start</code> first.</p>
+    </div>
   </div>
+</section>
 
-  <div class="action">
-    <button class="cmd" id="copy" aria-label="Copy install command">
-      <span class="p" aria-hidden="true">$</span>
-      <code>curl -fsSL https://kitterm.dev/install.sh | sh</code>
-      <span class="ic" id="ic" aria-hidden="true">copy</span>
-    </button>
-    <p class="under">Already installed? <a id="open" href="http://kitterm.localhost:3418/" target="_blank" rel="noopener">Open my terminal ↗</a></p>
-    <p class="fallback" id="miss" hidden>
-      Nothing there — run <code>kitterm start</code> first. Other port?
-      <input class="port" id="port" inputmode="numeric" value="3418" aria-label="kitterm port">
-    </p>
-    <p class="meta">
-      <a class="gh" href="https://github.com/tienan92it/kitterm" aria-label="kitterm on GitHub">
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
-        GitHub
-      </a>
-    </p>
+<section class="page" data-page="terminal" aria-labelledby="h-terminal">
+  <div class="col">
+    <p class="label" data-enter>Terminal</p>
+    <h2 id="h-terminal" data-enter>One daemon. Every tab, every device<span class="w">, one shell</span>.</h2>
+    <div class="pane" data-enter>
+      <div class="tabs">
+        <span><span class="tab"><b>kitterm</b> <span aria-hidden="true">▾</span></span><span class="tab"><b>foreman</b> <span class="dim w">crew round 16 zsh</span></span></span>
+        <span class="who"><span class="w">iPhone · </span>attached</span>
+      </div>
+      <div class="lines">
+        <div class="ln muted"><span aria-hidden="true">❯ </span>claude</div>
+        <div class="ln"><span class="mark accent" aria-hidden="true">◐</span>Editing sessions-tree.ts…<span class="w">  (esc to interrupt)</span></div>
+        <div class="ln faint w"><span class="mark" aria-hidden="true">⎿</span>Read before you type. The prompt is at the cursor.</div>
+        <div class="ln"><span aria-hidden="true">❯ </span><span class="cursor" aria-hidden="true"></span></div>
+      </div>
+    </div>
+    <p class="fact" data-enter>Job control, TUIs, splits and reattach. Close the tab; the shell keeps running.<span class="w"> Open it from your phone.</span></p>
   </div>
+</section>
+
+<section class="page" data-page="value" aria-labelledby="h-value">
+  <div class="col">
+    <p class="label" data-enter>Value</p>
+    <h2 id="h-value" data-enter><span class="w">The dashboard says what</span><span class="n">What</span> the spend bought.</h2>
+    <div class="tiles" data-enter>
+      <div class="tile"><span class="fig">103</span><span class="what">merged <span class="w">pull requests</span><span class="n">PRs</span></span><span class="unit">$11.60/PR</span></div>
+      <div class="tile"><span class="fig">79,274</span><span class="what">merged lines<span class="w"> added</span></span><span class="unit">$0.015/line</span></div>
+      <div class="tile"><span class="fig">23</span><span class="what">releases</span><span class="unit">$51.96/release</span></div>
+      <div class="tile"><span class="fig">45.9</span><span class="what"><span class="w">hours of model time</span><span class="n">model hours</span></span><span class="unit">$55/hour</span></div>
+    </div>
+    <p class="fact" data-enter><span class="w">Merged pull</span><span class="n">Pull</span> requests, lines and releases per dollar. Proxies for value, not value<span class="w"> — and the page says so</span>.</p>
+  </div>
+</section>
+
+<section class="page" data-page="where" aria-labelledby="h-where">
+  <div class="col">
+    <p class="label" data-enter>Where</p>
+    <h2 id="h-where" data-enter>And where the dollar went.</h2>
+    <div class="rows where" data-enter>
+      <p class="by"><span>by</span><span>[ ] project</span><span>[x] goal</span><span>[ ] task</span><span>[ ] role</span></p>
+      <div class="row"><span class="name">agent-dashboard</span><span class="track" aria-hidden="true"><span class="bar r1"></span></span><span class="val">$163.89</span><span class="f w">12 tasks</span><span class="f w">9 PRs</span><span class="f w">$0.019/line</span></div>
+      <div class="row"><span class="name">workspace-ledger</span><span class="track" aria-hidden="true"><span class="bar r2"></span></span><span class="val">$75.11</span><span class="f w">6 tasks</span><span class="f w">2 PRs</span><span class="f w">$0.043/line</span></div>
+      <div class="row"><span class="name">fleet-catch-up</span><span class="track" aria-hidden="true"><span class="bar r3"></span></span><span class="val">$35.79</span><span class="f w">4 tasks</span><span class="f w">–</span><span class="f w">–</span></div>
+      <div class="row amber"><span class="name">no round record</span><span class="track" aria-hidden="true"><span class="bar r4"></span></span><span class="val">$2,263.14</span><span class="f w">87%</span><span class="f w">–</span><span class="f w">–</span></div>
+    </div>
+    <p class="fact" data-enter>By project, goal, task or role. The <span class="w">unattributed </span>remainder is a row in amber<span class="w">, never a footnote</span>.</p>
+  </div>
+</section>
+
+<section class="page" data-page="models" aria-labelledby="h-models">
+  <div class="col">
+    <p class="label" data-enter>Models</p>
+    <h2 id="h-models" data-enter>Which model spent it<span class="w">, and what leaked</span>.</h2>
+    <div class="rows models" data-enter>
+      <div class="row"><span class="name">Fable 5.1</span><span class="track" aria-hidden="true"><span class="bar r1"></span></span><span class="val"><span class="w">$1,507.86</span><span class="n">$1,508</span></span><span class="f w">124 sessions</span></div>
+      <div class="row"><span class="name">Opus 5 · 1M</span><span class="track" aria-hidden="true"><span class="bar r2"></span></span><span class="val"><span class="w">$432.43</span><span class="n">$432</span></span><span class="f w">30 sessions</span></div>
+      <div class="row"><span class="name">Fable 5.1 · 1M</span><span class="track" aria-hidden="true"><span class="bar r3"></span></span><span class="val"><span class="w">$343.25</span><span class="n">$343</span></span><span class="f w">1 session</span></div>
+      <div class="row"><span class="name">Others</span><span class="track" aria-hidden="true"><span class="bar r4"></span></span><span class="val"><span class="w">$375.53</span><span class="n">$376</span></span><span class="f w">170 sessions</span></div>
+      <p class="leak"><span class="mark" aria-hidden="true">?</span>65 of 93 rounds carry no Cost line</p>
+    </div>
+    <p class="fact" data-enter>The top three by cost and the rest in one row.<span class="w"> A leak line names the spend nothing can value.</span></p>
+  </div>
+</section>
+
+<section class="page" data-page="crew" aria-labelledby="h-crew">
+  <div class="col">
+    <p class="label" data-enter>Crew</p>
+    <h2 id="h-crew" data-enter>A foreman runs the goals. Crews do the rounds.</h2>
+    <div class="tree" data-enter>
+      <div class="line l0"><span class="mark faint" aria-hidden="true">▾</span><span class="name"><b>kitterm</b></span><span class="state"></span><span class="cost">$1,143.42</span><span class="last w">1 agent</span></div>
+      <div class="line l1"><span class="mark faint" aria-hidden="true">▾</span><span class="name">/sessions is a dashboard for workspaces and agents</span><span class="state">[needs you]</span><span class="cost">$221.20</span></div>
+      <div class="line l2"><span class="mark accent" aria-hidden="true">◐</span><span class="name">a-running-session-has-a-cost</span><span class="state">[working]</span><span class="cost">~$4.20</span></div>
+      <div class="line l3"><span class="mark accent" aria-hidden="true">◐</span><span class="name">crew round 16</span><span class="state">[working]</span><span class="cost w">Opus 5</span><span class="last">5m</span></div>
+      <div class="line l2"><span class="mark ok" aria-hidden="true">✓</span><span class="name">cost-column-and-pr-links</span><span class="state">[done]</span><span class="cost">$16.42</span><span class="last w">PR #134</span></div>
+      <div class="line l2 w"><span class="mark ok" aria-hidden="true">✓</span><span class="name">four-defects-from-review</span><span class="state">[done]</span><span class="cost">$12.85</span><span class="last">PR #134</span></div>
+    </div>
+    <p class="fact" data-enter>One session per round, one record per round<span class="w">, every line one line</span>. You approve<span class="w">; nothing on the page takes typed work</span>.</p>
+  </div>
+</section>
 
 </main>
+
+<footer class="foot">
+  <a href="https://github.com/tienan92it/kitterm">GitHub</a>
+  <a href="/install.sh">install.sh</a>
+  <a href="https://github.com/tienan92it/kitterm/blob/main/LICENSE">MIT</a>
+  <span class="site w">kitterm.dev</span>
+</footer>
 
 <script>
 (function () {
@@ -121,14 +288,13 @@ h1{margin:0;font-family:var(--mono);font-size:clamp(25px,5.6vw,36px);line-height
 
   var INSTALL = "curl -fsSL https://kitterm.dev/install.sh | sh";
   var copy = document.getElementById("copy");
-  var ic = document.getElementById("ic");
   copy.addEventListener("click", function () {
     navigator.clipboard.writeText(INSTALL).then(function () {
-      ic.textContent = "copied";
+      copy.textContent = "[copied]";
       copy.classList.add("done");
       clearTimeout(copy._t);
       copy._t = setTimeout(function () {
-        ic.textContent = "copy";
+        copy.textContent = "[copy]";
         copy.classList.remove("done");
       }, 1600);
     });
@@ -137,22 +303,11 @@ h1{margin:0;font-family:var(--mono);font-size:clamp(25px,5.6vw,36px);line-height
   // A link, not a fetch: the daemon requires a loopback Host/Origin and a
   // cross-origin probe would be blocked by CORS, so the page cannot detect the
   // daemon. It opens it and explains the miss instead.
-  var open = document.getElementById("open");
   var miss = document.getElementById("miss");
-  var port = document.getElementById("port");
-  try {
-    var saved = localStorage.getItem("kitterm:port");
-    if (saved) { port.value = saved; }
-  } catch (e) { /* private mode */ }
-
-  function sync() {
-    var p = String(port.value || "3418").replace(/\D/g, "") || "3418";
-    open.href = "http://kitterm.localhost:" + p + "/";
-    try { localStorage.setItem("kitterm:port", p); } catch (e) { /* ignore */ }
+  var opens = document.querySelectorAll("a.open");
+  for (var i = 0; i < opens.length; i++) {
+    opens[i].addEventListener("click", function () { miss.hidden = false; });
   }
-  port.addEventListener("input", sync);
-  open.addEventListener("click", function () { miss.hidden = false; });
-  sync();
 })();
 </script>
 </body>
