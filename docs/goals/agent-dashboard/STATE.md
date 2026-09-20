@@ -4,11 +4,14 @@
 - Round: 1 of 3 in this budget (sixth budget)
 - Rounds total: 16
 - Last floor: green (2026-09-20, round 16 after: swift test 842, Linux build, vitest 1448 in 58 files, bench p95 2.60 ms)
-- Updated: 2026-09-20, round 16 closed
+- Updated: 2026-09-20, the quota reset time queued
 
 ## Queue
 
-Empty. Rounds 10–16 are on PR #134.
+1. `quota-resets-at-a-time` (the human's on 2026-09-20). The reset cell
+   prints a clock time, not a countdown: `resets today 20:20`,
+   `resets tomorrow 04:00`, `resets Sep 25, 04:00`, local time. The Pen
+   frames carry it.
 
 ## Failures
 
@@ -194,7 +197,7 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-Merge PR #134 (rounds 10–16). Then the human decides the proposals
+Round 17, `quota-resets-at-a-time`. Then merge PR #134. Then the human decides the proposals
 above and whether the goal is `done`. Then the human decides `goal.md` condition 6 (390 px
 under 1200; the design measures 2147 on the real tree) and whether to
 set the goal `done`. Then the human decides: `goal.md` condition 6 (390 px under
