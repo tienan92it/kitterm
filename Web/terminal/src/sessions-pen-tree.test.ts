@@ -21,6 +21,8 @@ import { goalFactColumns, goalTooltip, headingFactColumns, isOpen, NO_FACT, sess
  * `round 6` and `r6/3` left it for the name's tooltip, a level with no
  * cost prints the dash, a session's model moved to column 3, and `PR #124`
  * links to the pull request where the project's remote is on GitHub.
+ * Chartered in round 16: the bill cell's tooltip, which said a running
+ * session has no cost; it has an estimate now (`sessions-estimate.test.ts`).
  */
 
 /** The page reads the clock, so the fixture's moments sit against it. */
@@ -145,7 +147,10 @@ describe("the fact columns of each level", () => {
 
   it("put a session's bill in column 2, its model in column 3 and its time in column 4; a heading's cost in column 2 and its agents in column 4", () => {
     expect(sessionFactColumns("$12.85", "Fable 5.1", "claude-fable-5-1", "4m").map((f) => [f.text, f.column, f.narrow, f.title])).toEqual([
-      ["$12.85", 2, true, "the bill of this session's transcript, when it began in the range; a running session has none yet"],
+      // Round 16 (chartered): a running session has an estimate now, so
+      // the title no longer says it has none; `sessions-estimate.test.ts`
+      // pins the `~$4.20` form and its own tooltip.
+      ["$12.85", 2, true, "the bill of this session's transcript, when it began in the range"],
       ["Fable 5.1", 3, false, "claude-fable-5-1"], ["4m", 4, false, undefined],
     ]);
     expect(sessionFactColumns(null, null, undefined, "4m").map((f) => [f.text, f.column, f.narrow])).toEqual([[NO_FACT, 2, true], ["4m", 4, false]]);

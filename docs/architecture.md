@@ -153,6 +153,29 @@ true statement and zeros would be a false one. A `cost-state` line with no model
 of zero, and answers as one. Full grade only: the bill is what a watch token exists to
 withhold.
 
+A running session has no bill and, since `agent-dashboard` round 16, an estimate. When
+the last line is not a bill, the same route walks the transcript's `"type":"assistant"`
+lines after the last `cost-state` line, sums each request's `message.usage` per
+`message.model` (one request is several lines with one usage; the lines of a request sit
+together, so a line whose `requestId` is the previous counted one's is skipped), and
+prices the sum with `ModelPricing`, the one price table in the daemon: Anthropic's
+first-party rates per model, a cache write priced by its TTL from `usage.cache_creation`,
+long context at the standard rate. The answer is `estimated: true` with `estimate
+{costUSD, modelUsage, inTokens, cacheReadTokens, outTokens, turns, asOf, startTime,
+unpricedModels}`; the bill wins the moment it lands, and `estimateReason` says `noTurns`
+or `transcriptTooLarge` when there is neither. `TranscriptEstimateCache` keeps, per
+path, the byte offset the sum reached with the running sums, keyed by size and mtime
+like the model cache, so an unchanged file costs one `stat` and a grown file reads only
+the bytes past the last complete line it summed; a file that shrank or whose mtime went
+backwards is read from zero, a line that fails to parse is skipped, and a file over 512
+MiB is not estimated, because its first walk would hold the serial transcript queue for
+minutes. Measured 2026-09-20 over 141 finished transcripts over $1: the estimate sits
+1.25% under the bill at the median, because the bill also counts requests that wrote no
+turn (a retry, an interrupted request), and further under on a session that ran
+subagents, whose turns are in files under `<session>/subagents/` that the estimate does
+not read. The bill and the rollup still price nothing: the estimate is the one figure
+that is priced, and the page marks it `~`.
+
 The bill exists only after the session ends, because Claude Code writes `cost-state` at
 exit, and archiving a session is what ends it. So the route a foreman reads at collect
 time is `GET /api/archives/<id>/cost`, the same shape, read through the join the archive
@@ -291,9 +314,13 @@ Since `agent-dashboard` round 15 the tree's number column is the cost at every l
 and nothing else. A task's is the `- Cost:` line of the one round its `STATE.md` line
 names, when that record started in the range; a session's is its transcript bill, which
 the page reads from `GET /api/sessions/<id>/cost` every thirty seconds for a row that
-carries an `agentTranscript`, and which exists only once `claude` has exited, so a
-working session prints the dash and an idle shell where an agent ran prints what it
-cost. Every level with no source prints `–`, never a zero; with no rollup, the column
+carries an `agentTranscript`, and which exists only once `claude` has exited; a
+working session prints the route's estimate as `~$4.20` (round 16), its tooltip
+`estimated from 12 turns · updated 12s ago`, and the bill with no `~` once it lands,
+while an idle shell where an agent ran prints what it cost. An estimate is on its own
+line and on no figure above it, because the rollup counts a session only once its
+transcript is billed; the project's tooltip says `+ ~$4.20 running` while one of its
+sessions is estimated. Every level with no source prints `–`, never a zero; with no rollup, the column
 is absent, because every cost leaves the page together for a watch token. `round 6`
 and a goal's `r6/3` moved to the name's tooltip. `PR #124` is a link wherever the page
 prints a pull request number: `GET /api/projects` carries `pullRequestBase`, read off

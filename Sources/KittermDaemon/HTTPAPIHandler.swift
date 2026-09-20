@@ -69,6 +69,11 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// of a session row; nil in a handler built without one, where the row
     /// carries no model. One cache per daemon, shared by every connection.
     private let transcriptModels: TranscriptModelCache?
+    /// The live estimate per running session's transcript, for the cost
+    /// routes' `estimate` when the transcript has no bill yet; nil in a
+    /// handler built without one, where the routes answer the bill alone.
+    /// One cache per daemon, shared by every connection.
+    private let transcriptEstimates: TranscriptEstimateCache?
     private var pendingHead: HTTPRequestHead?
     /// Accumulated request body, capped at `maxInputBytes`; only the input
     /// route reads it. `bodyOverflow` trips once the cap is exceeded so a large
@@ -100,7 +105,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         repositoryYields: RepositoryYields? = nil,
         remoteOrigins: RemoteOrigins? = nil,
         usageLimits: UsageLimitsStore? = nil,
-        transcriptModels: TranscriptModelCache? = nil
+        transcriptModels: TranscriptModelCache? = nil,
+        transcriptEstimates: TranscriptEstimateCache? = nil
     ) {
         self.registry = registry
         self.projects = projects
@@ -123,6 +129,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.remoteOrigins = remoteOrigins
         self.usageLimits = usageLimits
         self.transcriptModels = transcriptModels
+        self.transcriptEstimates = transcriptEstimates
     }
 
     /// Put a fresh upgrade handler back in front of us so the *next* request on
@@ -919,11 +926,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 )
                 return
             }
-            let transcript = join.transcriptPath
-            let read = loop.makePromise(of: TranscriptBill.Outcome.self)
-            TranscriptBill.queue.async { read.succeed(TranscriptBill.read(path: transcript)) }
-            read.futureResult.whenSuccess { outcome in
-                let (status, body) = Self.costBody(outcome, join: join)
+            self.readCost(of: join, on: loop).whenSuccess { (status, body) in
                 self.writeJSON(
                     status: status, body: body,
                     context: bound.value, version: head.version,
@@ -931,6 +934,25 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 )
             }
         }
+    }
+
+    /// The body of a cost route for `join`'s transcript: the bill when its
+    /// last line is one, else the estimate of the turns after the last bill
+    /// (`TranscriptEstimateCache`). Both reads run on `TranscriptBill.queue`,
+    /// off the loop; the future completes with the status and the body.
+    private func readCost(of join: AgentJoin, on loop: EventLoop) -> EventLoopFuture<(HTTPResponseStatus, String)> {
+        let transcript = join.transcriptPath
+        let estimates = transcriptEstimates
+        let read = loop.makePromise(of: (HTTPResponseStatus, String).self)
+        TranscriptBill.queue.async {
+            let outcome = TranscriptBill.read(path: transcript)
+            var estimate: TranscriptEstimate.Outcome?
+            if case .noBill = outcome, let estimates {
+                estimate = estimates.estimate(forTranscriptAt: transcript)
+            }
+            read.succeed(Self.costBody(outcome, estimate: estimate, join: join))
+        }
+        return read.futureResult
     }
 
     /// `GET /api/archives/<uuid>/cost` — the bill of an archived session, the
@@ -990,11 +1012,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 )
                 return
             }
-            let transcript = join.transcriptPath
-            let read = loop.makePromise(of: TranscriptBill.Outcome.self)
-            TranscriptBill.queue.async { read.succeed(TranscriptBill.read(path: transcript)) }
-            read.futureResult.whenSuccess { outcome in
-                let (status, body) = Self.costBody(outcome, join: join)
+            self.readCost(of: join, on: loop).whenSuccess { (status, body) in
                 self.writeJSON(
                     status: status, body: body,
                     context: bound.value, version: head.version,
@@ -1327,27 +1345,43 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// The response of the cost route: the transcript's own field names,
     /// unrounded, under `bill`, so a consumer's `--json` passes them through.
     /// `hasBill` is false for the two empty cases and `reason` says which.
+    /// `estimated` is true when a running session's turns are priced under
+    /// `estimate` in place of the bill it does not have yet; the bill wins
+    /// once it lands, and `estimateReason` says why there is neither.
     private struct CostResponse: Encodable {
         let ok = true
         let hasBill: Bool
+        let estimated: Bool
         let agentSessionId: String
         let agentTranscript: String
         let reason: String?
         let bill: TranscriptBill?
+        let estimate: TranscriptEstimate?
+        let estimateReason: String?
     }
 
-    static func costBody(_ outcome: TranscriptBill.Outcome, join: AgentJoin) -> (HTTPResponseStatus, String) {
+    static func costBody(
+        _ outcome: TranscriptBill.Outcome, estimate: TranscriptEstimate.Outcome?, join: AgentJoin
+    ) -> (HTTPResponseStatus, String) {
         let response: CostResponse
         switch outcome {
         case .bill(let bill):
             response = CostResponse(
-                hasBill: true, agentSessionId: join.sessionID, agentTranscript: join.transcriptPath,
-                reason: nil, bill: bill
+                hasBill: true, estimated: false, agentSessionId: join.sessionID, agentTranscript: join.transcriptPath,
+                reason: nil, bill: bill, estimate: nil, estimateReason: nil
             )
         case .noBill(let why):
+            var estimated: TranscriptEstimate?
+            var estimateReason: String?
+            switch estimate {
+            case .estimate(let value): estimated = value
+            case .noEstimate(let reason): estimateReason = reason.rawValue
+            case .unreadable(let detail): estimateReason = detail
+            case nil: break
+            }
             response = CostResponse(
-                hasBill: false, agentSessionId: join.sessionID, agentTranscript: join.transcriptPath,
-                reason: why.rawValue, bill: nil
+                hasBill: false, estimated: estimated != nil, agentSessionId: join.sessionID, agentTranscript: join.transcriptPath,
+                reason: why.rawValue, bill: nil, estimate: estimated, estimateReason: estimateReason
             )
         case .unreadable(let detail):
             let body = (try? JSONSerialization.data(withJSONObject: [

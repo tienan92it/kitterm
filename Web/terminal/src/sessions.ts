@@ -28,6 +28,7 @@ import {
   rowName,
   sameServerKey,
   sessionCost,
+  sessionCostTitle,
   stateOf,
   stateTag,
   usageAmount,
@@ -308,13 +309,19 @@ async function fetchBills(now: number): Promise<void> {
           bills.set(s.id, { at: now, bill: null });
           return;
         }
-        const answer = (await res.json()) as { hasBill?: boolean; bill?: { totalCostUSD?: number; startTime?: number } };
-        bills.set(s.id, {
-          at: now,
-          bill: answer.hasBill && answer.bill
-            ? { hasBill: true, totalCostUSD: answer.bill.totalCostUSD, startTime: answer.bill.startTime }
-            : { hasBill: false },
-        });
+        const answer = (await res.json()) as {
+          hasBill?: boolean; bill?: { totalCostUSD?: number; startTime?: number };
+          estimated?: boolean; estimate?: { costUSD?: number; turns?: number; startTime?: number };
+        };
+        let bill: SessionBill = { hasBill: false };
+        if (answer.hasBill && answer.bill) {
+          bill = { hasBill: true, totalCostUSD: answer.bill.totalCostUSD, startTime: answer.bill.startTime };
+        } else if (answer.estimated && answer.estimate && typeof answer.estimate.costUSD === "number") {
+          // A running session's turns priced so far (round 16); the bill
+          // replaces it on the fetch after `claude` exits.
+          bill = { hasBill: false, estimate: { costUSD: answer.estimate.costUSD, turns: answer.estimate.turns ?? 0, startTime: answer.estimate.startTime, updatedAt: now } };
+        }
+        bills.set(s.id, { at: now, bill });
       } catch {
         // Keep what the page shows; the next poll asks again.
       }
@@ -1582,7 +1589,7 @@ function paintFolds(idle: SessionRow[]): void {
       const family = markFamily(stateOf(s));
       return row({
         kind: "session", key: `session:${s.id}`, depth: 0, name: rowName(s), title: s.cwd,
-        state: { family, tag: stateTag(s) }, facts: sessionFactColumns(range ? sessionCost(billOf(s.id), range) : undefined, rowModel(s), s.agentModel, rowLine(s, now).since),
+        state: { family, tag: stateTag(s) }, facts: sessionFactColumns(range ? sessionCost(billOf(s.id), range) : undefined, rowModel(s), s.agentModel, rowLine(s, now).since, sessionCostTitle(billOf(s.id), now)),
         row: s, mark: family, needs: false, approvals: [],
       }, true);
     })));

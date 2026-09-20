@@ -226,6 +226,10 @@ public final class DaemonServer: @unchecked Sendable {
         // The model per live session's transcript, one cache for every
         // connection, so a session list reads a transcript only when it grew.
         let transcriptModels = TranscriptModelCache()
+        // The live estimate per running session's transcript, one cache for
+        // every connection, so a cost route reads only the turns that landed
+        // since it last asked.
+        let transcriptEstimates = TranscriptEstimateCache()
         // The newest quota reading a statusline posted, read back from
         // `usage-limits.json` so its age is true after a restart.
         let usageLimits = UsageLimitsStore(file: DaemonPaths.usageLimitsFile)
@@ -376,7 +380,8 @@ public final class DaemonServer: @unchecked Sendable {
                         repositoryYields: repositoryYields,
                         remoteOrigins: remoteOrigins,
                         usageLimits: usageLimits,
-                        transcriptModels: transcriptModels
+                        transcriptModels: transcriptModels,
+                        transcriptEstimates: transcriptEstimates
                     )
                     connections.track(channel)
                     let upgradeConfig = NIOHTTPServerUpgradeConfiguration(

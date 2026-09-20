@@ -69,12 +69,28 @@ export type ModelRow = {
 /** What the page keeps of `GET /api/sessions/<id>/cost`: whether the
  * transcript ends in a bill, its dollars and when the session began.
  * `hasBill` is false for a running session, whose transcript has no
- * `cost-state` line yet. */
+ * `cost-state` line yet; the route then prices its turns so far under
+ * `estimate` (round 16), which the page prints as `~$4.20`. */
 export type SessionBill = {
   hasBill: boolean;
   totalCostUSD?: number;
   /** Epoch milliseconds, the bill's `startTime`; absent on an old line. */
   startTime?: number;
+  /** The running session's turns priced, when there is no bill. */
+  estimate?: SessionEstimate;
+};
+
+/** The estimate the cost route answers for a running session, with when
+ * the page fetched it, for the tooltip's `updated 12s ago`. */
+export type SessionEstimate = {
+  costUSD: number;
+  /** API requests counted. */
+  turns: number;
+  /** Epoch milliseconds of the first counted turn; absent on a line with
+   * no timestamp. */
+  startTime?: number;
+  /** Epoch milliseconds: when the page last fetched the estimate. */
+  updatedAt: number;
 };
 
 export type Approval = {
@@ -2159,15 +2175,60 @@ export function taskCost(summary: Pick<KnowledgeSummary, "rounds">, round: numbe
 
 /** What a session prints in the cost column (round 15): its transcript's
  * bill, `$12.85`, when the session began inside the range (`startTime`,
- * in this browser's zone; a bill with no start is counted); null for a
- * session with no bill yet, which is every running one, or none fetched. */
+ * in this browser's zone; a bill with no start is counted); for a running
+ * session with no bill yet, its estimate as `~$4.20` (round 16), placed
+ * in the range by its first turn the same way; null for a session with
+ * neither, or none fetched. */
 export function sessionCost(bill: SessionBill | null | undefined, range: DayRange): string | null {
-  if (!bill?.hasBill || typeof bill.totalCostUSD !== "number") return null;
-  if (typeof bill.startTime === "number") {
-    const day = dayKey(bill.startTime);
-    if (day < range.from || day > range.to) return null;
+  if (bill?.hasBill && typeof bill.totalCostUSD === "number") {
+    return inRange(bill.startTime, range) ? dollars(bill.totalCostUSD) : null;
   }
-  return dollars(bill.totalCostUSD);
+  const estimate = bill?.estimate;
+  if (!estimate || typeof estimate.costUSD !== "number") return null;
+  return inRange(estimate.startTime, range) ? `~${dollars(estimate.costUSD)}` : null;
+}
+
+/** Whether a start moment falls inside the range; one with no moment is
+ * counted. */
+function inRange(startTime: number | undefined, range: DayRange): boolean {
+  if (typeof startTime !== "number") return true;
+  const day = dayKey(startTime);
+  return day >= range.from && day <= range.to;
+}
+
+/** The cost cell's tooltip of a session line: what the figure is. A bill
+ * is the transcript's; an estimate says how many turns it prices and how
+ * old it is, `estimated from 12 turns · updated 12s ago` (round 16). */
+export function sessionCostTitle(bill: SessionBill | null | undefined, now: number): string {
+  const estimate = bill?.estimate;
+  if (bill?.hasBill || !estimate) return BILL_TITLE;
+  return `estimated from ${plural(estimate.turns, "turn", "turns")} · updated ${secondsAgo(now - estimate.updatedAt)}`;
+}
+
+/** The tooltip of a session's bill in the cost column. */
+export const BILL_TITLE = "the bill of this session's transcript, when it began in the range";
+
+/** `12s ago` under a minute, then the span's two-unit label, `4m ago`. */
+export function secondsAgo(ms: number): string {
+  const seconds = Math.floor(Math.max(0, ms) / 1000);
+  return seconds < 60 ? `${seconds}s ago` : `${spanLabel(ms)} ago`;
+}
+
+/** What a project's sessions are estimated to have cost so far, summed,
+ * as its name's tooltip prints it, `+ ~$4.20 running` (round 16): the
+ * rollup counts a session only once its transcript is billed, so a
+ * running session's estimate is on its own line and on no figure above
+ * it. Null with no estimated session under the project. */
+export function runningEstimate(rows: readonly Pick<ModelRow, "id">[], billOf: (id: string) => SessionBill | null | undefined): string | null {
+  let sum = 0;
+  let any = false;
+  for (const row of rows) {
+    const bill = billOf(row.id);
+    if (bill?.hasBill || typeof bill?.estimate?.costUSD !== "number") continue;
+    sum += bill.estimate.costUSD;
+    any = true;
+  }
+  return any ? `+ ~${dollars(sum)} running` : null;
 }
 
 /** One toggle of the panel: what it prints, whether it is the choice, and

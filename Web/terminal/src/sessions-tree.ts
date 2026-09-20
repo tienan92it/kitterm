@@ -58,7 +58,10 @@ import {
   rowModel,
   rowName,
   rowNeeds,
+  BILL_TITLE,
+  runningEstimate,
   sessionCost,
+  sessionCostTitle,
   shownTasks,
   statePath,
   stateOf,
@@ -212,12 +215,13 @@ export function taskTooltip(round: number | undefined, pr: number | undefined): 
   return parts.length === 0 ? null : parts.join(" · ");
 }
 
-/** The facts of a session's line: its bill in column 2, its model in
- * column 3, how long since its last output in column 4. The phone keeps
- * the cost; with no rollup (`cost` undefined) the column is empty and the
- * phone keeps the time. */
-export function sessionFactColumns(cost: string | null | undefined, model: string | null, modelId: string | undefined, since: string | null): TreeFact[] {
-  const facts: TreeFact[] = cost === undefined ? [] : costColumn(cost, "the bill of this session's transcript, when it began in the range; a running session has none yet");
+/** The facts of a session's line: its bill in column 2 (a running
+ * session's estimate, `~$4.20`, with `title` saying so; round 16), its
+ * model in column 3, how long since its last output in column 4. The
+ * phone keeps the cost; with no rollup (`cost` undefined) the column is
+ * empty and the phone keeps the time. */
+export function sessionFactColumns(cost: string | null | undefined, model: string | null, modelId: string | undefined, since: string | null, title: string = BILL_TITLE): TreeFact[] {
+  const facts: TreeFact[] = cost === undefined ? [] : costColumn(cost, title);
   if (model !== null) facts.push(fact("model", model, 3, false, modelId));
   if (since !== null) facts.push(fact("since", since, 4, cost === undefined));
   return facts;
@@ -260,7 +264,7 @@ export function tree<R extends ModelRow>(input: TreeInput<R>): Tree<R> {
       name: rowName(row),
       title: title === "" ? null : title,
       state: { family: markFamily(state), tag: stateTag(row) },
-      facts: sessionFactColumns(range ? sessionCost(billOf?.(row.id), range) : undefined, rowModel(row), row.agentModel, line.since),
+      facts: sessionFactColumns(range ? sessionCost(billOf?.(row.id), range) : undefined, rowModel(row), row.agentModel, line.since, sessionCostTitle(billOf?.(row.id), now)),
       row,
       mark: markFamily(state),
       needs: rowNeeds(row),
@@ -326,7 +330,10 @@ export function tree<R extends ModelRow>(input: TreeInput<R>): Tree<R> {
         key: `project:${p.key}`,
         depth,
         name: p.heading.name,
-        title: [p.heading.path, p.noGoals].filter((t): t is string => t !== null).join("\n") || null,
+        // A running session's estimate is on its own line and on no
+        // figure above it, because the rollup counts a session once its
+        // transcript is billed; the project's tooltip says what is coming.
+        title: [p.heading.path, p.noGoals, billOf ? runningEstimate(owned, billOf) : null].filter((t): t is string => t !== null && t !== undefined).join("\n") || null,
         state: null,
         facts: headingFactColumns(usage && p.project ? costLabel(bucket) : null, agentsLabel(working(owned)), p.heading.name),
         project: p.project,
