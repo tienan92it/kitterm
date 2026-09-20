@@ -1,19 +1,14 @@
 # STATE: agent-dashboard
 
 - Status: active
-- Round: 0 of 3 in this budget (sixth budget)
-- Rounds total: 15
-- Last floor: green (2026-09-20, round 15 after: swift test 831, Linux build, vitest 1441 in 56 files)
-- Updated: 2026-09-20, continued: a running session's cost
+- Round: 1 of 3 in this budget (sixth budget)
+- Rounds total: 16
+- Last floor: green (2026-09-20, round 16 after: swift test 842, Linux build, vitest 1448 in 58 files, bench p95 2.60 ms)
+- Updated: 2026-09-20, round 16 closed
 
 ## Queue
 
-1. `a-running-session-has-a-cost` (the human's on 2026-09-20). Claude
-   Code writes the `cost-state` line at exit, so a running session
-   printed a dash. Sum the transcript's assistant `usage` by model at
-   the rollup's rates for a live estimate, cached by size and mtime;
-   the route says `estimated`; the page prints `~$4.20` until the bill
-   lands. The Pen row marks carry the `~`.
+Empty. Rounds 10–16 are on PR #134.
 
 ## Failures
 
@@ -21,16 +16,23 @@ None.
 
 ## Proposals waiting on the human
 
-- `site/index.html` sets `--accent: #3fb950`. The dashboard's palette is
-  the Coolors set the human chose, so the site and the page no longer
-  share a colour. Not blocking; the human decides whether the site
-  follows.
+- `Sources/KittermDaemon/ModelPricing.swift` is a rate table copied from
+  platform.claude.com on 2026-09-20; nothing updates it. Own it, or
+  move the rates to a file. See `rounds/016.md`.
+- Read `<session>/subagents/*.jsonl` into the running estimate; a
+  session with subagents estimates up to 17% under. One round.
+- `site/index.html` sets `--accent: #3fb950`; the landing redesign in
+  `dashboard.pen` (frames `Landing 1200`, `Landing 390`, `Landing
+  notes`) replaces it when the human approves.
 - `goal.md` condition 6 says the 390 px page is under 1200 px. The
-  frame's shape on the real tree measures 2499 px. Reset the number or
+  design measures about 2500 on the real tree. Reset the number or
   strike the condition.
 
 ## Done
 
+- `a-running-session-has-a-cost`, round 16, `f97e397` on PR #134. See
+  `rounds/016.md`. A running session prints `~$16.26` from its
+  transcript, 1–3% under the bill it becomes.
 - `cost-column-and-pr-links`, round 15, `23a30a4` on PR #134. See
   `rounds/015.md`. The tree's number column is the cost at every level;
   `PR #N` links to GitHub through `pullRequestBase` on `/api/projects`.
@@ -192,7 +194,8 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-Round 16, `a-running-session-has-a-cost`, on PR #134's branch. Then the human decides `goal.md` condition 6 (390 px
+Merge PR #134 (rounds 10–16). Then the human decides the proposals
+above and whether the goal is `done`. Then the human decides `goal.md` condition 6 (390 px
 under 1200; the design measures 2147 on the real tree) and whether to
 set the goal `done`. Then the human decides: `goal.md` condition 6 (390 px under
 1200) against the frame's shape, which measures 2499 on the real tree;
