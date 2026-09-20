@@ -1,14 +1,14 @@
 # STATE: agent-dashboard
 
-- Status: waiting
-- Round: 2 of 3 in this budget (third budget)
-- Rounds total: 9
-- Last floor: green (2026-09-18, round 9 after: swift test 823, vitest 1384 in 50 files)
-- Updated: 2026-09-18, round 9 closed
+- Status: active
+- Round: 2 of 3 in this budget (sixth budget)
+- Rounds total: 17
+- Last floor: green (2026-09-20, round 17 after: vitest 1449 in 58 files)
+- Updated: 2026-09-20, round 17 closed
 
 ## Queue
 
-Empty.
+Empty. Rounds 10–17 are on PR #134.
 
 ## Failures
 
@@ -16,40 +16,56 @@ None.
 
 ## Proposals waiting on the human
 
-- **`corpus/design-foundation.md`, Hierarchy**: "below 768 px a goal's
-  done tasks fold behind one line, the way a project's done goals do."
-  Round 7's first answer. See `rounds/007.md`.
-- **`corpus/design-foundation.md`, The panels**: `VALUE` folds at 390 px
-  with `WHERE` and `MODELS`. The current sentence says it does not; that
-  was round 6's foreman call and round 7 priced it at 187 px.
-- **`corpus/valuemaxxing.md` has four numbers the parser disagrees with.**
-  84 merged PRs not 83, 59,251 lines not 58,853 (a one-day range), 2
-  corrections not 3, and **7 sessions over $5 under 95% cached worth
-  $64.92, not 3 worth $33.54**. The conclusion holds — $64.92 of $2,458
-  is still not a lever — but on the measured number. The corpus is
-  Frozen. See `rounds/006.md`.
-- **`corpus/design-foundation.md`, "The model": the 4 KiB sentence is
-  measured false.** The last assistant line sits within 4 KiB in 3 of 40
-  transcripts, within 256 KiB in 40 of 40. The code uses 256 KiB. The
-  corpus is Frozen, so the human changes the sentence. See
-  `rounds/005.md`.
-- **`AGENTS.md`'s fleet entry still describes the reply line** capability
-  1 removed. One sentence; capability 5 rewrites that paragraph anyway.
-- **The anatomy's "actions" cell** lists "`[new]`, the `…` menu, or
-  nothing", and an approval's `[Deny]`/`[Allow]` now live there. Name
-  them in the foundation or move them.
-
-- `site/index.html` sets `--accent: #3fb950`. The dashboard's palette is
-  the Coolors set the human chose, so the site and the page no longer
-  share a colour. Not blocking; the human decides whether the site
-  follows.
-- `dashboard.pen` is open in Pencil and unsaved. The MCP server has no
-  save tool, so the human saves it to
-  `docs/goals/agent-dashboard/corpus/dashboard.pen`. The four frame
-  exports and the written contract are committed either way.
+- `Sources/KittermDaemon/ModelPricing.swift` is a rate table copied from
+  platform.claude.com on 2026-09-20; nothing updates it. Own it, or
+  move the rates to a file. See `rounds/016.md`.
+- Read `<session>/subagents/*.jsonl` into the running estimate; a
+  session with subagents estimates up to 17% under. One round.
+- `site/index.html` sets `--accent: #3fb950`; the landing redesign in
+  `dashboard.pen` (frames `Landing 1200`, `Landing 390`, `Landing
+  notes`) replaces it when the human approves.
+- `goal.md` condition 6 says the 390 px page is under 1200 px. The
+  design measures about 2500 on the real tree. Reset the number or
+  strike the condition.
 
 ## Done
 
+- `quota-resets-at-a-time`, round 17, `fbe03ce` on PR #134. See
+  `rounds/017.md`. The reset cell prints a local clock time.
+- `a-running-session-has-a-cost`, round 16, `f97e397` on PR #134. See
+  `rounds/016.md`. A running session prints `~$16.26` from its
+  transcript, 1–3% under the bill it becomes.
+- `cost-column-and-pr-links`, round 15, `23a30a4` on PR #134. See
+  `rounds/015.md`. The tree's number column is the cost at every level;
+  `PR #N` links to GitHub through `pullRequestBase` on `/api/projects`.
+- `four-defects-from-review`, round 14, `ef0e941` on PR #134. See
+  `rounds/014.md`. Stale quota wording, the quadrant spinner alone,
+  fold rows on the baseline, done goals in the fold open to their tasks.
+- `every-figure-follows-the-range`, round 13, `eb0a6bb` on PR #134. See
+  `rounds/013.md`. Two figures did not follow the range (a goal's tree
+  cost, LEAKS) and now do; the rest already did. Task working time back;
+  every goal listed.
+- `where-columns-per-filter`, round 12, `6432dae` on PR #134. See
+  `rounds/012.md`. The WHERE count and pull-request cells read per
+  filter as the Components frame draws them.
+- `the-approved-adjustments` (capability 11), round 11, `01bfb87` on PR
+  #134. See `rounds/011.md`. The page reproduces the design the human
+  approved on 2026-09-19 at both widths; 16 assertions added, 6
+  replaced under charter, the ratchet untouched.
+- Corpus cleanup, 2026-09-18, at the human's direction: `dashboard.pen`
+  is the single source of truth. Every rendering of the design left the
+  corpus (`01-*`, `02-*`, `03-*`, `04-*`); `design-foundation.md` points
+  at the file and no longer describes the layout twice; its working
+  mark and its transcript-read sentence carry the measured values; and
+  `valuemaxxing.md` carries round 6's four corrections as an amendment.
+  Four proposals closed by that: the two folding sentences (the frames
+  decide), the 4 KiB sentence, the four numbers.
+- `the-page-is-the-pen-design` (capability 10), round 10, on
+  `agent-dashboard/round-10`. See `rounds/010.md`. The page reproduces
+  the two frames at 1200 and 390; `Others` is the last MODELS row. 27
+  assertions added, the shipped-shape assertions replaced under charter,
+  the ratchet untouched. 390 px is 2499 on the real tree: the frame's
+  shape, above `goal.md`'s 1200 condition by the human's direction.
 - `others-not-a-count` (round 9), PR #133. See `rounds/009.md`. The
   summed model row reads `Others`; the names it covers stay in its
   `title`. Four assertions updated, all round 8's own, two of them
@@ -167,18 +183,23 @@ nothing here knows the human's hourly rate and the page takes no input.
 
 It is capability 7.
 
+## Direction, continued
+
+2026-09-18: the human closed Pen without saving after the foreman
+replaced the two dashboard frames with a copy of the shipped page. The
+frames are the human's design and the foreman does not edit them. The
+human then said the shipped page is wrong: it must follow the Pen frames
+exactly, and the one change to the frames is `MODELS` as the top three
+plus `Others`. Two of the open proposals fall to this direction: the
+frames show `VALUE` unfolded at 390 px, and they show a done goal's last
+done tasks open at both widths. It is capability 10.
+
 ## Next action
 
-None until the human answers. Every capability is done, including the
-one they added after seeing the result.
-
-The foreman recommends **done**. All nine conditions in `goal.md` hold on
-`main`, including condition 6: the 390 px page is **1002 closed, 1114
-with every fold open**, against its 1200.
-
-Five proposals wait, all listed above and none blocking. Two are
-sentences in the frozen `design-foundation.md` that round 7's two answers
-changed in behaviour; ratifying them makes the contract match the page.
-
-To reopen: set `Status: active`, write a queue, and set
-`Round: 0 of 3 in this budget (fourth budget)`.
+Merge PR #134 (rounds 10–17). Then the human decides the proposals
+above and whether the goal is `done`. Then the human decides the proposals
+above and whether the goal is `done`. Then the human decides `goal.md` condition 6 (390 px
+under 1200; the design measures 2147 on the real tree) and whether to
+set the goal `done`. Then the human decides: `goal.md` condition 6 (390 px under
+1200) against the frame's shape, which measures 2499 on the real tree;
+and the six crew choices in `rounds/010.md` where the frames are silent.

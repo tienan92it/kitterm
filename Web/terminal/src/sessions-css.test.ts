@@ -117,7 +117,10 @@ const isSpacing = (property: string): boolean =>
 
 /** The six ground tokens rule C leaves to the terminal's theme. */
 const GROUND = ["--ui-bg", "--ui-surface", "--ui-surface-2", "--ui-border", "--ui-text", "--ui-text-muted", "--ui-text-faint", "--ui-lift"];
-const OWNED = ["--ui-accent", "--ui-warning", "--ui-danger", "--ui-success"];
+/** The five owned colours (`corpus/palette.md`, amended 2026-09-19). */
+const OWNED = ["--ui-accent", "--ui-success", "--ui-warning", "--ui-danger", "--ui-caution"];
+/** The two mark sizes, beside the type tokens (round 11). */
+const MARK_TOKENS = ["--mark-size", "--mark-size-disclosure"];
 
 /** The dark value of a `light-dark(light, dark)` token. */
 const darkOf = (value: string | undefined): string => {
@@ -142,9 +145,22 @@ describe("sessions.css carries the design foundation", () => {
     expect(bare, "space comes from the scale: var(--space-1) to var(--space-5)").toEqual([]);
   });
 
-  it("sets no font size outside the three type tokens", () => {
-    const sizes = declarations((p) => p === "font-size").map(([where, , value]) => `${where} font-size: ${value}`);
-    expect(sizes, "a fourth size; hierarchy comes from weight and colour").toEqual([]);
+  it("defines the two mark sizes beside the type tokens: 14 px for a state mark, 11 px for the triangle", () => {
+    // Round 11 (the Components frame): the state marks `◐ ? ✓ ! – •` at
+    // 14 px in a 16 px column, the disclosure triangle at 11 px in the
+    // same column.
+    expect(MARK_TOKENS.map(token)).toEqual(["14px", "11px"]);
+  });
+
+  it("sets no font size outside the two mark tokens, and no font outside the three type tokens", () => {
+    // Chartered in round 11: the rule admitted no `font-size` at all. The
+    // two mark tokens are the only sizes a rule may write, and only on a
+    // mark: the text keeps its three sizes from the `font` shorthands.
+    const sizes = RULES.filter((rule) => rule.decls.has("font-size")).map((rule) => `${rule.selector} font-size: ${rule.decls.get("font-size")}`);
+    expect(sizes, "a size that is not one of the two mark tokens, or one on something that is not a mark").toEqual([
+      ".mark font-size: var(--mark-size)",
+      ".mark.disclosure font-size: var(--mark-size-disclosure)",
+    ]);
     const fonts = declarations((p) => p === "font")
       .filter(([, , value]) => !/^(inherit|var\(--type-(headline|heading|body)\))$/.test(value.trim()))
       .map(([where, , value]) => `${where} font: ${value}`);
@@ -163,13 +179,15 @@ describe("sessions.css carries the design foundation", () => {
     expect(RULES.filter((rule) => rule.decls.has("--line-h") && rule.selector !== ":root").map(at)).toEqual([]);
   });
 
-  it("owns the four state colours and inherits the ground from the terminal (rule C)", () => {
-    // `corpus/palette.md`: `light-dark()` takes the light value first.
+  it("owns the five state colours and inherits the ground from the terminal (rule C)", () => {
+    // `corpus/palette.md`, amended 2026-09-19: `light-dark()` takes the
+    // light value first. Round 11 added the green done mark and the
+    // caution; chartered, the green replaced `var(--ui-text-faint)`.
     expect(token("--ui-accent")).toBe("light-dark(#1d7268, #2a9d8f)");
+    expect(token("--ui-success")).toBe("light-dark(#2d6a4f, #52b788)");
     expect(token("--ui-warning")).toBe("light-dark(#8a6415, #e9c46a)");
     expect(token("--ui-danger")).toBe("light-dark(#b0472c, #e76f51)");
-    // A finished thing is grey.
-    expect(token("--ui-success")).toBe("var(--ui-text-faint)");
+    expect(token("--ui-caution")).toBe("light-dark(#b8641f, #f4a261)");
     const redeclared = RULES.flatMap((rule) =>
       [...rule.decls.keys()].filter((name) => GROUND.includes(name)).map((name) => `${at(rule)} ${name}`),
     );
@@ -191,9 +209,10 @@ describe("sessions.css carries the design foundation", () => {
     // WCAG 1.4.11: a state mark is a non-text element and takes 3:1. The hues
     // are constants; the ground under them is the terminal's, so every theme
     // is a different pair. `corpus/palette.md` measured the palette's own
-    // ground; this measures the seventeen the page can sit on.
+    // ground; this measures the seventeen the page can sit on. Round 11
+    // added the green and the caution to the hues measured.
     const tokens = rootVariables(readSource("tokens.css"));
-    const hues = ["--ui-accent", "--ui-warning", "--ui-danger"].map((name) => [name, darkOf(token(name))] as const);
+    const hues = OWNED.map((name) => [name, darkOf(token(name))] as const);
     const under: string[] = [];
     for (const theme of TERMINAL_THEMES) {
       const vars = new Map([...tokens, ...Object.entries(themeTokens(theme.colors, { accent: theme.accent }))]);
@@ -210,23 +229,28 @@ describe("sessions.css carries the design foundation", () => {
 });
 
 /**
- * The fourth level (`agent-dashboard`, capability 3; `design-foundation.md`,
- * Hierarchy): a task is one line under its goal, set in by one indent
- * level, and its state's colour is on the gutter mark alone.
+ * A line of the tree (`agent-dashboard`, capability 3, reshaped in round 10
+ * to the frame `Dashboard 1200`): every level is one `.line` with the mark
+ * at the far left of the page and the indent on the name, one `--space-4`
+ * per level at 768 px and up and one `--space-3` on a phone; the state's
+ * colour is on the mark alone. Chartered in round 10: the nested
+ * `.tree-tasks` list and its `--space-3` padding pinned the card's shape.
  */
-describe("a task line follows the foundation", () => {
-  const taskRules = RULES.filter((rule) => /\.(tree-tasks|tree-task|line-task|tag-state|line-fact|line-name)\b/.test(rule.selector));
+describe("a line follows the foundation", () => {
+  const nameRules = RULES.filter((rule) => rule.selector === ".line-name");
 
-  it("exists, is one line tall, and indents by one level", () => {
-    expect(taskRules.length).toBeGreaterThan(0);
-    const heights = taskRules.filter((rule) => rule.selector.endsWith(".line-task")).map((rule) => rule.decls.get("min-height"));
-    expect(heights, "a task line is one --line-h, like a row").toEqual(["var(--line-h)"]);
-    const indents = taskRules.filter((rule) => rule.selector.endsWith(".tree-tasks")).map((rule) => rule.decls.get("padding"));
-    expect(indents, "one indent level is --space-3").toEqual(["0 0 0 var(--space-3)"]);
+  it("exists, is one line tall, and indents the name by one level per depth", () => {
+    expect(RULES.filter((rule) => rule.selector === ".line").map((rule) => rule.decls.get("min-height")), "a line is one --line-h").toEqual(["var(--line-h)"]);
+    expect(nameRules.map((rule) => [rule.conditions.join(" "), rule.decls.get("padding-left")])).toEqual([
+      ["", "calc(var(--depth, 0) * var(--space-4))"],
+      ["@media (max-width: 767px)", "calc(var(--depth, 0) * var(--space-3))"],
+    ]);
+    // No nested list carries the indent: the tree is flat lines.
+    expect(RULES.filter((rule) => /\.(tree-tasks|tree-task|nested|card)\b/.test(rule.selector)).map(at)).toEqual([]);
   });
 
   it("paints no owned colour as text: the mark carries the state", () => {
-    const coloured = taskRules
+    const coloured = RULES.filter((rule) => /\.(line|state|cost|counter|round|pr|model|since|agents)\b/.test(rule.selector))
       .filter((rule) => !rule.selector.includes(".mark"))
       .flatMap((rule) => [...rule.decls].filter(([name, value]) => name === "color" && OWNED.some((owned) => value.includes(owned))).map(() => at(rule)));
     expect(coloured).toEqual([]);
@@ -252,9 +276,53 @@ describe("the panels say what the spend bought", () => {
     ]);
   });
 
-  it("drop LEAKS below 768 px and no other panel", () => {
-    const dropped = RULES.filter((rule) => rule.conditions.length > 0 && rule.decls.get("display") === "none" && /^\.panel\./.test(rule.selector));
-    expect(dropped.map((rule) => [rule.selector, rule.conditions.join(" ")])).toEqual([[".panel.leaks", "@media (max-width: 767px)"]]);
+  it("drop WHERE and LEAKS below 768 px and no other panel", () => {
+    // Round 10 (the frame `Dashboard 390`): WHERE and LEAKS are absent on a
+    // phone; USAGE, QUOTA, VALUE and MODELS stay, unfolded.
+    const dropped = RULES.filter((rule) => rule.conditions.length > 0 && rule.decls.get("display") === "none" && /^\.panel\.\w+$/.test(rule.selector));
+    expect(dropped.map((rule) => [rule.selector, rule.conditions.join(" ")])).toEqual([
+      [".panel.where", "@media (max-width: 767px)"],
+      [".panel.leaks", "@media (max-width: 767px)"],
+    ]);
+    expect(RULES.filter((rule) => /panel-fold|details/.test(rule.selector) && rule.selector.includes("panel")).map(at), "no panel folds").toEqual([]);
+  });
+
+  it("keep only the MODELS label on a phone: USAGE, QUOTA and VALUE lose theirs", () => {
+    // Round 10 (the frame `Dashboard 390`): the tiles stand under no label.
+    const hidden = RULES.filter((rule) => rule.conditions.length > 0 && rule.decls.get("display") === "none" && /^\.panel\.\w+ > \.panel-label$/.test(rule.selector));
+    expect(hidden.map((rule) => rule.selector).sort()).toEqual([".panel.quota > .panel-label", ".panel.usage > .panel-label", ".panel.value > .panel-label"]);
+  });
+
+  it("share one name column across QUOTA, MODELS and WHERE, 140 px at 768 px and 92 px on a phone, and one 108 px last column", () => {
+    // Round 11 (the approved frames): every bar starts on one x; the
+    // quota's bar is 220 px (160 on a phone) and does not fill the row;
+    // MODELS's sessions and WHERE's unit cost end on one x.
+    const panel = RULES.filter((rule) => rule.selector === ".panel");
+    expect(panel.filter((rule) => rule.conditions.length === 0).map((rule) => [rule.decls.get("--name-col"), rule.decls.get("--quota-bar"), rule.decls.get("--last-col")])).toEqual([["140px", "220px", "108px"]]);
+    expect(panel.filter((rule) => rule.conditions.length > 0).map((rule) => [rule.conditions.join(" "), rule.decls.get("--name-col"), rule.decls.get("--quota-bar")])).toEqual([
+      ["@media (max-width: 767px)", "92px", "160px"],
+    ]);
+    // A selector can have several rules; they cascade, so the lookup
+    // merges them in sheet order.
+    const width = (selector: string) => {
+      const decls = new Map(RULES.filter((rule) => rule.selector === selector && rule.conditions.length === 0).flatMap((rule) => [...rule.decls]));
+      return [decls.get("flex"), decls.get("width")];
+    };
+    expect(width(".quota-label")).toEqual(["none", "var(--name-col)"]);
+    expect(width(".split-name")).toEqual(["none", "var(--name-col)"]);
+    expect(width(".quota-track")).toEqual(["none", "var(--quota-bar)"]);
+    expect(width(".split-rate")).toEqual(["none", "var(--last-col)"]);
+    expect(width(".models .split-units")).toEqual([undefined, "var(--last-col)"]);
+    // The track is the surface, the fill a mark: nothing new is painted.
+    expect(RULES.filter((rule) => rule.selector === ".quota-track").map((rule) => rule.decls.get("background"))).toEqual(["var(--ui-surface)"]);
+    expect(RULES.filter((rule) => /quota-cells|quota-fill\b(?!.*bar)/.test(rule.selector)).map(at), "no ASCII cells").toEqual([]);
+  });
+
+  it("draw one divider between MODELS and VALUE, a hairline, and above MODELS on a phone", () => {
+    const divider = RULES.filter((rule) => rule.selector === ".panel-divider");
+    expect(divider.filter((rule) => rule.conditions.length === 0).map((rule) => [rule.decls.get("border-top"), rule.decls.get("margin")])).toEqual([["1px solid var(--ui-border)", "0 0 var(--space-4)"]]);
+    const phone = RULES.filter((rule) => rule.conditions.includes("@media (max-width: 767px)") && rule.decls.has("border-top") && /^\.panel/.test(rule.selector));
+    expect(phone.map((rule) => [rule.selector, rule.decls.get("border-top")])).toEqual([[".panel.models", "1px solid var(--ui-border)"]]);
   });
 
   it("draw a bar as a mark, in the accent, and the remainder's in the amber", () => {
@@ -293,24 +361,28 @@ describe("the band is a fixed frame", () => {
       .filter((where) => !where.includes(".band-cell")), "a band whose height can move").toEqual([]);
   });
 
-  it("wraps to two rows of two below 768 px, at twice the height and no more", () => {
-    const narrow = bandRoot.filter((rule) => rule.conditions.length > 0).map((rule) => [
-      rule.conditions.join(" "),
-      rule.decls.get("height"),
-      rule.decls.get("grid-template-columns"),
+  it("puts the brand at the left and the four cells at the right on one line, and below 768 px the brand on its own line over two rows of two, at three lines and no more", () => {
+    // Round 10 (the frames): `kitterm` at the left, the counts at the
+    // right; on a phone the brand takes a line and the cells a 2×2 grid.
+    const wide = bandRoot.filter((rule) => rule.conditions.length === 0);
+    expect(wide.map((rule) => rule.decls.get("display"))).toEqual(["flex"]);
+    expect(RULES.filter((rule) => rule.selector === ".band-brand" && rule.conditions.length === 0).map((rule) => rule.decls.get("flex"))).toEqual(["1 1 auto"]);
+    const narrow = bandRoot.filter((rule) => rule.conditions.length > 0).map((rule) => [rule.conditions.join(" "), rule.decls.get("height"), rule.decls.get("flex-wrap")]);
+    expect(narrow).toEqual([["@media (max-width: 767px)", "calc(3 * var(--line-h))", "wrap"]]);
+    const cells = RULES.filter((rule) => rule.selector === ".band-cells" && rule.conditions.length > 0 && rule.decls.has("display")).map((rule) => [
+      rule.decls.get("display"), rule.decls.get("grid-template-columns"), rule.decls.get("grid-auto-rows"),
     ]);
-    expect(narrow).toEqual([["@media (max-width: 767px)", "calc(2 * var(--line-h))", "repeat(2, minmax(0, 1fr))"]]);
-    const wide = bandRoot.filter((rule) => rule.conditions.length === 0).map((rule) => rule.decls.get("grid-template-columns"));
-    expect(wide).toEqual(["repeat(4, minmax(0, 1fr))"]);
+    expect(cells).toEqual([["grid", "repeat(2, minmax(0, 1fr))", "var(--line-h)"]]);
   });
 
-  it("keeps a cell one line tall and on one line, cut rather than wrapped", () => {
-    const cell = RULES.filter((rule) => rule.selector === ".band-cell");
-    expect(cell.map((rule) => rule.decls.get("height"))).toEqual(["var(--line-h)"]);
+  it("keeps a cell on one line, cut rather than wrapped, its count at the headline size", () => {
+    const cell = RULES.filter((rule) => rule.selector === ".band-cell" && rule.conditions.length === 0);
     expect(cell.map((rule) => rule.decls.get("white-space"))).toEqual(["nowrap"]);
     expect(cell.map((rule) => rule.decls.get("overflow"))).toEqual(["hidden"]);
-    // The row tracks are the line height too, so no cell can stretch one.
-    expect(bandRoot.filter((rule) => rule.conditions.length === 0).map((rule) => rule.decls.get("grid-auto-rows"))).toEqual(["var(--line-h)"]);
+    expect(RULES.filter((rule) => rule.selector === ".band-value").map((rule) => rule.decls.get("font"))).toEqual(["var(--type-headline)"]);
+    expect(RULES.filter((rule) => rule.selector === ".band-brand" && rule.conditions.length === 0).map((rule) => rule.decls.get("font"))).toEqual(["var(--type-heading)"]);
+    // The count that carries a state is a mark: text as wide as itself.
+    expect(RULES.find((rule) => rule.selector === ".mark.wide")?.decls.get("width")).toBe("auto");
   });
 
   it("draws no strip, no count line, and nothing sticky", () => {
@@ -323,63 +395,87 @@ describe("the band is a fixed frame", () => {
 
 /**
  * Every line is one line (`agent-dashboard`, capability 5;
- * `design-foundation.md`, principle 3 and "The line, in detail"): a line
- * of the tree is one `--line-h` tall and never wraps; its name is the only
- * cell that truncates; a fact that does not fit is hidden whole. The marks
- * are characters coloured through a clipped background, so no owned colour
- * is ever `color`; and the one thing that moves is the working mark's
- * character cycle in `sessions.ts`, which is why the sheet animates
- * nothing at all.
+ * `design-foundation.md`, principle 3 and "The line, in detail"; the
+ * columns of the frame `Dashboard 1200`, round 10): a line of the tree is
+ * one `--line-h` tall and never wraps; its name is the only cell that
+ * truncates; its facts sit in four fixed columns at 768 px and up and give
+ * way to the state word and one fact on a phone. The marks are characters
+ * coloured through a clipped background, so no owned colour is ever
+ * `color`; and the one thing that moves is the working mark's character
+ * cycle in `sessions.ts`, which is why the sheet animates nothing at all.
  */
 describe("every line is one line", () => {
-  // The parser splits a comma list, so each selector is its own rule.
-  const LINE_SELECTORS = [".card .head", ".workspace > .head", ".card .goal-line", ".card .line-task", ".row-line", ".line-approval"];
-  // A selector can have several unconditional rules (`.workspace > .head`
-  // does); they cascade, so the lookup merges them in sheet order.
+  // A selector can have several unconditional rules; they cascade, so the
+  // lookup merges them in sheet order.
   const treeRule = (selector: string): CssRule | undefined => {
     const rules = RULES.filter((rule) => rule.selector === selector && rule.conditions.length === 0);
     return rules.length === 0 ? undefined : { ...rules[0], decls: new Map(rules.flatMap((rule) => [...rule.decls])) };
   };
-  const lineRules = LINE_SELECTORS.map((selector) => treeRule(selector)!);
 
-  it("makes every level's line one --line-h tall, on one line, and never wraps it", () => {
-    expect(lineRules.map((rule) => rule?.selector), "each line selector has its rule").toEqual(LINE_SELECTORS);
-    expect(lineRules.map((rule) => rule.decls.get("min-height"))).toEqual(LINE_SELECTORS.map(() => "var(--line-h)"));
-    expect(lineRules.map((rule) => rule.decls.get("display"))).toEqual(LINE_SELECTORS.map(() => "flex"));
-    // The row's text lives in `.main`, which is where its nowrap goes.
-    const nowrap = [...lineRules.filter((rule) => rule.selector !== ".row-line"), treeRule(".main")!].map((rule) => rule.decls.get("white-space"));
-    expect(nowrap).toEqual(nowrap.map(() => "nowrap"));
-    const wrapping = RULES.filter((rule) => /\.(head|goal-line|line-task|row-line|row|open|main|line-approval)\b/.test(rule.selector))
+  it("makes every line one --line-h tall, on one line, and never wraps it", () => {
+    const line = treeRule(".line")!;
+    expect(line.decls.get("min-height")).toBe("var(--line-h)");
+    expect(line.decls.get("display")).toBe("flex");
+    expect(line.decls.get("white-space")).toBe("nowrap");
+    const wrapping = RULES.filter((rule) => /\.(line|main|row|open|line-approval)\b/.test(rule.selector))
       .filter((rule) => rule.decls.has("flex-wrap"))
       .map(at);
     expect(wrapping, "principle 3: a fact that does not fit is dropped, not wrapped").toEqual([]);
+    // The tree paints no card: no surface fill and no rule per line, only
+    // the hairline between two top-level sections.
+    const BOXES = [".line", ".row", ".row-line", ".tree", ".tree-section", ".main", ".goal-line", ".line-task", ".line-project", ".line-workspace", ".line-approval", ".line-fold", ".tree-section + .tree-section"];
+    const filled = RULES.filter((rule) => BOXES.includes(rule.selector) && rule.conditions.length === 0)
+      .filter((rule) => rule.decls.has("background") || rule.decls.has("border-top") || rule.decls.has("border-bottom") || rule.decls.has("border"))
+      .map((rule) => rule.selector);
+    expect(filled).toEqual([".tree-section + .tree-section"]);
+  });
+
+  it("holds the facts in four fixed columns at 768 px and up, and one fact beside the state word on a phone", () => {
+    const main = treeRule(".main")!;
+    expect(main.decls.get("display")).toBe("grid");
+    expect(main.decls.get("grid-template-columns")).toBe("minmax(0, 1fr) 17ch 14ch 12ch 10ch");
+    expect(treeRule(".main > .state")?.decls.get("grid-column")).toBe("2");
+    expect(["2", "3", "4"].map((n) => treeRule(`.main > [data-col="${n}"]`)?.decls.get("grid-column"))).toEqual(["3", "4", "5"]);
+    const facts = RULES.filter((rule) => /^\.main > \.(cost|counter|round|pr|model|since|agents)$/.test(rule.selector));
+    expect(facts.map((rule) => rule.decls.get("text-align"))).toEqual(facts.map(() => "right"));
+    expect(facts.map((rule) => rule.decls.has("text-overflow")), "a fact is never cut with an ellipsis").toEqual(facts.map(() => false));
+    const phone = RULES.filter((rule) => rule.conditions.includes("@media (max-width: 767px)"));
+    expect(phone.find((rule) => rule.selector === ".main")?.decls.get("display")).toBe("flex");
+    expect(phone.find((rule) => rule.selector === ".main > [data-col]:not([data-narrow])")?.decls.get("display")).toBe("none");
   });
 
   it("truncates the name and nothing else in the tree", () => {
-    const NAMES = [".name-text", ".card .goal-line .goal-name", ".card .line-task .line-name", ".folder", ".line-approval-what", ".archived-name"];
-    const inTree = RULES.filter((rule) => /\.(card|workspace|row|open|main|line-|goal-|archived|tree-|folder|name-text|state|since|tally|cost)\b/.test(rule.selector));
+    const NAMES = [".line-name", ".archived-name"];
+    const inTree = RULES.filter((rule) => /\.(line|row|open|main|line-|goal-|archived|tree-|folder|state|since|cost|counter|round|pr|model|agents)\b/.test(rule.selector));
     const truncating = inTree.filter((rule) => rule.decls.get("text-overflow") === "ellipsis").map((rule) => rule.selector);
     expect(truncating.sort()).toEqual([...NAMES].sort());
     for (const name of NAMES) {
-      const rule = RULES.find((r) => r.selector === name)!;
+      const rule = treeRule(name)!;
       expect(rule.decls.get("min-width"), `${name} may shrink`).toBe("0");
       expect(rule.decls.get("overflow"), `${name} clips`).toBe("hidden");
     }
-    // A fact is hidden whole, never cut: the cells that drop are `flex: none`.
-    const facts = [".main .place", ".main .what", ".main .model", ".line-approval-input"];
-    expect(facts.map((f) => treeRule(f)?.decls.get("flex"))).toEqual(facts.map(() => "none"));
+    // An approval's arguments are the one fact that drops, hidden whole, never cut.
+    expect(treeRule(".line-approval-input")?.decls.get("flex")).toBe("none");
     expect(treeRule("[data-drop][hidden]")?.decls.get("display")).toBe("none");
     expect(treeRule(".line.measure *")?.decls.get("flex")?.startsWith("0 0 auto"), "every cell at its content width while the page measures").toBe(true);
   });
 
   it("draws every mark as a character coloured through its background, never through color", () => {
+    // Round 11: a mark is 14 px in a 16 px column; chartered, the 16 px
+    // replaced `1ch`, the 12 px mark. The triangle is 11 px in the same
+    // column, in the faint grey, and never carries a state's colour.
     const mark = treeRule(".mark")!;
     expect(mark.decls.get("-webkit-text-fill-color")).toBe("transparent");
-    expect(mark.decls.get("width")).toBe("1ch");
+    expect(mark.decls.get("width")).toBe("16px");
+    expect(mark.decls.get("font-size")).toBe("var(--mark-size)");
     expect(mark.decls.has("mask") || mark.decls.has("-webkit-mask"), "no masked shape: the glyph is text").toBe(false);
+    const disclosure = treeRule(".mark.disclosure")!;
+    expect(disclosure.decls.get("font-size")).toBe("var(--mark-size-disclosure)");
+    expect(disclosure.decls.get("background")).toBe("var(--ui-text-faint)");
+    expect(disclosure.decls.has("width"), "the triangle sits in the mark's own column").toBe(false);
     // The clip sits on every family, after its colour: the `background`
     // shorthand resets it, and an unclipped mark is a box.
-    const FAMILIES = ["running", "attention", "failed", "idle", "done", "pending", "unknown"];
+    const FAMILIES = ["running", "attention", "failed", "idle", "done", "pending", "unknown", "caution"];
     expect(FAMILIES.map((f) => treeRule(`.mark.${f}`)?.decls.get("background-clip"))).toEqual(FAMILIES.map(() => "text"));
     for (const f of FAMILIES) {
       const rules = RULES.filter((rule) => rule.selector === `.mark.${f}` && rule.conditions.length === 0);
@@ -389,13 +485,20 @@ describe("every line is one line", () => {
     }
     const coloured = RULES.filter((rule) => /\.mark\b/.test(rule.selector) && rule.decls.has("color")).map(at);
     expect(coloured, "an owned colour on a mark is a background, so the ratchet measures it as the non-text mark it is").toEqual([]);
-    // The one mark that is not a character, the bar, paints its box again.
+    // The one mark that is not a character, the bar, paints its box again;
+    // the tile's rule is the bar stood on end.
     expect(treeRule(".mark.bar")?.decls.get("background-clip")).toBe("border-box");
-    // The families the model names each have their colour.
-    expect(["running", "attention", "failed", "pending"].map((f) => treeRule(`.mark.${f}`)?.decls.get("background"))).toEqual([
-      "var(--ui-accent)", "var(--ui-warning)", "var(--ui-danger)", "var(--ui-text-faint)",
+    expect(treeRule(".mark.bar.rule")?.decls.get("width")).toBe("2px");
+    // A blank mark keeps the column and paints nothing.
+    expect(treeRule(".mark.blank")?.decls.get("background")).toBe("none");
+    // The families the model names each have their colour. The green
+    // paints the done mark alone: idle and pending are the faint grey
+    // (chartered in round 11: idle wore `--ui-success` while it was grey).
+    expect(["running", "attention", "failed", "pending", "idle", "done", "caution"].map((f) => treeRule(`.mark.${f}`)?.decls.get("background"))).toEqual([
+      "var(--ui-accent)", "var(--ui-warning)", "var(--ui-danger)", "var(--ui-text-faint)", "var(--ui-text-faint)", "var(--ui-success)", "var(--ui-caution)",
     ]);
-    expect([".mark.idle", ".mark.done"].map((f) => treeRule(f)?.decls.get("background"))).toEqual(["var(--ui-success)", "var(--ui-success)"]);
+    const green = RULES.filter((rule) => [...rule.decls.values()].some((v) => v.includes("--ui-success"))).map((rule) => rule.selector);
+    expect(green, "the green paints the ✓ mark and nothing else").toEqual([".mark.done"]);
   });
 
   it("animates nothing but the working mark, and that as a character cycle outside the sheet", () => {
@@ -414,10 +517,43 @@ describe("every line is one line", () => {
     expect(RULES.filter((rule) => rule.decls.has("transition")).map(at)).toEqual([]);
   });
 
-  it("prints the vocabulary in the tree's header and folds a goal's done tasks on a phone", () => {
-    expect(treeRule(".tree-head")?.decls.get("display")).toBe("flex");
+  it("lays a fold's summary out by the line rule, and centres the triangle in its cell on a summary and on a goal alike", () => {
+    // Round 14: the fold rows' triangle sat 5.75 px above the row's centre
+    // at 1200, because the summary's glyph is a span whose `min-height`
+    // put the glyph at the top of its cell, where a goal's triangle is a
+    // button that centres its own text. The summary is a `.line` (the
+    // page classes it `line line-fold`), so no rule of its own may set a
+    // display, a height or an alignment; and the disclosure cell centres
+    // its glyph, so a span and a button sit alike, at both widths.
+    // The marker pseudo-element is hidden (`display: none`), which is not
+    // the summary's own layout.
+    const own = RULES.filter((rule) => /(^|[\s>])(summary|\.line-fold)(?![\w-])/.test(rule.selector) && !/\.main|\.line-name|::/.test(rule.selector));
+    expect(own.map(at).length, "the fold's summary has rules").toBeGreaterThan(0);
+    for (const rule of own) {
+      for (const prop of ["display", "min-height", "height", "align-items", "line-height", "padding", "margin"]) {
+        expect(rule.decls.has(prop), `${at(rule)} sets ${prop}; the summary shares .line`).toBe(false);
+      }
+    }
+    const disclosure = treeRule(".mark.disclosure")!;
+    expect(disclosure.decls.get("display")).toBe("inline-flex");
+    expect(disclosure.decls.get("align-items")).toBe("center");
+    expect(disclosure.decls.get("min-height")).toBe("var(--line-h)");
+    expect(disclosure.decls.get("font-size")).toBe("var(--mark-size-disclosure)");
+    expect(RULES.filter((rule) => rule.selector === ".mark.disclosure" && rule.conditions.length > 0).map(at), "the same at 390").toEqual([]);
+  });
+
+  it("prints the vocabulary in the tree's header under a hairline, not on a phone, and folds nothing but the done goals and the page's foot", () => {
+    // Round 10: the header is a panel-shaped row, SESSIONS in the gutter;
+    // a goal's last done tasks show at both widths, so there is no
+    // `.done-tasks` fold and no bucket label.
+    const head = treeRule(".tree-head")!;
+    expect(head.decls.get("display")).toBe("grid");
+    expect(head.decls.get("grid-template-columns")).toBe("84px minmax(0, 1fr)");
+    expect(head.decls.get("border-top")).toBe("1px solid var(--ui-border)");
+    expect(RULES.find((rule) => rule.selector === ".tree-head" && rule.conditions.length > 0)?.decls.get("display")).toBe("none");
     expect(treeRule(".tree-key")?.decls.get("white-space")).toBe("nowrap");
-    expect(RULES.some((rule) => rule.selector === ".card .done-tasks > ul")).toBe(true);
-    expect(RULES.filter((rule) => /\.bucket\b/.test(rule.selector)).map(at), "no label over a bucket").toEqual([]);
+    expect(RULES.filter((rule) => /\.(done-tasks|bucket)\b/.test(rule.selector)).map(at), "no task fold, no label over a bucket").toEqual([]);
+    expect(treeRule(".folds")?.decls.get("border-top")).toBe("1px solid var(--ui-border)");
+    expect(treeRule(".fold > summary")?.decls.get("list-style")).toBe("none");
   });
 });

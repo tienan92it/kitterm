@@ -4,6 +4,14 @@ Measured 2026-09-17 against the real transcripts, the real round
 records, and the repository's own merge history. Every number below came
 from a file on this machine; none is estimated.
 
+Amended 2026-09-18, after round 6 built the parser and measured the
+same sources. Four numbers below are superseded: 84 merged pull
+requests, not 83; 59,251 merged lines, not 58,853 (a one-day range
+difference); 2 corrections in the round records, not 3; and **7
+sessions over $5 under 95% cached, worth $64.92**, not 3 worth $33.54.
+The conclusions hold on the measured numbers. The page reads the live
+figures; this file is the reasoning.
+
 ## What the word is taken to mean
 
 The human asked to "measure and show valuemaxxing". Taken here as: **how

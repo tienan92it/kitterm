@@ -153,6 +153,29 @@ true statement and zeros would be a false one. A `cost-state` line with no model
 of zero, and answers as one. Full grade only: the bill is what a watch token exists to
 withhold.
 
+A running session has no bill and, since `agent-dashboard` round 16, an estimate. When
+the last line is not a bill, the same route walks the transcript's `"type":"assistant"`
+lines after the last `cost-state` line, sums each request's `message.usage` per
+`message.model` (one request is several lines with one usage; the lines of a request sit
+together, so a line whose `requestId` is the previous counted one's is skipped), and
+prices the sum with `ModelPricing`, the one price table in the daemon: Anthropic's
+first-party rates per model, a cache write priced by its TTL from `usage.cache_creation`,
+long context at the standard rate. The answer is `estimated: true` with `estimate
+{costUSD, modelUsage, inTokens, cacheReadTokens, outTokens, turns, asOf, startTime,
+unpricedModels}`; the bill wins the moment it lands, and `estimateReason` says `noTurns`
+or `transcriptTooLarge` when there is neither. `TranscriptEstimateCache` keeps, per
+path, the byte offset the sum reached with the running sums, keyed by size and mtime
+like the model cache, so an unchanged file costs one `stat` and a grown file reads only
+the bytes past the last complete line it summed; a file that shrank or whose mtime went
+backwards is read from zero, a line that fails to parse is skipped, and a file over 512
+MiB is not estimated, because its first walk would hold the serial transcript queue for
+minutes. Measured 2026-09-20 over 141 finished transcripts over $1: the estimate sits
+1.25% under the bill at the median, because the bill also counts requests that wrote no
+turn (a retry, an interrupted request), and further under on a session that ran
+subagents, whose turns are in files under `<session>/subagents/` that the estimate does
+not read. The bill and the rollup still price nothing: the estimate is the one figure
+that is priced, and the page marks it `~`.
+
 The bill exists only after the session ends, because Claude Code writes `cost-state` at
 exit, and archiving a session is what ends it. So the route a foreman reads at collect
 time is `GET /api/archives/<id>/cost`, the same shape, read through the join the archive
@@ -241,15 +264,19 @@ object as posted with `ageSeconds`, and `stale` past an hour: a statusline rende
 while a session is active, so a reading ages whenever the human is away from every pane,
 stays exact while no other device spends the same account, and goes wrong silently when
 one does; an hour is a fifth of the shortest window. The page draws one bar per window
-as twenty text cells with the countdown to its reset, prints the age under the bars,
-keeps a stale reading's bars with the fill muted, draws a window past its reset empty,
-and says in words when no reading has ever arrived. Full grade only on both routes, like
-the bill and the rollup.
+as a track with a fill and the percentage beside it, the fill in the accent under 80 %
+and the fill and the percentage in the caution colour at 80 % and over, with its reset
+as a clock time in the viewer's zone (`resets today 20:20`, `resets tomorrow 04:00`,
+`resets Sep 25, 04:00`; the band alone keeps the countdown), prints the age after the
+last bar, keeps a stale reading's fill grey, keeps a window past its reset at its last value with the fill and the
+percentage in the faint grey and `reset · read 1d 19h ago` in its reset cell (never
+`resets … ago`), and says in words when no reading has ever arrived. Full grade only
+on both routes, like the bill and the rollup.
 
 ### The numbers on the page
 
 The fleet view puts the rollup where the reader holds the work. Above the quota sits
-one panel: the range's total, marked `if billed at full API rate` because
+one panel, `USAGE`: the range's total, marked `if billed at full API rate` because
 `totalCostUSD` is the pay-as-you-go price on any plan and a subscriber pays a flat fee,
 one bar per day, and two radio groups, cost or tokens and 7, 30 or 90 days, whose
 choice the browser keeps. Under the bars the panel says what the numbers are made of:
@@ -284,6 +311,25 @@ the line's rounding to cents and whole thousands. The knowledge route answers at
 grade, and so does the record file that holds the line; the summed number adds nothing
 a watch reader could not already open.
 
+Since `agent-dashboard` round 15 the tree's number column is the cost at every level
+and nothing else. A task's is the `- Cost:` line of the one round its `STATE.md` line
+names, when that record started in the range; a session's is its transcript bill, which
+the page reads from `GET /api/sessions/<id>/cost` every thirty seconds for a row that
+carries an `agentTranscript`, and which exists only once `claude` has exited; a
+working session prints the route's estimate as `~$4.20` (round 16), its tooltip
+`estimated from 12 turns · updated 12s ago`, and the bill with no `~` once it lands,
+while an idle shell where an agent ran prints what it cost. An estimate is on its own
+line and on no figure above it, because the rollup counts a session only once its
+transcript is billed; the project's tooltip says `+ ~$4.20 running` while one of its
+sessions is estimated. Every level with no source prints `–`, never a zero; with no rollup, the column
+is absent, because every cost leaves the page together for a watch token. `round 6`
+and a goal's `r6/3` moved to the name's tooltip. `PR #124` is a link wherever the page
+prints a pull request number: `GET /api/projects` carries `pullRequestBase`, read off
+each root's `origin` remote by `RemoteOrigins` (one `git remote get-url origin` per
+root every five minutes, on its own queue) and parsed by `PullRequestBase` for the
+three GitHub forms; a remote off GitHub, or none, carries no field and the page prints
+the number as text.
+
 ### What the spend bought
 
 Four panels between the meters and the tree say what the range's dollars delivered
@@ -299,9 +345,24 @@ of model time are the bills' `totalAPIDuration`, which the rollup now keeps per 
 beside `totalLinesAdded`, and the split by role reads the transcript's directory: a cwd
 under `.claude/worktrees/` is a crew, everything else a root session. A unit cost
 divides the spend by the count; the hour's divides only the dollars of the sessions that
-carry a duration. At every grouping of the `WHERE` panel a row with no source prints a
-dash, never a zero, and the dollars nothing claims are a row of their own, which at the
-goal grouping is the largest bar. The page refuses what the research refuses: no quality
+carry a duration. The `WHERE` panel's count and pull-request columns change with the
+filter, as the `Components` frame draws them: a project's goals and merged pull requests,
+a goal's tasks and pull requests, a task's working time (its rounds' wall time from their
+`Cost:` lines) and its one pull request, a role's share of the range and its API hours.
+The goal grouping lists every goal; the task grouping folds the rounds with no `Cost:`
+line and no pull request into one `N more rounds` row. At every grouping a row with no
+source prints a dash, never a zero, and the dollars nothing claims are a row of their
+own, which at the goal grouping is the largest bar.
+
+Every figure follows the one range the `USAGE` toggles set (7d, 30d, 90d), the same
+`from` and `to` the rollup answers: the band's spend, the four tiles and the summary line
+(the rollup and `GET /api/yield` are asked for it), `MODELS` (the rollup's split), a
+project's and a workspace's cost in the tree (the rollup's buckets), and every figure read
+from a round record — a goal's spend in `WHERE` and in the tree (`goalCost`), a task's
+row, and the `LEAKS` round counts — which `roundsInRange` filters by the record's
+`- Started:` day. A record with no start day is in no range. A toggle change asks the two
+routes and repaints every one of them at once (`sessions-range-page.test.ts`). The page
+refuses what the research refuses: no quality
 rate (every round on record says `done`), no rework rate (two fix commits are noise),
 and no money value for the human's time (nothing here knows their rate, and the page
 takes no input).

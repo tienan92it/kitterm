@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-import { installFakePage, type FakePage } from "./fake-page";
+import { type FakeElement, installFakePage, type FakePage } from "./fake-page";
 
 /**
  * The page with the four panels in place (`agent-dashboard`, capability
@@ -56,9 +56,14 @@ const routes: Record<string, unknown> = {
   "/api/usage/daily": {
     ok: true, timeZone: "UTC", from: "2026-08-20", to: "2026-09-18", refreshedAt: NOW, recordedSessions: 3, days: [],
     totals: { costUSD: 1000, apportionedUSD: 0, unsplitUSD: 0, tokens, sessions: 3, unbilledSessions: 0, apiMs: 10 * 3_600_000, measuredUSD: 1000 },
+    // Five models whose tail sums past the leader (round 10): the top three
+    // by cost, then Others, last whatever its sum.
     models: [
-      { model: "claude-fable-5-1", name: "Fable 5.1", costUSD: 900, apportionedUSD: 0, inputTokens: 1, outputTokens: 1, cacheReadInputTokens: 1, cacheCreationInputTokens: 0, sessions: 2 },
-      { model: "claude-haiku-4-5-20251001", name: "Haiku 4.5", costUSD: 100, apportionedUSD: 0, inputTokens: 1, outputTokens: 1, cacheReadInputTokens: 1, cacheCreationInputTokens: 0, sessions: 1 },
+      { model: "claude-fable-5-1", name: "Fable 5.1", costUSD: 100, apportionedUSD: 0, inputTokens: 1, outputTokens: 1, cacheReadInputTokens: 1, cacheCreationInputTokens: 0, sessions: 2 },
+      { model: "claude-opus-5[1m]", name: "Opus 5 · 1M", costUSD: 90, apportionedUSD: 0, inputTokens: 1, outputTokens: 1, cacheReadInputTokens: 1, cacheCreationInputTokens: 0, sessions: 1 },
+      { model: "claude-fable-5", name: "Fable 5", costUSD: 80, apportionedUSD: 0, inputTokens: 1, outputTokens: 1, cacheReadInputTokens: 1, cacheCreationInputTokens: 0, sessions: 1 },
+      { model: "claude-opus-5", name: "Opus 5", costUSD: 70, apportionedUSD: 0, inputTokens: 1, outputTokens: 1, cacheReadInputTokens: 1, cacheCreationInputTokens: 0, sessions: 1 },
+      { model: "claude-haiku-4-5-20251001", name: "Haiku 4.5", costUSD: 60, apportionedUSD: 0, inputTokens: 1, outputTokens: 1, cacheReadInputTokens: 1, cacheCreationInputTokens: 0, sessions: 1 },
     ],
     projects: [
       { id: "kitterm", name: "kitterm", root: `${W}/kitterm`, registered: true, costUSD: 950, apportionedUSD: 0, tokens, sessions: 2, unbilledSessions: 0 },
@@ -94,72 +99,188 @@ beforeAll(async () => {
 
 const panels = () => page.root.querySelectorAll(".panel").filter((p) => !p.hidden);
 const panelNamed = (name: string) => page.root.querySelectorAll(".panel").find((p) => p.classList.contains(name))!;
+/** A WHERE row as the frame draws it: name | spend | count | PRs | unit. */
 const rowsOf = (panel: ReturnType<typeof panelNamed>) =>
   panel.querySelectorAll(".split-row").map((row) => [
     row.querySelector(".split-name")?.textContent,
     row.querySelector(".split-spend")?.textContent,
+    row.querySelector(".split-count")?.textContent,
     row.querySelector(".split-units")?.textContent,
-    row.querySelector(".split-rate")?.textContent ?? null,
+    row.querySelector(".split-rate")?.textContent,
     row.classList.contains("remainder"),
   ]);
 
-describe("the four panels", () => {
-  it("sit between the quota and the tree, in one order, each with its label", () => {
+describe("the panels", () => {
+  it("sit between the band and the tree, in one order with one divider, each with its label in the gutter", () => {
+    // Round 11 (the approved frames): USAGE, QUOTA, MODELS, one hairline
+    // divider, VALUE, WHERE, LEAKS; the header and the tree follow, then
+    // the folds. No notice line: the page holds no action that could
+    // fail. Chartered: round 10's order (VALUE, WHERE, MODELS, LEAKS) and
+    // its notice.
     const order = page.root.children
       .filter((child): child is Exclude<typeof child, string> => typeof child !== "string")
-      .map((child) => child.className.split(" ")[0]);
-    expect(order.slice(order.indexOf("quota"), order.indexOf("cards") + 1)).toEqual(["quota", "panel", "panel", "panel", "panel", "cards"]);
-    expect(panels().map((p) => p.querySelector(".panel-label")?.textContent)).toEqual(["VALUE", "WHERE", "MODELS", "LEAKS"]);
+      .map((child) => `${child.tagName.toLowerCase()}.${child.className.split(" ")[0]}`);
+    expect(order.slice(order.indexOf("section.band"))).toEqual([
+      "section.band", "p.restart", "section.panel", "section.panel", "section.panel", "hr.panel-divider", "section.panel", "section.panel", "section.panel", "div.tree-head", "div.tree", "div.folds",
+    ]);
+    expect(panels().map((p) => p.querySelector(".panel-label")?.textContent)).toEqual(["USAGE", "QUOTA", "MODELS", "VALUE", "WHERE", "LEAKS"]);
+    expect(panels().map((p) => p.querySelector(".panel-label")?.tagName)).toEqual(["H2", "H2", "H2", "H2", "H2", "H2"]);
   });
 
-  it("VALUE prints four tiles and the proxies line", () => {
+  it("USAGE prints the amount, the tokens and the model hours on one row with the toggles, and no title, qualifier or age line", () => {
+    const usage = panelNamed("usage");
+    const head = usage.querySelector(".usage-head")!;
+    expect(head.querySelector(".usage-amount")?.textContent).toBe("$1,000.00");
+    expect(head.querySelector(".usage-amount")?.title).toBe("if billed at full API rate");
+    expect(head.querySelectorAll(".usage-fact").map((f) => f.textContent)).toEqual(["63.10M tokens", "10.0 h model time"]);
+    expect(head.querySelector(".usage-span")?.textContent).toBe("30 days");
+    expect(head.querySelectorAll(".usage-toggle").map((b) => [b.textContent, b.getAttribute("aria-checked")])).toEqual([
+      ["cost", "true"], ["tokens", "false"], ["7d", "false"], ["30d", "true"], ["90d", "false"],
+    ]);
+    expect(usage.querySelectorAll(".usage-title")).toEqual([]);
+    expect(usage.querySelectorAll(".usage-qualifier")).toEqual([]);
+    expect(usage.querySelectorAll(".usage-age")).toEqual([]);
+    expect(usage.querySelectorAll(".usage-note"), "nothing apportioned: no note").toEqual([]);
+    expect(usage.querySelector(".panel-label")?.title).toMatch(/^rollup refreshed /);
+  });
+
+  it("QUOTA holds the no-reading sentence in its content cell", () => {
+    const quota = panelNamed("quota");
+    expect(quota.querySelector(".quota-note")?.textContent).toBe(
+      "No quota reading yet. Run kitterm statusline install, then open a Claude Code session; its statusline posts one.",
+    );
+    expect(quota.querySelectorAll(".quota-bar")).toEqual([]);
+  });
+
+  it("QUOTA draws one bar per window as a track with its fill a mark, accent under 80% and caution from it, the percentage too", async () => {
+    // The Components frame, "Quota bar": `Session (5h) [====      ] 19%
+    // resets today 20:20` in the accent, `Weekly [========  ] 87% resets
+    // Sep 25, 04:00 · read just now` in the caution, the label and the
+    // reset never coloured. Chartered: the ASCII `[####····]` cells of
+    // rounds 4–10, and round 17 replaced the `resets 3h 16m` countdown
+    // with the frame's clock time. The clock is pinned at a local time so
+    // the day words hold in every zone: 17:03 on Sep 16, the session
+    // window 3h 16m ahead, the weekly on the 25th.
+    const clock = vi.spyOn(Date, "now").mockReturnValue(new Date(2026, 8, 16, 17, 3, 30).getTime());
+    const nowMs = Date.now();
+    routes["/api/usage/limits"] = {
+      ok: true, hasReading: true, receivedAt: nowMs - 20_000, ageSeconds: 20, stale: false,
+      rateLimits: { five_hour: { used_percentage: 19, resets_at: Math.floor(new Date(2026, 8, 16, 20, 20).getTime() / 1000) }, seven_day: { used_percentage: 87, resets_at: Math.floor(new Date(2026, 8, 25, 4, 0).getTime() / 1000) } },
+    };
+    await page.poll();
+    const quota = panelNamed("quota");
+    const bars = quota.querySelectorAll(".quota-bar");
+    expect(bars.map((b) => b.children.filter((c): c is FakeElement => typeof c !== "string").map((c) => c.className))).toEqual([
+      ["quota-label", "quota-track", "quota-percent", "quota-reset"],
+      ["quota-label", "quota-track", "quota-percent", "quota-reset", "quota-age"],
+    ]);
+    expect(bars.map((b) => [b.querySelector(".quota-label")?.textContent, b.querySelector(".quota-percent")?.textContent, b.querySelector(".quota-reset")?.textContent])).toEqual([
+      ["Session (5h)", "19%", "resets today 20:20"], ["Weekly", "87%", "resets Sep 25, 04:00"],
+    ]);
+    expect(bars[1].querySelector(".quota-age")?.textContent).toBe("· read just now");
+    // The fill: a bar mark inside the track, sized to the share.
+    expect(bars.map((b) => b.querySelector(".quota-track")?.children.map((c) => (typeof c === "string" ? c : `${c.className} ${(c.style as { width?: string }).width}`)))).toEqual([
+      ["mark bar quota-fill 19%"], ["mark bar quota-fill caution 87%"],
+    ]);
+    expect(bars.map((b) => b.querySelector(".quota-track")?.getAttribute("aria-hidden"))).toEqual(["true", "true"]);
+    // The percentage is a run of caution text at 80% and over, plain under.
+    expect(bars.map((b) => b.querySelector(".quota-percent")?.querySelectorAll(".mark").map((m) => m.className))).toEqual([[], ["mark caution wide"]]);
+    expect(bars.map((b) => b.querySelector(".quota-label")?.querySelectorAll(".mark"))).toEqual([[], []]);
+    expect(bars.map((b) => b.querySelector(".quota-reset")?.querySelectorAll(".mark"))).toEqual([[], []]);
+    expect(quota.textContent).not.toContain("#");
+    clock.mockRestore();
+    routes["/api/usage/limits"] = { ok: true, hasReading: false };
+    await page.poll();
+  });
+
+  it("QUOTA draws a window past its reset in the faint grey at its last value, its reset cell the word and the reading's age", async () => {
+    // Round 14: a stale reading whose session window reset 1d 17h ago.
+    // The page never prints `resets … ago`; the fill and the percentage
+    // are idle marks, the faint grey, and the weekly prints its clock
+    // time (round 17), 38 hours ahead of 17:03 on Sep 16: the 18th.
+    const clock = vi.spyOn(Date, "now").mockReturnValue(new Date(2026, 8, 16, 17, 3, 30).getTime());
+    const now = Math.floor(Date.now() / 1000);
+    routes["/api/usage/limits"] = {
+      ok: true, hasReading: true, receivedAt: Date.now() - (43 * 3600 + 12 * 60) * 1000, ageSeconds: 43 * 3600 + 12 * 60, stale: true,
+      rateLimits: { five_hour: { used_percentage: 91, resets_at: now - (41 * 3600 + 5 * 60) }, seven_day: { used_percentage: 27, resets_at: now + 38 * 3600 + 30 } },
+    };
+    await page.poll();
+    const quota = panelNamed("quota");
+    const bars = quota.querySelectorAll(".quota-bar");
+    expect(bars.map((b) => b.className)).toEqual(["quota-bar reset", "quota-bar stale"]);
+    expect(bars.map((b) => [b.querySelector(".quota-percent")?.textContent, b.querySelector(".quota-reset")?.textContent])).toEqual([
+      ["91%", "reset · read 1d 19h ago"], ["27%", "resets Sep 18, 07:04"],
+    ]);
+    expect(quota.textContent).not.toMatch(/resets [^·]* ago/);
+    expect(bars.map((b) => b.querySelector(".quota-track")?.children.map((c) => (typeof c === "string" ? c : `${c.className} ${(c.style as { width?: string }).width}`)))).toEqual([
+      ["mark bar quota-fill idle 91%"], ["mark bar quota-fill idle 27%"],
+    ]);
+    expect(bars.map((b) => b.querySelector(".quota-percent")?.querySelectorAll(".mark").map((m) => m.className))).toEqual([["mark idle wide"], []]);
+    expect(bars.map((b) => b.querySelector(".quota-reset")?.querySelectorAll(".mark"))).toEqual([[], []]);
+    clock.mockRestore();
+    routes["/api/usage/limits"] = { ok: true, hasReading: false };
+    await page.poll();
+  });
+
+  it("VALUE prints four tiles behind an accent rule, their nouns in two forms, and one note naming the scope and the span", () => {
     const value = panelNamed("value");
     // kitterm is the one checkout, $950 of the fleet's $1,000: its unit
     // costs divide its own spend; the hour divides the fleet's.
-    expect(value.querySelectorAll(".yield-tile").map((t) => [t.querySelector(".yield-count")?.textContent, t.querySelector(".yield-noun")?.textContent, t.querySelector(".yield-rate")?.textContent])).toEqual([
-      ["5", "merged PRs", "$190.00 a PR"],
-      ["1,234", "merged lines", "$0.770 a line"],
-      ["2", "releases", "$475.00 a release"],
-      ["10.0", "model hours", "$100.00 an hour"],
+    expect(value.querySelectorAll(".yield-tile").map((t) => [
+      t.querySelector(".yield-count")?.textContent, t.querySelector(".yield-noun")?.textContent, t.querySelector(".yield-noun-short")?.textContent, t.querySelector(".yield-rate")?.textContent,
+    ])).toEqual([
+      ["5", "merged pull requests", "merged PRs", "$190.00 each"],
+      ["1,234", "merged lines added", "merged lines", "$0.770 each"],
+      ["2", "releases", "releases", "$475.00 each"],
+      ["10.0", "hours of model time", "model hours", "$100 an hour"],
     ]);
-    expect(value.querySelector(".panel-note")?.textContent).toBe(
-      "A merged line and a merged PR are proxies for value, not value. A unit cost divides the $950.00 spent in 1 repository counted; the hour divides the fleet's.",
-    );
+    expect(value.querySelectorAll(".yield-tile").map((t) => t.querySelector(".mark")?.className)).toEqual(Array(4).fill("mark bar rule"));
+    expect(value.querySelector(".note-long")?.textContent).toBe("kitterm, 30 days. Proxies for value, not value.");
+    expect(value.querySelector(".note-short")?.textContent).toBe("kitterm, 30 days");
+    expect(value.querySelectorAll("details"), "VALUE folds nowhere").toEqual([]);
   });
 
-  it("WHERE opens at the goal grouping with the unattributed remainder as an amber row", () => {
+  it("WHERE opens at the goal grouping with the counted checkouts at the selector's right and the remainder in the amber", () => {
     const where = panelNamed("where");
     expect(where.querySelectorAll(".panel-toggle").map((b) => [b.textContent, b.getAttribute("aria-checked")])).toEqual([
       ["project", "false"], ["goal", "true"], ["task", "false"], ["role", "false"],
     ]);
+    expect(where.querySelector(".panel-summary")?.textContent).toBe("$950.00 in kitterm · 5 merged PRs · 1,234 lines · 2 releases");
     expect(rowsOf(where)).toEqual([
-      ["agent-dashboard", "$19.01", "3 PRs", "$6.34 a PR", false],
-      ["no round record", "$980.99", "–", "–", true],
+      ["agent-dashboard", "$19.01", "3 tasks", "3 PRs", "–", false],
+      ["no round record", "$980.99", "98%", "–", "–", true],
     ]);
     const rest = where.querySelectorAll(".remainder")[0];
-    expect(rest.querySelectorAll(".mark").map((m) => m.className)).toEqual(["mark attention", "mark bar attention"]);
+    // No `?` mark: the name, the bar and the spend wear the amber themselves.
+    expect(rest.querySelectorAll(".mark").map((m) => m.className)).toEqual(["mark attention wide", "mark bar attention", "mark attention wide"]);
     expect(rest.querySelector(".split-bar")?.children.map((c) => (typeof c === "string" ? c : c.className))).toEqual(["mark bar attention"]);
-    expect(where.querySelector(".panel-note")?.textContent).toBe("98% names no round, so it cannot be valued.");
+    expect(where.querySelector(".note-long")?.textContent).toBe("98% names no round, so it cannot be valued");
     // A bar is a mark, never text: the accent and the amber paint it alone.
     const bars = where.querySelectorAll(".split-bar").map((b) => b.getAttribute("aria-hidden"));
     expect(bars).toEqual(["true", "true"]);
   });
 
-  it("MODELS is one bar per model with its spend and sessions, and no cache share", () => {
+  it("MODELS is one bar per model with its spend to the cent, in whole dollars for a phone, and its sessions, and no cache share", () => {
     const models = panelNamed("models");
-    expect(rowsOf(models)).toEqual([
-      ["Fable 5.1", "$900.00", "2 sessions", null, false],
-      ["Haiku 4.5", "$100.00", "1 session", null, false],
+    expect(models.querySelectorAll(".split-row").map((row) => [
+      row.querySelector(".split-name")?.textContent, row.querySelector(".split-spend")?.textContent, row.querySelector(".split-short")?.textContent, row.querySelector(".split-units")?.textContent,
+    ])).toEqual([
+      ["Fable 5.1", "$100.00", "$100", "2 sessions"],
+      ["Opus 5 · 1M", "$90.00", "$90", "1 session"],
+      ["Fable 5", "$80.00", "$80", "1 session"],
+      ["Others", "$130.00", "$130", "2 sessions"],
     ]);
+    // Others sums past the leader and is still the last row.
+    expect(models.querySelectorAll(".split-row").map((r) => r.getAttribute("data-key"))).toEqual(["claude-fable-5-1", "claude-opus-5[1m]", "claude-fable-5", "more"]);
     expect(models.textContent).not.toContain("cached");
+    expect(models.querySelectorAll("details"), "MODELS folds nowhere").toEqual([]);
   });
 
-  it("LEAKS names the unpriced rounds, the corrections and the low-cache sessions, one marked line each", () => {
+  it("LEAKS is two lines: the unpriced rounds, then the corrections and the low-cache sessions joined", () => {
     const leaks = panelNamed("leaks");
     expect(leaks.querySelectorAll(".leak-line").map((l) => [l.querySelector(".mark")?.className, l.querySelector(".leak-text")?.textContent])).toEqual([
       ["mark attention", "1 of 3 rounds carry no Cost line"],
-      ["mark idle", "0 corrections in 3 rounds"],
-      ["mark attention", "1 session over $5 under 95% cached, $15.84"],
+      ["mark pending", "0 corrections in 3 rounds · 1 session under 95% cached, $15.84"],
     ]);
   });
 
@@ -170,31 +291,38 @@ describe("the four panels", () => {
   });
 });
 
-describe("on a phone", () => {
-  it("folds VALUE, WHERE and MODELS behind the done goals' fold, one summary line each", async () => {
-    phone = true;
-    await page.poll();
-    const where = panelNamed("where");
-    const models = panelNamed("models");
-    const foldOf = (panel: ReturnType<typeof panelNamed>) => panel.querySelectorAll("details").filter((d) => d.classList.contains("panel-fold"));
-    expect(foldOf(where)).toHaveLength(1);
-    expect(foldOf(models)).toHaveLength(1);
-    expect(foldOf(where)[0].querySelector("summary")?.textContent).toBe("where the dollar goes · 98% unattributed");
-    expect(foldOf(models)[0].querySelector("summary")?.textContent).toBe("by model · Fable 5.1 $900.00");
-    expect(where.querySelectorAll(".panel-label"), "the summary line replaces the label").toHaveLength(0);
-    // Closed by default, and the panel inside is the whole panel.
-    expect((foldOf(where)[0] as unknown as { open: boolean }).open).toBe(false);
-    expect(rowsOf(where)).toHaveLength(2);
-    expect(rowsOf(models)).toHaveLength(2);
-    // Every measure panel folds at 390 px (round 7 reversed round 6's
-    // exception for VALUE): the band carries the headline spend, and the
-    // tiles are inside the fold, whole.
-    expect(foldOf(panelNamed("value"))).toHaveLength(1);
-    expect(foldOf(panelNamed("value"))[0].querySelector("summary")?.textContent).toBe("what the spend bought · 5 merged PRs");
-    expect(panelNamed("value").querySelectorAll(".yield-tile")).toHaveLength(4);
+describe("MODELS keeps Others last", () => {
+  it("puts the summed row after the top three by cost at both widths, whatever its sum", async () => {
+    // Round 10, the human's word: top three by cost, then the others as
+    // one row more. The fixture's tail, $130, sums past its leader, $100.
+    const names = () => panelNamed("models").querySelectorAll(".split-name").map((n) => n.textContent);
+    for (const width of [false, true]) {
+      phone = width;
+      await page.poll();
+      expect(names(), width ? "390 px" : "1200 px").toEqual(["Fable 5.1", "Opus 5 · 1M", "Fable 5", "Others"]);
+    }
     phone = false;
     await page.poll();
-    expect(foldOf(panelNamed("where"))).toHaveLength(0);
+  });
+});
+
+describe("on a phone", () => {
+  it("paints the same panels: the sheet hides WHERE and LEAKS, and nothing folds (round 10)", async () => {
+    // Chartered in round 10: the frame `Dashboard 390` draws VALUE and
+    // MODELS open and WHERE and LEAKS absent, so the DOM is the same at
+    // both widths and the stylesheet decides what shows.
+    phone = true;
+    await page.poll();
+    expect(page.root.querySelectorAll(".panel-fold")).toEqual([]);
+    // Round 11: the same order at both widths, the divider between MODELS
+    // and VALUE (chartered: round 10's order).
+    expect(panels().map((p) => p.querySelector(".panel-label")?.textContent)).toEqual(["USAGE", "QUOTA", "MODELS", "VALUE", "WHERE", "LEAKS"]);
+    const order = page.root.children.filter((c): c is FakeElement => typeof c !== "string").map((c) => c.className.split(" ")[0]);
+    expect(order.slice(order.indexOf("panel"), order.indexOf("tree-head"))).toEqual(["panel", "panel", "panel", "panel-divider", "panel", "panel", "panel"]);
+    expect(panelNamed("value").querySelectorAll(".yield-tile")).toHaveLength(4);
+    expect(panelNamed("models").querySelectorAll(".split-short").map((s) => s.textContent)).toEqual(["$100", "$90", "$80", "$130"]);
+    phone = false;
+    await page.poll();
     expect(panelNamed("where").querySelector(".panel-label")?.textContent).toBe("WHERE");
   });
 });
@@ -206,9 +334,15 @@ describe("the cache share left every heading", () => {
     for (const h of headings) {
       expect(h.textContent, h.className).not.toMatch(/cached|%/);
     }
-    // The workspace heading over the two projects, then each project.
-    expect(page.root.querySelectorAll(".cost").map((c) => c.textContent)).toEqual(["$1,000.00", "$950.00", "$50.00"]);
-    expect(page.root.querySelectorAll(".goal-cost").map((c) => c.textContent)).toEqual(["$65.72"]);
+    // The workspace heading over the two projects, then kitterm, its goal
+    // (round 10: a goal's cost is the same `cost` cell as a heading's),
+    // then notes. Round 13 (chartered): the goal's cost is the sum of its
+    // records started in the rollup's range, $7.73 + $11.28, not the
+    // route's all-time `$65.72`. Round 15 (chartered): the goal's tasks
+    // and the sessions carry the cost cell too, the dash where the level
+    // has no Cost line or no bill.
+    expect(page.root.querySelectorAll(".cost").map((c) => c.textContent)).toEqual(["$1,000.00", "$950.00", "$19.01", "–", "–", "$50.00", "–"]);
+    expect(page.root.querySelector(".goal-line")?.querySelector(".cost")?.textContent).toBe("$19.01");
   });
 
   it("prints the share in one place only: the LEAKS exception line", () => {

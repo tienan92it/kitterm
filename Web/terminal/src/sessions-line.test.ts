@@ -32,7 +32,13 @@ import {
  * they drop in; how many survive a given shortfall; and the fold a phone
  * puts a goal's done tasks behind. The last block renders the page and
  * checks that every line names one cell to truncate and numbers its facts
- * in drop order, which is what `fitLines` reads.
+ * in drop order, which is what `fitLines` reads. Chartered in round 11
+ * (the Components frame): the `·` pending glyph became `•`, the goal's
+ * amber `▾` became the faint `▼` that never carries a state, and the
+ * approval's actions cell went with every other action on the page.
+ * Chartered in round 15 (the human's word): the number column is the cost
+ * at every level, so a goal's `r7/3` and a task's `round 6` left it for
+ * the name's tooltip and a session's model moved to column 3.
  */
 
 const NOW = 1_758_000_000_000;
@@ -57,10 +63,15 @@ describe("the state vocabulary", () => {
     expect(rowLine(row("r", { mergedState: "needs-input", lastOutputAt: NOW }), NOW).state).toBe("[needs you]");
   });
 
-  it("prints one character per mark, and never a box: the working mark's rest is the spinner's", () => {
+  it("prints one character per mark, and never a box: the working mark rests on the quadrant the design draws", () => {
+    // Round 14: `◐`, the rest of the quadrant cycle and the legend's
+    // working mark; chartered, it replaced the `>` of the measured
+    // fallback.
     expect((["attention", "failed", "done", "pending", "idle", "unknown", "running"] as const).map(markGlyph)).toEqual([
-      "?", "!", "✓", "·", "–", "–", ">",
+      "?", "!", "✓", "•", "–", "–", "◐",
     ]);
+    // The pending mark is the bullet, U+2022, not the middle dot.
+    expect(markGlyph("pending").codePointAt(0)).toBe(0x2022);
   });
 
   it("reads every task state as its word and its mark", () => {
@@ -80,7 +91,7 @@ describe("the state vocabulary", () => {
 
   it("prints the whole vocabulary in the tree's header, in the foundation's order", () => {
     expect(VOCABULARY.map((v) => v.tag)).toEqual(["[working]", "[needs you]", "[pending]", "[done]", "[failed]", "[idle]"]);
-    expect(VOCABULARY.map((v) => markGlyph(v.family))).toEqual([">", "?", "·", "✓", "!", "–"]);
+    expect(VOCABULARY.map((v) => markGlyph(v.family))).toEqual(["◐", "?", "•", "✓", "!", "–"]);
   });
 });
 
@@ -209,6 +220,10 @@ beforeAll(async () => {
 
 const lines = (): FakeElement[] => page.root.querySelectorAll(".line");
 const textOf = (els: FakeElement[]): string[] => els.map((el) => el.textContent);
+/** A line's cells as the frame draws them: the class, the text, and the
+ * column (`data-col`) of each cell of `.main`. */
+const cellsOf = (main: FakeElement) =>
+  main.children.filter((c): c is FakeElement => typeof c !== "string").map((c) => [c.className, c.textContent, c.getAttribute("data-col")] as [string, string, string | null]);
 
 describe("the page's lines", () => {
   it("draws every level as one line with one name cell and its facts numbered in drop order", () => {
@@ -221,24 +236,57 @@ describe("the page's lines", () => {
     }
   });
 
-  it("prints a row's state as the bracketed word, its facts after it, its model before the time", () => {
+  it("prints a row's state as the bracketed word, its model in the third column and its time in the last, nothing else", () => {
+    // Round 10 (the frame `Dashboard 1200`): `◐ path-mapping-real-terminal
+    // [working] Fable 5.1 4m`. What the agent is doing and where it sits
+    // are the name's tooltip, not cells. Round 15: the number column is
+    // the cost, so the model is column 3; this page has no rollup, so no
+    // cost column and the time keeps the phone (`sessions-pen-tree.test.ts`
+    // pins the bill with one).
     const main = page.root.querySelectorAll(".main").find((m) => m.textContent.startsWith("crew"))!;
-    const cells = main.children.filter((c): c is FakeElement => typeof c !== "string");
-    // The span reads the real clock, so only its shape is pinned.
-    expect(cells.map((c) => [c.className, c.className === "since" ? c.textContent.replace(/^\d+[mhd]$/, "<span>") : c.textContent])).toEqual([
-      ["folder", "crew"], ["state running", "[working]"], ["place", ".claude/worktrees/one-line"], ["what", "Measuring the page"],
-      ["model", "Fable 5.1"], ["since", "<span>"],
+    const cells = cellsOf(main).map(([c, t, col]) => [c, c === "since" ? t.replace(/^\d+[mhd]$|^now$/, "<span>") : t, col]);
+    expect(cells).toEqual([
+      ["folder line-name", "crew", null], ["state running", "[working]", null], ["model", "Fable 5.1", "3"], ["since", "<span>", "4"],
     ]);
-    expect(cells.map((c) => c.getAttribute("data-drop")), "what drops first, then place, then the model").toEqual([null, null, "1", "0", "2", null]);
+    expect(main.querySelector(".since")?.hasAttribute("data-narrow")).toBe(true);
+    expect(main.querySelector(".model")?.hasAttribute("data-narrow")).toBe(false);
+    expect(main.querySelector(".line-name")?.title).toBe("Measuring the page\n" + `${ROOT}/.claude/worktrees/one-line`);
+    // The crew sits under its task, under its goal, under the project.
+    const line = page.root.querySelectorAll(".row-line").find((l) => l.querySelector(".folder")?.textContent === "crew")!;
+    expect(line.querySelector(".mark")?.className).toBe("mark running");
   });
 
-  it("prints a goal's line as mark, title, word, then cost, round, next action", () => {
+  it("prints a goal's line as disclosure, title, word, then its cost in the number column, with the counter and the next action on the tooltip", () => {
+    // `workspace-ledger [done] $75.11`: the cost in the number column and
+    // nothing else there (round 15); the counter and the next action are
+    // the name's tooltip, `r7/3 · next: …`. The triangle carries no state:
+    // the word does. The cost follows the rollup's range, and this page
+    // has no rollup, so no line prints a cost; `sessions-pen-tree.test.ts`
+    // pins the column with one.
     const goal = page.root.querySelector(".goal-line")!;
-    expect(goal.querySelector(".mark")?.className).toBe("mark running");
-    expect(goal.querySelector(".tag-state")?.textContent).toBe("[working]");
-    expect(textOf(goal.querySelectorAll("[data-drop]"))).toEqual(["$65.72", "round 7 of 3", "Round 7, `every-line-is-one-line`, from `plan.md` row 5."]);
-    expect(goal.querySelectorAll("[data-drop]").map((c) => c.getAttribute("data-drop"))).toEqual(["2", "1", "0"]);
-    expect(page.root.querySelectorAll(".goal-next")[0].hasAttribute("hidden"), "hidden only by measurement, which this DOM cannot do").toBe(false);
+    expect(goal.querySelector(".mark")?.className).toBe("mark disclosure");
+    expect(goal.querySelector(".mark")?.textContent).toBe("▼");
+    expect(goal.querySelector(".state")?.textContent).toBe("[working]");
+    expect(cellsOf(goal.querySelector(".main")!)).toEqual([
+      ["line-name", "/sessions is a dashboard for workspaces and agents", null], ["state running", "[working]", null],
+    ]);
+    expect(goal.querySelector(".line-name")?.title).toBe("r7/3 · next: Round 7, `every-line-is-one-line`, from `plan.md` row 5.");
+    expect(goal.querySelector(".line-name")?.tagName).toBe("A");
+    expect(goal.querySelectorAll("[data-drop]"), "a goal's facts never drop: they sit in columns").toEqual([]);
+  });
+
+  it("prints a task's line as mark, slug, word, then its PR in the third column, with the round on the tooltip, and its crew under it", () => {
+    // Round 15: `round 6` left the number column, which is the cost's
+    // (none here: no rollup), for the name's tooltip, `round 6 · PR #130`.
+    const tasks = page.root.querySelectorAll(".line-task");
+    expect(tasks.map((t) => cellsOf(t.querySelector(".main")!))).toEqual([
+      [["line-name", "every-line-is-one-line", null], ["state running", "[working]", null]],
+      [["line-name", "the-page-says-what-the-spend-bought", null], ["state done", "[done]", null], ["pr", "PR #130", "3"]],
+      [["line-name", "no-input-on-the-page", null], ["state done", "[done]", null], ["pr", "PR #125", "3"]],
+    ]);
+    expect(tasks.map((t) => t.querySelector(".line-name")?.title)).toEqual(["", "round 6 · PR #130", "round 1 · PR #125"]);
+    expect(tasks.map((t) => t.querySelector(".mark")?.className)).toEqual(["mark running", "mark done", "mark done"]);
+    expect(tasks.map((t) => t.getAttribute("style") ?? "")).toEqual(["", "", ""]);
   });
 
   it("prints the vocabulary in the tree's header, each mark beside its word, the working one at rest", () => {
@@ -248,27 +296,22 @@ describe("the page's lines", () => {
     expect(head.querySelectorAll(".mark").map((m) => m.className)).toEqual([
       "mark running rest", "mark attention rest", "mark pending rest", "mark done rest", "mark failed rest", "mark idle rest",
     ]);
-    expect(page.root.children.indexOf(head), "inside the tree, not above the panels").toBe(-1);
-    expect(page.root.querySelector(".cards")?.children[0]).toBe(head);
+    // Above the tree and under the panels, at the page's top level.
+    const order = page.root.children.filter((c): c is FakeElement => typeof c !== "string").map((c) => c.className.split(" ")[0]);
+    expect(order.slice(order.indexOf("tree-head"))).toEqual(["tree-head", "tree", "folds"]);
   });
 
-  it("folds a goal's done tasks on a phone behind `N done`, the way a project folds its done goals", () => {
-    const fold = page.root.querySelector(".done-tasks")!;
-    expect(fold.tagName).toBe("DETAILS");
-    expect(fold.querySelector("summary")?.textContent).toBe("2 done");
-    expect(textOf(fold.querySelectorAll(".line-name"))).toEqual(["the-page-says-what-the-spend-bought", "no-input-on-the-page"]);
-    const open = page.root.querySelectorAll(".tree-tasks")[0];
-    expect(textOf(open.querySelectorAll(".line-name")), "the working task stays open, the crew under it").toEqual(["every-line-is-one-line"]);
-    expect(open.querySelectorAll(".row")).toHaveLength(1);
-  });
-
-  it("draws every task at 768 px and up, and no fold", async () => {
+  it("shows a goal's last done tasks at both widths and folds none of them", async () => {
+    // Round 10: the frame draws a done goal's last done tasks open at 1200
+    // and at 390, so the DOM is the same at both widths and there is no
+    // `N done` fold under a goal.
+    const names = () => page.root.querySelectorAll(".line-task").map((t) => t.querySelector(".line-name")!.textContent);
+    expect(names()).toEqual(["every-line-is-one-line", "the-page-says-what-the-spend-bought", "no-input-on-the-page"]);
+    expect(page.root.querySelectorAll(".fold")).toEqual([]);
     phone = false;
     await page.poll();
-    expect(page.root.querySelectorAll(".done-tasks")).toEqual([]);
-    expect(textOf(page.root.querySelectorAll(".line-name"))).toEqual([
-      "every-line-is-one-line", "the-page-says-what-the-spend-bought", "no-input-on-the-page",
-    ]);
+    expect(names()).toEqual(["every-line-is-one-line", "the-page-says-what-the-spend-bought", "no-input-on-the-page"]);
+    expect(page.root.querySelectorAll(".fold")).toEqual([]);
     phone = true;
   });
 
@@ -277,6 +320,8 @@ describe("the page's lines", () => {
     expect(line.querySelector("[data-name]")?.textContent).toBe("approve Bash");
     expect(textOf(line.querySelectorAll("[data-drop]"))).toEqual(["swift test"]);
     expect(line.querySelector(".mark")?.textContent).toBe("?");
+    expect(line.querySelectorAll("a").map((a) => [a.className, a.textContent])).toEqual([["line-link", "Open the pane"]]);
+    expect(line.querySelectorAll("button"), "no answer on the page: the pane is where it is given").toEqual([]);
   });
 
   it("stands no label over a bucket: each goal line says its own state", () => {

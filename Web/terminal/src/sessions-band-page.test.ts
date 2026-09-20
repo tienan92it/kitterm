@@ -58,7 +58,7 @@ const routes: Record<string, unknown> = {
   },
   "/api/usage/limits": {
     ok: true, hasReading: true, receivedAt: Date.now(), ageSeconds: 1, stale: false,
-    rateLimits: { five_hour: { used_percentage: 19, resets_at: Date.now() / 1000 + 3600 }, seven_day: { used_percentage: 42, resets_at: Date.now() / 1000 + 86_400 } },
+    rateLimits: { five_hour: { used_percentage: 19, resets_at: Date.now() / 1000 + 7200 }, seven_day: { used_percentage: 42, resets_at: Date.now() / 1000 + 86_400 } },
   },
 };
 
@@ -70,19 +70,30 @@ beforeAll(async () => {
   await page.settle();
 });
 
-const cells = () => page.root.querySelectorAll(".band-cell").map((cell) => [cell.tagName, cell.querySelector(".band-value")?.textContent, cell.querySelector(".band-noun")?.textContent]);
+/** The quota cell's noun carries a countdown read against the clock, so
+ * its shape is pinned and not its minutes. */
+const cells = () => page.root.querySelectorAll(".band-cell").map((cell) => [
+  cell.tagName, cell.querySelector(".band-value")?.textContent, cell.querySelector(".band-noun")?.textContent.replace(/^quota · 1h \d+m$/, "quota · <reset>"),
+]);
 const marked = () => page.root.querySelectorAll("[data-needs]");
 const sessionLinks = () => page.root.querySelectorAll(".row").flatMap((row) => row.querySelectorAll(".open").map((a) => a.href));
 
 describe("the band replaces the strip", () => {
-  it("prints four cells: the working count, the need-you count as a link, the spend, the quota", () => {
+  it("prints the brand and four cells: the working count, the need-you count as a link, the spend, the quota", () => {
+    // Round 10 (the frame `Dashboard 1200`): `kitterm` at the left, the
+    // spend in whole dollars, the session window with its countdown, and
+    // the two counts that carry a state as marks.
+    expect(page.root.querySelector(".band-brand")?.textContent).toBe("kitterm");
     expect(cells()).toEqual([
       ["SPAN", "1", "working"],
       // The approval on the held session, the orphan approval, the waiting
       // row, the failed row, and the goal's proposals.
       ["A", "5", "need you"],
-      ["SPAN", "$2,316.45", "30d"],
-      ["SPAN", "42%", "7d quota"],
+      ["SPAN", "$2,316", "30d"],
+      ["SPAN", "19%", "quota · <reset>"],
+    ]);
+    expect(page.root.querySelectorAll(".band-value").map((v) => v.querySelector(".mark")?.className ?? null)).toEqual([
+      "mark running wide", "mark attention wide", null, null,
     ]);
     expect(page.document.title).toBe("(5) kitterm — sessions");
     expect(page.root.querySelector(".sr-only")?.textContent).toBe("5 items need you");
@@ -119,16 +130,27 @@ describe("the band replaces the strip", () => {
     const heldRow = rows.find((row) => row.querySelector(".open")?.href === "/?session=s-held")!;
     expect(heldRow.querySelector(".line-approval")?.textContent).toContain("approve Bash");
     const goal = page.root.querySelector('[data-needs="proposed"]')!;
-    expect(goal.querySelector(".mark")?.className).toBe("mark attention");
-    expect(goal.querySelectorAll("a").map((a) => a.textContent)).toContain("2 proposals");
-    expect(goal.querySelectorAll("button").map((b) => b.textContent)).toContain("Dismiss");
+    // Round 11 (the Components frame): a goal's mark is the disclosure
+    // triangle alone, faint, never a state; the word carries `[needs you]`.
+    // There is no `[Dismiss]` and no actions cell: the page holds no
+    // action. Chartered: round 10's amber disclosure and its Dismiss.
+    expect(goal.querySelector(".mark")?.className).toBe("mark disclosure");
+    expect(goal.querySelector(".state")?.textContent).toBe("[needs you]");
+    // The name opens the record the proposals wait in; the count is its tooltip.
+    expect(goal.querySelector(".line-name")?.href).toBe("/api/projects/kitterm/knowledge/agent-dashboard/rounds/003.md");
+    expect(goal.querySelector(".line-name")?.title, "the decision line joins it when it proposes").toBe("2 proposals");
+    expect(goal.querySelectorAll(".actions")).toEqual([]);
+    expect(goal.querySelectorAll("button").map((b) => b.className)).toEqual(["mark disclosure"]);
   });
 
   it("gives an approval whose session is gone a line under No project", () => {
     const none = page.root.querySelectorAll("section").find((s) => s.getAttribute("aria-label") === "No project")!;
     const lines = none.querySelectorAll(".line-approval").map((line) => line.textContent);
     expect(lines.some((text) => text.includes("approve Write"))).toBe(true);
-    expect(none.querySelectorAll(".row").length).toBe(3);
+    // The held session and the orphan approval; the loose idle shell is in
+    // the idle fold at the page's foot (round 10), not in the section.
+    expect(none.querySelectorAll(".row").length).toBe(2);
+    expect(page.root.querySelector(".folds")?.querySelectorAll(".open").map((a) => a.href)).toEqual(["/?session=s-loose"]);
   });
 
   it("keeps four cells and no link when nothing needs a person", async () => {
@@ -139,8 +161,8 @@ describe("the band replaces the strip", () => {
     expect(cells()).toEqual([
       ["SPAN", "1", "working"],
       ["SPAN", "0", "need you"],
-      ["SPAN", "$2,316.45", "30d"],
-      ["SPAN", "42%", "7d quota"],
+      ["SPAN", "$2,316", "30d"],
+      ["SPAN", "19%", "quota · <reset>"],
     ]);
     expect(marked()).toEqual([]);
     expect(page.root.querySelectorAll('[id="needs-you"]')).toEqual([]);
@@ -154,11 +176,11 @@ describe("the band replaces the strip", () => {
     expect(cells()).toEqual([
       ["SPAN", "1", "working"],
       ["A", "20", "need you"],
-      ["SPAN", "$2,316.45", "30d"],
-      ["SPAN", "42%", "7d quota"],
+      ["SPAN", "$2,316", "30d"],
+      ["SPAN", "19%", "quota · <reset>"],
     ]);
     expect(page.root.querySelectorAll(".band-cell")).toHaveLength(4);
-    expect(page.root.querySelector(".band")?.children).toHaveLength(4);
+    expect(page.root.querySelector(".band-cells")?.children).toHaveLength(4);
     expect(marked()).toHaveLength(20);
     expect(page.root.querySelectorAll('[id="needs-you"]')).toHaveLength(1);
     // Twenty orphan approvals are twenty lines under No project, in the tree.

@@ -4,28 +4,28 @@ Approved by the human on 2026-09-17, after five palette rounds and a
 deeper ground. Frozen. A round that needs a different token proposes the
 change in its record rather than making it.
 
-The design is drawn in Pencil. Save the open document as
-`corpus/dashboard.pen` beside this file; it holds four frames, and every
-number in them is read from the live daemon on 2026-09-17:
+The design is `corpus/dashboard.pen`, beside this file. It is the single
+source of truth for the page: what the page looks like at 1200 px and
+at 390 px is what its two `Dashboard` frames draw, and a round that
+finds this prose and a frame in disagreement follows the frame and says
+so in its record. The file holds six frames:
 
 | Frame | What it shows |
 |---|---|
-| `Dashboard 1200` | the whole page at desktop width, 28 px lines, the by-model split, the yield block, where the dollar goes, the leaks |
-| `Dashboard 390` | the same page on a phone, 44 px lines, facts dropped, the yield block kept |
+| `Dashboard 1200` | the whole page at desktop width, 28 px lines |
+| `Dashboard 390` | the same page on a phone, 44 px lines, facts dropped |
 | `Foundation` | the space scale, the type scale, the state marks, the two densities, the model naming rule |
 | `Anatomy of a line` | the line's six cells and the order its facts drop in |
 | `Value groupings` | the `WHERE` panel at each of its four groupings, with real rows |
-| `Palettes` | the same strip in Signal, Flux and Phosphor, with the spinner candidates below |
+| `Palettes` | the palettes tried, and the one chosen, with the spinner candidates below |
 
-Exports of the four frames sit beside this file as `01-*.png`. A written
-specimen of the same contract, with the before-image and the
-measurements, is published at
-https://claude.ai/code/artifact/31ebf9e5-f5eb-403c-945c-af04c28bebcf
-
-The Pencil document defines the tokens as document variables, so a round
-reads them from the file rather than from this prose: ten colours on a
-`theme` axis with `dark` and `light`, five space steps, three type sizes,
-two line heights, and the mono family.
+The file defines the tokens as document variables, so a round reads them
+from the file rather than from this prose: eleven colours on a `theme` axis
+with `dark` and `light`, five space steps, three type sizes, two line
+heights, and the mono family. A crew cannot open the file; the foreman
+exports the frames it needs into the round's scratch directory and
+names the differences in the round prompt. No export lives in this
+folder.
 
 This file is the contract between the design and every round that
 implements it. A round does not invent a token, a size, or a class
@@ -61,12 +61,13 @@ Five, in order. When two conflict, the earlier one wins.
    first whose advance width matches the mark column: braille
    `⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏`, which matches the pane; quadrant `◐ ◓ ◑ ◒`;
    then the block ramp `▁ ▃ ▅ ▇`, which the chart already proves.
-5. **Colour marks what needs attention. A finished thing is grey.** Text
-   is one of three greys. Three colours appear on the one-character mark
-   at the start of a line, and nowhere else: the brand green for what is
-   alive, amber for what is blocked on a person, red for what is broken.
-   Done, pending and idle are grey, because they need nothing from the
-   reader.
+5. **Colour marks a state, and only on the mark.** Text is one of
+   three greys. Four colours appear on the one-character mark at the
+   start of a line, and nowhere else: the accent for what is alive,
+   green for what is done (the human's call of 2026-09-19), amber for
+   what is blocked on a person, red for what is broken. Pending and idle
+   are grey, because they need nothing from the reader. A disclosure
+   triangle is grey too: it is a control, not a state.
 
 ## Hierarchy
 
@@ -99,10 +100,10 @@ A task's state comes from one place each:
 
 | State | Mark | Reads | Source |
 |---|---|---|---|
-| working | `⠹` turning, accent | `[working]` | a live session carries `task:<slug>` and `goal:<slug>` |
+| working | `◐` turning, accent | `[working]` | a live session carries `task:<slug>` and `goal:<slug>` |
 | needs you | `?` warning | `[needs you]` | the agent's hook report, or a pending approval |
-| pending | `·` faint | `[pending]` | the slug appears in `## Queue` |
-| done | `✓` success | `[done]` | the slug appears in `## Done` |
+| pending | `•` faint | `[pending]` | the slug appears in `## Queue` |
+| done | `✓` success, green | `[done]` | the slug appears in `## Done` |
 | failed | `!` danger | `[failed]` | the slug appears in `## Failures` |
 | idle | `–` faint | `[idle]` | a session with no agent holding the tty |
 | waiting | `?` warning | `[waiting]` | a goal whose budget is spent |
@@ -123,8 +124,9 @@ the meters. Both come from data that is already on disk.
 
 **A live session's model** comes from the last `"model"` field in its
 `agentTranscript`, which the session payload already carries. Measured on
-2026-09-17 over the 40 most recent transcripts: a 4 KiB tail read is
-enough, and 40 reads of a 64 KiB tail cost 10 ms in total, 0.25 ms each.
+2026-09-18 over the 40 most recent transcripts: the last assistant line
+sits within 4 KiB in 3 of them, within 64 KiB in 39, within 256 KiB in
+all 40, so the read is one 256 KiB tail.
 37 of the 40 yielded a model; the other three had no assistant turn yet,
 and a session with no model prints nothing rather than a guess.
 
@@ -219,106 +221,37 @@ theme, so the page sits in its world and a light terminal still works.
 The four colours that carry meaning are the page's own constants,
 chosen for hue separation rather than inherited by accident.
 
-`corpus/palette.md` holds the measurements and three candidates. The
-recommendation is **Flux**, pending the human's pick:
+`corpus/palette.md` holds the measurements. The human chose the Coolors
+palette on 2026-09-17 and amended it on 2026-09-19; the values are the
+`dashboard.pen` variables and this table repeats them:
 
-| Role | Flux | Why |
-|---|---|---|
-| `--ui-accent` working, bars | `#a78bfa` violet | 97° from its nearest state hue, so it never reads as one |
-| `--ui-success` done | `#34d399` | |
-| `--ui-warning` needs you | `#fbbf24` | |
-| `--ui-danger` failed | `#f87171` | |
+| Role | Dark | Light | Where |
+|---|---|---|---|
+| `accent` working, bars | `#2a9d8f` | `#1d7268` | the working mark, every bar, the quota fill under 80% |
+| `success` done | `#52b788` | `#2d6a4f` | the `✓` mark |
+| `warning` needs you | `#e9c46a` | `#8a6415` | the `?` mark, the unattributed WHERE row |
+| `danger` failed | `#e76f51` | `#b0472c` | the `!` mark |
+| `caution` quota high | `#f4a261` | `#b8641f` | the quota fill and its percentage at 80% and over |
 
-They paint the mark glyph. They never paint text, a background, or a
-border. Three hues sit at 128°, 43° and 351°, so the closest pair is
-52°, the widest of any palette drawn — because there are fewer colours
-competing. The lowest contrast ratio is 5.20, against 4.18 for the
-palette the page had, so the ratchet gains no `KNOWN_BELOW` entry.
+They paint a mark: a glyph, a bar, the tile's rule, or the one run of
+text that carries a state. They never paint a background or a border.
 
 ## The frame
 
-### Top band — fixed height, four cells
+The two `Dashboard` frames in `dashboard.pen` are the layout: the band,
+the panels with their label gutter, the tree, the folds, and what each
+keeps and drops at 390 px. This file does not describe the layout a
+second time. Three rules the frames cannot carry:
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│ kitterm            2 working   4 need you   $2,316 30d   19% │
-└──────────────────────────────────────────────────────────────┘
-```
-
-One row, one height, always. Each cell is a count and its noun. The
-"need you" cell is a link that scrolls to the first marked line; it is
-not a list. This replaces 619 px of stacked paragraphs with one row.
-
-Below 768 px the four cells wrap to two rows of two. The height is still
-fixed, because the cells are fixed.
-
-### Then the meters
-
-The usage series and the quota bars, side by side above 768 px, stacked
-below it. Both are the `meter` and `series` components.
-
-### The panels
-
-Everything that is a measure rather than a session sits in one stack of
-panels between the band and the tree. Each panel is one row: a label in
-an 84 px gutter on the left, its content filling the rest. The gutter
-gives the whole stack one rhythm, and it is what makes five panels read
-as a dashboard rather than as five lists.
-
-| Panel | Content |
-|---|---|
-| `USAGE` | the range's spend and tokens, the day chart, the axis, the apportionment note |
-| `QUOTA` | one bar per window, its percentage and its reset |
-| `VALUE` | a grouping selector, then one row per group: name, bar, spend, unit count, unit cost |
-| `MODELS` | one bar per model, scaled to spend, with the spend and the session count |
-| `LEAKS` | one line per leak, marked |
-
-**A panel's note is one line, and it names a fact.** Not a paragraph,
-not a caveat with a reason attached. `$1,446.00 apportioned across
-midnight`, `85% names no round, so it cannot be valued`, `a crew is 31%
-cheaper an API hour`. The reasoning lives in `corpus/valuemaxxing.md`
-and in the round records; the page carries the number.
-
-### The VALUE panel groups by the same levels as the tree
-
-`VALUE` and `WHERE` were two panels asking one question at two fixed
-groupings. They are one panel with a selector, and the groupings are the
-levels the page already has:
-
-| Grouping | A row is | Its spend comes from | Its units come from |
-|---|---|---|---|
-| **project** | a registered project | the daily rollup, keyed on the transcript's cwd | that repository's merged pull requests and lines |
-| **goal** | a goal folder | the sum of the `- Cost:` line of its round records | the pull requests those records name |
-| **task** | a queue item, which is one round | that round's `- Cost:` line | the pull request that round's record names |
-| **role** | a crew in a worktree, or a session in a root | the transcript's own directory | that role's lines and API hours |
-
-Two rules the panel holds at every grouping.
-
-**A row with no source prints a dash, never a zero.** 37 of 51 round
-records carry no `- Cost:` line, so most goals and tasks have no spend,
-and most rounds name no pull request.
-
-**The unattributed remainder is a row, not a footnote.** At the `goal`
-grouping, `no round record` is $832.89, which is 85% of kitterm's 30-day
-spend, and it draws as the longest bar in amber. Hiding it would make
-the other three rows look like the whole picture.
-
-Below 768 px the gutter goes and each panel's label becomes a small
-heading over its content. `VALUE` keeps its selector and its rows.
-`LEAKS` drops: it is the least urgent measure, and the same rule governs
-it as governs a line's facts.
-
-`corpus/valuemaxxing.md` holds the measurements and the reason each row
-is there.
-
-### Then the tree
-
-The whole fleet, four levels, one line each. This is the page's body and
-it is what a reader scrolls.
-
-### Then the folds
-
-Archived sessions and done goals, closed.
+- **A panel's note is one line, and it names a fact.** Not a paragraph,
+  not a caveat with a reason attached. The reasoning lives in
+  `corpus/valuemaxxing.md` and in the round records; the page carries
+  the number.
+- **A row with no source prints a dash, never a zero.** Most goals and
+  tasks have no `- Cost:` line, and most rounds name no pull request.
+- **The unattributed remainder is a row, not a footnote.** `no round
+  record` draws as the longest bar, in amber, at the goal grouping.
+  Hiding it would make the other rows look like the whole picture.
 
 ## Components
 

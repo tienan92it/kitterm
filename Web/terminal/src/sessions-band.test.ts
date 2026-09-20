@@ -83,15 +83,19 @@ describe("band", () => {
   const proposing: KnowledgeSummary = { project: "kitterm", slug: "agent-dashboard", status: "active", proposals: 2, lastRound: 3 };
 
   it("prints the four counts: working, need you, spend over the range, quota used", () => {
+    // Round 10 (the frame `Dashboard 1200`): the spend in whole dollars,
+    // and the session window with its countdown, `19% quota · 1h`; the
+    // working count wears the accent and the need-you count the amber.
     const out = band(fleet, items(fleet, [approval("ap", "e")], [proposing]), report, USAGE_DEFAULT, limits, NOW);
     expect(out.cells.map((cell) => [cell.key, cell.value, cell.noun])).toEqual([
       ["working", "2", "working"],
       // The approval, the waiting row, the failed row and the proposal.
       ["needs", "4", "need you"],
-      ["spend", "$2,316.45", "30d"],
-      // The most-used window that has not reset, rounded like its bar.
-      ["quota", "42%", "7d quota"],
+      ["spend", "$2,316", "30d"],
+      // The session window, rounded like its bar, and when it resets.
+      ["quota", "19%", "quota · 1h"],
     ]);
+    expect(out.cells.map((cell) => cell.family ?? null)).toEqual(["running", "attention", null, null]);
     expect(out.needs).toBe(4);
     expect(out.target).toBe(NEEDS_YOU_ID);
   });
@@ -130,7 +134,7 @@ describe("band", () => {
       expect(out.cells[1].value).toBe(String(n));
       return out.cells.map((cell) => `${cell.key}:${cell.noun}`);
     });
-    expect(shapes[0]).toEqual(["working:working", "needs:need you", "spend:30d", "quota:7d quota"]);
+    expect(shapes[0]).toEqual(["working:working", "needs:need you", "spend:30d", "quota:quota · 1h"]);
     expect(shapes[1]).toEqual(shapes[0]);
     expect(shapes[2]).toEqual(shapes[0]);
     // A cell is a count and its noun: no list grows with the fleet.
@@ -150,19 +154,25 @@ describe("the band's cells", () => {
     expect(needsNoun(4)).toBe("need you");
   });
 
-  it("prints the range's total with the span, or a dash without a rollup", () => {
-    expect(bandSpend(report, { mode: "tokens", span: 7 })).toMatchObject({ value: "$2,316.45", noun: "7d" });
+  it("prints the range's total in whole dollars with the span, or a dash without a rollup", () => {
+    // Round 10: `$2,316 30d`; the cents are on the USAGE headline.
+    expect(bandSpend(report, { mode: "tokens", span: 7 })).toMatchObject({ value: "$2,316", noun: "7d" });
+    expect(bandSpend(report, USAGE_DEFAULT).title).toContain("$2,316.45");
     expect(bandSpend(null, USAGE_DEFAULT)).toMatchObject({ value: "–", noun: "spend" });
     expect(bandSpend({ ...report, ok: false }, USAGE_DEFAULT)).toMatchObject({ value: "–", noun: "spend" });
   });
 
-  it("picks the most-used window that has not reset, and names it short", () => {
-    expect(bandQuota(limits, NOW)).toMatchObject({ value: "42%", noun: "7d quota" });
-    const reset: UsageLimits = { ...limits, rateLimits: { ...limits.rateLimits, seven_day: { used_percentage: 99, resets_at: (NOW - 1000) / 1000 } } };
-    expect(bandQuota(reset, NOW)).toMatchObject({ value: "19%", noun: "5h quota" });
+  it("reads the session window while it stands, else the most-used window that has not reset, with its countdown", () => {
+    // Round 10: the frame's band reads the session window, `19% quota ·
+    // 3h 16m`, beside a weekly at 36%: the short window is the one that
+    // decides whether work can start now.
+    expect(bandQuota(limits, NOW)).toMatchObject({ value: "19%", noun: "quota · 1h" });
+    const sessionGone: UsageLimits = { ...limits, rateLimits: { ...limits.rateLimits, five_hour: { used_percentage: 99, resets_at: (NOW - 1000) / 1000 } } };
+    expect(bandQuota(sessionGone, NOW), "the session window has reset: the weekly stands").toMatchObject({ value: "42%", noun: "quota · 1d" });
+    const noSession: UsageLimits = { ...limits, rateLimits: { seven_day: limits.rateLimits!.seven_day, spend_limit: { used_percentage: 60, resets_at: (NOW + 86_400_000 * 20) / 1000 } } };
+    expect(bandQuota(noSession, NOW), "no session window: the most-used").toMatchObject({ value: "60%", noun: "quota · 20d" });
     expect(bandQuota({ ...limits, stale: true }, NOW).title).toContain("stale");
-    expect(bandQuotaNoun("spend_limit")).toBe("spend limit");
-    expect(bandQuotaNoun("some_other")).toBe("some other quota");
+    expect(bandQuotaNoun("3h 16m")).toBe("quota · 3h 16m");
   });
 
   it("prints a dash with no reading, no window, or every window reset", () => {

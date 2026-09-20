@@ -26,7 +26,16 @@ export type ProjectRef = {
  * directory. The page counts what it shows from the rows. */
 export type ProjectSummary = ProjectRef & {
   knowledge?: string;
+  /** `https://github.com/owner/repo/pull/`, from the checkout's `origin`
+   * remote when it is on GitHub; absent otherwise, and the page then
+   * prints a pull request as plain text (round 15). */
+  pullRequestBase?: string;
 };
+
+/** The link of pull request `n` under `base`, or null with no base. */
+export function pullRequestHref(base: string | undefined, n: number): string | null {
+  return base ? `${base}${n}` : null;
+}
 
 /** The subset of a session row the model reads. The page's row type extends it. */
 export type ModelRow = {
@@ -51,6 +60,37 @@ export type ModelRow = {
   /** The name the daemon derives from `agentModel` by the naming rule of
    * `design-foundation.md`: `Fable 5.1`, `Opus 5 · 1M`, or the id unchanged. */
   agentModelName?: string;
+  /** The Claude Code transcript the session's hooks named, as the daemon
+   * stored it; the page reads its bill from `GET /api/sessions/<id>/cost`
+   * only for a row that carries one. */
+  agentTranscript?: string;
+};
+
+/** What the page keeps of `GET /api/sessions/<id>/cost`: whether the
+ * transcript ends in a bill, its dollars and when the session began.
+ * `hasBill` is false for a running session, whose transcript has no
+ * `cost-state` line yet; the route then prices its turns so far under
+ * `estimate` (round 16), which the page prints as `~$4.20`. */
+export type SessionBill = {
+  hasBill: boolean;
+  totalCostUSD?: number;
+  /** Epoch milliseconds, the bill's `startTime`; absent on an old line. */
+  startTime?: number;
+  /** The running session's turns priced, when there is no bill. */
+  estimate?: SessionEstimate;
+};
+
+/** The estimate the cost route answers for a running session, with when
+ * the page fetched it, for the tooltip's `updated 12s ago`. */
+export type SessionEstimate = {
+  costUSD: number;
+  /** API requests counted. */
+  turns: number;
+  /** Epoch milliseconds of the first counted turn; absent on a line with
+   * no timestamp. */
+  startTime?: number;
+  /** Epoch milliseconds: when the page last fetched the estimate. */
+  updatedAt: number;
 };
 
 export type Approval = {
@@ -176,6 +216,9 @@ export type TaskLine<R extends ModelRow> = {
   tag: string;
   /** `round 1`, `PR #118`; empty for a task whose line names neither. */
   facts: string[];
+  /** The numbers behind the facts, for the tree's columns. */
+  round?: number;
+  pr?: number;
   rows: R[];
 };
 
@@ -533,6 +576,14 @@ export function isUnwritten(summary: KnowledgeSummary): boolean {
 export function roundLabel(summary: KnowledgeSummary): string | null {
   if (typeof summary.round !== "number") return null;
   return typeof summary.budget === "number" ? `round ${summary.round} of ${summary.budget}` : `round ${summary.round}`;
+}
+
+/** The round counter as the tree prints it: `r2/3`, `r2` from a daemon
+ * that sends no budget, null without a round (`design-foundation.md`'s
+ * frame draws `r2/3`; `roundLabel` is the long form). */
+export function roundCounter(summary: KnowledgeSummary): string | null {
+  if (typeof summary.round !== "number") return null;
+  return typeof summary.budget === "number" ? `r${summary.round}/${summary.budget}` : `r${summary.round}`;
 }
 
 /** The first line of the next action, trimmed; null when there is none.
@@ -915,14 +966,13 @@ export function markFamily(state: MergedState): MarkFamily {
 
 /** The one character a mark prints (`design-foundation.md`, Hierarchy):
  * `?` for what waits on a person, `!` for what failed, `✓` for what is
- * done, `·` for what is pending, `–` for what is idle or unknown. A working
- * mark turns through the spinner's frames (`spinner.ts`) and rests on the
- * cycle's full glyph; the `>` here is what it prints when no cycle's glyphs
- * fit the mark column, so the page never shows a box. */
+ * done, `•` for what is pending, `–` for what is idle or unknown, and `◐`
+ * for what is working: the quadrant the mark rests on, which the page
+ * turns through the cycle in `spinner.ts`. */
 export function markGlyph(family: MarkFamily): string {
   switch (family) {
     case "running":
-      return ">";
+      return "◐";
     case "attention":
       return "?";
     case "failed":
@@ -930,7 +980,7 @@ export function markGlyph(family: MarkFamily): string {
     case "done":
       return "✓";
     case "pending":
-      return "·";
+      return "•";
     default:
       return "–";
   }
@@ -1012,6 +1062,41 @@ export function keptFacts(widths: readonly number[], need: number, gap: number):
  * a failed task needs a person. */
 export function foldDoneTasks<R extends ModelRow>(tasks: readonly TaskLine<R>[]): { open: TaskLine<R>[]; done: TaskLine<R>[] } {
   return { open: tasks.filter((t) => t.state !== "done"), done: tasks.filter((t) => t.state === "done") };
+}
+
+/** How many of a goal's done tasks its line shows: the most recent two,
+ * as the frame draws them; the older ones are history the record link
+ * holds. `STATE.md` lists `## Done` newest first, so the first two are
+ * the most recent. */
+export const DONE_TASKS_SHOWN = 2;
+
+/** The tasks a goal's line shows: every task that is not done, in the
+ * daemon's order, and the first `DONE_TASKS_SHOWN` done ones. */
+export function shownTasks<R extends ModelRow>(tasks: readonly TaskLine<R>[]): TaskLine<R>[] {
+  let done = 0;
+  return tasks.filter((t) => {
+    if (t.state !== "done") return true;
+    done += 1;
+    return done <= DONE_TASKS_SHOWN;
+  });
+}
+
+/** The project's most recently finished goal, the one the tree shows open
+ * with its last done tasks while the rest fold behind `N done`: the done
+ * goal whose latest round started last, by the `started` day of its
+ * records; the first in the route's order when no record carries a day.
+ * Null for no done goal. */
+export function latestDoneGoal(done: readonly KnowledgeSummary[]): KnowledgeSummary | null {
+  let best: KnowledgeSummary | null = null;
+  let bestDay = "";
+  for (const goal of done) {
+    const day = (goal.rounds ?? []).reduce((max, r) => (typeof r.started === "string" && r.started > max ? r.started : max), "");
+    if (best === null || day > bestDay) {
+      best = goal;
+      bestDay = day;
+    }
+  }
+  return best;
 }
 
 // --- the restart line -------------------------------------------------------
@@ -1502,7 +1587,10 @@ export function taskLines<R extends ModelRow>(summary: KnowledgeSummary, listed:
     const rows = goal === undefined ? [] : sortInGroup(listed.filter(under));
     for (const row of rows) claimed.add(row.id);
     const state: TaskState = live ? "working" : task.state;
-    tasks.push({ slug: task.slug, state, tag: taskTag(state), facts: taskFacts(task), rows });
+    const line: TaskLine<R> = { slug: task.slug, state, tag: taskTag(state), facts: taskFacts(task), rows };
+    if (typeof task.round === "number") line.round = task.round;
+    if (typeof task.pr === "number") line.pr = task.pr;
+    tasks.push(line);
   }
   return { tasks, rest: listed.filter((row) => !claimed.has(row.id)) };
 }
@@ -1646,10 +1734,9 @@ export type UsageLimits = {
   rateLimits?: Record<string, LimitWindow>;
 };
 
-/** How many cells a bar has. Twenty is 5% a cell, and the number beside
- * the bar carries the rest; at 12 px it leaves room for the label and the
- * countdown on one 390 px line. */
-export const QUOTA_CELLS = 20;
+/** The share of a window at which its bar and its number turn caution
+ * (`corpus/dashboard.pen`, the Components frame): 80 % and over. */
+export const QUOTA_CAUTION_PERCENT = 80;
 
 /** The windows in the order the page lists them; any other key follows,
  * by name, with its key as its label. */
@@ -1662,19 +1749,28 @@ const QUOTA_LABELS: Record<string, string> = {
 
 export type QuotaState = "fresh" | "stale" | "reset";
 
-/** One bar: the label, the cells, the number, and the countdown, each a
- * string the page prints as is. `filled` is how many of `QUOTA_CELLS` are
- * full, so the page can colour the fill apart from the track. */
+/** The colour a bar's fill and its number wear: the accent under
+ * `QUOTA_CAUTION_PERCENT`, the caution at and over it. */
+export type QuotaLevel = "accent" | "caution";
+
+/** One bar: the label, the fill, the number, and the reset time, each a
+ * string the page prints as is. `fill` is the window's share of the bar,
+ * 0 to 1, clamped; `level` is the colour the fill and the number wear. */
 export type QuotaBar = {
   key: string;
   label: string;
-  filled: number;
-  /** `#####···············`, `QUOTA_CELLS` long, without the brackets. */
-  cells: string;
-  /** `24%`, or `reset` once `resets_at` has passed. */
+  /** The share of the bar that is full, 0 to 1. */
+  fill: number;
+  level: QuotaLevel;
+  /** `24%`; a window past its reset keeps its last number. */
   percent: string;
-  /** `resets 49m`, or `12m ago` once the window has reset. */
+  /** `resets today 20:20`, `resets tomorrow 04:00`, `resets Sep 25,
+   * 04:00` (`quotaResetTime`), or `reset · read 1d 19h ago` once the
+   * window has reset: the word and the reading's age, never a countdown
+   * that ran out. */
   reset: string;
+  /** `reset` once `resets_at` has passed: the page draws the bar and the
+   * number in the faint grey, at the last value. */
   state: QuotaState;
 };
 
@@ -1688,12 +1784,18 @@ export function quotaLabel(key: string): string {
   return QUOTA_LABELS[key] ?? key.replace(/_/g, " ");
 }
 
-/** The cells for a percentage, rounded to the nearest cell and clamped to
- * the bar: `#` for a full cell, `·` for an empty one. */
-export function quotaCells(percent: number, cells: number = QUOTA_CELLS): { filled: number; cells: string } {
+/** The fill for a percentage, clamped to the bar, and the colour it
+ * wears: the accent under 80 %, the caution from 80 % (`quotaLevel`). */
+export function quotaFill(percent: number): { fill: number; level: QuotaLevel } {
   const clamped = Math.min(100, Math.max(0, Number.isFinite(percent) ? percent : 0));
-  const filled = Math.round((clamped / 100) * cells);
-  return { filled, cells: "#".repeat(filled) + "·".repeat(cells - filled) };
+  return { fill: clamped / 100, level: quotaLevel(percent) };
+}
+
+/** The colour a window's fill and number wear: `caution` at and over
+ * `QUOTA_CAUTION_PERCENT`, `accent` under it. The label and the reset
+ * never change colour. */
+export function quotaLevel(percent: number): QuotaLevel {
+  return Number.isFinite(percent) && percent >= QUOTA_CAUTION_PERCENT ? "caution" : "accent";
 }
 
 /** A span ahead in its two largest units: `49m`, `3h 12m`, `1d 14h`; under
@@ -1709,11 +1811,47 @@ export function countdown(ms: number): string {
   return hours % 24 === 0 ? `${days}d` : `${days}d ${hours % 24}h`;
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const DAY = 24 * 60 * 60_000;
+
+/** The local midnight that starts the day `at` falls in, epoch millis. */
+function localMidnight(at: number): number {
+  const d = new Date(at);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+/** A reset as a clock time in the viewer's zone, 24-hour (round 17, the
+ * human's word): `today 20:20` on the day `now` falls in, `tomorrow
+ * 04:00` on the next, `Sep 25, 04:00` later in the year and `Jan 2 2027,
+ * 04:00` in another. The days are counted between local midnights, so
+ * five minutes before midnight a reset ten minutes ahead is `tomorrow`;
+ * the count is rounded because a day across a DST change is 23 or 25
+ * hours. Never a countdown: the band keeps that. */
+export function quotaResetTime(resetAt: number, now: number): string {
+  const at = new Date(resetAt);
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  const clock = `${pad(at.getHours())}:${pad(at.getMinutes())}`;
+  const days = Math.round((localMidnight(resetAt) - localMidnight(now)) / DAY);
+  if (days === 0) return `today ${clock}`;
+  if (days === 1) return `tomorrow ${clock}`;
+  const date = `${MONTHS[at.getMonth()]} ${at.getDate()}`;
+  const year = at.getFullYear() === new Date(now).getFullYear() ? "" : ` ${at.getFullYear()}`;
+  return `${date}${year}, ${clock}`;
+}
+
 /** The reading's age as the note prints it: `read just now` under a
  * minute, then `read 4m ago`, `read 3h ago`, `read 2d ago`. */
 export function quotaAge(receivedAt: number, now: number): string {
   const span = spanLabel(now - receivedAt);
   return span === "now" ? "read just now" : `read ${span} ago`;
+}
+
+/** The reading's age as a window past its reset prints it, from the
+ * daemon's own `ageSeconds` (else from `receivedAt`), in the countdown's
+ * two units: `read 1d 19h ago`; `read just now` under a minute. */
+export function quotaReadAge(limits: Pick<UsageLimits, "ageSeconds" | "receivedAt">, now: number): string {
+  const ms = typeof limits.ageSeconds === "number" ? limits.ageSeconds * 1000 : now - (limits.receivedAt ?? now);
+  return ms < 60_000 ? "read just now" : `read ${countdown(ms)} ago`;
 }
 
 /**
@@ -1724,12 +1862,17 @@ export function quotaAge(receivedAt: number, now: number): string {
  * A daemon never given a reading says so in words, and names the command
  * that teaches the statusline to post one. A reading with no window says
  * that too: Claude Code gives an API-key account none, and a session none
- * before its first response. A window whose `resets_at` has passed draws
- * an empty bar and says `reset`, because the number it carried is about a
- * window that no longer exists; the statusline drops such a window on its
- * next render, and the bar goes with it. A stale reading keeps its bars,
- * and the note says how old they are, because a bar from three hours ago
- * is still the account's last known state while the note stands beside it.
+ * before its first response. A window whose `resets_at` has passed keeps
+ * its last number and its bar, both in the faint grey, and its reset cell
+ * says `reset · read 1d 19h ago`: the window is over and this is how old
+ * the word is. Never `resets … ago` (round 14, the human's word). A
+ * window ahead prints its reset as a clock time in the viewer's zone,
+ * `resets today 20:20` (`quotaResetTime`, round 17); the band alone
+ * keeps the countdown. The
+ * statusline drops such a window on its next render, and the bar goes
+ * with it. A stale reading keeps its bars, and the note says how old they
+ * are, because a bar from three hours ago is still the account's last
+ * known state while the note stands beside it.
  */
 export function quotaPanel(limits: UsageLimits | null | undefined, now: number): QuotaPanel | null {
   if (!limits || !limits.ok) return null;
@@ -1755,24 +1898,24 @@ export function quotaPanel(limits: UsageLimits | null | undefined, now: number):
   const stale = limits.stale === true;
   const bars = windows.map(([key, window]): QuotaBar => {
     const resetAt = window.resets_at * 1000;
+    const percent = Math.round(Math.min(999, Math.max(0, window.used_percentage)));
     if (resetAt <= now) {
       return {
         key,
         label: quotaLabel(key),
-        filled: 0,
-        cells: "·".repeat(QUOTA_CELLS),
-        percent: "reset",
-        reset: `${countdown(now - resetAt)} ago`,
+        fill: quotaFill(window.used_percentage).fill,
+        level: "accent",
+        percent: `${percent}%`,
+        reset: `reset · ${quotaReadAge(limits, now)}`,
         state: "reset",
       };
     }
-    const percent = Math.round(Math.min(999, Math.max(0, window.used_percentage)));
     return {
       key,
       label: quotaLabel(key),
-      ...quotaCells(window.used_percentage),
+      ...quotaFill(window.used_percentage),
       percent: `${percent}%`,
-      reset: `resets ${countdown(resetAt - now)}`,
+      reset: `resets ${quotaResetTime(resetAt, now)}`,
       state: stale ? "stale" : "fresh",
     };
   });
@@ -1927,6 +2070,14 @@ export function dollars(usd: number): string {
   return `${usd < 0 ? "-" : ""}$${grouped}.${cents}`;
 }
 
+/** `$2,316` for $2,316.83: the dollars with the cents cut, thousands
+ * grouped, for the band and a phone's `MODELS` row, where the cents are
+ * noise beside the number. Cut, not rounded, as the frame prints it. */
+export function wholeDollars(usd: number): string {
+  const whole = String(Math.floor(Math.abs(usd))).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${usd < 0 ? "-" : ""}$${whole}`;
+}
+
 /** Whole units under a thousand, one decimal of `k` under a million, two
  * decimals of `M` under a billion, two of `B` above: `0`, `17.7k`,
  * `1.10M`, `2.31B`. The shape `kitterm goal cost` prints. */
@@ -2023,13 +2174,93 @@ export function workspaceUsage(
   return sum;
 }
 
-/** What a goal prints beside its round: the sum of its records' `Cost:`
- * lines, `$12.34`, from the field the knowledge route adds; null for a
- * goal whose records carry no line, which is a goal that predates the
- * bill, not a free one. The cache share left the line with the headings'
- * (`costLabel`). */
-export function goalCost(summary: Pick<KnowledgeSummary, "costUSD" | "inTokens" | "cacheReadTokens">): string | null {
-  return typeof summary.costUSD === "number" ? dollars(summary.costUSD) : null;
+/** Two inclusive day keys, `YYYY-MM-DD`: the range the rollup answered
+ * for the toggles' span, which every figure on the page follows. */
+export type DayRange = { from: string; to: string };
+
+/** The rounds of a goal that started inside the range. A record with no
+ * start day cannot be placed and is left out, which is never a guess. */
+export function roundsInRange(summary: Pick<KnowledgeSummary, "rounds">, range: DayRange): RoundRecord[] {
+  return (summary.rounds ?? []).filter((r) => typeof r.started === "string" && r.started >= range.from && r.started <= range.to);
+}
+
+/** What a goal prints beside its round: the sum of the `Cost:` lines of
+ * its records that started in the range, `$12.34` (round 13: the same
+ * rounds the `WHERE` panel sums, never the route's all-time `costUSD`);
+ * null for a goal whose rounds in the range carry no line, which is a
+ * goal that predates the bill, not a free one. The cache share left the
+ * line with the headings' (`costLabel`). */
+export function goalCost(summary: Pick<KnowledgeSummary, "rounds">, range: DayRange): string | null {
+  const priced = roundsInRange(summary, range).filter((r) => typeof r.costUSD === "number");
+  return priced.length > 0 ? dollars(priced.reduce((sum, r) => sum + (r.costUSD ?? 0), 0)) : null;
+}
+
+/** What a task prints in the cost column (round 15): the `Cost:` line of
+ * the round its `STATE.md` line names, `round 6`, when that record started
+ * in the range; null for a task that names no round, a round with no
+ * record or no line, or one outside the range. */
+export function taskCost(summary: Pick<KnowledgeSummary, "rounds">, round: number | undefined, range: DayRange): string | null {
+  if (typeof round !== "number") return null;
+  const record = roundsInRange(summary, range).find((r) => r.number === round);
+  return record && typeof record.costUSD === "number" ? dollars(record.costUSD) : null;
+}
+
+/** What a session prints in the cost column (round 15): its transcript's
+ * bill, `$12.85`, when the session began inside the range (`startTime`,
+ * in this browser's zone; a bill with no start is counted); for a running
+ * session with no bill yet, its estimate as `~$4.20` (round 16), placed
+ * in the range by its first turn the same way; null for a session with
+ * neither, or none fetched. */
+export function sessionCost(bill: SessionBill | null | undefined, range: DayRange): string | null {
+  if (bill?.hasBill && typeof bill.totalCostUSD === "number") {
+    return inRange(bill.startTime, range) ? dollars(bill.totalCostUSD) : null;
+  }
+  const estimate = bill?.estimate;
+  if (!estimate || typeof estimate.costUSD !== "number") return null;
+  return inRange(estimate.startTime, range) ? `~${dollars(estimate.costUSD)}` : null;
+}
+
+/** Whether a start moment falls inside the range; one with no moment is
+ * counted. */
+function inRange(startTime: number | undefined, range: DayRange): boolean {
+  if (typeof startTime !== "number") return true;
+  const day = dayKey(startTime);
+  return day >= range.from && day <= range.to;
+}
+
+/** The cost cell's tooltip of a session line: what the figure is. A bill
+ * is the transcript's; an estimate says how many turns it prices and how
+ * old it is, `estimated from 12 turns · updated 12s ago` (round 16). */
+export function sessionCostTitle(bill: SessionBill | null | undefined, now: number): string {
+  const estimate = bill?.estimate;
+  if (bill?.hasBill || !estimate) return BILL_TITLE;
+  return `estimated from ${plural(estimate.turns, "turn", "turns")} · updated ${secondsAgo(now - estimate.updatedAt)}`;
+}
+
+/** The tooltip of a session's bill in the cost column. */
+export const BILL_TITLE = "the bill of this session's transcript, when it began in the range";
+
+/** `12s ago` under a minute, then the span's two-unit label, `4m ago`. */
+export function secondsAgo(ms: number): string {
+  const seconds = Math.floor(Math.max(0, ms) / 1000);
+  return seconds < 60 ? `${seconds}s ago` : `${spanLabel(ms)} ago`;
+}
+
+/** What a project's sessions are estimated to have cost so far, summed,
+ * as its name's tooltip prints it, `+ ~$4.20 running` (round 16): the
+ * rollup counts a session only once its transcript is billed, so a
+ * running session's estimate is on its own line and on no figure above
+ * it. Null with no estimated session under the project. */
+export function runningEstimate(rows: readonly Pick<ModelRow, "id">[], billOf: (id: string) => SessionBill | null | undefined): string | null {
+  let sum = 0;
+  let any = false;
+  for (const row of rows) {
+    const bill = billOf(row.id);
+    if (bill?.hasBill || typeof bill?.estimate?.costUSD !== "number") continue;
+    sum += bill.estimate.costUSD;
+    any = true;
+  }
+  return any ? `+ ~${dollars(sum)} running` : null;
 }
 
 /** One toggle of the panel: what it prints, whether it is the choice, and
@@ -2063,8 +2294,6 @@ export type UsagePanel = {
   modes: UsageToggle[];
   spans: UsageToggle[];
 };
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** `16 Sep` from `2026-09-16`; the key itself when it is not a day. */
 export function dayLabel(key: string): string {
@@ -2180,9 +2409,13 @@ export type BandCell = {
   /** `2`, `4`, `$2,316.45`, `19%`; `–` for a cell whose source the page
    * does not have, never a zero that would read as a measurement. */
   value: string;
-  /** `working`, `need you`, `30d`, `7d quota`. */
+  /** `working`, `need you`, `30d`, `quota · 3h 16m`. */
   noun: string;
   title: string;
+  /** The colour the count wears: the accent on the working count, the
+   * amber on the need-you count, none on the two numbers. The count is
+   * the one glyph run in the band that carries a state, so it is a mark. */
+  family?: "running" | "attention";
 };
 
 /** The band as the page prints it. Always four cells, whatever the fleet
@@ -2205,6 +2438,29 @@ export const NEEDS_YOU_ID = "needs-you";
  * holding the tty, whatever else the fleet holds. */
 export function workingCount(rows: ModelRow[]): number {
   return rows.filter((row) => stateOf(row) === "working").length;
+}
+
+/** What a workspace or a project prints for its working sessions at the
+ * line's end: `1 agent`, `2 agents`; null for none, because a heading
+ * with no agent prints nothing rather than a zero. */
+export function agentsLabel(working: number): string | null {
+  if (working <= 0) return null;
+  return `${working} ${working === 1 ? "agent" : "agents"}`;
+}
+
+/** Is the row an idle shell: a session nobody is waiting on and no agent
+ * holds, so it is not a line of the tree but one of the `N idle shells`
+ * the page folds at its foot. `idle`, `exited` with a zero code, and a
+ * shell with no integration; a `completed` agent at its prompt is not
+ * one, because `claude` still holds its tty. */
+export function isIdleShell(row: ModelRow): boolean {
+  const state = stateOf(row);
+  return state === "idle" || state === "exited" || state === "unknown";
+}
+
+/** The fold line over the idle shells: `1 idle shell`, `3 idle shells`. */
+export function idleShellsLabel(count: number): string {
+  return `${count} idle ${count === 1 ? "shell" : "shells"}`;
 }
 
 /** The noun of the "need you" cell: `needs you` for one item, `need you`
@@ -2239,57 +2495,61 @@ export function orphanApprovals(approvals: readonly Approval[], rows: readonly M
   return approvals.filter((approval) => !approval.session || !ids.has(approval.session));
 }
 
-/** The short noun of a quota window in the band: `5h quota`, `7d quota`,
- * `spend limit`; any other key with its underscores opened. */
-const BAND_QUOTA_NOUNS: Record<string, string> = {
-  five_hour: "5h quota",
-  seven_day: "7d quota",
-  spend_limit: "spend limit",
-};
-
-export function bandQuotaNoun(key: string): string {
-  return BAND_QUOTA_NOUNS[key] ?? `${key.replace(/_/g, " ")} quota`;
+/** The noun of the quota cell: `quota · 3h 16m`, the word and the
+ * countdown to the window's reset, as the frame draws it. */
+export function bandQuotaNoun(reset: string): string {
+  return `quota · ${reset}`;
 }
 
+/** The window the band's quota cell reads: the session window
+ * (`five_hour`) while it has not reset, because it is the one that
+ * decides whether more work can start now; else the most-used window
+ * that has not reset. */
+const BAND_QUOTA_WINDOW = "five_hour";
+
 /**
- * The quota cell: the most-used window that has not reset, because that
- * is the one that decides whether more work can start. `–` with the
- * noun `quota` when the page has no reading, the reading carries no
- * window, or every window has reset; the quota panel below says which
- * in words.
+ * The quota cell: the session window's share and its countdown, `19%`
+ * with `quota · 3h 16m`, from the newest reading; the most-used window
+ * that has not reset when the reading carries no session window. `–`
+ * with the noun `quota` when the page has no reading, the reading
+ * carries no window, or every window has reset; the quota panel below
+ * says which in words.
  */
 export function bandQuota(limits: UsageLimits | null | undefined, now: number): BandCell {
   const none: BandCell = { key: "quota", value: "–", noun: "quota", title: "No quota reading." };
   if (!limits || !limits.ok || !limits.hasReading) return none;
-  let top: [string, LimitWindow] | null = null;
-  for (const entry of Object.entries(limits.rateLimits ?? {})) {
-    const [, window] = entry;
-    if (window.resets_at * 1000 <= now) continue;
-    if (top === null || window.used_percentage > top[1].used_percentage) top = entry;
+  const live = Object.entries(limits.rateLimits ?? {}).filter(([, window]) => window.resets_at * 1000 > now);
+  let top: [string, LimitWindow] | null = live.find(([key]) => key === BAND_QUOTA_WINDOW) ?? null;
+  if (top === null) {
+    for (const entry of live) {
+      if (top === null || entry[1].used_percentage > top[1].used_percentage) top = entry;
+    }
   }
   if (top === null) return none;
   const [key, window] = top;
   const percent = Math.round(Math.min(999, Math.max(0, window.used_percentage)));
   const stale = limits.stale === true ? ", from a stale reading" : "";
+  const reset = countdown(window.resets_at * 1000 - now);
   return {
     key: "quota",
     value: `${percent}%`,
-    noun: bandQuotaNoun(key),
-    title: `${quotaLabel(key)}: ${percent}% used, resets in ${countdown(window.resets_at * 1000 - now)}${stale}.`,
+    noun: bandQuotaNoun(reset),
+    title: `${quotaLabel(key)}: ${percent}% used, resets in ${reset}${stale}.`,
   };
 }
 
-/** The spend cell: the range's total at the full API rate, with the span
- * as its noun; `–` with the noun `spend` when the page has no rollup (a
- * watch token, or a daemon without the route). */
+/** The spend cell: the range's total at the full API rate in whole
+ * dollars, `$2,316`, with the span as its noun; `–` with the noun `spend`
+ * when the page has no rollup (a watch token, or a daemon without the
+ * route). The cents are on the `USAGE` headline under it. */
 export function bandSpend(report: UsageDaily | null | undefined, choice: UsageChoice): BandCell {
   if (!report || !report.ok) return { key: "spend", value: "–", noun: "spend", title: "No usage rollup." };
   const total = report.totals?.costUSD ?? 0;
   return {
     key: "spend",
-    value: dollars(total),
+    value: wholeDollars(total),
     noun: `${choice.span}d`,
-    title: `What the last ${choice.span} days cost, if billed at full API rate.`,
+    title: `${dollars(total)}: what the last ${choice.span} days cost, if billed at full API rate.`,
   };
 }
 
@@ -2319,12 +2579,14 @@ export function band<R extends ModelRow>(
         value: String(working),
         noun: "working",
         title: `${working} ${working === 1 ? "session is" : "sessions are"} running a command or an agent.`,
+        family: "running",
       },
       {
         key: "needs",
         value: String(needs),
         noun: needsNoun(needs),
         title: "Pending approvals, sessions waiting for input, failed sessions, and live goals' proposals.",
+        family: "attention",
       },
       bandSpend(report, choice),
       bandQuota(limits, now),
