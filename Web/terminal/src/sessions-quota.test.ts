@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { countdown, QUOTA_CAUTION_PERCENT, quotaAge, quotaFill, quotaLabel, quotaLevel, quotaPanel, quotaReadAge, type UsageLimits } from "./sessions-model";
+import { countdown, QUOTA_CAUTION_PERCENT, quotaAge, quotaFill, quotaLabel, quotaLevel, quotaPanel, quotaReadAge, quotaResetTime, type UsageLimits } from "./sessions-model";
 
 /**
  * The quota bars (`workspace-ledger`, capability 3; reshaped in
@@ -12,9 +12,12 @@ import { countdown, QUOTA_CAUTION_PERCENT, quotaAge, quotaFill, quotaLabel, quot
  * 0 to 1, and the colour it wears: the accent under 80%, the caution at
  * 80% and over. Chartered in round 11: the twenty ASCII cells
  * (`quotaCells`, `QUOTA_CELLS`, `filled`) pinned the `[####····]` form
- * the frame replaced.
+ * the frame replaced. Chartered in round 17: the `resets 49m` countdowns,
+ * which the frame's `resets today 20:20` clock time replaced. The clock
+ * is a local time, `new Date(y, m, d, h)`, so the day words hold in
+ * every zone the suite runs in.
  */
-const NOW = Date.UTC(2026, 8, 16, 8, 0, 0);
+const NOW = new Date(2026, 8, 16, 8, 0, 0).getTime();
 const MIN = 60_000;
 const HOUR = 60 * MIN;
 const seconds = (ms: number): number => Math.floor(ms / 1000);
@@ -47,13 +50,40 @@ describe("quotaPanel", () => {
     );
   });
 
-  it("draws one bar per window with its countdown, the screenshot's two", () => {
+  it("draws one bar per window with its reset as a clock time, the screenshot's two", () => {
+    // Round 17: 08:00 today; 49 minutes ahead is `today 08:49`, 38 hours
+    // ahead is `tomorrow 22:00`.
     const panel = quotaPanel(reading(), NOW);
     expect(panel?.note).toBe("read 4m ago");
     expect(panel?.bars.map((b) => [b.label, Math.round(b.fill * 1000), b.level, b.percent, b.reset, b.state])).toEqual([
-      ["Session (5h)", 240, "accent", "24%", "resets 49m", "fresh"],
-      ["Weekly", 274, "accent", "27%", "resets 1d 14h", "fresh"],
+      ["Session (5h)", 240, "accent", "24%", "resets today 08:49", "fresh"],
+      ["Weekly", 274, "accent", "27%", "resets tomorrow 22:00", "fresh"],
     ]);
+  });
+
+  it("prints the reset as a local clock time: today, tomorrow, then the date, with the year when it differs", () => {
+    // Round 17, the human's word: `resets today 20:20`, `resets tomorrow
+    // 04:00`, `resets Sep 25, 04:00`, `resets Jan 2 2027, 04:00`, 24-hour,
+    // in the viewer's zone. The six cases the round named.
+    const at = (y: number, m: number, d: number, h: number, min = 0): number => new Date(y, m, d, h, min).getTime();
+    const one = (now: number, resetAt: number): string =>
+      quotaPanel(reading({ receivedAt: now - 4 * MIN, rateLimits: { five_hour: { used_percentage: 19, resets_at: seconds(resetAt) } } }), now)!.bars[0].reset;
+    // Three hours ahead on the same day.
+    expect(one(at(2026, 8, 16, 17, 20), at(2026, 8, 16, 20, 20))).toBe("resets today 20:20");
+    // 01:00 the next day.
+    expect(one(at(2026, 8, 16, 17, 20), at(2026, 8, 17, 1, 0))).toBe("resets tomorrow 01:00");
+    // Four days ahead: the date, no year.
+    expect(one(at(2026, 8, 21, 17, 20), at(2026, 8, 25, 4, 0))).toBe("resets Sep 25, 04:00");
+    // Across a year boundary: the date with its year, the day without a zero.
+    expect(one(at(2026, 11, 31, 17, 20), at(2027, 0, 2, 4, 0))).toBe("resets Jan 2 2027, 04:00");
+    // Five minutes before local midnight, resetting ten minutes later.
+    expect(one(at(2026, 8, 16, 23, 55), at(2026, 8, 17, 0, 5))).toBe("resets tomorrow 00:05");
+    // A window in the past keeps round 14's word and the reading's age.
+    expect(one(at(2026, 8, 16, 17, 20), at(2026, 8, 16, 17, 8))).toBe("reset · read 4m ago");
+    // Minutes under ten and hours under ten both carry the zero.
+    expect(quotaResetTime(at(2026, 8, 16, 9, 5), at(2026, 8, 16, 8, 0))).toBe("today 09:05");
+    // Two days ahead is the date, never `the day after tomorrow`.
+    expect(quotaResetTime(at(2026, 8, 18, 0, 0), at(2026, 8, 16, 23, 59))).toBe("Sep 18, 00:00");
   });
 
   it("turns the fill and the number caution at 80% and not at 79%", () => {
@@ -62,7 +92,7 @@ describe("quotaPanel", () => {
     const at = (percent: number) => quotaPanel(reading({ rateLimits: { five_hour: { used_percentage: percent, resets_at: seconds(NOW + 49 * MIN) } } }), NOW)!.bars[0];
     expect(QUOTA_CAUTION_PERCENT).toBe(80);
     expect([79, 79.9, 80, 87, 100, 140].map((p) => at(p).level)).toEqual(["accent", "accent", "caution", "caution", "caution", "caution"]);
-    expect(at(80)).toMatchObject({ fill: 0.8, level: "caution", percent: "80%", reset: "resets 49m", state: "fresh" });
+    expect(at(80)).toMatchObject({ fill: 0.8, level: "caution", percent: "80%", reset: "resets today 08:49", state: "fresh" });
     expect(at(79)).toMatchObject({ fill: 0.79, level: "accent", percent: "79%" });
     // A stale reading keeps its level: the page greys the fill by state.
     expect(quotaPanel(reading({ stale: true, rateLimits: { five_hour: { used_percentage: 91, resets_at: seconds(NOW + HOUR) } } }), NOW)!.bars[0]).toMatchObject({ level: "caution", state: "stale" });
@@ -73,7 +103,9 @@ describe("quotaPanel", () => {
       reading({
         rateLimits: {
           zzz_window: { used_percentage: 1, resets_at: seconds(NOW + HOUR) },
-          spend_limit: { used_percentage: 62.8, resets_at: seconds(NOW + 30 * 24 * HOUR) },
+          // A local date, not `NOW + 30 days`: a zone whose clocks change
+          // between the two would move the hour.
+          spend_limit: { used_percentage: 62.8, resets_at: seconds(new Date(2026, 9, 16, 8, 0, 0).getTime()) },
           seven_day: { used_percentage: 27, resets_at: seconds(NOW + 38 * HOUR) },
           five_hour: { used_percentage: 24, resets_at: seconds(NOW + 49 * MIN) },
         },
@@ -83,7 +115,7 @@ describe("quotaPanel", () => {
     expect(panel?.bars.map((b) => b.key)).toEqual(["five_hour", "seven_day", "spend_limit", "zzz_window"]);
     expect(panel?.bars.map((b) => b.label)).toEqual(["Session (5h)", "Weekly", "Spend limit", "zzz window"]);
     expect(panel?.bars[2].percent).toBe("63%");
-    expect(panel?.bars[2].reset).toBe("resets 30d");
+    expect(panel?.bars[2].reset).toBe("resets Oct 16, 08:00");
   });
 
   it("says reset and the reading's age on a window past its reset, and keeps its last value in the faint grey", () => {
@@ -114,8 +146,8 @@ describe("quotaPanel", () => {
       state: "reset",
     });
     expect(panel?.bars.filter((b) => /^resets .* ago$/.test(b.reset)), "no window prints resets … ago").toEqual([]);
-    // The window with a future reset prints as today, stale.
-    expect(panel?.bars[1]).toMatchObject({ percent: "27%", reset: "resets 1d 14h", state: "stale", level: "accent" });
+    // The window with a future reset prints its clock time, stale.
+    expect(panel?.bars[1]).toMatchObject({ percent: "27%", reset: "resets tomorrow 22:00", state: "stale", level: "accent" });
     // A past window on a fresh reading is the same, its age from `ageSeconds`.
     const fresh = quotaPanel(reading({ rateLimits: { five_hour: { used_percentage: 91, resets_at: seconds(NOW - 12 * MIN) } } }), NOW);
     expect(fresh?.bars[0]).toMatchObject({ percent: "91%", reset: "reset · read 4m ago", state: "reset", fill: 0.91 });

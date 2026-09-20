@@ -299,12 +299,12 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
 
 /* QUOTA: one line per window the statusline last reported: the label in
    the shared name column, a bar `--quota-bar` wide drawn as a track on the
-   surface with the fill a mark in the accent, the percentage, the
-   countdown, and the reading's age after the last line. At 80 % and over
-   the fill and the percentage wear the caution and nothing else does: the
-   label and the reset never change colour (the Components frame). A stale
-   reading's fill is grey. The number beside the bar carries the value
-   without colour. */
+   surface with the fill a mark in the accent, the percentage, the reset
+   as a clock time, and the reading's age after the last line. At 80 %
+   and over the fill and the percentage wear the caution and nothing else
+   does: the label and the reset never change colour (the Components
+   frame). A stale reading's fill is grey. The number beside the bar
+   carries the value without colour. */
 .quota-bars { list-style: none; margin: 0; padding: 0; }
 .quota-bar { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) 0; white-space: nowrap; min-width: 0; }
 .quota-label { flex: none; width: var(--name-col); overflow: hidden; }

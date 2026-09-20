@@ -154,13 +154,18 @@ describe("the panels", () => {
 
   it("QUOTA draws one bar per window as a track with its fill a mark, accent under 80% and caution from it, the percentage too", async () => {
     // The Components frame, "Quota bar": `Session (5h) [====      ] 19%
-    // resets 3h 16m` in the accent, `Weekly [========  ] 87% resets 1d
-    // 12h · read just now` in the caution, the label and the reset never
-    // coloured. Chartered: the ASCII `[####····]` cells of rounds 4–10.
-    const now = Math.floor(Date.now() / 1000);
+    // resets today 20:20` in the accent, `Weekly [========  ] 87% resets
+    // Sep 25, 04:00 · read just now` in the caution, the label and the
+    // reset never coloured. Chartered: the ASCII `[####····]` cells of
+    // rounds 4–10, and round 17 replaced the `resets 3h 16m` countdown
+    // with the frame's clock time. The clock is pinned at a local time so
+    // the day words hold in every zone: 17:03 on Sep 16, the session
+    // window 3h 16m ahead, the weekly on the 25th.
+    const clock = vi.spyOn(Date, "now").mockReturnValue(new Date(2026, 8, 16, 17, 3, 30).getTime());
+    const nowMs = Date.now();
     routes["/api/usage/limits"] = {
-      ok: true, hasReading: true, receivedAt: Date.now() - 20_000, ageSeconds: 20, stale: false,
-      rateLimits: { five_hour: { used_percentage: 19, resets_at: now + 3 * 3600 + 16 * 60 + 30 }, seven_day: { used_percentage: 87, resets_at: now + 36 * 3600 + 30 } },
+      ok: true, hasReading: true, receivedAt: nowMs - 20_000, ageSeconds: 20, stale: false,
+      rateLimits: { five_hour: { used_percentage: 19, resets_at: Math.floor(new Date(2026, 8, 16, 20, 20).getTime() / 1000) }, seven_day: { used_percentage: 87, resets_at: Math.floor(new Date(2026, 8, 25, 4, 0).getTime() / 1000) } },
     };
     await page.poll();
     const quota = panelNamed("quota");
@@ -170,7 +175,7 @@ describe("the panels", () => {
       ["quota-label", "quota-track", "quota-percent", "quota-reset", "quota-age"],
     ]);
     expect(bars.map((b) => [b.querySelector(".quota-label")?.textContent, b.querySelector(".quota-percent")?.textContent, b.querySelector(".quota-reset")?.textContent])).toEqual([
-      ["Session (5h)", "19%", "resets 3h 16m"], ["Weekly", "87%", "resets 1d 12h"],
+      ["Session (5h)", "19%", "resets today 20:20"], ["Weekly", "87%", "resets Sep 25, 04:00"],
     ]);
     expect(bars[1].querySelector(".quota-age")?.textContent).toBe("· read just now");
     // The fill: a bar mark inside the track, sized to the share.
@@ -183,6 +188,7 @@ describe("the panels", () => {
     expect(bars.map((b) => b.querySelector(".quota-label")?.querySelectorAll(".mark"))).toEqual([[], []]);
     expect(bars.map((b) => b.querySelector(".quota-reset")?.querySelectorAll(".mark"))).toEqual([[], []]);
     expect(quota.textContent).not.toContain("#");
+    clock.mockRestore();
     routes["/api/usage/limits"] = { ok: true, hasReading: false };
     await page.poll();
   });
@@ -190,7 +196,9 @@ describe("the panels", () => {
   it("QUOTA draws a window past its reset in the faint grey at its last value, its reset cell the word and the reading's age", async () => {
     // Round 14: a stale reading whose session window reset 1d 17h ago.
     // The page never prints `resets … ago`; the fill and the percentage
-    // are idle marks, the faint grey, and the weekly prints as today.
+    // are idle marks, the faint grey, and the weekly prints its clock
+    // time (round 17), 38 hours ahead of 17:03 on Sep 16: the 18th.
+    const clock = vi.spyOn(Date, "now").mockReturnValue(new Date(2026, 8, 16, 17, 3, 30).getTime());
     const now = Math.floor(Date.now() / 1000);
     routes["/api/usage/limits"] = {
       ok: true, hasReading: true, receivedAt: Date.now() - (43 * 3600 + 12 * 60) * 1000, ageSeconds: 43 * 3600 + 12 * 60, stale: true,
@@ -201,7 +209,7 @@ describe("the panels", () => {
     const bars = quota.querySelectorAll(".quota-bar");
     expect(bars.map((b) => b.className)).toEqual(["quota-bar reset", "quota-bar stale"]);
     expect(bars.map((b) => [b.querySelector(".quota-percent")?.textContent, b.querySelector(".quota-reset")?.textContent])).toEqual([
-      ["91%", "reset · read 1d 19h ago"], ["27%", "resets 1d 14h"],
+      ["91%", "reset · read 1d 19h ago"], ["27%", "resets Sep 18, 07:04"],
     ]);
     expect(quota.textContent).not.toMatch(/resets [^·]* ago/);
     expect(bars.map((b) => b.querySelector(".quota-track")?.children.map((c) => (typeof c === "string" ? c : `${c.className} ${(c.style as { width?: string }).width}`)))).toEqual([
@@ -209,6 +217,7 @@ describe("the panels", () => {
     ]);
     expect(bars.map((b) => b.querySelector(".quota-percent")?.querySelectorAll(".mark").map((m) => m.className))).toEqual([["mark idle wide"], []]);
     expect(bars.map((b) => b.querySelector(".quota-reset")?.querySelectorAll(".mark"))).toEqual([[], []]);
+    clock.mockRestore();
     routes["/api/usage/limits"] = { ok: true, hasReading: false };
     await page.poll();
   });

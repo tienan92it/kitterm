@@ -1753,7 +1753,7 @@ export type QuotaState = "fresh" | "stale" | "reset";
  * `QUOTA_CAUTION_PERCENT`, the caution at and over it. */
 export type QuotaLevel = "accent" | "caution";
 
-/** One bar: the label, the fill, the number, and the countdown, each a
+/** One bar: the label, the fill, the number, and the reset time, each a
  * string the page prints as is. `fill` is the window's share of the bar,
  * 0 to 1, clamped; `level` is the colour the fill and the number wear. */
 export type QuotaBar = {
@@ -1764,9 +1764,10 @@ export type QuotaBar = {
   level: QuotaLevel;
   /** `24%`; a window past its reset keeps its last number. */
   percent: string;
-  /** `resets 49m`, or `reset · read 1d 19h ago` once the window has
-   * reset: the word and the reading's age, never a countdown that ran
-   * out. */
+  /** `resets today 20:20`, `resets tomorrow 04:00`, `resets Sep 25,
+   * 04:00` (`quotaResetTime`), or `reset · read 1d 19h ago` once the
+   * window has reset: the word and the reading's age, never a countdown
+   * that ran out. */
   reset: string;
   /** `reset` once `resets_at` has passed: the page draws the bar and the
    * number in the faint grey, at the last value. */
@@ -1810,6 +1811,34 @@ export function countdown(ms: number): string {
   return hours % 24 === 0 ? `${days}d` : `${days}d ${hours % 24}h`;
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const DAY = 24 * 60 * 60_000;
+
+/** The local midnight that starts the day `at` falls in, epoch millis. */
+function localMidnight(at: number): number {
+  const d = new Date(at);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+/** A reset as a clock time in the viewer's zone, 24-hour (round 17, the
+ * human's word): `today 20:20` on the day `now` falls in, `tomorrow
+ * 04:00` on the next, `Sep 25, 04:00` later in the year and `Jan 2 2027,
+ * 04:00` in another. The days are counted between local midnights, so
+ * five minutes before midnight a reset ten minutes ahead is `tomorrow`;
+ * the count is rounded because a day across a DST change is 23 or 25
+ * hours. Never a countdown: the band keeps that. */
+export function quotaResetTime(resetAt: number, now: number): string {
+  const at = new Date(resetAt);
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  const clock = `${pad(at.getHours())}:${pad(at.getMinutes())}`;
+  const days = Math.round((localMidnight(resetAt) - localMidnight(now)) / DAY);
+  if (days === 0) return `today ${clock}`;
+  if (days === 1) return `tomorrow ${clock}`;
+  const date = `${MONTHS[at.getMonth()]} ${at.getDate()}`;
+  const year = at.getFullYear() === new Date(now).getFullYear() ? "" : ` ${at.getFullYear()}`;
+  return `${date}${year}, ${clock}`;
+}
+
 /** The reading's age as the note prints it: `read just now` under a
  * minute, then `read 4m ago`, `read 3h ago`, `read 2d ago`. */
 export function quotaAge(receivedAt: number, now: number): string {
@@ -1836,7 +1865,10 @@ export function quotaReadAge(limits: Pick<UsageLimits, "ageSeconds" | "receivedA
  * before its first response. A window whose `resets_at` has passed keeps
  * its last number and its bar, both in the faint grey, and its reset cell
  * says `reset · read 1d 19h ago`: the window is over and this is how old
- * the word is. Never `resets … ago` (round 14, the human's word). The
+ * the word is. Never `resets … ago` (round 14, the human's word). A
+ * window ahead prints its reset as a clock time in the viewer's zone,
+ * `resets today 20:20` (`quotaResetTime`, round 17); the band alone
+ * keeps the countdown. The
  * statusline drops such a window on its next render, and the bar goes
  * with it. A stale reading keeps its bars, and the note says how old they
  * are, because a bar from three hours ago is still the account's last
@@ -1883,7 +1915,7 @@ export function quotaPanel(limits: UsageLimits | null | undefined, now: number):
       label: quotaLabel(key),
       ...quotaFill(window.used_percentage),
       percent: `${percent}%`,
-      reset: `resets ${countdown(resetAt - now)}`,
+      reset: `resets ${quotaResetTime(resetAt, now)}`,
       state: stale ? "stale" : "fresh",
     };
   });
@@ -2262,8 +2294,6 @@ export type UsagePanel = {
   modes: UsageToggle[];
   spans: UsageToggle[];
 };
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** `16 Sep` from `2026-09-16`; the key itself when it is not a day. */
 export function dayLabel(key: string): string {

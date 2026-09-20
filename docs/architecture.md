@@ -265,9 +265,10 @@ while a session is active, so a reading ages whenever the human is away from eve
 stays exact while no other device spends the same account, and goes wrong silently when
 one does; an hour is a fifth of the shortest window. The page draws one bar per window
 as a track with a fill and the percentage beside it, the fill in the accent under 80 %
-and the fill and the percentage in the caution colour at 80 % and over, with the
-countdown to its reset, prints the age after the last bar, keeps a stale reading's
-fill grey, keeps a window past its reset at its last value with the fill and the
+and the fill and the percentage in the caution colour at 80 % and over, with its reset
+as a clock time in the viewer's zone (`resets today 20:20`, `resets tomorrow 04:00`,
+`resets Sep 25, 04:00`; the band alone keeps the countdown), prints the age after the
+last bar, keeps a stale reading's fill grey, keeps a window past its reset at its last value with the fill and the
 percentage in the faint grey and `reset · read 1d 19h ago` in its reset cell (never
 `resets … ago`), and says in words when no reading has ever arrived. Full grade only
 on both routes, like the bill and the rollup.
