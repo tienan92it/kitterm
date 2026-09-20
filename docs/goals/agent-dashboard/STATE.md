@@ -1,14 +1,19 @@
 # STATE: agent-dashboard
 
-- Status: waiting
-- Round: 3 of 3 in this budget (fifth budget)
+- Status: active
+- Round: 0 of 3 in this budget (sixth budget)
 - Rounds total: 15
 - Last floor: green (2026-09-20, round 15 after: swift test 831, Linux build, vitest 1441 in 56 files)
-- Updated: 2026-09-20, round 15 closed; the fifth budget is spent
+- Updated: 2026-09-20, continued: a running session's cost
 
 ## Queue
 
-Empty. Rounds 10–15 are on PR #134.
+1. `a-running-session-has-a-cost` (the human's on 2026-09-20). Claude
+   Code writes the `cost-state` line at exit, so a running session
+   printed a dash. Sum the transcript's assistant `usage` by model at
+   the rollup's rates for a live estimate, cached by size and mtime;
+   the route says `estimated`; the page prints `~$4.20` until the bill
+   lands. The Pen row marks carry the `~`.
 
 ## Failures
 
@@ -187,8 +192,7 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-The fifth budget is spent; the goal waits. Merge PR #134. Then the
-human decides `goal.md` condition 6 and whether the goal is `done`. Then the human decides `goal.md` condition 6 (390 px
+Round 16, `a-running-session-has-a-cost`, on PR #134's branch. Then the human decides `goal.md` condition 6 (390 px
 under 1200; the design measures 2147 on the real tree) and whether to
 set the goal `done`. Then the human decides: `goal.md` condition 6 (390 px under
 1200) against the frame's shape, which measures 2499 on the real tree;
