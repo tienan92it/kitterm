@@ -163,7 +163,25 @@ h2{font-size:20px;line-height:1.2;font-weight:600}
   color:var(--muted);scroll-snap-align:end}
 .foot .site{color:var(--faint)}
 @media (min-width:768px){.foot{gap:var(--space-5);padding:14px var(--gutter) 26px}}
+
+/* Entrance: a column's children rise 8 px into place over 240 ms, 60 ms apart in
+   document order (`--i` is the child's index, set by the script), once the observer
+   marks the page `shown`. A page never un-shows. */
+[data-enter]{opacity:0;transform:translateY(8px);
+  transition:opacity 240ms ease-out,transform 240ms ease-out;
+  transition-delay:calc(var(--i,0) * 60ms)}
+.shown [data-enter]{opacity:1;transform:none}
+/* The pane's cursor: 530 ms on, 530 ms off, in steps. */
+@keyframes blink{0%{opacity:1}50%{opacity:0}}
+.cursor{animation:blink 1060ms step-end infinite}
+/* Reduced motion: everything visible at once, whatever the observer reached; the
+   cursor steady; the script leaves the turning mark on its first glyph. */
+@media (prefers-reduced-motion:reduce){
+  [data-enter]{opacity:1;transform:none;transition:none}
+  .cursor{animation:none}
+}
 </style>
+<noscript><style>[data-enter]{opacity:1;transform:none}</style></noscript>
 </head>
 <body>
 <main>
@@ -307,6 +325,47 @@ h2{font-size:20px;line-height:1.2;font-weight:600}
   var opens = document.querySelectorAll("a.open");
   for (var i = 0; i < opens.length; i++) {
     opens[i].addEventListener("click", function () { miss.hidden = false; });
+  }
+
+  var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Entrance: a page is `shown` once, when 40% of it is in the viewport; the
+  // hero at once. Each `[data-enter]` child gets its index for the stagger.
+  function show(page) {
+    if (page.classList.contains("shown")) return;
+    var kids = page.querySelectorAll("[data-enter]");
+    for (var k = 0; k < kids.length; k++) kids[k].style.setProperty("--i", k);
+    // The hero is shown before the parser has styled it; a transition needs a
+    // before-change style, so read one, or the children pop in at once.
+    void page.offsetWidth;
+    page.classList.add("shown");
+  }
+  var pages = document.querySelectorAll("[data-page]");
+  show(pages[0]);
+  var observer = new IntersectionObserver(function (entries) {
+    for (var e = 0; e < entries.length; e++) {
+      if (entries[e].intersectionRatio >= 0.4) {
+        show(entries[e].target);
+        observer.unobserve(entries[e].target);
+      }
+    }
+  }, { threshold: 0.4 });
+  for (var j = 1; j < pages.length; j++) observer.observe(pages[j]);
+
+  // Marks: every ◐ turns through the dashboard's cycle at 90 ms from one timer,
+  // and rests on ◐ under reduced motion.
+  var FRAMES = ["◐", "◓", "◑", "◒"];
+  var marks = [];
+  var all = document.querySelectorAll(".mark");
+  for (var m = 0; m < all.length; m++) {
+    if (all[m].textContent === FRAMES[0]) marks.push(all[m]);
+  }
+  if (!reduced && marks.length) {
+    var tick = 0;
+    setInterval(function () {
+      tick = (tick + 1) % FRAMES.length;
+      for (var n = 0; n < marks.length; n++) marks[n].textContent = FRAMES[tick];
+    }, 90);
   }
 })();
 </script>
