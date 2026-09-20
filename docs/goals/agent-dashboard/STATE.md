@@ -1,17 +1,14 @@
 # STATE: agent-dashboard
 
 - Status: active
-- Round: 1 of 3 in this budget (sixth budget)
-- Rounds total: 16
-- Last floor: green (2026-09-20, round 16 after: swift test 842, Linux build, vitest 1448 in 58 files, bench p95 2.60 ms)
-- Updated: 2026-09-20, the quota reset time queued
+- Round: 2 of 3 in this budget (sixth budget)
+- Rounds total: 17
+- Last floor: green (2026-09-20, round 17 after: vitest 1449 in 58 files)
+- Updated: 2026-09-20, round 17 closed
 
 ## Queue
 
-1. `quota-resets-at-a-time` (the human's on 2026-09-20). The reset cell
-   prints a clock time, not a countdown: `resets today 20:20`,
-   `resets tomorrow 04:00`, `resets Sep 25, 04:00`, local time. The Pen
-   frames carry it.
+Empty. Rounds 10–17 are on PR #134.
 
 ## Failures
 
@@ -33,6 +30,8 @@ None.
 
 ## Done
 
+- `quota-resets-at-a-time`, round 17, `fbe03ce` on PR #134. See
+  `rounds/017.md`. The reset cell prints a local clock time.
 - `a-running-session-has-a-cost`, round 16, `f97e397` on PR #134. See
   `rounds/016.md`. A running session prints `~$16.26` from its
   transcript, 1–3% under the bill it becomes.
@@ -197,7 +196,8 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-Round 17, `quota-resets-at-a-time`. Then merge PR #134. Then the human decides the proposals
+Merge PR #134 (rounds 10–17). Then the human decides the proposals
+above and whether the goal is `done`. Then the human decides the proposals
 above and whether the goal is `done`. Then the human decides `goal.md` condition 6 (390 px
 under 1200; the design measures 2147 on the real tree) and whether to
 set the goal `done`. Then the human decides: `goal.md` condition 6 (390 px under
