@@ -1,18 +1,14 @@
 # STATE: agent-dashboard
 
-- Status: active
-- Round: 2 of 3 in this budget (fifth budget)
-- Rounds total: 14
-- Last floor: green (2026-09-20, round 14 after: vitest 1436 in 55 files)
-- Updated: 2026-09-20, the tree's cost column and PR links queued
+- Status: waiting
+- Round: 3 of 3 in this budget (fifth budget)
+- Rounds total: 15
+- Last floor: green (2026-09-20, round 15 after: swift test 831, Linux build, vitest 1441 in 56 files)
+- Updated: 2026-09-20, round 15 closed; the fifth budget is spent
 
 ## Queue
 
-1. `cost-column-and-pr-links` (the human's on 2026-09-20). The tree's
-   number column is the cost at every level — a project's, a goal's, a
-   task's round, a session's bill — never `round N` or `rN/M`; those go
-   to the name's tooltip. `PR #124` is a link to the pull request. The
-   Pen frames carry both.
+Empty. Rounds 10–15 are on PR #134.
 
 ## Failures
 
@@ -30,6 +26,9 @@ None.
 
 ## Done
 
+- `cost-column-and-pr-links`, round 15, `23a30a4` on PR #134. See
+  `rounds/015.md`. The tree's number column is the cost at every level;
+  `PR #N` links to GitHub through `pullRequestBase` on `/api/projects`.
 - `four-defects-from-review`, round 14, `ef0e941` on PR #134. See
   `rounds/014.md`. Stale quota wording, the quadrant spinner alone,
   fold rows on the baseline, done goals in the fold open to their tasks.
@@ -188,7 +187,8 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-Round 15, `cost-column-and-pr-links`, on PR #134's branch. Then the human decides `goal.md` condition 6 (390 px
+The fifth budget is spent; the goal waits. Merge PR #134. Then the
+human decides `goal.md` condition 6 and whether the goal is `done`. Then the human decides `goal.md` condition 6 (390 px
 under 1200; the design measures 2147 on the real tree) and whether to
 set the goal `done`. Then the human decides: `goal.md` condition 6 (390 px under
 1200) against the frame's shape, which measures 2499 on the real tree;
