@@ -1,18 +1,14 @@
 # STATE: agent-dashboard
 
 - Status: active
-- Round: 1 of 3 in this budget (fifth budget)
-- Rounds total: 13
-- Last floor: green (2026-09-19, round 13 after: vitest 1438 in 55 files)
-- Updated: 2026-09-20, four defects from the human's review queued
+- Round: 2 of 3 in this budget (fifth budget)
+- Rounds total: 14
+- Last floor: green (2026-09-20, round 14 after: vitest 1436 in 55 files)
+- Updated: 2026-09-20, round 14 closed
 
 ## Queue
 
-1. `four-defects-from-review` (the human's on 2026-09-20): a quota
-   window past its reset reads `resets … ago`; the working mark rests
-   on `●` and tries braille, where the design draws `◐ ◓ ◑ ◒`; the
-   fold rows' triangle sits off the row baseline; a done goal inside
-   the `N done` fold wears a triangle that opens nothing.
+Empty. Rounds 10–14 are on PR #134.
 
 ## Failures
 
@@ -30,6 +26,9 @@ None.
 
 ## Done
 
+- `four-defects-from-review`, round 14, `ef0e941` on PR #134. See
+  `rounds/014.md`. Stale quota wording, the quadrant spinner alone,
+  fold rows on the baseline, done goals in the fold open to their tasks.
 - `every-figure-follows-the-range`, round 13, `eb0a6bb` on PR #134. See
   `rounds/013.md`. Two figures did not follow the range (a goal's tree
   cost, LEAKS) and now do; the rest already did. Task working time back;
@@ -185,7 +184,8 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-Round 14, `four-defects-from-review`, on PR #134's branch. Then the human decides `goal.md` condition 6 (390 px
+Merge PR #134. Then the human decides `goal.md` condition 6 and whether
+the goal is `done`. Then the human decides `goal.md` condition 6 (390 px
 under 1200; the design measures 2147 on the real tree) and whether to
 set the goal `done`. Then the human decides: `goal.md` condition 6 (390 px under
 1200) against the frame's shape, which measures 2499 on the real tree;
