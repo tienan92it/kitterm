@@ -287,6 +287,21 @@ the line's rounding to cents and whole thousands. The knowledge route answers at
 grade, and so does the record file that holds the line; the summed number adds nothing
 a watch reader could not already open.
 
+Since `agent-dashboard` round 15 the tree's number column is the cost at every level
+and nothing else. A task's is the `- Cost:` line of the one round its `STATE.md` line
+names, when that record started in the range; a session's is its transcript bill, which
+the page reads from `GET /api/sessions/<id>/cost` every thirty seconds for a row that
+carries an `agentTranscript`, and which exists only once `claude` has exited, so a
+working session prints the dash and an idle shell where an agent ran prints what it
+cost. Every level with no source prints `–`, never a zero; with no rollup, the column
+is absent, because every cost leaves the page together for a watch token. `round 6`
+and a goal's `r6/3` moved to the name's tooltip. `PR #124` is a link wherever the page
+prints a pull request number: `GET /api/projects` carries `pullRequestBase`, read off
+each root's `origin` remote by `RemoteOrigins` (one `git remote get-url origin` per
+root every five minutes, on its own queue) and parsed by `PullRequestBase` for the
+three GitHub forms; a remote off GitHub, or none, carries no field and the page prints
+the number as text.
+
 ### What the spend bought
 
 Four panels between the meters and the tree say what the range's dollars delivered

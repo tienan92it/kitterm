@@ -329,8 +329,10 @@ describe("the cache share left every heading", () => {
     // (round 10: a goal's cost is the same `cost` cell as a heading's),
     // then notes. Round 13 (chartered): the goal's cost is the sum of its
     // records started in the rollup's range, $7.73 + $11.28, not the
-    // route's all-time `$65.72`.
-    expect(page.root.querySelectorAll(".cost").map((c) => c.textContent)).toEqual(["$1,000.00", "$950.00", "$19.01", "$50.00"]);
+    // route's all-time `$65.72`. Round 15 (chartered): the goal's tasks
+    // and the sessions carry the cost cell too, the dash where the level
+    // has no Cost line or no bill.
+    expect(page.root.querySelectorAll(".cost").map((c) => c.textContent)).toEqual(["$1,000.00", "$950.00", "$19.01", "–", "–", "$50.00", "–"]);
     expect(page.root.querySelector(".goal-line")?.querySelector(".cost")?.textContent).toBe("$19.01");
   });
 

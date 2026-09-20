@@ -85,7 +85,9 @@ describe("one range for every figure", () => {
       whereSummary: "$70.00 in 2 repositories · 2 merged PRs · 500 lines · 1 release",
       models: [["Fable 5.1", "$45.00"], ["Opus 5 · 1M", "$30.00"]],
       leaks: ["1 of 3 rounds carry no Cost line", "0 corrections in 3 rounds · 1 session under 95% cached, $30.00"],
-      tree: [["Workspace", "$70.00"], ["kitterm", "$70.00"], ["alpha", "$17.00"], ["market-data-pipeline", "$0.00"]],
+      // Round 15 (chartered): every task and goal line carries the cost
+      // cell, the dash where its rounds in the range carry no Cost line.
+      tree: [["Workspace", "$70.00"], ["kitterm", "$70.00"], ["alpha", "$17.00"], ["ship", "–"], ["beta", "–"], ["market-data-pipeline", "$0.00"], ["gamma", "–"]],
     });
 
     toggle("90d").click();
@@ -106,7 +108,7 @@ describe("one range for every figure", () => {
       whereSummary: "$190.00 in 2 repositories · 4 merged PRs · 2,000 lines · 2 releases",
       models: [["Fable 5.1", "$145.00"], ["Opus 5 · 1M", "$30.00"], ["Haiku 4.5", "$20.00"]],
       leaks: ["2 of 7 rounds carry no Cost line", "1 correction in 7 rounds · 2 sessions under 95% cached, $130.00"],
-      tree: [["Workspace", "$190.00"], ["kitterm", "$170.00"], ["alpha", "$30.00"], ["beta", "$5.00"], ["market-data-pipeline", "$20.00"], ["gamma", "$20.00"]],
+      tree: [["Workspace", "$190.00"], ["kitterm", "$170.00"], ["alpha", "$30.00"], ["ship", "–"], ["beta", "$5.00"], ["market-data-pipeline", "$20.00"], ["gamma", "$20.00"]],
     });
     // Nothing on the page kept the week's figure.
     for (const key of Object.keys(week) as Array<keyof typeof week>) expect(quarter[key], key).not.toEqual(week[key]);

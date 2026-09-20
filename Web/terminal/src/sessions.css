@@ -168,6 +168,15 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
    the unattributed row's name and spend. Inline, as wide as its text, in
    its parent's font and the colour of its family. */
 .mark.wide { display: inline; width: auto; text-align: inherit; font: inherit; }
+/* A pull request link, `PR #124`, in the tree and in WHERE's task rows
+   (round 15): the accent, as a mark's background like every owned colour,
+   with an underline like the band's `need you` link so a reader tells
+   "goes somewhere" without colour. The underline is drawn in the accent
+   too, because the clipped text has no colour of its own to draw it in. */
+.mark.link { background: var(--ui-accent); -webkit-background-clip: text; background-clip: text; }
+.pr-link { text-decoration: none; }
+.pr-link .mark.link { text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--ui-accent); }
+.pr-link:hover .mark.link { text-decoration-thickness: 2px; }
 
 /* --- the band ---------------------------------------------------------------
    One row, one height, always (`design-foundation.md`, principle 2): the

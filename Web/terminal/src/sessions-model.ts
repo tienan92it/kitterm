@@ -26,7 +26,16 @@ export type ProjectRef = {
  * directory. The page counts what it shows from the rows. */
 export type ProjectSummary = ProjectRef & {
   knowledge?: string;
+  /** `https://github.com/owner/repo/pull/`, from the checkout's `origin`
+   * remote when it is on GitHub; absent otherwise, and the page then
+   * prints a pull request as plain text (round 15). */
+  pullRequestBase?: string;
 };
+
+/** The link of pull request `n` under `base`, or null with no base. */
+export function pullRequestHref(base: string | undefined, n: number): string | null {
+  return base ? `${base}${n}` : null;
+}
 
 /** The subset of a session row the model reads. The page's row type extends it. */
 export type ModelRow = {
@@ -51,6 +60,21 @@ export type ModelRow = {
   /** The name the daemon derives from `agentModel` by the naming rule of
    * `design-foundation.md`: `Fable 5.1`, `Opus 5 · 1M`, or the id unchanged. */
   agentModelName?: string;
+  /** The Claude Code transcript the session's hooks named, as the daemon
+   * stored it; the page reads its bill from `GET /api/sessions/<id>/cost`
+   * only for a row that carries one. */
+  agentTranscript?: string;
+};
+
+/** What the page keeps of `GET /api/sessions/<id>/cost`: whether the
+ * transcript ends in a bill, its dollars and when the session began.
+ * `hasBill` is false for a running session, whose transcript has no
+ * `cost-state` line yet. */
+export type SessionBill = {
+  hasBill: boolean;
+  totalCostUSD?: number;
+  /** Epoch milliseconds, the bill's `startTime`; absent on an old line. */
+  startTime?: number;
 };
 
 export type Approval = {
@@ -2121,6 +2145,29 @@ export function roundsInRange(summary: Pick<KnowledgeSummary, "rounds">, range: 
 export function goalCost(summary: Pick<KnowledgeSummary, "rounds">, range: DayRange): string | null {
   const priced = roundsInRange(summary, range).filter((r) => typeof r.costUSD === "number");
   return priced.length > 0 ? dollars(priced.reduce((sum, r) => sum + (r.costUSD ?? 0), 0)) : null;
+}
+
+/** What a task prints in the cost column (round 15): the `Cost:` line of
+ * the round its `STATE.md` line names, `round 6`, when that record started
+ * in the range; null for a task that names no round, a round with no
+ * record or no line, or one outside the range. */
+export function taskCost(summary: Pick<KnowledgeSummary, "rounds">, round: number | undefined, range: DayRange): string | null {
+  if (typeof round !== "number") return null;
+  const record = roundsInRange(summary, range).find((r) => r.number === round);
+  return record && typeof record.costUSD === "number" ? dollars(record.costUSD) : null;
+}
+
+/** What a session prints in the cost column (round 15): its transcript's
+ * bill, `$12.85`, when the session began inside the range (`startTime`,
+ * in this browser's zone; a bill with no start is counted); null for a
+ * session with no bill yet, which is every running one, or none fetched. */
+export function sessionCost(bill: SessionBill | null | undefined, range: DayRange): string | null {
+  if (!bill?.hasBill || typeof bill.totalCostUSD !== "number") return null;
+  if (typeof bill.startTime === "number") {
+    const day = dayKey(bill.startTime);
+    if (day < range.from || day > range.to) return null;
+  }
+  return dollars(bill.totalCostUSD);
 }
 
 /** One toggle of the panel: what it prints, whether it is the choice, and

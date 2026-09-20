@@ -27,6 +27,7 @@ import {
   type RoundRecord,
   type UsageBucket,
   type UsageChoice,
+  pullRequestHref,
   type UsageDaily,
   type UsageMode,
   type UsageSpan,
@@ -232,6 +233,9 @@ export type WhereRow = {
   spend: string;
   count: string;
   units: string;
+  /** The link of a task row's one `PR #N`, when its project has a
+   * `pullRequestBase` (round 15); absent, and the text is plain. */
+  unitsHref?: string;
   rate: string;
   title: string;
 };
@@ -268,6 +272,8 @@ type Raw = {
   count: string | null;
   /** The pull requests column, already worded; null for no source. */
   units: string | null;
+  /** The link of the one pull request the column names, when known. */
+  unitsHref?: string;
   /** The unit the rate divides the spend by — the pull requests merged,
    * the lines merged, an API hour — as `/PR`, `/line`, `/API hour`, and
    * whether the rate prints whole dollars (an API hour does, as the frame
@@ -316,6 +322,7 @@ function format(raw: Raw, max: number): WhereRow {
     spend: spend === null ? DASH : dollars(spend),
     count: raw.count ?? DASH,
     units: raw.units ?? DASH,
+    ...(raw.unitsHref === undefined ? {} : { unitsHref: raw.unitsHref }),
     rate,
     title: raw.title,
   };
@@ -377,6 +384,9 @@ export function wherePanel(grouping: WhereGrouping, input: WhereInput): WherePan
   let raws: Raw[] = [];
   let note = "";
   const share = (rest: number): string | null => (total > 0 ? `${Math.round((rest / total) * 100)}%` : null);
+  /** The link of pull request `n` in a project, or null off GitHub. */
+  const linkOf = (projectId: string, n: number): string | null =>
+    pullRequestHref(input.projects.find((p) => p.id === projectId)?.pullRequestBase, n);
 
   if (grouping === "project") {
     let attributed = 0;
@@ -457,6 +467,7 @@ export function wherePanel(grouping: WhereGrouping, input: WhereInput): WherePan
             spendUSD: spend,
             count: timed.length > 0 ? countdown(durationMs) : null,
             units: prs.length === 0 ? null : prs.length === 1 ? `PR #${prs[0]}` : plural(prs.length, "PR", "PRs"),
+            ...(prs.length === 1 && linkOf(project.id, prs[0]) !== null ? { unitsHref: linkOf(project.id, prs[0])! } : {}),
             per: lines !== null && lines > 0 ? { n: lines, unit: "/line" } : null,
             title: `${own.map((r) => `round ${r.number}`).join(", ")} of ${nameOf(project, summary)} in ${project.name}, started ${own.map((r) => r.started ?? "on no recorded day").join(", ")}`,
           });

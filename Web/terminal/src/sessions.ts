@@ -27,6 +27,7 @@ import {
   rowModel,
   rowName,
   sameServerKey,
+  sessionCost,
   stateOf,
   stateTag,
   usageAmount,
@@ -54,6 +55,7 @@ import {
   type PushSupport,
   type PushToggle,
   type QuotaPanel,
+  type SessionBill,
   type StampFormat,
   type UsageChoice,
   type UsageDaily,
@@ -236,6 +238,12 @@ let whereGrouping: WhereGrouping = readWhereGrouping(readStorage(WHERE_KEY));
  * null when the route did not answer: a daemon too old to have it, or a
  * watch token, which it refuses. */
 let limits: UsageLimits | null = null;
+/** The bill of each session that names a transcript, by id, from
+ * `GET /api/sessions/<id>/cost`, with when it was asked: a session's cost
+ * column (round 15). The bill exists once `claude` exits, so a session is
+ * asked again every `USAGE_REFRESH_MS`, and a 403 (watch) or a 404 keeps
+ * null, which the column prints as the dash. */
+const bills = new Map<string, { at: number; bill: SessionBill | null }>();
 
 /** One key of `localStorage`, or null where storage is blocked or empty. */
 function readStorage(key: string): string | null {
@@ -282,6 +290,40 @@ async function fetchUsage(now: number): Promise<void> {
     usageAsked = "";
   }
 }
+
+/** Ask the cost route for every session that names a transcript and whose
+ * bill is not kept or is `USAGE_REFRESH_MS` old; forget the sessions that
+ * are gone. Only with a rollup: without one every cost is off the page, so
+ * the bills are not asked for. A failed request keeps the last answer. */
+async function fetchBills(now: number): Promise<void> {
+  const live = new Set(sessions.map((s) => s.id));
+  for (const id of bills.keys()) if (!live.has(id)) bills.delete(id);
+  if (!usage) return;
+  const due = sessions.filter((s) => s.agentTranscript && (now - (bills.get(s.id)?.at ?? 0)) >= USAGE_REFRESH_MS);
+  await Promise.all(
+    due.map(async (s) => {
+      try {
+        const res = await fetch(`/api/sessions/${encodeURIComponent(s.id)}/cost`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(POLL_MS) });
+        if (!res.ok) {
+          bills.set(s.id, { at: now, bill: null });
+          return;
+        }
+        const answer = (await res.json()) as { hasBill?: boolean; bill?: { totalCostUSD?: number; startTime?: number } };
+        bills.set(s.id, {
+          at: now,
+          bill: answer.hasBill && answer.bill
+            ? { hasBill: true, totalCostUSD: answer.bill.totalCostUSD, startTime: answer.bill.startTime }
+            : { hasBill: false },
+        });
+      } catch {
+        // Keep what the page shows; the next poll asks again.
+      }
+    }),
+  );
+}
+
+/** The bill kept for a session, for the tree's cost column. */
+const billOf = (id: string): SessionBill | null | undefined => bills.get(id)?.bill;
 
 /** The days every figure on the page counts over: the range the rollup
  * answered for the toggles' span, or, before it answers or on a daemon
@@ -370,6 +412,7 @@ async function poll(): Promise<void> {
     limits = limitsRes.ok ? ((await limitsRes.json()) as UsageLimits) : null;
     sessions = data.sessions ?? [];
     await fetchUsage(Date.now());
+    await fetchBills(Date.now());
     failedPolls = 0;
     render();
   } catch {
@@ -561,7 +604,7 @@ function render(): void {
   const now = Date.now();
   // The span a line prints moves once a minute at most, so it is in; so
   // is the tree's order.
-  const built = tree({ rows: sessions, projects, goalsOf: (id) => knowledge.get(id)?.goals, approvals, proposed: [], usage, now });
+  const built = tree({ rows: sessions, projects, goalsOf: (id) => knowledge.get(id)?.goals, approvals, proposed: [], usage, billOf, now });
   const shape = built.sections.map((s) => s.lines.map((l) => [l.key, l.facts.map((f) => f.text)]));
   // The quota's text moves once a minute at most, like a line's span; the
   // usage panel's numbers when the rollup refreshes.
@@ -629,7 +672,7 @@ function paint(): void {
   paintModels(modelsPanel(usage));
   paintLeaks(leakLines(usage, goals, range));
   // Every session is a line once: in the tree, or in the idle fold.
-  const built = tree({ rows: sessions, projects, goalsOf: (id) => knowledge.get(id)?.goals, approvals, proposed, usage, now });
+  const built = tree({ rows: sessions, projects, goalsOf: (id) => knowledge.get(id)?.goals, approvals, proposed, usage, billOf, now });
   if (built.sections.length === 0) {
     const empty = document.createElement("p");
     empty.className = "empty";
@@ -947,7 +990,8 @@ function paintValue(panel: ValuePanel | null): void {
 
 /** One cell of a split row: its class, its text, and whether it wears the
  * amber as a mark (the remainder's name and spend). */
-type SplitCell = { className: string; text: string; amber?: boolean };
+/** One cell of a split row; `href` makes its text a pull request link. */
+type SplitCell = { className: string; text: string; amber?: boolean; href?: string };
 
 /** One `split` row: the name, the bar as a mark that wears the accent or
  * the amber (the bar is not text, so the owned colour may paint it), then
@@ -976,7 +1020,11 @@ function splitRow(key: string, name: string, remainder: boolean, fill: number, c
   bar.style.width = `${Math.round(fill * 1000) / 10}%`;
   track.append(bar);
   li.append(track);
-  for (const cell of cells) li.append(amberText(cell.className, cell.text, cell.amber === true));
+  for (const cell of cells) {
+    const el = amberText(cell.className, cell.text, cell.amber === true);
+    if (cell.href) el.replaceChildren(pullRequestLink(cell.text, cell.href));
+    li.append(el);
+  }
   return li;
 }
 
@@ -1015,7 +1063,7 @@ function paintWhere(panel: WherePanel | null): void {
       list.append(splitRow(row.key, row.name, row.remainder, row.fill, [
         { className: "split-spend", text: row.spend, amber: row.remainder },
         { className: "split-count", text: row.count },
-        { className: "split-units", text: row.units },
+        { className: "split-units", text: row.units, href: row.unitsHref },
         { className: "split-rate", text: row.rate },
       ], row.title));
     }
@@ -1348,7 +1396,9 @@ function lineMain(line: TreeLine<SessionRow>, name: HTMLElement): HTMLElement {
   main.className = "main";
   name.classList.add("line-name");
   name.dataset.name = "";
-  if (line.title) name.title = line.title;
+  // A goal whose proposals wait already carries their tooltip; the line's
+  // own tooltip fills in for every other name.
+  if (line.title && !name.title) name.title = line.title;
   main.append(name);
   if (line.state) main.append(span(`state ${line.state.family}`, line.state.tag));
   for (const fact of line.facts) {
@@ -1356,9 +1406,24 @@ function lineMain(line: TreeLine<SessionRow>, name: HTMLElement): HTMLElement {
     cell.dataset.col = String(fact.column);
     if (fact.narrow) cell.dataset.narrow = "";
     if (fact.title) cell.title = fact.title;
+    // A pull request whose project is on GitHub opens there (round 15).
+    if (fact.href) cell.replaceChildren(pullRequestLink(fact.text, fact.href));
     main.append(cell);
   }
   return main;
+}
+
+/** `PR #124` as a link to the pull request, in the accent with an
+ * underline like the band's `need you` link: the text is a `.mark.wide`,
+ * so the colour is a mark's background, never `color`. */
+function pullRequestLink(text: string, href: string): HTMLAnchorElement {
+  const a = document.createElement("a");
+  a.className = "pr-link";
+  a.href = href;
+  a.target = "_blank";
+  a.rel = "noopener";
+  a.append(span("mark link wide", text));
+  return a;
 }
 
 /** The shell of a line: the mark and the body, with the depth on the
@@ -1510,11 +1575,14 @@ function paintFolds(idle: SessionRow[]): void {
   if (archives.length > 0) nodes.push(foldElement("archived", `Archived (${archives.length})`, 0, () => [archivedList(archives)]));
   if (idle.length > 0) {
     const now = Date.now();
+    // An idle shell is where a bill sits: `claude` exited, and its
+    // transcript ends in a `cost-state` line.
+    const range = usage ? { from: usage.from, to: usage.to } : null;
     nodes.push(foldElement("idle", idleShellsLabel(idle.length), 0, () => idle.map((s) => {
       const family = markFamily(stateOf(s));
       return row({
         kind: "session", key: `session:${s.id}`, depth: 0, name: rowName(s), title: s.cwd,
-        state: { family, tag: stateTag(s) }, facts: sessionFactColumns(rowModel(s), s.agentModel, rowLine(s, now).since),
+        state: { family, tag: stateTag(s) }, facts: sessionFactColumns(range ? sessionCost(billOf(s.id), range) : undefined, rowModel(s), s.agentModel, rowLine(s, now).since),
         row: s, mark: family, needs: false, approvals: [],
       }, true);
     })));

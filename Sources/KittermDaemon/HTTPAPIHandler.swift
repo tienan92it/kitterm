@@ -58,6 +58,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// The repositories' own history behind `GET /api/yield`; nil in a
     /// handler built without one, where the route answers 503.
     private let repositoryYields: RepositoryYields?
+    /// The `origin` remote per project root, for `pullRequestBase` on
+    /// `GET /api/projects`; nil in a handler built without one, where no
+    /// project carries the field.
+    private let remoteOrigins: RemoteOrigins?
     /// The newest quota reading behind `POST` and `GET /api/usage/limits`;
     /// nil in a handler built without one, where the routes answer 503.
     private let usageLimits: UsageLimitsStore?
@@ -94,6 +98,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         vapidKeys: VAPIDKeys? = nil,
         usageRollup: UsageRollup? = nil,
         repositoryYields: RepositoryYields? = nil,
+        remoteOrigins: RemoteOrigins? = nil,
         usageLimits: UsageLimitsStore? = nil,
         transcriptModels: TranscriptModelCache? = nil
     ) {
@@ -115,6 +120,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.vapidKeys = vapidKeys
         self.usageRollup = usageRollup
         self.repositoryYields = repositoryYields
+        self.remoteOrigins = remoteOrigins
         self.usageLimits = usageLimits
         self.transcriptModels = transcriptModels
     }
@@ -1889,33 +1895,50 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// `GET /api/projects` — the identity of every project the daemon has
     /// seen: the registered ones (`~/.kitterm/projects.json`, with no
     /// session too) and the ones a live session's cwd discovered. Identity
-    /// only, `{id, name, root, registered, knowledge}`: the fleet view counts
-    /// what it shows from the session rows, so a count here was a second
-    /// merge per session per poll that nobody read. Read-only, any grade.
+    /// only, `{id, name, root, registered, knowledge}`, plus `pullRequestBase`
+    /// for a root whose `origin` remote is on GitHub (round 15 of
+    /// `agent-dashboard`; `RemoteOrigins`, one `git` per root every five
+    /// minutes on its own queue): the fleet view counts what it shows from
+    /// the session rows, so a count here was a second merge per session per
+    /// poll that nobody read. Read-only, any grade.
     private func serveProjects(head: HTTPRequestHead, context: ChannelHandlerContext) {
         let loop = context.eventLoop
         let bound = NIOLoopBound(context, eventLoop: loop)
         let projects = self.projects
+        let origins = self.remoteOrigins
         // The registered list is read inside the task, off the loop: the
         // store's reload takes a lock around file I/O, and the loop reads
-        // only what the hop delivers.
-        let promise = loop.makePromise(of: ([SessionRegistry.SessionSummary], [Project]).self)
+        // only what the hop delivers. The remotes are read on their own
+        // queue, because `git` is a process and a Task's thread is not
+        // where one waits.
+        let promise = loop.makePromise(of: ([SessionRegistry.SessionSummary], [Project], [String: String]).self)
         promise.completeWithTask {
-            (await self.registry.summaries(), projects.registered())
+            let summaries = await self.registry.summaries()
+            let registered = projects.registered()
+            guard let origins else { return (summaries, registered, [:]) }
+            let roots = registered.map(\.root) + summaries.compactMap { $0.project?.root }
+            let bases: [String: String] = await withCheckedContinuation { continuation in
+                RemoteOrigins.queue.async {
+                    continuation.resume(returning: origins.pullRequestBases(roots: roots))
+                }
+            }
+            return (summaries, registered, bases)
         }
         promise.futureResult.whenComplete { result in
-            let (summaries, registered) = (try? result.get()) ?? ([], [])
+            let (summaries, registered, bases) = (try? result.get()) ?? ([], [], [:])
             self.writeJSON(
                 status: .ok,
-                body: Self.projectsBody(registered: registered, seen: summaries.compactMap(\.project)),
+                body: Self.projectsBody(registered: registered, seen: summaries.compactMap(\.project), pullRequestBases: bases),
                 context: bound.value, version: head.version, keepAlive: head.isKeepAlive
             )
         }
     }
 
     /// One item per project id, sorted by name then id. A registered
-    /// project wins over a row's copy of it; the rows add the discovered ones.
-    private static func projectsBody(registered: [Project], seen: [ResolvedProject]) -> String {
+    /// project wins over a row's copy of it; the rows add the discovered
+    /// ones. `pullRequestBases` is keyed by root; a root with no entry
+    /// carries no `pullRequestBase`.
+    static func projectsBody(registered: [Project], seen: [ResolvedProject], pullRequestBases: [String: String] = [:]) -> String {
         var byID: [String: ResolvedProject] = [:]
         for project in registered { byID[project.id] = ResolvedProject(project) }
         for project in seen where byID[project.id] == nil { byID[project.id] = project }
@@ -1924,6 +1947,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             .map { project in
                 var item = project.rowJSON
                 item["knowledge"] = project.knowledge
+                if let root = project.root, let base = pullRequestBases[root] { item["pullRequestBase"] = base }
                 return item
             }
         return (try? JSONSerialization.data(withJSONObject: ["ok": true, "projects": items]))

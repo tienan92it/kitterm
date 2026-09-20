@@ -166,7 +166,7 @@ describe("the tree", () => {
     const built = tree({ rows: [], projects, goalsOf, approvals: [], proposed: [], usage: report, now: NOW });
     return built.sections.flatMap((s) => s.lines.flatMap((l) => (l.kind === "fold" ? l.lines : [l])))
       .filter((l) => l.kind === "goal" || l.kind === "project")
-      .map((l) => [l.name, l.facts.filter((f) => f.kind === "cost" || f.kind === "counter").map((f) => f.text)]);
+      .map((l) => [l.name, l.facts.filter((f) => f.kind === "cost").map((f) => f.text)]);
   };
 
   it("prices a goal from its round records started inside the rollup's range, like the project from its bucket", () => {
@@ -174,19 +174,21 @@ describe("the tree", () => {
     expect(goalCost(fleet[0].summary, quarter)).toBe("$30.00");
     expect(goalCost(fleet[1].summary, week)).toBeNull();
     expect(goalCost(fleet[1].summary, quarter)).toBe("$5.00");
+    // Round 15 (chartered): the counter left the column for the name's
+    // tooltip, and a goal with no priced round in the range prints the dash.
     expect(goalFacts(r7)).toEqual([
       ["kitterm", ["$70.00"]],
-      ["alpha", ["$17.00", "r1/3"]],
-      ["beta", ["r2/3"]],
+      ["alpha", ["$17.00"]],
+      ["beta", ["–"]],
       ["market-data-pipeline", ["$0.00"]],
-      ["gamma", ["r1/3"]],
+      ["gamma", ["–"]],
     ]);
     expect(goalFacts(r90)).toEqual([
       ["kitterm", ["$170.00"]],
-      ["alpha", ["$30.00", "r1/3"]],
-      ["beta", ["$5.00", "r2/3"]],
+      ["alpha", ["$30.00"]],
+      ["beta", ["$5.00"]],
       ["market-data-pipeline", ["$20.00"]],
-      ["gamma", ["$20.00", "r1/3"]],
+      ["gamma", ["$20.00"]],
     ]);
   });
 });

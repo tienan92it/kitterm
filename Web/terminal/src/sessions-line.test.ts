@@ -36,6 +36,9 @@ import {
  * (the Components frame): the `·` pending glyph became `•`, the goal's
  * amber `▾` became the faint `▼` that never carries a state, and the
  * approval's actions cell went with every other action on the page.
+ * Chartered in round 15 (the human's word): the number column is the cost
+ * at every level, so a goal's `r7/3` and a task's `round 6` left it for
+ * the name's tooltip and a session's model moved to column 3.
  */
 
 const NOW = 1_758_000_000_000;
@@ -233,14 +236,17 @@ describe("the page's lines", () => {
     }
   });
 
-  it("prints a row's state as the bracketed word, its model in the number column and its time in the last, nothing else", () => {
+  it("prints a row's state as the bracketed word, its model in the third column and its time in the last, nothing else", () => {
     // Round 10 (the frame `Dashboard 1200`): `◐ path-mapping-real-terminal
     // [working] Fable 5.1 4m`. What the agent is doing and where it sits
-    // are the name's tooltip, not cells. The time keeps the phone.
+    // are the name's tooltip, not cells. Round 15: the number column is
+    // the cost, so the model is column 3; this page has no rollup, so no
+    // cost column and the time keeps the phone (`sessions-pen-tree.test.ts`
+    // pins the bill with one).
     const main = page.root.querySelectorAll(".main").find((m) => m.textContent.startsWith("crew"))!;
     const cells = cellsOf(main).map(([c, t, col]) => [c, c === "since" ? t.replace(/^\d+[mhd]$|^now$/, "<span>") : t, col]);
     expect(cells).toEqual([
-      ["folder line-name", "crew", null], ["state running", "[working]", null], ["model", "Fable 5.1", "2"], ["since", "<span>", "4"],
+      ["folder line-name", "crew", null], ["state running", "[working]", null], ["model", "Fable 5.1", "3"], ["since", "<span>", "4"],
     ]);
     expect(main.querySelector(".since")?.hasAttribute("data-narrow")).toBe(true);
     expect(main.querySelector(".model")?.hasAttribute("data-narrow")).toBe(false);
@@ -250,32 +256,35 @@ describe("the page's lines", () => {
     expect(line.querySelector(".mark")?.className).toBe("mark running");
   });
 
-  it("prints a goal's line as disclosure, title, word, then its cost and its counter in their columns", () => {
-    // `workspace-ledger [done] $75.11 r6/3`: the cost in the number column,
-    // the counter in the last; the next action is the title's tooltip. The
-    // triangle carries no state: the word does. Round 13 (chartered): the
-    // cost follows the rollup's range, and this page has no rollup, so no
-    // line prints a cost and the counter takes the number column;
-    // `sessions-pen-tree.test.ts` pins the two columns with a rollup.
+  it("prints a goal's line as disclosure, title, word, then its cost in the number column, with the counter and the next action on the tooltip", () => {
+    // `workspace-ledger [done] $75.11`: the cost in the number column and
+    // nothing else there (round 15); the counter and the next action are
+    // the name's tooltip, `r7/3 · next: …`. The triangle carries no state:
+    // the word does. The cost follows the rollup's range, and this page
+    // has no rollup, so no line prints a cost; `sessions-pen-tree.test.ts`
+    // pins the column with one.
     const goal = page.root.querySelector(".goal-line")!;
     expect(goal.querySelector(".mark")?.className).toBe("mark disclosure");
     expect(goal.querySelector(".mark")?.textContent).toBe("▼");
     expect(goal.querySelector(".state")?.textContent).toBe("[working]");
     expect(cellsOf(goal.querySelector(".main")!)).toEqual([
-      ["line-name", "/sessions is a dashboard for workspaces and agents", null], ["state running", "[working]", null], ["counter", "r7/3", "2"],
+      ["line-name", "/sessions is a dashboard for workspaces and agents", null], ["state running", "[working]", null],
     ]);
-    expect(goal.querySelector(".line-name")?.title).toBe("Round 7, `every-line-is-one-line`, from `plan.md` row 5.");
+    expect(goal.querySelector(".line-name")?.title).toBe("r7/3 · next: Round 7, `every-line-is-one-line`, from `plan.md` row 5.");
     expect(goal.querySelector(".line-name")?.tagName).toBe("A");
     expect(goal.querySelectorAll("[data-drop]"), "a goal's facts never drop: they sit in columns").toEqual([]);
   });
 
-  it("prints a task's line as mark, slug, word, then round and PR in their columns, and its crew under it", () => {
+  it("prints a task's line as mark, slug, word, then its PR in the third column, with the round on the tooltip, and its crew under it", () => {
+    // Round 15: `round 6` left the number column, which is the cost's
+    // (none here: no rollup), for the name's tooltip, `round 6 · PR #130`.
     const tasks = page.root.querySelectorAll(".line-task");
     expect(tasks.map((t) => cellsOf(t.querySelector(".main")!))).toEqual([
       [["line-name", "every-line-is-one-line", null], ["state running", "[working]", null]],
-      [["line-name", "the-page-says-what-the-spend-bought", null], ["state done", "[done]", null], ["round", "round 6", "2"], ["pr", "PR #130", "3"]],
-      [["line-name", "no-input-on-the-page", null], ["state done", "[done]", null], ["round", "round 1", "2"], ["pr", "PR #125", "3"]],
+      [["line-name", "the-page-says-what-the-spend-bought", null], ["state done", "[done]", null], ["pr", "PR #130", "3"]],
+      [["line-name", "no-input-on-the-page", null], ["state done", "[done]", null], ["pr", "PR #125", "3"]],
     ]);
+    expect(tasks.map((t) => t.querySelector(".line-name")?.title)).toEqual(["", "round 6 · PR #130", "round 1 · PR #125"]);
     expect(tasks.map((t) => t.querySelector(".mark")?.className)).toEqual(["mark running", "mark done", "mark done"]);
     expect(tasks.map((t) => t.getAttribute("style") ?? "")).toEqual(["", "", ""]);
   });

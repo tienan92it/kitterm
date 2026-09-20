@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { type FakeElement, installFakePage, type FakePage } from "./fake-page";
 import { type Approval, type KnowledgeSummary, type ModelRow, type ProjectSummary, type UsageDaily } from "./sessions-model";
-import { goalFactColumns, headingFactColumns, isOpen, sessionFactColumns, taskFactColumns, tree, visibleLines, type TreeLine } from "./sessions-tree";
+import { goalFactColumns, goalTooltip, headingFactColumns, isOpen, NO_FACT, sessionFactColumns, taskFactColumns, taskTooltip, tree, visibleLines, type TreeLine } from "./sessions-tree";
 
 /**
  * The tree as the frames `Dashboard 1200` and `Dashboard 390` draw it
@@ -16,14 +16,19 @@ import { goalFactColumns, headingFactColumns, isOpen, sessionFactColumns, taskFa
  * `sessions.ts` and pins the columns, the folds and the absences.
  * Chartered in round 11: the project's `working` spinner, the goal's amber
  * disclosure (`mark`), the `▸` glyph and the actions cell with `[new]`,
- * `⋯` and the two answers, all of round 10's shape.
+ * `⋯` and the two answers, all of round 10's shape. Chartered in round 15
+ * (the human's word): the number column is the cost at every level, so
+ * `round 6` and `r6/3` left it for the name's tooltip, a level with no
+ * cost prints the dash, a session's model moved to column 3, and `PR #124`
+ * links to the pull request where the project's remote is on GitHub.
  */
 
 /** The page reads the clock, so the fixture's moments sit against it. */
 const NOW = Date.now();
 const W = "/w";
 const NNT = `${W}/NgheNhanTrading`;
-const kitterm: ProjectSummary = { id: "kitterm", name: "kitterm", root: `${W}/kitterm`, registered: true, knowledge: "docs/goals" };
+const PR_BASE = "https://github.com/tienan92it/kitterm/pull/";
+const kitterm: ProjectSummary = { id: "kitterm", name: "kitterm", root: `${W}/kitterm`, registered: true, knowledge: "docs/goals", pullRequestBase: PR_BASE };
 const mdp: ProjectSummary = { id: "mdp", name: "market-data-pipeline", root: `${NNT}/market-data-pipeline`, registered: true, knowledge: "docs/goals" };
 const mt5: ProjectSummary = { id: "mt5", name: "nghenhan-mt5", root: `${NNT}/nghenhan-mt5`, registered: true, knowledge: "docs/goals" };
 const ref = (p: ProjectSummary) => ({ id: p.id, name: p.name, root: p.root, registered: p.registered });
@@ -31,8 +36,9 @@ const ref = (p: ProjectSummary) => ({ id: p.id, name: p.name, root: p.root, regi
 const rows = {
   /** A shell running a command in kitterm's root, no goal. */
   root: { id: "s-root", cwd: kitterm.root!, state: "running", mergedState: "working", marks: 0, project: ref(kitterm), lastOutputAt: NOW - 4 * 60_000 } as ModelRow,
-  /** An agent stopped on a tool call. */
-  blocked: { id: "s-blocked", name: "review", cwd: kitterm.root!, state: "running", mergedState: "needs-approval", marks: 0, project: ref(kitterm), lastOutputAt: NOW - 60_000 } as ModelRow,
+  /** An agent stopped on a tool call; its transcript ends in a bill from
+   * an earlier `claude` in the same shell. */
+  blocked: { id: "s-blocked", name: "review", cwd: kitterm.root!, state: "running", mergedState: "needs-approval", marks: 0, project: ref(kitterm), lastOutputAt: NOW - 60_000, agentTranscript: "/t/blocked.jsonl" } as ModelRow,
   /** An idle shell: not a line of the tree. */
   idle: { id: "s-idle", cwd: kitterm.root!, state: "idle", mergedState: "idle", marks: 1, lastExit: 0, project: ref(kitterm), lastOutputAt: NOW - 3_600_000 } as ModelRow,
   /** The crew of a done goal, still on the tty. */
@@ -99,6 +105,10 @@ const usage: UsageDaily = {
 
 const projects = [kitterm, mdp, mt5];
 const allRows = [rows.root, rows.blocked, rows.idle, rows.crew];
+/** What `GET /api/sessions/s-blocked/cost` answers: a bill that began
+ * inside the rollup's range. */
+const blockedBill = { ok: true, hasBill: true, bill: { totalCostUSD: 12.85, startTime: Date.parse("2026-09-15T10:00:00Z") } };
+const billOf = (id: string) => (id === "s-blocked" ? { hasBill: true, totalCostUSD: 12.85, startTime: blockedBill.bill.startTime } : undefined);
 
 /** A line as one row of the frame: depth, name, the state word, and each
  * fact as `text@column`, with a `!` on the fact a phone keeps. */
@@ -108,27 +118,47 @@ const shape = (line: TreeLine<ModelRow>): [number, string, string | null, string
 ];
 
 describe("the fact columns of each level", () => {
-  it("put a goal's cost in column 2 and its counter in column 4, or the counter alone in column 2", () => {
-    expect(goalFactColumns("$75.11", "r6/3").map((f) => [f.kind, f.text, f.column, f.narrow])).toEqual([["cost", "$75.11", 2, true], ["counter", "r6/3", 4, false]]);
-    expect(goalFactColumns(null, "r0/3").map((f) => [f.kind, f.text, f.column, f.narrow])).toEqual([["counter", "r0/3", 2, true]]);
-    expect(goalFactColumns("$1.00", null).map((f) => [f.kind, f.column, f.narrow])).toEqual([["cost", 2, true]]);
-    expect(goalFactColumns(null, null)).toEqual([]);
+  // Round 15: the number column is the cost at every level, the dash with
+  // none; the counter and the round are the name's tooltip.
+  it("put a goal's cost in column 2, the dash with none, and its counter on the tooltip with the next action", () => {
+    expect(goalFactColumns("$75.11").map((f) => [f.kind, f.text, f.column, f.narrow])).toEqual([["cost", "$75.11", 2, true]]);
+    expect(goalFactColumns(null).map((f) => [f.kind, f.text, f.column, f.narrow])).toEqual([["cost", NO_FACT, 2, true]]);
+    expect(goalTooltip("r6/3", "Round 7, `x`.")).toBe("r6/3 · next: Round 7, `x`.");
+    expect(goalTooltip("r0/3", null)).toBe("r0/3");
+    expect(goalTooltip(null, "Round 1.")).toBe("next: Round 1.");
+    expect(goalTooltip(null, null)).toBeNull();
   });
 
-  it("put a task's round in column 2 and its PR in column 3, a session's model in column 2 and its time in column 4, a heading's cost in column 2 and its agents in column 4", () => {
-    expect(taskFactColumns(6, 124).map((f) => [f.text, f.column, f.narrow])).toEqual([["round 6", 2, true], ["PR #124", 3, false]]);
-    expect(taskFactColumns(undefined, undefined)).toEqual([]);
-    expect(sessionFactColumns("Fable 5.1", "claude-fable-5-1", "4m").map((f) => [f.text, f.column, f.narrow, f.title])).toEqual([
-      ["Fable 5.1", 2, false, "claude-fable-5-1"], ["4m", 4, true, undefined],
+  it("put a task's cost in column 2 and its PR in column 3, linked under the project's base, and its round on the tooltip", () => {
+    expect(taskFactColumns("$12.85", 124, PR_BASE).map((f) => [f.kind, f.text, f.column, f.narrow, f.href])).toEqual([
+      ["cost", "$12.85", 2, true, undefined], ["pr", "PR #124", 3, false, `${PR_BASE}124`],
     ]);
-    expect(sessionFactColumns(null, undefined, null)).toEqual([]);
+    expect(taskFactColumns(null, 124, undefined).map((f) => [f.text, f.column, f.href])).toEqual([[NO_FACT, 2, undefined], ["PR #124", 3, undefined]]);
+    expect(taskFactColumns(null, undefined, PR_BASE).map((f) => [f.text, f.column])).toEqual([[NO_FACT, 2]]);
+    // No rollup: no cost column, the PR alone.
+    expect(taskFactColumns(undefined, 9, undefined).map((f) => [f.text, f.column])).toEqual([["PR #9", 3]]);
+    expect(taskTooltip(6, 124)).toBe("round 6 · PR #124");
+    expect(taskTooltip(6, undefined)).toBe("round 6");
+    expect(taskTooltip(undefined, 124)).toBe("PR #124");
+    expect(taskTooltip(undefined, undefined)).toBeNull();
+  });
+
+  it("put a session's bill in column 2, its model in column 3 and its time in column 4; a heading's cost in column 2 and its agents in column 4", () => {
+    expect(sessionFactColumns("$12.85", "Fable 5.1", "claude-fable-5-1", "4m").map((f) => [f.text, f.column, f.narrow, f.title])).toEqual([
+      ["$12.85", 2, true, "the bill of this session's transcript, when it began in the range; a running session has none yet"],
+      ["Fable 5.1", 3, false, "claude-fable-5-1"], ["4m", 4, false, undefined],
+    ]);
+    expect(sessionFactColumns(null, null, undefined, "4m").map((f) => [f.text, f.column, f.narrow])).toEqual([[NO_FACT, 2, true], ["4m", 4, false]]);
+    // No rollup: no cost column anywhere, and the phone keeps the time.
+    expect(sessionFactColumns(undefined, "Fable 5.1", "claude-fable-5-1", "4m").map((f) => [f.text, f.column, f.narrow])).toEqual([["Fable 5.1", 3, false], ["4m", 4, true]]);
+    expect(sessionFactColumns(undefined, null, undefined, null)).toEqual([]);
     expect(headingFactColumns("$926.21", "1 agent", "kitterm").map((f) => [f.text, f.column, f.narrow])).toEqual([["$926.21", 2, true], ["1 agent", 4, false]]);
     expect(headingFactColumns(null, null, "x")).toEqual([]);
   });
 });
 
 describe("the tree over a fleet shaped like the frame", () => {
-  const built = tree({ rows: allRows, projects, goalsOf: (id) => knowledge[id], approvals: [approval], proposed: [], usage, now: NOW });
+  const built = tree({ rows: allRows, projects, goalsOf: (id) => knowledge[id], approvals: [approval], proposed: [], usage, billOf, now: NOW });
 
   it("is one section per lone project or workspace, with the idle shell apart", () => {
     expect(built.sections.map((s) => [s.key, s.label])).toEqual([["kitterm", "kitterm"], [`workspace:${NNT}`, "NgheNhanTrading"]]);
@@ -136,26 +166,39 @@ describe("the tree over a fleet shaped like the frame", () => {
   });
 
   it("draws kitterm as the frame does: the project, its sessions, the waiting goal with its tasks, the last done goal open with two tasks, the rest folded", () => {
+    // Round 15: column 2 is the cost at every level — the project's bucket,
+    // the session's bill, the goal's rounds in the range, the task's round's
+    // Cost line — and the dash where the level has none; the phone keeps it.
     const [section] = built.sections;
     expect(section.lines.map(shape)).toEqual([
       [0, "kitterm", null, ["$926.21@2!", "1 agent@4"]],
-      [1, "review", "[needs you]", ["1m@4!"]],
-      [1, "kitterm", "[working]", ["4m@4!"]],
-      [1, "agent-dashboard", "[waiting]", ["r0/3@2!"]],
-      [2, "no-input-on-the-page", "[pending]", []],
-      [2, "the-foundation-in-the-stylesheet", "[pending]", []],
-      [2, "a-task-is-the-fourth-level", "[pending]", []],
-      [2, "others-not-a-count", "[done]", ["round 9@2!", "PR #133@3"]],
-      [2, "models-top-three", "[done]", ["round 8@2!", "PR #132@3"]],
-      [1, "workspace-ledger", "[done]", ["$75.11@2!", "r6/3@4"]],
-      [2, "the-strip-holds-only-what-needs-you", "[done]", ["round 6@2!", "PR #124@3"]],
-      [2, "the-numbers-on-the-page", "[done]", ["round 5@2!", "PR #123@3"]],
+      [1, "review", "[needs you]", ["$12.85@2!", "1m@4"]],
+      [1, "kitterm", "[working]", ["–@2!", "4m@4"]],
+      [1, "agent-dashboard", "[waiting]", ["–@2!"]],
+      [2, "no-input-on-the-page", "[pending]", ["–@2!"]],
+      [2, "the-foundation-in-the-stylesheet", "[pending]", ["–@2!"]],
+      [2, "a-task-is-the-fourth-level", "[pending]", ["–@2!"]],
+      [2, "others-not-a-count", "[done]", ["–@2!", "PR #133@3"]],
+      [2, "models-top-three", "[done]", ["–@2!", "PR #132@3"]],
+      [1, "workspace-ledger", "[done]", ["$75.11@2!"]],
+      [2, "the-strip-holds-only-what-needs-you", "[done]", ["$75.11@2!", "PR #124@3"]],
+      [2, "the-numbers-on-the-page", "[done]", ["–@2!", "PR #123@3"]],
       [1, "▸ 2 done", null, []],
+    ]);
+    // The round and the counter are the name's tooltip; a task's PR links
+    // to the pull request under the project's base.
+    expect(section.lines.slice(3, 12).map((l) => l.title)).toEqual([
+      "r0/3 · next: Round 10, `the-page-is-the-pen-design`.",
+      null, null, null, "round 9 · PR #133", "round 8 · PR #132",
+      "r6/3", "round 6 · PR #124", "round 5 · PR #123",
+    ]);
+    expect(section.lines.slice(7, 12).map((l) => l.facts.find((f) => f.kind === "pr")?.href)).toEqual([
+      `${PR_BASE}133`, `${PR_BASE}132`, undefined, `${PR_BASE}124`, `${PR_BASE}123`,
     ]);
     const fold = section.lines[section.lines.length - 1];
     expect(fold.kind === "fold" && fold.lines.map(shape)).toEqual([
-      [1, "fleet-catch-up", "[done]", ["$35.79@2!", "r4/4@4"]],
-      [1, "cost-per-round", "[done]", ["r4/4@2!"]],
+      [1, "fleet-catch-up", "[done]", ["$35.79@2!"]],
+      [1, "cost-per-round", "[done]", ["–@2!"]],
     ]);
     // A project and a goal carry whether anything sits under them, which
     // is what their triangle folds; the state stays on the word.
@@ -165,7 +208,7 @@ describe("the tree over a fleet shaped like the frame", () => {
     expect(blocked.kind === "session" && [blocked.needs, blocked.approvals.map((a) => a.id), blocked.mark]).toEqual([false, ["a-1"], "attention"]);
     const waiting = section.lines[3];
     expect(waiting.kind === "goal" && [waiting.children, waiting.state?.family, waiting.href, waiting.title]).toEqual([
-      true, "attention", "/api/projects/kitterm/knowledge/agent-dashboard/STATE.md", "Round 10, `the-page-is-the-pen-design`.",
+      true, "attention", "/api/projects/kitterm/knowledge/agent-dashboard/STATE.md", "r0/3 · next: Round 10, `the-page-is-the-pen-design`.",
     ]);
     const done = section.lines[9];
     expect(done.kind === "goal" && [done.children, done.href]).toEqual([true, "/api/projects/kitterm/knowledge/workspace-ledger/rounds/006.md"]);
@@ -193,11 +236,14 @@ describe("the tree over a fleet shaped like the frame", () => {
     expect(section.lines.map(shape)).toEqual([
       [0, "NgheNhanTrading", null, ["$1,249.23@2!", "1 agent@4"]],
       [1, "market-data-pipeline", null, ["$30.91@2!", "1 agent@4"]],
-      [2, "one command onboards a symbol", "[done]", ["$41.02@2!", "r6/3@4"]],
-      [3, "path-mapping", "[done]", ["round 6@2!", "PR #40@3"]],
-      [3, "path-mapping-real-terminal", "[working]", ["Fable 5.1@2", "4m@4!"]],
+      [2, "one command onboards a symbol", "[done]", ["$41.02@2!"]],
+      [3, "path-mapping", "[done]", ["$41.02@2!", "PR #40@3"]],
+      [3, "path-mapping-real-terminal", "[working]", ["–@2!", "Fable 5.1@3", "4m@4"]],
       [1, "nghenhan-mt5", null, ["$2.29@2!"]],
     ]);
+    // A project with no `pullRequestBase` prints its PR as plain text.
+    const task = section.lines[3];
+    expect(task.kind === "task" && [task.title, task.facts.find((f) => f.kind === "pr")?.href]).toEqual(["round 6 · PR #40", undefined]);
     const crew = section.lines[4];
     expect(crew.kind === "session" && crew.title).toBe(`Mapping the path\n${mdp.root}/.claude/worktrees/x`);
     const empty = section.lines[5];
@@ -223,6 +269,7 @@ const routes: Record<string, unknown> = {
   "/api/projects/mdp/knowledge": { ok: true, project: "mdp", goals: mdpGoals },
   "/api/projects/mt5/knowledge": { ok: true, project: "mt5", goals: [] },
   "/api/approvals": { approvals: [approval] },
+  "/api/sessions/s-blocked/cost": blockedBill,
   "/api/archives": { archives: [{ id: "arch-1", name: "old", cwd: kitterm.root, archivedAt: NOW, project: ref(kitterm) }, { id: "arch-2", cwd: NNT }] },
   "/api/profiles": { profiles: [{ name: "box", command: "ssh box" }] },
   "/api/usage/daily": usage,
@@ -239,6 +286,11 @@ beforeAll(async () => {
 
 const cellsOf = (line: FakeElement) =>
   line.querySelector(".main")!.children.filter((c): c is FakeElement => typeof c !== "string").map((c) => `${c.className}=${c.textContent}${c.hasAttribute("data-col") ? `@${c.getAttribute("data-col")}` : ""}${c.hasAttribute("data-narrow") ? "!" : ""}`);
+/** The link inside a line's PR cell, or null for plain text. */
+const prLinkOf = (line: FakeElement) => {
+  const a = line.querySelector(".pr")?.querySelector("a") ?? null;
+  return a === null ? null : [a.className, a.href, (a as unknown as { target: string }).target, (a as unknown as { rel: string }).rel, a.querySelector(".mark")?.className, a.textContent];
+};
 
 describe("the painted tree", () => {
   it("is flat lines in two sections, each line with its mark, its name and its fact cells in columns", () => {
@@ -265,9 +317,17 @@ describe("the painted tree", () => {
     expect(lines[3].querySelector(".mark")?.getAttribute("data-focus")).toBe("fold:goal:kitterm:agent-dashboard");
     expect(cellsOf(lines[0])).toEqual(["line-name=kitterm", "cost=$926.21@2!", "agents=1 agent@4"]);
     expect(lines[0].querySelector(".line-name")?.tagName).toBe("H2");
-    expect(cellsOf(lines[3])).toEqual(["line-name=agent-dashboard", "state attention=[waiting]", "counter=r0/3@2!"]);
-    expect(cellsOf(lines[9])).toEqual(["line-name=workspace-ledger", "state idle=[done]", "cost=$75.11@2!", "counter=r6/3@4"]);
-    expect(cellsOf(lines[10])).toEqual(["line-name=the-strip-holds-only-what-needs-you", "state done=[done]", "round=round 6@2!", "pr=PR #124@3"]);
+    // Round 15: the cost at every level, the counter and the round on the
+    // name's tooltip, the PR a link under the project's base.
+    expect(cellsOf(lines[1])).toEqual(["folder line-name=review", "state attention=[needs you]", "cost=$12.85@2!", "since=1m@4"]);
+    expect(cellsOf(lines[3])).toEqual(["line-name=agent-dashboard", "state attention=[waiting]", "cost=–@2!"]);
+    expect(lines[3].querySelector(".line-name")?.title).toBe("r0/3 · next: Round 10, `the-page-is-the-pen-design`.");
+    expect(cellsOf(lines[9])).toEqual(["line-name=workspace-ledger", "state idle=[done]", "cost=$75.11@2!"]);
+    expect(lines[9].querySelector(".line-name")?.title).toBe("r6/3");
+    expect(cellsOf(lines[10])).toEqual(["line-name=the-strip-holds-only-what-needs-you", "state done=[done]", "cost=$75.11@2!", "pr=PR #124@3"]);
+    expect(lines[10].querySelector(".line-name")?.title).toBe("round 6 · PR #124");
+    expect(prLinkOf(lines[10])).toEqual(["pr-link", `${PR_BASE}124`, "_blank", "noopener", "mark link wide", "PR #124"]);
+    expect(cellsOf(lines[11])).toEqual(["line-name=the-numbers-on-the-page", "state done=[done]", "cost=–@2!", "pr=PR #123@3"]);
     // The done fold: its summary is a line at the goal's indent, closed.
     const fold = kittermSection.querySelector(".fold")!;
     expect(fold.tagName).toBe("DETAILS");
@@ -283,7 +343,12 @@ describe("the painted tree", () => {
     expect(workspace.querySelectorAll(".line-workspace").map((l) => l.querySelector(".mark")?.className)).toEqual(["mark blank"]);
     expect(workspace.querySelectorAll(".line-project").map((l) => l.querySelector(".mark")?.className)).toEqual(["mark disclosure", "mark blank"]);
     const crew = workspace.querySelectorAll(".row-line")[0];
-    expect(cellsOf(crew)).toEqual(["folder line-name=path-mapping-real-terminal", "state running=[working]", "model=Fable 5.1@2", "since=4m@4!"]);
+    expect(cellsOf(crew)).toEqual(["folder line-name=path-mapping-real-terminal", "state running=[working]", "cost=–@2!", "model=Fable 5.1@3", "since=4m@4"]);
+    // The pipeline has no `pullRequestBase`: its task's PR is plain text.
+    const task = workspace.querySelectorAll(".line-task")[0];
+    expect(cellsOf(task)).toEqual(["line-name=path-mapping", "state done=[done]", "cost=$41.02@2!", "pr=PR #40@3"]);
+    expect(prLinkOf(task)).toBeNull();
+    expect(task.querySelector(".line-name")?.title).toBe("round 6 · PR #40");
   });
 
   it("draws no card, no heading chrome, no profile select and no dropping fact in the tree", () => {
@@ -322,7 +387,7 @@ describe("the painted tree", () => {
     expect(children[0].querySelectorAll(".archived-name").map((n) => n.textContent)).toEqual(["old", "NgheNhanTrading"]);
     const idle = children[1].querySelectorAll(".row-line");
     expect(idle).toHaveLength(1);
-    expect(cellsOf(idle[0])).toEqual(["folder line-name=kitterm", "state idle=[idle]", "since=1h@4!"]);
+    expect(cellsOf(idle[0])).toEqual(["folder line-name=kitterm", "state idle=[idle]", "cost=–@2!", "since=1h@4"]);
     expect(idle[0].querySelector(".open")?.href).toBe("/?session=s-idle");
     // Every session is on the page once.
     const links = page.root.querySelectorAll(".row").flatMap((row) => row.querySelectorAll(".open").map((a) => a.href));
@@ -365,20 +430,24 @@ describe("a done goal inside the N done fold", () => {
   const fold = section.lines[section.lines.length - 1];
 
   it("carries all its tasks under it, the same line shape as a goal outside the fold, and starts closed", () => {
+    // No rollup here, so no cost column; the round and the counter are the
+    // tooltip (round 15), and the PR keeps column 3.
     expect(section.lines.map(shape)).toEqual([
       [0, "nghenhan-mt5", null, []],
-      [1, "latest", "[done]", ["r3/3@2!"]],
-      [2, "l-a", "[done]", ["round 3@2!", "PR #9@3"]],
-      [2, "l-b", "[done]", ["round 2@2!", "PR #8@3"]],
+      [1, "latest", "[done]", []],
+      [2, "l-a", "[done]", ["PR #9@3"]],
+      [2, "l-b", "[done]", ["PR #8@3"]],
       [1, "▸ 2 done", null, []],
     ]);
+    expect(section.lines.slice(1, 4).map((l) => l.title)).toEqual(["r3/3", "round 3 · PR #9", "round 2 · PR #8"]);
     expect(fold.kind === "fold" && fold.lines.map(shape)).toEqual([
-      [1, "bars", "[done]", ["r2/3@2!"]],
-      [2, "b-a", "[done]", ["round 2@2!", "PR #5@3"]],
-      [2, "b-b", "[done]", ["round 1@2!", "PR #4@3"]],
-      [2, "b-c", "[done]", ["round 1@2!"]],
-      [1, "bare", "[done]", ["r1/3@2!"]],
+      [1, "bars", "[done]", []],
+      [2, "b-a", "[done]", ["PR #5@3"]],
+      [2, "b-b", "[done]", ["PR #4@3"]],
+      [2, "b-c", "[done]", []],
+      [1, "bare", "[done]", []],
     ]);
+    expect(fold.kind === "fold" && fold.lines.map((l) => l.title)).toEqual(["r2/3", "round 2 · PR #5", "round 1 · PR #4", "round 1", "r1/3"]);
     const [bars, , , , bare] = fold.kind === "fold" ? fold.lines : [];
     expect(bars.kind === "goal" && [bars.children, bars.closed, bars.href]).toEqual([true, true, "/api/projects/mt5/knowledge/bars/STATE.md"]);
     expect(bare.kind === "goal" && [bare.children, bare.closed]).toEqual([false, true]);

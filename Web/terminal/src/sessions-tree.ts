@@ -6,12 +6,14 @@
  *
  * Every line has the same cells: a mark at the far left of the page, an
  * indent per level, a name, then four right-aligned fact columns of fixed
- * width — the state word, a number (a cost, a model, `round 6`, or a
- * goal's `r0/3` when it has no cost), a pull request (or the counter of a
- * goal that has a cost), and a trailing fact (a time, `1 agent`). On a
- * phone the columns give way to the state word and one fact per level:
- * a project's cost, a goal's cost or counter, a task's round, a session's
- * time (`narrow`).
+ * width — the state word, the cost in the range (round 15: at every level
+ * and nothing else; a workspace's and a project's from the rollup, a
+ * goal's from its round records, a task's from its round's `Cost:` line,
+ * a session's from its transcript bill, a dash where the level has none),
+ * a pull request (a task's `PR #124`, a link when the project has a
+ * `pullRequestBase`) or a session's model, and a trailing fact (a time,
+ * `1 agent`). `round 6` and a goal's `r6/3` are the name's tooltip. On a
+ * phone the columns give way to the state word and the cost (`narrow`).
  *
  * A project shows its sessions under no goal, its working and pending
  * goals with their tasks, then its most recently finished goal open with
@@ -49,16 +51,19 @@ import {
   nextLine,
   orphanApprovals,
   projectUsage,
+  pullRequestHref,
   recordPath,
   roundCounter,
   rowLine,
   rowModel,
   rowName,
   rowNeeds,
+  sessionCost,
   shownTasks,
   statePath,
   stateOf,
   stateTag,
+  taskCost,
   taskLines,
   taskMark,
   workspaceHome,
@@ -72,18 +77,23 @@ import {
   type ProjectSection,
   type ProjectSummary,
   type ProposedItem,
+  type SessionBill,
   type UsageDaily,
   type VocabularyEntry,
   type WorkspaceSection,
 } from "./sessions-model";
 
 /** What a fact is, which is also its class on the page. */
-export type TreeFactKind = "cost" | "counter" | "round" | "pr" | "model" | "since" | "agents";
+export type TreeFactKind = "cost" | "pr" | "model" | "since" | "agents";
+
+/** What a line prints in a column it has no source for. Never `0`. */
+export const NO_FACT = "–";
 
 /** One fact of a line: its text, the column it sits in at 768 px and up
- * (2, 3 or 4; the state word is column 1), and whether it is the one fact
- * the line keeps on a phone. */
-export type TreeFact = { kind: TreeFactKind; text: string; column: 2 | 3 | 4; narrow: boolean; title?: string };
+ * (2, 3 or 4; the state word is column 1), whether it is the one fact the
+ * line keeps on a phone, and, on a pull request whose project is on
+ * GitHub, the link it opens. */
+export type TreeFact = { kind: TreeFactKind; text: string; column: 2 | 3 | 4; narrow: boolean; title?: string; href?: string };
 
 /** The cells every line shares. `state` is the bracketed word and the
  * family that colours its mark; null on a heading line, which has no
@@ -150,38 +160,66 @@ export type TreeInput<R extends ModelRow> = {
    * that started inside its `from` and `to` (round 13); no rollup, no
    * cost on any line. */
   usage: UsageDaily | null | undefined;
+  /** The bill of a session by id (`GET /api/sessions/<id>/cost`), for its
+   * cost column; undefined for one not fetched yet. */
+  billOf?: (sessionId: string) => SessionBill | null | undefined;
   now: number;
 };
 
 const fact = (kind: TreeFactKind, text: string, column: 2 | 3 | 4, narrow = false, title?: string): TreeFact =>
   title === undefined ? { kind, text, column, narrow } : { kind, text, column, narrow, title };
 
-/** The facts of a goal's line: the cost in column 2 and the counter in
- * column 4 when it has both, as the frame draws `workspace-ledger [done]
- * $75.11 r6/3`; the counter alone in column 2, `agent-dashboard [waiting]
- * r0/3`. The phone keeps the cost, else the counter. */
-export function goalFactColumns(cost: string | null, counter: string | null): TreeFact[] {
-  const facts: TreeFact[] = [];
-  if (cost !== null) facts.push(fact("cost", cost, 2, true, "the sum of the Cost lines of this goal's round records started in the range, at the full API rate"));
-  if (counter !== null) facts.push(fact("counter", counter, cost !== null ? 4 : 2, cost === null));
+/** The cost column of a goal, a task or a session: the figure, or the dash
+ * when the level has none; nothing at all with no rollup, where every cost
+ * is off the page (a watch client). */
+function costColumn(cost: string | null, title: string): TreeFact[] {
+  return [fact("cost", cost ?? NO_FACT, 2, true, title)];
+}
+
+/** The facts of a goal's line: its cost in column 2, as the frame draws
+ * `workspace-ledger [done] $75.11`, the dash with none. The counter,
+ * `r6/3`, is on the name's tooltip (`goalTooltip`), not in a column. */
+export function goalFactColumns(cost: string | null): TreeFact[] {
+  return costColumn(cost, "the Cost line of this goal's round records started in the range, summed, at the full API rate");
+}
+
+/** The name's tooltip of a goal: the counter and the next action, `r6/3 ·
+ * next: Round 7, …`; either alone; null with neither. */
+export function goalTooltip(counter: string | null, next: string | null): string | null {
+  const parts = [counter, next === null ? null : `next: ${next}`].filter((t): t is string => t !== null);
+  return parts.length === 0 ? null : parts.join(" · ");
+}
+
+/** The facts of a task's line: its round's cost in column 2 (the dash
+ * with none; no column with no rollup, `undefined`), `PR #124` in column
+ * 3, a link under `base` when the project has one. The round is on the
+ * name's tooltip (`taskTooltip`). */
+export function taskFactColumns(cost: string | null | undefined, pr: number | undefined, base: string | undefined): TreeFact[] {
+  const facts: TreeFact[] = cost === undefined ? [] : costColumn(cost, "the Cost line of the round this task names, when it started in the range");
+  if (typeof pr === "number") {
+    const link = fact("pr", `PR #${pr}`, 3);
+    const href = pullRequestHref(base, pr);
+    if (href !== null) link.href = href;
+    facts.push(link);
+  }
   return facts;
 }
 
-/** The facts of a task's line: `round 6` in column 2, `PR #124` in column
- * 3. The phone keeps the round. */
-export function taskFactColumns(round: number | undefined, pr: number | undefined): TreeFact[] {
-  const facts: TreeFact[] = [];
-  if (typeof round === "number") facts.push(fact("round", `round ${round}`, 2, true));
-  if (typeof pr === "number") facts.push(fact("pr", `PR #${pr}`, 3));
-  return facts;
+/** The name's tooltip of a task: `round 6 · PR #124`, either alone, null
+ * with neither. */
+export function taskTooltip(round: number | undefined, pr: number | undefined): string | null {
+  const parts = [typeof round === "number" ? `round ${round}` : null, typeof pr === "number" ? `PR #${pr}` : null].filter((t): t is string => t !== null);
+  return parts.length === 0 ? null : parts.join(" · ");
 }
 
-/** The facts of a session's line: its model in column 2, how long since
- * its last output in column 4. The phone keeps the time. */
-export function sessionFactColumns(model: string | null, modelId: string | undefined, since: string | null): TreeFact[] {
-  const facts: TreeFact[] = [];
-  if (model !== null) facts.push(fact("model", model, 2, false, modelId));
-  if (since !== null) facts.push(fact("since", since, 4, true));
+/** The facts of a session's line: its bill in column 2, its model in
+ * column 3, how long since its last output in column 4. The phone keeps
+ * the cost; with no rollup (`cost` undefined) the column is empty and the
+ * phone keeps the time. */
+export function sessionFactColumns(cost: string | null | undefined, model: string | null, modelId: string | undefined, since: string | null): TreeFact[] {
+  const facts: TreeFact[] = cost === undefined ? [] : costColumn(cost, "the bill of this session's transcript, when it began in the range; a running session has none yet");
+  if (model !== null) facts.push(fact("model", model, 3, false, modelId));
+  if (since !== null) facts.push(fact("since", since, 4, cost === undefined));
   return facts;
 }
 
@@ -200,11 +238,14 @@ function working(rows: readonly ModelRow[]): number {
 }
 
 export function tree<R extends ModelRow>(input: TreeInput<R>): Tree<R> {
-  const { rows, projects, goalsOf, approvals, proposed, usage, now } = input;
+  const { rows, projects, goalsOf, approvals, proposed, usage, billOf, now } = input;
   const idle = rows.filter(isIdleShell);
   const listed = rows.filter((row) => !isIdleShell(row));
   const sections = levels(listed, rows, projects, goalsOf);
   const headed = sections.flatMap((s) => (s.heading?.path ? [s.heading.path] : []));
+  // Every cost follows the rollup's range (round 13); no rollup, no cost.
+  const range = usage ? { from: usage.from, to: usage.to } : null;
+  const baseOf = (projectId: string): string | undefined => projects.find((p) => p.id === projectId)?.pullRequestBase;
 
   const ownedBy = (key: string): R[] => rows.filter((row) => (row.project?.id ?? NO_PROJECT) === key);
 
@@ -219,7 +260,7 @@ export function tree<R extends ModelRow>(input: TreeInput<R>): Tree<R> {
       name: rowName(row),
       title: title === "" ? null : title,
       state: { family: markFamily(state), tag: stateTag(row) },
-      facts: sessionFactColumns(rowModel(row), row.agentModel, line.since),
+      facts: sessionFactColumns(range ? sessionCost(billOf?.(row.id), range) : undefined, rowModel(row), row.agentModel, line.since),
       row,
       mark: markFamily(state),
       needs: rowNeeds(row),
@@ -250,23 +291,22 @@ export function tree<R extends ModelRow>(input: TreeInput<R>): Tree<R> {
         key: `task:${project.id}:${summary.slug ?? ""}:${task.slug}`,
         depth: depth + 1,
         name: task.slug,
-        title: null,
+        title: taskTooltip(task.round, task.pr),
         state: { family: taskMark(task.state), tag: task.tag },
-        facts: taskFactColumns(task.round, task.pr),
+        facts: taskFactColumns(range ? taskCost(summary, task.round, range) : undefined, task.pr, baseOf(project.id)),
         mark: taskMark(task.state),
       });
       for (const row of task.rows) children.push(sessionLine(row, depth + 2));
     }
     for (const row of rest) children.push(sessionLine(row, depth + 1));
-    const next = line.unwritten ? "not written yet" : nextLine(summary.nextAction);
     const head: TreeLine<R> = {
       kind: "goal",
       key: `goal:${project.id}:${summary.slug ?? goalTitle(summary)}`,
       depth,
       name: line.unwritten ? line.title : goalTitle(summary),
-      title: next,
+      title: line.unwritten ? "not written yet" : goalTooltip(roundCounter(summary), nextLine(summary.nextAction)),
       state: line.unwritten ? null : word,
-      facts: line.unwritten ? [] : goalFactColumns(usage ? goalCost(summary, usage) : null, roundCounter(summary)),
+      facts: line.unwritten || range === null ? [] : goalFactColumns(goalCost(summary, range)),
       project,
       summary,
       children: children.length > 0,

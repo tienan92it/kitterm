@@ -220,6 +220,9 @@ public final class DaemonServer: @unchecked Sendable {
         // What each repository's own history delivered, read with `git` on
         // its own queue and kept five minutes per root and range.
         let repositoryYields = RepositoryYields(zone: usageRollup.timeZone)
+        // Each project's `origin` remote, for the pull request links, read
+        // with `git` on its own queue and kept five minutes per root.
+        let remoteOrigins = RemoteOrigins()
         // The model per live session's transcript, one cache for every
         // connection, so a session list reads a transcript only when it grew.
         let transcriptModels = TranscriptModelCache()
@@ -371,6 +374,7 @@ public final class DaemonServer: @unchecked Sendable {
                         vapidKeys: vapidKeys,
                         usageRollup: usageRollup,
                         repositoryYields: repositoryYields,
+                        remoteOrigins: remoteOrigins,
                         usageLimits: usageLimits,
                         transcriptModels: transcriptModels
                     )
