@@ -22,10 +22,10 @@ None.
 
 ## Done
 
-- `the-page-moves-as-the-notes-say` (capability 2), round 2, `d153ff6`.
+- `the-page-moves-as-the-notes-say` (capability 2), round 2, PR #135.
   See `rounds/002.md`. The staggered entrance, the turning marks, the
   blinking cursor, all off under reduced motion; Lighthouse 95/100/100/100.
-- `the-page-is-the-frames` (capability 1), round 1, `f311485`. See
+- `the-page-is-the-frames` (capability 1), round 1, PR #135. See
   `rounds/001.md`. The page reproduces the two frames; 16 colour pairs
   pass; copy works.
 

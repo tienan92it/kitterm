@@ -265,10 +265,10 @@ decision moves to `docs/adr/`.
 
 ## Foreman
 
-- The knowledge route reads a round's pull request from the `PR #N` on
-  its record's `- Result:` line, and a goal's tasks carry it from there.
-  A round closed before its PR opens names none, so the page shows no
-  PR for it; write the number into the record when the PR opens
+- The knowledge route reads a task's pull request from `PR #N` on the
+  first line of its `STATE.md` Done bullet, and a round's from its
+  record's `- Result:` line. A bullet that names a sha and no PR shows
+  no PR on the page; write `PR #N` into the bullet when the PR opens
   (2026-09-20, landing-page round 2).
 - The installed daemon serves `Web/terminal/dist` of this checkout
   (`~/.kitterm/web-root`), so a `vite build` with no `--outDir` swaps the
