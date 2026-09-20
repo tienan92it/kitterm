@@ -4,11 +4,15 @@
 - Round: 2 of 3 in this budget (fifth budget)
 - Rounds total: 14
 - Last floor: green (2026-09-20, round 14 after: vitest 1436 in 55 files)
-- Updated: 2026-09-20, round 14 closed
+- Updated: 2026-09-20, the tree's cost column and PR links queued
 
 ## Queue
 
-Empty. Rounds 10–14 are on PR #134.
+1. `cost-column-and-pr-links` (the human's on 2026-09-20). The tree's
+   number column is the cost at every level — a project's, a goal's, a
+   task's round, a session's bill — never `round N` or `rN/M`; those go
+   to the name's tooltip. `PR #124` is a link to the pull request. The
+   Pen frames carry both.
 
 ## Failures
 
@@ -184,8 +188,7 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-Merge PR #134. Then the human decides `goal.md` condition 6 and whether
-the goal is `done`. Then the human decides `goal.md` condition 6 (390 px
+Round 15, `cost-column-and-pr-links`, on PR #134's branch. Then the human decides `goal.md` condition 6 (390 px
 under 1200; the design measures 2147 on the real tree) and whether to
 set the goal `done`. Then the human decides: `goal.md` condition 6 (390 px under
 1200) against the frame's shape, which measures 2499 on the real tree;
