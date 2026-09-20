@@ -48,8 +48,7 @@ None.
 - `where-columns-per-filter`, round 12, `6432dae` on PR #134. See
   `rounds/012.md`. The WHERE count and pull-request cells read per
   filter as the Components frame draws them.
-- `the-approved-adjustments` (capability 11), round 11, `01bfb87` on PR
-  #134. See `rounds/011.md`. The page reproduces the design the human
+- `the-approved-adjustments` (capability 11), round 11, PR #134. See `rounds/011.md`. The page reproduces the design the human
   approved on 2026-09-19 at both widths; 16 assertions added, 6
   replaced under charter, the ratchet untouched.
 - Corpus cleanup, 2026-09-18, at the human's direction: `dashboard.pen`
@@ -60,8 +59,7 @@ None.
   `valuemaxxing.md` carries round 6's four corrections as an amendment.
   Four proposals closed by that: the two folding sentences (the frames
   decide), the 4 KiB sentence, the four numbers.
-- `the-page-is-the-pen-design` (capability 10), round 10, on
-  `agent-dashboard/round-10`. See `rounds/010.md`. The page reproduces
+- `the-page-is-the-pen-design` (capability 10), round 10, PR #134. See `rounds/010.md`. The page reproduces
   the two frames at 1200 and 390; `Others` is the last MODELS row. 27
   assertions added, the shipped-shape assertions replaced under charter,
   the ratchet untouched. 390 px is 2499 on the real tree: the frame's
