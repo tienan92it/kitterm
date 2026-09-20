@@ -1,15 +1,14 @@
 # STATE: landing-page
 
 - Status: active
-- Round: 0 of 3 in this budget (first budget)
-- Rounds total: 0
-- Last floor: none yet
-- Updated: 2026-09-20, created
+- Round: 1 of 3 in this budget (first budget)
+- Rounds total: 1
+- Last floor: green (2026-09-20, round 1 after: html-validate 0 errors, Chromium clean at both widths)
+- Updated: 2026-09-20, round 1 closed
 
 ## Queue
 
-1. `the-page-is-the-frames` (capability 1).
-2. `the-page-moves-as-the-notes-say` (capability 2).
+1. `the-page-moves-as-the-notes-say` (capability 2).
 
 ## Failures
 
@@ -21,7 +20,9 @@ None.
 
 ## Done
 
-Nothing yet.
+- `the-page-is-the-frames` (capability 1), round 1, `f311485`. See
+  `rounds/001.md`. The page reproduces the two frames; 16 colour pairs
+  pass; copy works.
 
 ## Direction
 
@@ -37,5 +38,4 @@ daemon with a ledger." Approved 2026-09-20. The frames live in
 
 ## Next action
 
-Round 1, `the-page-is-the-frames`, on `landing-page/round-1` from
-`origin/main`.
+Round 2, `the-page-moves-as-the-notes-say`, on the same branch.
