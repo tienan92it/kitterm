@@ -115,6 +115,10 @@ describe("band", () => {
       ["spend", "–", "spend"],
       ["quota", "–", "quota"],
     ]);
+    // Round 20 (the first-run frame): a count of zero carries no state,
+    // so it is no mark; it wears the fact colour.
+    expect(out.cells.map((cell) => cell.family ?? null)).toEqual([null, null, null, null]);
+    expect(out.cells.map((cell) => cell.muted ?? null)).toEqual([true, true, null, null]);
     expect(out.target).toBeNull();
   });
 
