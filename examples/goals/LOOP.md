@@ -35,6 +35,42 @@ so their shape is an interface.
 - **A crew agent** runs in a session the foreman spawned. It changes the
   product and adds checks. It reports with `post_note`.
 
+## Goal or chore
+
+Not every change is a goal. A goal has a folder, a plan, a corpus, a
+budget of rounds, and a direction check; that machinery pays for itself
+only when the work needs it. Use this test before creating a folder:
+
+A change is a **goal** when any of these holds:
+
+- its completion condition needs more than one round to prove;
+- it changes a contract: a route, a file format, the design in a `.pen`
+  file, a token, a public command;
+- the human wants to direct it round by round, or wants research before
+  the plan.
+
+Everything else is a **chore**: a fix, a wording change, a document, a
+dependency bump, a one-file enhancement, a number that drifted. A chore
+has no folder. It runs as one crew session with one prompt, one PR, and
+one line in `<knowledge directory>/CHORES.md`:
+
+```
+- <ISO date> · <what, one sentence> · PR #N · <cost line>
+```
+
+Two rules keep the two apart:
+
+- A chore that belongs to a done goal's surface **resumes that goal**
+  for one round: set `Status: active`, queue the item, run "One round",
+  write the record, set `Status: done` again. It gets the goal's record
+  because the goal's corpus is the contract it must keep. Do not create
+  a second goal for the same surface.
+- A chore that needs a second round is not a chore. Stop, write it up as
+  a goal, and tell the human.
+
+The human names goals. The foreman may run a chore on the human's word
+without a folder, and says so in the digest.
+
 ## Authority
 
 | Tier | Paths | Rule |
@@ -83,14 +119,16 @@ whether the product improved.
    labels `crew:<goal>`, `goal:<slug>`, `round:<n>`, `task:<queue-item>`,
    and no input. Run the floor from `plan.md` in the shell with
    `send_input` and `wait_for_command`. A red floor makes the regression
-   this round's job and pushes the queue item back. Then send `claude` and
-   read the screen.
+   this round's job and pushes the queue item back. Then send
+   `claude --model <id>` with the model "The model" below picks for the
+   task, and read the screen.
 3. **Send one request.** Type the round prompt in one `send_input`: the
    queue item, its proof from `plan.md`, the facts that apply, the frozen
    and propose paths, the corpus request it serves, the rule to add a
    deterministic check, and two rules for the crew's own sessions. The
-   crew posts its note before the floor, then posts the update after; a
-   session that dies at its last step still leaves its evidence. A session
+   prompt asks for the three notes of "The crew's notes": the plan first,
+   a blocker if one comes, the done note last; a session that dies at its
+   last step still leaves its evidence. A session
    the crew spawns inside the round carries `crew:helper` with the round's
    `goal:` and `round:` labels, and the crew ends it. From here the foreman
    loop applies: read before you type, wait on `wait_for_events`, route
@@ -122,6 +160,24 @@ whether the product improved.
    rule change to this file when the answer is a procedure.
 8. **Update `STATE.md`.** Queue, failures, next action, round counter,
    budget left.
+
+### The model
+
+Name the model when the crew starts, with `claude --model <id>`. Pick
+by the task, not by habit:
+
+| Task | Model | Why |
+|---|---|---|
+| Product code with tests; a design to implement; a round that reads a corpus | `claude-fable-5-1` (the default) | the rounds so far: $5–$38 each, floor green |
+| A document, a wording change, a README, a one-file fix with a clear diff | `claude-sonnet-5` | the work is reading and writing prose; a smaller model does it at a fraction of the cost |
+| A repair that must hold a whole subsystem in view: a red floor across many files, a migration, a rename across the tree | `claude-opus-5[1m]` | the context is the job |
+| A mechanical script: capture screenshots, run a checklist, copy figures into a table | `claude-haiku-4-5-20251001` | fast and cheap; no judgment needed |
+
+Write the model in the round record's `Sessions:` line and in the
+chore line, so the cost has a model beside it. When a crew on the
+smaller model asks for a decision the task should not need, or fails
+its floor twice, rerun the round on the default; that is the one
+correction.
 
 ## One foreman for every project
 
@@ -180,6 +236,47 @@ Needs you
 
 Send a push notification for an "at once" item when the human is away from
 the terminal. Do not narrate events; report the ones that need the human.
+
+### Proactive, not on request
+
+The human does not ask for a catch-up. The foreman brings the result:
+
+- **A round closes**: the digest in the pane, and one push notification
+  under 200 characters that names the outcome and the link: `round 12
+  done: WHERE columns per filter · PR #134`. A failed round or a stop
+  rule: the same, with the reason.
+- **A PR is ready to merge** (its checks are green and the round is
+  recorded): say so once, with the link, and what merging changes for
+  the running daemon.
+- **Something needs the human** (`needs-input`, `needs-approval`, a
+  `propose`, a decision a crew asked for): a push notification at once,
+  then the pane.
+- **A day passes with work and no report**: one digest at the day's end.
+- **Nothing is running and nothing waits**: say so once, with the
+  proposals open, and hold. Do not send a notification for that.
+
+A notification is one line the human acts on; the pane carries the
+rest. Never notify for progress inside a round.
+
+### The crew's notes
+
+A crew posts three notes, not one, so the foreman relays a blocker
+while it is still cheap:
+
+1. **Plan**, within its first minutes: the files it expects to touch,
+   the check it will add, and any assertion it believes is chartered.
+   The foreman reads it and corrects the scope before the work, not
+   after.
+2. **Blocker**, when it needs a decision, a permission, or a fact only
+   the human has. It stops after this note. The foreman relays it at
+   once.
+3. **Done**, under 1900 bytes: the shas, the files, the floor, the
+   assertions replaced and why, the choices where the design was silent.
+
+The prompt asks for all three by name. A crew that posts only the last
+one has still done the round; the foreman notes the missing plan in the
+record's reflection, because the plan is what catches a wrong charter
+early.
 
 ## Direction
 

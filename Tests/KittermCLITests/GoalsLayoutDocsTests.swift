@@ -85,10 +85,11 @@ final class GoalsLayoutDocsTests: XCTestCase {
             "| `resumed-from` | archive id, or the id the pane held before an epoch change | foreman, on a respawn |"
         ),
         (
-            "the crew's note goes out before the floor",
+            "the crew posts a plan, a blocker and a done note",
             """
-            The crew posts its note before the floor, then posts the update after;
-            a session that dies at its last step still leaves its evidence.
+            The prompt asks for the three notes of "The crew's notes": the plan
+            first, a blocker if one comes, the done note last; a session that dies
+            at its last step still leaves its evidence.
             """
         ),
         (
@@ -171,6 +172,7 @@ final class GoalsLayoutDocsTests: XCTestCase {
         "no live session carries `goal:<slug>`",
         "Read `GET /api/sessions/<id>/cost` for every session",
         "When `GET /api/sessions/<id>/cost` answers",
+        "The crew posts its note before the floor, then posts the update after",
     ]
 
     /// Collapse every run of whitespace and fold the case, so one sentence
