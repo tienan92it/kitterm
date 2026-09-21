@@ -496,6 +496,7 @@ const BLOCK_SURFACES: Array<{ block: string; stack: string[]; why: string }> = [
   { block: "panel-note", stack: ["var(--ui-bg)"], why: "in .panel-body, on the body" },
   { block: "note-long", stack: ["var(--ui-bg)"], why: "in .panel-note, on the body" },
   { block: "note-short", stack: ["var(--ui-bg)"], why: "in .panel-note, on the body" },
+  { block: "note-command", stack: ["var(--ui-bg)"], why: "in .panel-note, on the body: the first run's command" },
   { block: "panel-head", stack: ["var(--ui-bg)"], why: "in .panel-body, on the body" },
   { block: "panel-by", stack: ["var(--ui-bg)"], why: "in .panel-head, on the body" },
   { block: "panel-summary", stack: ["var(--ui-bg)"], why: "in .panel-head, on the body" },

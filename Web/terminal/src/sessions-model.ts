@@ -2454,6 +2454,9 @@ export type BandCell = {
    * amber on the need-you count, none on the two numbers. The count is
    * the one glyph run in the band that carries a state, so it is a mark. */
   family?: "running" | "attention";
+  /** A count of zero carries no state: it wears the fact colour, the
+   * muted grey, in place of the family's (round 20, the first-run frame). */
+  muted?: true;
 };
 
 /** The band as the page prints it. Always four cells, whatever the fleet
@@ -2617,14 +2620,14 @@ export function band<R extends ModelRow>(
         value: String(working),
         noun: "working",
         title: `${working} ${working === 1 ? "session is" : "sessions are"} running a command or an agent.`,
-        family: "running",
+        ...(working > 0 ? { family: "running" as const } : { muted: true as const }),
       },
       {
         key: "needs",
         value: String(needs),
         noun: needsNoun(needs),
         title: "Pending approvals, sessions waiting for input, failed sessions, and live goals' proposals.",
-        family: "attention",
+        ...(needs > 0 ? { family: "attention" as const } : { muted: true as const }),
       },
       bandSpend(report, choice),
       bandQuota(limits, now),

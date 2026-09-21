@@ -152,7 +152,22 @@ export type ValueTile = { key: ValueTileKey; count: string; noun: string; shortN
 /** The four tiles and the note under them, in its long form (`kitterm, 30
  * days. Proxies for value, not value.`) and its short one (`kitterm, 30
  * days`). */
-export type ValuePanel = { tiles: ValueTile[]; note: string; shortNote: string };
+export type ValuePanel = { tiles: ValueTile[]; note: string; shortNote: string; command?: string };
+
+/** The note when no project is registered, and the command that fills
+ * the panel (round 20, the frame `Dashboard 1200 · first run`). */
+export const VALUE_REGISTER_NOTE = "Register a repository to count what it shipped:";
+export const VALUE_REGISTER_COMMAND = "kitterm project add <path>";
+export const WHERE_REGISTER_NOTE = "Spend groups by project once one is registered; goals and tasks follow docs/goals/:";
+export const WHERE_REGISTER_COMMAND = "kitterm project init <path>";
+
+/** Is no project registered: the yield answered and lists no project
+ * (`GET /api/projects` is empty) or counts no checkout among them. A
+ * yield not yet read decides nothing. */
+export function noProjectRegistered(yieldReport: YieldReport | null | undefined): boolean {
+  if (!yieldReport?.ok) return false;
+  return yieldReport.projects.length === 0 || yieldReport.totals.checkouts === 0;
+}
 
 /** The caveat the note ends with. */
 export const VALUE_NOTE = "Proxies for value, not value.";
@@ -200,6 +215,11 @@ export function valuePanel(report: UsageDaily | null | undefined, yieldReport: Y
       "The bills' API duration over the range, each session's share by the day's token share. The unit cost divides the dollars of the sessions that carry a duration.",
       report.totals?.measuredUSD ?? 0),
   ].map((t) => (t.key === "hours" && t.count !== DASH ? { ...t, count: hours(apiMs) } : t));
+  if (noProjectRegistered(yieldReport)) {
+    // The first run: the three repository tiles have no source, and the
+    // note names the command that gives them one.
+    return { tiles, note: VALUE_REGISTER_NOTE, shortNote: VALUE_REGISTER_NOTE, command: VALUE_REGISTER_COMMAND };
+  }
   const shortNote = [scope.label, `${span} days`].filter((part): part is string => part !== null).join(", ");
   return { tiles, note: `${shortNote}. ${VALUE_NOTE}`, shortNote };
 }
@@ -246,6 +266,9 @@ export type WherePanel = {
   grouping: WhereGrouping;
   rows: WhereRow[];
   note: string;
+  /** The command the note ends with, in the text colour: only on the
+   * first run, when no project is registered. */
+  command?: string;
   toggles: WhereToggle[];
   /** The line at the selector's right: what the counted checkouts cost
    * and delivered, `$976.74 in kitterm · 83 merged PRs · 58,853 lines ·
@@ -521,11 +544,16 @@ export function wherePanel(grouping: WhereGrouping, input: WhereInput): WherePan
 
   raws = order(raws);
   const max = Math.max(0, ...raws.map((r) => r.spendUSD ?? 0));
+  // The first run: no project is registered, so the rows are the one
+  // remainder and the note names the command that starts a grouping
+  // (round 20). The role split needs no project and keeps its note.
+  const firstRun = grouping !== "role" && (input.projects.length === 0 || noProjectRegistered(input.yield));
   return {
     grouping,
     summary: whereSummary(report, input.yield),
     rows: raws.map((r) => format(r, max)),
-    note,
+    note: firstRun ? WHERE_REGISTER_NOTE : note,
+    ...(firstRun ? { command: WHERE_REGISTER_COMMAND } : {}),
     toggles: WHERE_GROUPINGS.map((g) => ({ label: g, checked: g === grouping, name: `Group by ${g}` })),
   };
 }

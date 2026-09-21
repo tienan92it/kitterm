@@ -683,7 +683,17 @@ function paint(): void {
   if (built.sections.length === 0) {
     const empty = document.createElement("p");
     empty.className = "empty";
-    empty.textContent = watchOnly ? "No live sessions to watch." : "No live sessions. Open a shell to start one.";
+    if (watchOnly) empty.textContent = "No live sessions to watch.";
+    else {
+      // The first run: where a shell is opened, with the terminal page as
+      // a link in the accent (round 20).
+      const link = document.createElement("a");
+      link.className = "pr-link";
+      link.href = "/";
+      link.dataset.focus = "open-shell";
+      link.append(span("mark link wide", "/"));
+      empty.append("No live sessions. Open a shell at ", link, " to start one.");
+    }
     treeBlock.replaceChildren(empty);
   } else {
     treeBlock.replaceChildren(...built.sections.map(sectionElement));
@@ -789,10 +799,17 @@ function panelLabel(text: string, title?: string): HTMLElement {
 
 /** One note line under a panel's content, in a long form and a short one
  * the phone prints in its place. */
-function noteLine(long: string, short: string = long): HTMLElement {
+function noteLine(long: string, short: string = long, command?: string): HTMLElement {
   const p = document.createElement("p");
   p.className = "panel-note";
   p.append(span("note-long", long), span("note-short", short));
+  if (command !== undefined) {
+    // The first run's note names the command that fills the panel, in the
+    // text colour after two spaces, and wraps on a phone like the quota's
+    // note (round 20).
+    p.classList.add("wraps");
+    p.append("  ", span("note-command", command));
+  }
   return p;
 }
 
@@ -990,7 +1007,7 @@ function paintValue(panel: ValuePanel | null): void {
     }
     const body = document.createElement("div");
     body.className = "panel-body";
-    body.append(tiles, noteLine(panel!.note, panel!.shortNote));
+    body.append(tiles, noteLine(panel!.note, panel!.shortNote, panel!.command));
     return [panelLabel("VALUE"), body];
   });
 }
@@ -1076,7 +1093,7 @@ function paintWhere(panel: WherePanel | null): void {
     }
     const body = document.createElement("div");
     body.className = "panel-body";
-    body.append(head, list, noteLine(panel!.note));
+    body.append(head, list, noteLine(panel!.note, panel!.note, panel!.command));
     return [panelLabel("WHERE"), body];
   });
 }
@@ -1381,6 +1398,8 @@ function bandCell(cell: BandCell, target: string | null): HTMLElement {
   value.className = "band-value";
   if (cell.family) value.append(span(`mark ${cell.family} wide`, cell.value));
   else value.textContent = cell.value;
+  // A count of zero wears the fact colour, not a state's (round 20).
+  if (cell.muted) value.classList.add("muted");
   el.append(value, span("band-noun", cell.noun));
   return el;
 }
