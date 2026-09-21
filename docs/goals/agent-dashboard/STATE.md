@@ -1,14 +1,19 @@
 # STATE: agent-dashboard
 
-- Status: done
+- Status: active
 - Round: 1 of 3 in this budget (seventh budget)
 - Rounds total: 19
 - Last floor: green (2026-09-21, round 19 after: swift test 851, Linux build, bench p95 2.68 ms, vitest 1452)
-- Updated: 2026-09-21, round 19 closed, done again; PR #142 ready
+- Updated: 2026-09-21, round 20 queued: the first-run state
 
 ## Queue
 
-Empty.
+1. `the-first-run-state` (the human's on 2026-09-21, approved from the
+   frame `Dashboard 1200 · first run` in `corpus/dashboard.pen`). When
+   the daemon knows no project, no session and no reading, each empty
+   panel carries one line that names the command that fills it; the
+   band's zero counts wear the fact colour; SESSIONS says where a shell
+   is opened.
 
 ## Failures
 
@@ -200,8 +205,7 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-None. Nineteen rounds. Merge PR #142; a release bills the two rounds
-the running daemon still refuses. Seventeen rounds, PRs #125–#134, released as v0.30.0 and v0.31.0.
+Round 20, `the-first-run-state`, then `Status: done`. Seventeen rounds, PRs #125–#134, released as v0.30.0 and v0.31.0.
 The page is the human's design in `corpus/dashboard.pen`. Four
 proposals wait above; to reopen for one, set `Status: active` and
 write it as the queue.
