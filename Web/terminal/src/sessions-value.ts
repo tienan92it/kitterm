@@ -121,8 +121,10 @@ export function usageHead(report: UsageDaily | null | undefined, choice: UsageCh
   const cost = dollars(totals?.costUSD ?? 0);
   const tokens = `${tokenCount(totals ? totalTokens(totals.tokens) : 0)} tokens`;
   const apiMs = totals?.apiMs ?? 0;
-  const facts = [choice.mode === "cost" ? tokens : cost];
-  if (apiMs > 0) facts.push(`${hours(apiMs)} h model time`);
+  // No transcript at all: the amount alone, with no fact beside it
+  // (round 21, the frame `Dashboard 1200 · first run, no transcripts`).
+  const facts = noSessionInRange(report) ? [] : [choice.mode === "cost" ? tokens : cost];
+  if (apiMs > 0 && facts.length > 0) facts.push(`${hours(apiMs)} h model time`);
   return {
     amount: choice.mode === "cost" ? cost : tokens.replace(/ tokens$/, ""),
     facts,
@@ -138,6 +140,33 @@ export function usageHead(report: UsageDaily | null | undefined, choice: UsageCh
 export function apportionedNote(totals: UsageBucket | null | undefined, mode: UsageMode): string | null {
   if (mode !== "cost" || !totals || totals.apportionedUSD <= 0) return null;
   return `${dollars(totals.apportionedUSD)} apportioned across midnight`;
+}
+
+// --- the first run with no transcript ---------------------------------------
+
+/** The one line each panel prints when the range's rollup holds no session
+ * at all (round 21, the frame `Dashboard 1200 · first run, no
+ * transcripts`): the daemon found no Claude Code transcript, so `USAGE`
+ * names what fills the chart in place of the apportioned note, and
+ * `MODELS` and `LEAKS` each print one sentence in their content cell. */
+export const USAGE_NO_TRANSCRIPT_NOTE = "No Claude Code transcript yet. Open a session in a shell here; its transcript fills this chart.";
+export const MODELS_NO_TRANSCRIPT_LINE = "Models appear once a session has run.";
+export const LEAKS_NO_TRANSCRIPT_LINE = "No spend to attribute yet.";
+
+/** Does the range's rollup hold no session at all: the route answered and
+ * its totals count zero sessions, the same reading `usagePanel` makes for
+ * `empty`. A rollup not yet read decides nothing, and a rollup with one
+ * session in the range is round 20's first run, unchanged. */
+export function noSessionInRange(report: UsageDaily | null | undefined): boolean {
+  if (!report?.ok) return false;
+  return (report.totals?.sessions ?? 0) === 0;
+}
+
+/** The note under the `USAGE` chart: the no-transcript sentence when the
+ * range holds no session, else the apportioned note, else none. */
+export function usageFootnote(report: UsageDaily | null | undefined, mode: UsageMode): string | null {
+  if (noSessionInRange(report)) return USAGE_NO_TRANSCRIPT_NOTE;
+  return apportionedNote(report?.totals, mode);
 }
 
 // --- VALUE -----------------------------------------------------------------
@@ -203,7 +232,9 @@ export function valuePanel(report: UsageDaily | null | undefined, yieldReport: Y
   });
   const each = (usd: number): string => `${unitCost(usd)} each`;
   const repos = counted && counted.counted > 0 ? counted : null;
-  const apiMs = report.totals?.apiMs ?? 0;
+  // No session in the range: the hours tile is a dash like the other
+  // three, whatever the rollup says beside its zero count (round 21).
+  const apiMs = noSessionInRange(report) ? 0 : (report.totals?.apiMs ?? 0);
   const tiles = [
     tile("prs", repos ? repos.mergedPullRequests : null, "merged pull requests", "merged PRs", each,
       "First-parent commits on the remote's branch in the range whose subject ends in (#N) or starts with Merge pull request, over every registered or discovered checkout with a remote. The unit cost is the range's spend over the count."),

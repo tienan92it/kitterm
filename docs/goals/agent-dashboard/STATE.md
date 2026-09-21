@@ -1,10 +1,10 @@
 # STATE: agent-dashboard
 
 - Status: done
-- Round: 2 of 3 in this budget (seventh budget)
-- Rounds total: 20
-- Last floor: green (2026-09-21, round 20 after: vitest 1463 in 59 files)
-- Updated: 2026-09-21, round 20 closed, done
+- Round: 3 of 3 in this budget (seventh budget)
+- Rounds total: 21
+- Last floor: green (2026-09-21, round 21 after: vitest 1476 in 60 files)
+- Updated: 2026-09-21, round 21 closed, done
 
 ## Queue
 
@@ -16,9 +16,6 @@ None.
 
 ## Proposals waiting on the human
 
-- A user with no transcript at all sees USAGE at $0 and an empty
-  MODELS panel; the first-run frame does not draw that case. One line
-  each, drawn first, if wanted. See `rounds/020.md`.
 - `Sources/KittermDaemon/ModelPricing.swift` is a rate table copied from
   platform.claude.com on 2026-09-20; nothing updates it. Own it, or
   move the rates to a file. See `rounds/016.md`.
@@ -33,6 +30,8 @@ None.
 
 ## Done
 
+- `the-no-transcript-first-run`, round 21, `9885c28`, PR #144. See
+  `rounds/021.md`. A daemon with no transcript says what fills each panel.
 - `the-first-run-state`, round 20, `64491e2`, PR #143. See
   `rounds/020.md`. Each empty panel names the command that fills it.
 - `the-bill-behind-trailing-lines`, round 19, `5db4a60`, PR #142. See
@@ -205,7 +204,7 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-None. Twenty rounds. Merge PR #143. Seventeen rounds, PRs #125–#134, released as v0.30.0 and v0.31.0.
+None. Twenty-one rounds. Merge PR #144. Seventeen rounds, PRs #125–#134, released as v0.30.0 and v0.31.0.
 The page is the human's design in `corpus/dashboard.pen`. Four
 proposals wait above; to reopen for one, set `Status: active` and
 write it as the queue.

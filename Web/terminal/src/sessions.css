@@ -302,6 +302,8 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
 /* One line that names the number (`design-foundation.md`, "The panels");
    the long form is the note's title. */
 .usage-note { margin: var(--space-2) 0 0; color: var(--ui-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The no-transcript sentence wraps (round 21). */
+.usage-note.wraps { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* QUOTA: one line per window the statusline last reported: the label in
    the shared name column, a bar `--quota-bar` wide drawn as a track on the
@@ -319,7 +321,7 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
 .quota-percent { flex: none; margin-left: var(--space-4); font-variant-numeric: tabular-nums; }
 .quota-reset, .quota-age { color: var(--ui-text-muted); font-variant-numeric: tabular-nums; }
 .quota-age { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.quota-note { margin: 0; padding: var(--space-1) 0; color: var(--ui-text-muted); overflow-wrap: anywhere; }
+.quota-note, .panel-sentence { margin: 0; padding: var(--space-1) 0; color: var(--ui-text-muted); overflow-wrap: anywhere; }
 
 /* VALUE: four tiles, each behind a 2 px rule in the accent — a count in
    the headline size, its noun, what one cost. The rule is a mark, a shape
@@ -380,6 +382,7 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
   .note-long { display: none; }
   .note-short { display: inline; }
   .usage-fact, .usage-peak, .usage-note { display: none; }
+  .usage-note.wraps { display: block; }
   .usage-span { display: inline; }
   .usage-toggle-groups { margin-left: 0; flex: 1 0 100%; justify-content: space-between; }
   .quota-window, .quota-reset, .quota-age { display: none; }

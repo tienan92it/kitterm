@@ -64,10 +64,13 @@ import {
   type UsagePanel,
 } from "./sessions-model";
 import {
-  apportionedNote,
+  LEAKS_NO_TRANSCRIPT_LINE,
+  MODELS_NO_TRANSCRIPT_LINE,
   leakLines,
   modelsPanel,
+  noSessionInRange,
   readWhereGrouping,
+  usageFootnote,
   usageHead,
   valuePanel,
   wherePanel,
@@ -676,8 +679,12 @@ function paint(): void {
   const range = chosenRange(now);
   paintValue(valuePanel(usage, yieldReport, usageChoice.span));
   paintWhere(wherePanel(whereGrouping, { report: usage, yield: yieldReport, projects, goals, range }));
-  paintModels(modelsPanel(usage));
-  paintLeaks(leakLines(usage, goals, range));
+  // No transcript at all (round 21): MODELS and LEAKS each print one
+  // sentence in place of their rows. The pure panels keep their own
+  // answers for an empty rollup; the choice is made here.
+  const noTranscript = noSessionInRange(usage);
+  paintModels(modelsPanel(usage), noTranscript ? MODELS_NO_TRANSCRIPT_LINE : null);
+  paintLeaks(noTranscript ? [] : leakLines(usage, goals, range), noTranscript ? LEAKS_NO_TRANSCRIPT_LINE : null);
   // Every session is a line once: in the tree, or in the idle fold.
   const built = tree({ rows: sessions, projects, goalsOf: (id) => knowledge.get(id)?.goals, approvals, proposed, usage, billOf, now });
   if (built.sections.length === 0) {
@@ -882,12 +889,17 @@ function paintUsage(head: UsageHead | null, panel: UsagePanel | null): void {
     const body = document.createElement("div");
     body.className = "panel-body";
     body.append(row, chart, axis);
-    const apportioned = apportionedNote(usage?.totals, panel!.mode);
-    if (apportioned !== null) {
+    const footnote = usageFootnote(usage, panel!.mode);
+    if (footnote !== null) {
       const note = document.createElement("p");
       note.className = "usage-note";
-      note.textContent = apportioned;
-      note.title = `${panel!.note}. A session across midnight is split by each day's token share, not measured.`;
+      note.textContent = footnote;
+      if (noSessionInRange(usage)) {
+        // The no-transcript sentence (round 21) wraps and prints on a
+        // phone too, where the apportioned note is dropped.
+        note.classList.add("wraps");
+        note.title = panel!.note;
+      } else note.title = `${panel!.note}. A session across midnight is split by each day's token share, not measured.`;
       body.append(note);
     }
     return [panelLabel("USAGE", panel!.age), body];
@@ -1101,8 +1113,12 @@ function paintWhere(panel: WherePanel | null): void {
 /** `MODELS`: one bar per named model and one for the rest summed, scaled
  * to the longest, with the spend and the session count; the phone prints
  * the spend in whole dollars and no count. */
-function paintModels(panel: ModelsPanel | null): void {
-  modelsPainted = paintPanel(modelsBlock, modelsPainted, panel, () => {
+/** `MODELS`: one bar per model, or `line` alone when the range holds no
+ * session at all (round 21). */
+function paintModels(panel: ModelsPanel | null, line: string | null): void {
+  const model = panel ?? (line !== null ? { line } : null);
+  modelsPainted = paintPanel(modelsBlock, modelsPainted, model, () => {
+    if (!panel) return [panelLabel("MODELS"), panelSentence(line!)];
     const list = document.createElement("ul");
     list.className = "split";
     for (const row of panel!.rows) {
@@ -1120,13 +1136,27 @@ function paintModels(panel: ModelsPanel | null): void {
   });
 }
 
-/** `LEAKS`: two marked lines. */
-function paintLeaks(lines: LeakLine[]): void {
-  const model = lines.length === 0 ? null : lines;
+/** One sentence in a panel's content cell, the shape the quota's
+ * no-reading line has. */
+function panelSentence(text: string): HTMLElement {
+  const body = document.createElement("div");
+  body.className = "panel-body";
+  const note = document.createElement("p");
+  note.className = "panel-sentence";
+  note.textContent = text;
+  body.append(note);
+  return body;
+}
+
+/** `LEAKS`: two marked lines, or `line` alone when the range holds no
+ * session at all (round 21). */
+function paintLeaks(lines: LeakLine[], line: string | null): void {
+  const model = lines.length === 0 ? (line !== null ? { line } : null) : lines;
   leaksPainted = paintPanel(leaksBlock, leaksPainted, model, () => {
+    if (lines.length === 0) return [panelLabel("LEAKS"), panelSentence(line!)];
     const list = document.createElement("ul");
     list.className = "leak-lines";
-    for (const line of model!) {
+    for (const line of lines) {
       const li = document.createElement("li");
       li.className = `leak-line ${line.key}`;
       li.title = line.title;
