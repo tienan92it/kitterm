@@ -153,8 +153,14 @@ true statement and zeros would be a false one. A `cost-state` line with no model
 of zero, and answers as one. Full grade only: the bill is what a watch token exists to
 withhold.
 
-A running session has no bill and, since `agent-dashboard` round 16, an estimate. When
-the last line is not a bill, the same route walks the transcript's `"type":"assistant"`
+The bill is the last `cost-state` line when no `assistant` line follows it: Claude Code
+appends records with no usage after it (`queue-operation` at exit, `ai-title`,
+`agent-name`, `system`, a typed-in resume's `user` and `attachment` lines), and since
+`agent-dashboard` round 19 `TranscriptBill.parseTail` walks the complete lines of the
+64 KiB tail from the end, over every such record, until a `cost-state` or an `assistant`
+line decides; measured 2026-09-21 over 654 transcripts, the bill and its trailing records
+were 2686 bytes at most. A running session has no bill and, since `agent-dashboard`
+round 16, an estimate. When the last deciding line is a turn, the same route walks the transcript's `"type":"assistant"`
 lines after the last `cost-state` line, sums each request's `message.usage` per
 `message.model` (one request is several lines with one usage; the lines of a request sit
 together, so a line whose `requestId` is the previous counted one's is skipped), and
@@ -214,7 +220,12 @@ per-model split.
 
 `UsageRollup` refreshes on start and every five minutes, on its own queue and never on
 the event loop: one listing per project directory under `~/.claude/projects/`, one `stat`
-per transcript, and a full read only of a file whose size or mtime changed. The file is
+per transcript, and a full read only of a file whose size or mtime changed, or whose
+record an older reader wrote (`readerVersion` on every record, `TranscriptUsage.readerVersion`;
+round 19 of `agent-dashboard` raised it to 2 when a bill behind trailing lines became a
+bill, so a file the old reader judged unbilled is read once more and billed, while a
+record whose transcript is gone keeps what it has; a format version bump would drop the
+file whole, days of gone transcripts included). The file is
 keyed by transcript, not by day: a record holds what `TranscriptUsage` read from one
 session — the bill's total, the project its cwd resolved to, and tokens per day — and a
 day is a sum over the records at serve time. That is what makes the rollup never lose a
@@ -257,10 +268,17 @@ before, on a marked line a reinstall reads back, so the human's own statusline i
 opened and never lost. The prompt does not wait: the script exits before the connection
 opens, with the daemon up or down.
 
-`UsageLimitsStore` keeps the newest reading, whichever session posted it, because the
-quota is one account's, and writes it to `~/.kitterm/usage-limits.json` so a restart does
-not turn "read four minutes ago" into "never read". `GET /api/usage/limits` serves the
-object as posted with `ageSeconds`, and `stale` past an hour: a statusline renders only
+`UsageLimitsStore` merges every post over the windows it holds, whichever session posted
+it, because the quota is one account's and a render does not always carry every window:
+each window the post carries replaces that key at the post's time, a window the post does
+not carry keeps its last value and its own `receivedAt`, and the oldest goes past
+`maxWindows` (`UsageLimits.merging`; before round 18 of `agent-dashboard` a post replaced
+the whole reading, and a post without `five_hour` made the Session row vanish). It writes
+the windows to `~/.kitterm/usage-limits.json` (version 2, a time per window; a version-1
+file loads with every window at the file's time) so a restart does not turn "read four
+minutes ago" into "never read". `GET /api/usage/limits` serves every window held with its
+own `receivedAt` and `ageSeconds`, the newest post's at the top level, and `stale` past an
+hour on that post: a statusline renders only
 while a session is active, so a reading ages whenever the human is away from every pane,
 stays exact while no other device spends the same account, and goes wrong silently when
 one does; an hour is a fifth of the shortest window. The page draws one bar per window
@@ -268,9 +286,12 @@ as a track with a fill and the percentage beside it, the fill in the accent unde
 and the fill and the percentage in the caution colour at 80 % and over, with its reset
 as a clock time in the viewer's zone (`resets today 20:20`, `resets tomorrow 04:00`,
 `resets Sep 25, 04:00`; the band alone keeps the countdown), prints the age after the
-last bar, keeps a stale reading's fill grey, keeps a window past its reset at its last value with the fill and the
-percentage in the faint grey and `reset · read 1d 19h ago` in its reset cell (never
-`resets … ago`), and says in words when no reading has ever arrived. Full grade only
+last bar, adds a window's own age after its reset time when an older post carried it
+(`resets today 21:40 · read 12m ago`, more than a minute older than the newest post),
+keeps a stale reading's fill grey, keeps a window past its reset at its last value with
+the fill and the percentage in the faint grey and `reset · read 1d 19h ago` from its own
+age in its reset cell (never `resets … ago`), and says in words when no reading has ever
+arrived. Full grade only
 on both routes, like the bill and the rollup.
 
 ### The numbers on the page
@@ -641,7 +662,7 @@ State lives in `~/.kitterm/`. The default port is 3418.
 ├── push.json                 Web Push subscriptions, one per browser endpoint (0600)
 ├── usage-daily.json          the daily cost and token rollup, one record per transcript
 │                             read, kept after Claude Code deletes the transcript (0600)
-├── usage-limits.json         the newest quota reading a statusline posted (0600)
+├── usage-limits.json         the quota windows the statusline posted, a time per window (0600)
 ├── vapid.json                the VAPID key pair every subscription is bound to (0600)
 ├── takeover/                 live-upgrade handoff, between execv and adoption
 └── web-root                  the web bundle the running daemon pinned

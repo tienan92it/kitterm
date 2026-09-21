@@ -1,14 +1,14 @@
 # STATE: agent-dashboard
 
 - Status: done
-- Round: 2 of 3 in this budget (sixth budget)
-- Rounds total: 17
-- Last floor: green (2026-09-20, round 17 after: vitest 1449 in 58 files)
-- Updated: 2026-09-20, done: PR #134 merged, v0.31.0 released and running
+- Round: 1 of 3 in this budget (seventh budget)
+- Rounds total: 19
+- Last floor: green (2026-09-21, round 19 after: swift test 851, Linux build, bench p95 2.68 ms, vitest 1452)
+- Updated: 2026-09-21, round 19 closed, done again; PR #142 ready
 
 ## Queue
 
-Empty. Rounds 10–17 are on PR #134.
+Empty.
 
 ## Failures
 
@@ -30,6 +30,12 @@ None.
 
 ## Done
 
+- `the-bill-behind-trailing-lines`, round 19, `5db4a60`, PR #142. See
+  `rounds/019.md`. A bill behind Claude Code's trailing records is a
+  bill; the rollup re-bills what it skipped: $184.49 more on 30 days.
+- `a-window-is-never-dropped`, round 18, `2166959`, PR #142. See
+  `rounds/018.md`. A quota window keeps its last value and time when a
+  post omits it.
 - `quota-resets-at-a-time`, round 17, `fbe03ce` on PR #134. See
   `rounds/017.md`. The reset cell prints a local clock time.
 - `a-running-session-has-a-cost`, round 16, `f97e397` on PR #134. See
@@ -194,7 +200,8 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-None. Seventeen rounds, PRs #125–#134, released as v0.30.0 and v0.31.0.
+None. Nineteen rounds. Merge PR #142; a release bills the two rounds
+the running daemon still refuses. Seventeen rounds, PRs #125–#134, released as v0.30.0 and v0.31.0.
 The page is the human's design in `corpus/dashboard.pen`. Four
 proposals wait above; to reopen for one, set `Status: active` and
 write it as the queue.

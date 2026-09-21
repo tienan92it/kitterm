@@ -212,6 +212,37 @@ final class TranscriptEstimateTests: XCTestCase {
         XCTAssertFalse(body.contains(#""estimate":"#), body)
     }
 
+    /// The records Claude Code appends after the bill are no turn: the
+    /// estimate has nothing to count and the bill stands, so the route
+    /// prints the bill. One turn after the bill is a resume, and then the
+    /// estimate counts that turn alone, as before.
+    func testRecordsAfterTheBillLeaveItToTheBill() throws {
+        let path = try write([
+            assistant("claude-opus-5", request: "r1", input: 1_000_000, cacheCreation: 0, cacheRead: 0, output: 0),
+            costState(5.25),
+            TranscriptBillTests.queueEnqueue,
+            TranscriptBillTests.queueDequeue,
+        ])
+        guard case .bill(let bill) = TranscriptBill.read(path: path) else { return XCTFail("no bill") }
+        XCTAssertEqual(bill.totalCostUSD, 5.25)
+        XCTAssertEqual(TranscriptEstimateCache().estimate(forTranscriptAt: path), .noEstimate(.noTurns))
+        let (status, body) = HTTPAPIHandler.costBody(.bill(bill), estimate: nil, join: AgentJoin(sessionID: "s", transcriptPath: path))
+        XCTAssertEqual(status, .ok)
+        XCTAssertTrue(body.contains(#""hasBill":true"#), body)
+
+        let resumed = try write([
+            assistant("claude-opus-5", request: "r1", input: 1_000_000, cacheCreation: 0, cacheRead: 0, output: 0),
+            costState(5.25),
+            TranscriptBillTests.queueEnqueue,
+            assistant("claude-opus-5", request: "r2", input: 2_000_000, cacheCreation: 0, cacheRead: 0, output: 0),
+        ], as: "resumed.jsonl")
+        XCTAssertEqual(TranscriptBill.read(path: resumed), .noBill(.noCostStateLine))
+        let estimate = try estimate(TranscriptEstimateCache(), resumed)
+        XCTAssertEqual(estimate.turns, 1)
+        XCTAssertEqual(estimate.inTokens, 2_000_000)
+        XCTAssertEqual(estimate.costUSD, 10, accuracy: 0.0001)
+    }
+
     /// No turn yet, a file over the cap, and a missing file each say why.
     func testTheThreeEmptyAnswers() throws {
         let empty = try write([user()], as: "empty.jsonl")

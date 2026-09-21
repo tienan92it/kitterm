@@ -1720,11 +1720,16 @@ export function levels<R extends ModelRow>(
 
 /** One window as `GET /api/usage/limits` serves it, with the statusline's
  * own field names: `used_percentage` of the window spent, `resets_at` in
- * epoch seconds. */
-export type LimitWindow = { used_percentage: number; resets_at: number };
+ * epoch seconds; then `receivedAt` and `ageSeconds` of the post that
+ * carried this window (round 18: a post names only the windows it names,
+ * and the daemon keeps the rest at their last value, so a window can be
+ * older than the reading). Absent from a daemon before round 18, when
+ * every window was the reading's own. */
+export type LimitWindow = { used_percentage: number; resets_at: number; receivedAt?: number; ageSeconds?: number };
 
 /** The route's answer. `rateLimits` and the age fields are present only
- * with a reading; `stale` is the daemon's call, past an hour. */
+ * with a reading; the top-level time and age are the newest post's;
+ * `stale` is the daemon's call on that post, past an hour. */
 export type UsageLimits = {
   ok: boolean;
   hasReading: boolean;
@@ -1765,9 +1770,10 @@ export type QuotaBar = {
   /** `24%`; a window past its reset keeps its last number. */
   percent: string;
   /** `resets today 20:20`, `resets tomorrow 04:00`, `resets Sep 25,
-   * 04:00` (`quotaResetTime`), or `reset · read 1d 19h ago` once the
-   * window has reset: the word and the reading's age, never a countdown
-   * that ran out. */
+   * 04:00` (`quotaResetTime`), with ` · read 12m ago` after it when the
+   * window is older than the reading by more than a minute (round 18), or
+   * `reset · read 1d 19h ago` once the window has reset: the word and the
+   * window's own age, never a countdown that ran out. */
   reset: string;
   /** `reset` once `resets_at` has passed: the page draws the bar and the
    * number in the faint grey, at the last value. */
@@ -1846,12 +1852,40 @@ export function quotaAge(receivedAt: number, now: number): string {
   return span === "now" ? "read just now" : `read ${span} ago`;
 }
 
-/** The reading's age as a window past its reset prints it, from the
- * daemon's own `ageSeconds` (else from `receivedAt`), in the countdown's
- * two units: `read 1d 19h ago`; `read just now` under a minute. */
+/** An age as a window's reset cell prints it, from the daemon's own
+ * `ageSeconds` (else from `receivedAt`), in the countdown's two units:
+ * `read 1d 19h ago`; `read just now` under a minute. */
 export function quotaReadAge(limits: Pick<UsageLimits, "ageSeconds" | "receivedAt">, now: number): string {
   const ms = typeof limits.ageSeconds === "number" ? limits.ageSeconds * 1000 : now - (limits.receivedAt ?? now);
   return ms < 60_000 ? "read just now" : `read ${countdown(ms)} ago`;
+}
+
+/** A window older than the reading by more than this says its own age
+ * (round 18): under it the two were one post, or a minute apart, which
+ * the cell's minute unit could not show. */
+export const QUOTA_OWN_AGE_SECONDS = 60;
+
+/** The time and age of one window: its own when the daemon sent them
+ * (round 18), else the reading's, which is what a daemon before round 18
+ * meant. */
+function windowAge(limits: UsageLimits, window: LimitWindow): Pick<UsageLimits, "ageSeconds" | "receivedAt"> {
+  return {
+    ageSeconds: typeof window.ageSeconds === "number" ? window.ageSeconds : limits.ageSeconds,
+    receivedAt: typeof window.receivedAt === "number" ? window.receivedAt : limits.receivedAt,
+  };
+}
+
+/** Whether a window is older than the reading by more than
+ * `QUOTA_OWN_AGE_SECONDS`, by the daemon's ages when it sent them, else by
+ * the times. */
+function windowIsOlder(limits: UsageLimits, window: LimitWindow): boolean {
+  if (typeof window.ageSeconds === "number" && typeof limits.ageSeconds === "number") {
+    return window.ageSeconds - limits.ageSeconds > QUOTA_OWN_AGE_SECONDS;
+  }
+  if (typeof window.receivedAt === "number" && typeof limits.receivedAt === "number") {
+    return limits.receivedAt - window.receivedAt > QUOTA_OWN_AGE_SECONDS * 1000;
+  }
+  return false;
 }
 
 /**
@@ -1868,11 +1902,14 @@ export function quotaReadAge(limits: Pick<UsageLimits, "ageSeconds" | "receivedA
  * the word is. Never `resets … ago` (round 14, the human's word). A
  * window ahead prints its reset as a clock time in the viewer's zone,
  * `resets today 20:20` (`quotaResetTime`, round 17); the band alone
- * keeps the countdown. The
- * statusline drops such a window on its next render, and the bar goes
- * with it. A stale reading keeps its bars, and the note says how old they
- * are, because a bar from three hours ago is still the account's last
- * known state while the note stands beside it.
+ * keeps the countdown. The daemon keeps every window it was ever given,
+ * each at the time of the post that carried it (round 18): the panel
+ * draws them all, and a window older than the reading by more than a
+ * minute says so after its reset time, `resets today 21:40 · read 12m
+ * ago`; a window past its reset carries its own age too. A stale reading
+ * keeps its bars, and the note says how old they are, because a bar from
+ * three hours ago is still the account's last known state while the note
+ * stands beside it.
  */
 export function quotaPanel(limits: UsageLimits | null | undefined, now: number): QuotaPanel | null {
   if (!limits || !limits.ok) return null;
@@ -1906,16 +1943,17 @@ export function quotaPanel(limits: UsageLimits | null | undefined, now: number):
         fill: quotaFill(window.used_percentage).fill,
         level: "accent",
         percent: `${percent}%`,
-        reset: `reset · ${quotaReadAge(limits, now)}`,
+        reset: `reset · ${quotaReadAge(windowAge(limits, window), now)}`,
         state: "reset",
       };
     }
+    const ownAge = windowIsOlder(limits, window) ? ` · ${quotaReadAge(windowAge(limits, window), now)}` : "";
     return {
       key,
       label: quotaLabel(key),
       ...quotaFill(window.used_percentage),
       percent: `${percent}%`,
-      reset: `resets ${quotaResetTime(resetAt, now)}`,
+      reset: `resets ${quotaResetTime(resetAt, now)}${ownAge}`,
       state: stale ? "stale" : "fresh",
     };
   });

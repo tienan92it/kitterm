@@ -31,7 +31,8 @@ import NIOConcurrencyHelpers
 /// ## What "never loses a day" means
 ///
 /// A refresh lists the transcripts it can see, reads the ones whose size or
-/// mtime differ from their record, and replaces exactly those records. A
+/// mtime differ from their record, or whose record an older reader wrote
+/// (`SessionRecord.readerVersion`), and replaces exactly those records. A
 /// record whose transcript is no longer on disk is not visited, so it is
 /// not replaced, so it stays, and the days it holds stay with it. Nothing
 /// in the refresh subtracts. `UsageRollupTests` writes a record older than
@@ -115,6 +116,16 @@ public final class UsageRollup: @unchecked Sendable {
         public var apiDurationMs: Int?
         /// The bill's `totalLinesAdded`, for a role's lines.
         public var linesAdded: Int?
+        /// `TranscriptUsage.readerVersion` at the read. Nil on a record
+        /// written before the rollup kept it (round 19 of `agent-dashboard`,
+        /// 2026-09-21), which reads as older than any version. A record
+        /// read by an older reader is read again once while its transcript
+        /// is on disk, so a file the old reader judged unbilled behind its
+        /// trailing lines is billed on the first refresh after an upgrade;
+        /// a record whose transcript is gone keeps what it has. A format
+        /// version bump would not do: `load` drops a file of another
+        /// version whole, and with it the days of every gone transcript.
+        public var readerVersion: Int?
     }
 
     /// Where a session ran, read from its own directory: a crew in a
@@ -250,9 +261,11 @@ public final class UsageRollup: @unchecked Sendable {
         for entry in listed {
             // A billed record with no per-model map, or no API duration, was
             // written before the rollup kept them; it is read once more so
-            // the split and the hours fill in.
+            // the split and the hours fill in. A record an older reader
+            // judged is read once more so the judgment is this reader's.
             if !zoneChanged, let record = before.0[entry.key], record.size == entry.size, record.mtime == entry.mtime,
                record.subagentFiles == entry.subagents.count, record.subagentBytes == entry.subagentBytes,
+               record.readerVersion == TranscriptUsage.readerVersion,
                (record.models != nil && record.apiDurationMs != nil) || !record.billed {
                 skipped += 1
                 continue
@@ -359,7 +372,8 @@ public final class UsageRollup: @unchecked Sendable {
             days: usage.days,
             models: models,
             apiDurationMs: apiDurationMs,
-            linesAdded: linesAdded
+            linesAdded: linesAdded,
+            readerVersion: TranscriptUsage.readerVersion
         )
     }
 

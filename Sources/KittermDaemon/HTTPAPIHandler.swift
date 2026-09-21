@@ -1206,11 +1206,14 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     }
 
     /// `POST /api/usage/limits` — take the `rate_limits` object a Claude
-    /// Code statusline render was given (`UsageLimits`), and keep it as the
-    /// newest reading. The body is that object alone, as `jq -c
+    /// Code statusline render was given (`UsageLimits`), and merge it over
+    /// what is held: each window it carries replaces that key at the post's
+    /// time, and a window it does not carry keeps its last value and time
+    /// (`UsageLimits.merging`). The body is that object alone, as `jq -c
     /// '.rate_limits'` prints it; the installed statusline wrapper posts it
     /// in the background, so this route must never be slow and never holds
-    /// anything. Answers `{ok, receivedAt, windows}`.
+    /// anything. Answers `{ok, receivedAt, windows}`, `windows` being the
+    /// count the post carried.
     ///
     /// Full grade only: a loopback caller is full grade unconditionally,
     /// which is what the statusline is, and a watch token has no business
@@ -1269,14 +1272,18 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         }
     }
 
-    /// `GET /api/usage/limits` — the newest reading and its age:
+    /// `GET /api/usage/limits` — every window held and its age:
     /// `{ok, hasReading, receivedAt?, ageSeconds?, stale?, rateLimits?}`.
-    /// `rateLimits` is the object as it was posted, with the statusline's
-    /// own field names, so a page reads what the statusline read. A daemon
-    /// that was never given one answers `hasReading: false` and nothing
-    /// else, which is a plain answer and not an error: the route exists and
-    /// the page says so in words. `stale` is `ageSeconds` past
-    /// `UsageLimits.staleAfterSeconds`; the page decides what to draw.
+    /// `rateLimits` holds each window with the statusline's own field names,
+    /// so a page reads what the statusline read, plus the `receivedAt` and
+    /// `ageSeconds` of the post that carried that window: a post names only
+    /// the windows it names, so a window can be older than the reading
+    /// (`UsageLimits.merging`). The top-level time and age are the newest
+    /// post's. A daemon that was never given one answers `hasReading:
+    /// false` and nothing else, which is a plain answer and not an error:
+    /// the route exists and the page says so in words. `stale` is the
+    /// newest post's `ageSeconds` past `UsageLimits.staleAfterSeconds`; the
+    /// page decides what to draw.
     ///
     /// Full grade only, like the cost routes and the rollup: the quota is
     /// the account's accounting, the class of thing a watch token exists to
@@ -1305,12 +1312,20 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     }
 
     private struct LimitsResponse: Encodable {
+        /// One window: the statusline's two fields, then when it was read.
+        struct Window: Encodable {
+            let used_percentage: Double
+            let resets_at: Int64
+            let receivedAt: Int64
+            let ageSeconds: Int
+        }
+
         let ok = true
         let hasReading: Bool
         let receivedAt: Int64?
         let ageSeconds: Int?
         let stale: Bool?
-        let rateLimits: [String: UsageLimits.Window]?
+        let rateLimits: [String: Window]?
     }
 
     static func usageLimitsBody(_ reading: UsageLimits?, now: Date) -> String {
@@ -1318,7 +1333,13 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         if let reading {
             response = LimitsResponse(
                 hasReading: true, receivedAt: reading.receivedAt, ageSeconds: reading.age(now: now),
-                stale: reading.isStale(now: now), rateLimits: reading.rateLimits
+                stale: reading.isStale(now: now),
+                rateLimits: reading.rateLimits.mapValues { window in
+                    LimitsResponse.Window(
+                        used_percentage: window.used_percentage, resets_at: window.resets_at,
+                        receivedAt: window.receivedAt, ageSeconds: window.age(now: now)
+                    )
+                }
             )
         } else {
             response = LimitsResponse(hasReading: false, receivedAt: nil, ageSeconds: nil, stale: nil, rateLimits: nil)

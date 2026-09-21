@@ -128,6 +128,68 @@ final class UsageRollupTests: XCTestCase {
         XCTAssertEqual(reloaded.records.count, 4)
     }
 
+    /// A record an older reader wrote is read once more while its transcript
+    /// is on disk: the file reader 1 judged unbilled behind its trailing
+    /// `queue-operation` lines (round 19) is billed on the first refresh
+    /// after the upgrade, the next refresh skips it, and a record whose
+    /// transcript is gone keeps what it has, reader version and all.
+    func testARecordOfAnOlderReaderIsReadOnceMore() throws {
+        let dir = root.appendingPathComponent("-nonexistent-fixture-project", isDirectory: true)
+        let trailing = dir.appendingPathComponent("trailing.jsonl")
+        let bill = try String(contentsOfFile: TranscriptBillTests.fixture("bill.jsonl"), encoding: .utf8)
+        try (bill + TranscriptBillTests.queueEnqueue + "\n" + TranscriptBillTests.queueDequeue + "\n")
+            .write(to: trailing, atomically: true, encoding: .utf8)
+        let values = try trailing.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+        let size = try XCTUnwrap(values.fileSize)
+        let mtime = Int64((try XCTUnwrap(values.contentModificationDate).timeIntervalSince1970 * 1000).rounded())
+        // The record reader 1 wrote for that file: the fingerprint matches,
+        // the judgment is "unbilled", and there is no reader version.
+        let json = """
+        {"version":1,"timeZone":"Asia/Ho_Chi_Minh","refreshedAt":1767600000000,"sessions":{
+          "-gone-project/aaaaaaaa-0000-4000-8000-000000000000.jsonl":{
+            "sessionId":"aaaaaaaa-0000-4000-8000-000000000000","cwd":"/gone/project",
+            "size":1234,"mtime":1767571200000,"subagentFiles":0,"subagentBytes":0,
+            "billed":false,"totalCostUSD":0,
+            "days":{"2026-01-05":{"input":10,"output":500,"cacheCreation":2000,"cacheRead":40000,"requests":7}}},
+          "-nonexistent-fixture-project/trailing.jsonl":{
+            "sessionId":"e89e7ec8-9e61-4900-800f-aa72ed555d63","cwd":"/nonexistent/fixture-project",
+            "size":\(size),"mtime":\(mtime),"subagentFiles":0,"subagentBytes":0,
+            "billed":false,"totalCostUSD":0,
+            "days":{"2026-09-08":{"input":1,"output":1,"cacheCreation":1,"cacheRead":1,"requests":1}}}}}
+        """
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try json.write(to: file, atomically: true, encoding: .utf8)
+
+        let rollup = store()
+        XCTAssertNil(rollup.records["-nonexistent-fixture-project/trailing.jsonl"]?.readerVersion)
+        let first = rollup.refresh()
+        XCTAssertEqual(first.scanned, 4)
+        XCTAssertEqual(first.read, 4, "the three new files and the one an older reader judged")
+        XCTAssertEqual(first.skipped, 0)
+        XCTAssertEqual(first.retained, 1)
+        let record = try XCTUnwrap(rollup.records["-nonexistent-fixture-project/trailing.jsonl"])
+        XCTAssertEqual(record.billed, true)
+        XCTAssertEqual(record.totalCostUSD, 2.6361237500000003)
+        XCTAssertEqual(record.readerVersion, TranscriptUsage.readerVersion)
+        XCTAssertEqual(record.size, Int64(size))
+        XCTAssertEqual(record.mtime, mtime)
+        let gone = try XCTUnwrap(rollup.records["-gone-project/aaaaaaaa-0000-4000-8000-000000000000.jsonl"])
+        XCTAssertEqual(gone.billed, false)
+        XCTAssertNil(gone.readerVersion)
+        XCTAssertEqual(gone.days["2026-01-05"]?.cacheRead, 40000)
+
+        let second = rollup.refresh()
+        XCTAssertEqual(second.read, 0)
+        XCTAssertEqual(second.skipped, 4)
+        XCTAssertFalse(second.wrote)
+        // The report counts the session as billed.
+        XCTAssertEqual(record.startDay, "2026-09-09")
+        let day = rollup.daily(from: DayKey("2026-09-09")!, to: DayKey("2026-09-09")!)
+        XCTAssertEqual(day.totals.unbilledSessions, 0)
+        XCTAssertEqual(day.totals.sessions, 1)
+        XCTAssertEqual(day.totals.costUSD, 2.6361237500000003, accuracy: 0.000001)
+    }
+
     func testAChangedTranscriptIsReadAgainAndItsRecordReplaced() throws {
         let rollup = store()
         rollup.refresh()

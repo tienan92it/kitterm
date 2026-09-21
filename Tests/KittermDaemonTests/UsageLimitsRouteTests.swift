@@ -8,8 +8,9 @@ import XCTest
 
 /// `POST` and `GET /api/usage/limits` against a real handler over a
 /// `UsageLimitsStore` in a scratch directory: the post, the read-back with
-/// its age, the daemon that was never given a reading, the stale one, the
-/// refusals, and the grade, the way `UsageDailyRouteTests` drives its
+/// its age, the merge of a post that names only some windows, the file's
+/// two versions, the daemon that was never given a reading, the stale one,
+/// the refusals, and the grade, the way `UsageDailyRouteTests` drives its
 /// rollup. The grade case runs over a raw socket naming the trusted host,
 /// because loopback is full grade unconditionally.
 final class UsageLimitsRouteTests: XCTestCase {
@@ -99,9 +100,44 @@ final class UsageLimitsRouteTests: XCTestCase {
         XCTAssertEqual(reloaded.reading, store.reading)
     }
 
-    /// The newest post wins, whichever session it came from: the quota is
-    /// the account's, and a window the source dropped is gone.
-    func testTheNewestPostReplacesTheLast() async throws {
+    /// A post carries only the windows it names, and a window it does not
+    /// name keeps its last value and its own time (round 18 of
+    /// `agent-dashboard`: the human saw the Session row vanish after a post
+    /// without `five_hour`). Chartered: this case pinned the whole reading
+    /// replaced, `Array(limits.keys) == ["five_hour"]`.
+    func testAPostWithoutAWindowKeepsThatWindowAtItsEarlierTime() async throws {
+        let first = try json(try await request("POST", "/api/usage/limits", body: Self.body).body)
+        let firstAt = try XCTUnwrap(first["receivedAt"] as? Int64)
+        // A later post, a second or more on, with the weekly window alone.
+        try await Task.sleep(nanoseconds: 1_100_000_000)
+        let second = try json(
+            try await request(
+                "POST", "/api/usage/limits", body: #"{"seven_day":{"used_percentage":45,"resets_at":1789400000}}"#
+            ).body
+        )
+        let secondAt = try XCTUnwrap(second["receivedAt"] as? Int64)
+        XCTAssertGreaterThan(secondAt, firstAt)
+        XCTAssertEqual(second["windows"] as? Int, 1, "the receipt counts the post's windows")
+
+        let read = try json(try await request("GET", "/api/usage/limits").body)
+        XCTAssertEqual(read["receivedAt"] as? Int64, secondAt, "the reading's time is the newest post's")
+        let limits = try XCTUnwrap(read["rateLimits"] as? [String: [String: Any]])
+        XCTAssertEqual(Set(limits.keys), ["five_hour", "seven_day", "spend_limit"])
+        XCTAssertEqual(limits["seven_day"]?["used_percentage"] as? Double, 45)
+        XCTAssertEqual(limits["seven_day"]?["receivedAt"] as? Int64, secondAt)
+        XCTAssertEqual(limits["five_hour"]?["used_percentage"] as? Double, 23.5)
+        XCTAssertEqual(limits["five_hour"]?["receivedAt"] as? Int64, firstAt, "the session window keeps its earlier time")
+        XCTAssertEqual(limits["spend_limit"]?["receivedAt"] as? Int64, firstAt)
+
+        // The file carries the times, so a restart keeps each window's age.
+        let reloaded = UsageLimitsStore(file: file)
+        XCTAssertEqual(reloaded.reading, store.reading)
+        XCTAssertEqual(reloaded.reading?.rateLimits["five_hour"]?.receivedAt, firstAt)
+    }
+
+    /// A post with the session window alone updates that one and nothing
+    /// else; the newest post's time is the reading's.
+    func testAPostWithOneWindowUpdatesThatWindowAlone() async throws {
         _ = try await request("POST", "/api/usage/limits", body: Self.body)
         let second = try await request(
             "POST", "/api/usage/limits", body: #"{"five_hour":{"used_percentage":30,"resets_at":1789000000}}"#
@@ -109,8 +145,78 @@ final class UsageLimitsRouteTests: XCTestCase {
         XCTAssertEqual(second.status, 200, second.body)
         let read = try json(try await request("GET", "/api/usage/limits").body)
         let limits = try XCTUnwrap(read["rateLimits"] as? [String: [String: Any]])
-        XCTAssertEqual(Array(limits.keys), ["five_hour"])
+        XCTAssertEqual(Set(limits.keys), ["five_hour", "seven_day", "spend_limit"])
         XCTAssertEqual(limits["five_hour"]?["used_percentage"] as? Double, 30)
+        XCTAssertEqual(limits["five_hour"]?["receivedAt"] as? Int64, read["receivedAt"] as? Int64)
+        XCTAssertEqual(limits["seven_day"]?["used_percentage"] as? Double, 41.2)
+        XCTAssertEqual(limits["spend_limit"]?["used_percentage"] as? Double, 62.8)
+    }
+
+    /// The route carries each window's own age beside the reading's: a
+    /// window from an older post is older than the reading. Driven through
+    /// the store on a fixed clock.
+    func testTheRouteCarriesEachWindowsOwnAge() throws {
+        let first = Date(timeIntervalSince1970: 1_789_000_000)
+        store.record(try parsed(Self.body, at: first))
+        let second = first.addingTimeInterval(720)
+        store.record(try parsed(#"{"seven_day":{"used_percentage":45,"resets_at":1789400000}}"#, at: second))
+
+        let read = try json(HTTPAPIHandler.usageLimitsBody(store.reading, now: second.addingTimeInterval(60)))
+        XCTAssertEqual(read["ageSeconds"] as? Int, 60)
+        XCTAssertEqual(read["stale"] as? Bool, false)
+        let limits = try XCTUnwrap(read["rateLimits"] as? [String: [String: Any]])
+        XCTAssertEqual(limits["seven_day"]?["ageSeconds"] as? Int, 60)
+        XCTAssertEqual(limits["five_hour"]?["ageSeconds"] as? Int, 780)
+        XCTAssertEqual(limits["five_hour"]?["receivedAt"] as? Int64, 1_789_000_000_000)
+        XCTAssertEqual(limits["spend_limit"]?["ageSeconds"] as? Int, 780)
+    }
+
+    /// A version-1 file, one post with no time per window, loads as version
+    /// 2 with every window at the file's time, and the next write is
+    /// version 2.
+    func testAVersionOneFileLoadsWithEveryWindowAtTheFilesTime() throws {
+        let v1 = #"""
+            {"rateLimits":{"five_hour":{"resets_at":1789000000,"used_percentage":23.5},"seven_day":{"resets_at":1789400000,"used_percentage":41.2}},"receivedAt":1789000000000,"version":1}
+            """#
+        try Data(v1.utf8).write(to: file)
+        let loaded = UsageLimitsStore(file: file)
+        let reading = try XCTUnwrap(loaded.reading)
+        XCTAssertEqual(reading.receivedAt, 1_789_000_000_000)
+        XCTAssertEqual(reading.rateLimits["five_hour"]?.receivedAt, 1_789_000_000_000)
+        XCTAssertEqual(reading.rateLimits["seven_day"]?.receivedAt, 1_789_000_000_000)
+        XCTAssertEqual(reading.rateLimits["five_hour"]?.used_percentage, 23.5)
+
+        loaded.record(try parsed(
+            #"{"five_hour":{"used_percentage":30,"resets_at":1789000000}}"#,
+            at: Date(timeIntervalSince1970: 1_789_000_100)
+        ))
+        let written = try json(String(decoding: try Data(contentsOf: file), as: UTF8.self))
+        XCTAssertEqual(written["version"] as? Int, 2)
+        let windows = try XCTUnwrap(written["rateLimits"] as? [String: [String: Any]])
+        XCTAssertEqual(windows["five_hour"]?["receivedAt"] as? Int64, 1_789_000_100_000)
+        XCTAssertEqual(windows["seven_day"]?["receivedAt"] as? Int64, 1_789_000_000_000)
+        XCTAssertEqual(UsageLimitsStore(file: file).reading, loaded.reading)
+    }
+
+    /// A version this build does not know is ignored, as before.
+    func testAnUnknownFileVersionIsIgnored() throws {
+        try Data(#"{"rateLimits":{},"receivedAt":1789000000000,"version":3}"#.utf8).write(to: file)
+        XCTAssertNil(UsageLimitsStore(file: file).reading)
+    }
+
+    /// The held set is bounded: past `maxWindows`, the oldest window goes.
+    func testTheHeldSetIsBoundedAtMaxWindows() throws {
+        let start = Date(timeIntervalSince1970: 1_789_000_000)
+        for i in 0..<(UsageLimits.maxWindows + 2) {
+            store.record(try parsed(
+                #"{"w\#(i)":{"used_percentage":1,"resets_at":1789400000}}"#, at: start.addingTimeInterval(Double(i))
+            ))
+        }
+        let held = try XCTUnwrap(store.reading?.rateLimits)
+        XCTAssertEqual(held.count, UsageLimits.maxWindows)
+        XCTAssertNil(held["w0"])
+        XCTAssertNil(held["w1"])
+        XCTAssertNotNil(held["w\(UsageLimits.maxWindows + 1)"])
     }
 
     /// An API-key account, or a session before its first response, is
@@ -276,6 +382,12 @@ final class UsageLimitsRouteTests: XCTestCase {
         let status = Int(text.split(separator: " ", maxSplits: 2).dropFirst().first ?? "") ?? 0
         let body = text.components(separatedBy: "\r\n\r\n").dropFirst().joined(separator: "\r\n\r\n")
         return (status, body)
+    }
+
+    private func parsed(_ body: String, at: Date) throws -> UsageLimits {
+        try UsageLimits.parse(
+            try XCTUnwrap(JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any]), now: at
+        ).get()
     }
 
     private func json(_ text: String) throws -> [String: Any] {
