@@ -9,6 +9,8 @@
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 </div>
+<!-- markdownlint-disable-next-line MD013 -->
+<p align="center"><img src="docs/images/dashboard-1200.png" width="880" alt="The kitterm dashboard at 1200 px: the band, USAGE, QUOTA, MODELS, VALUE, WHERE, LEAKS, and the tree of workspaces, projects, goals, tasks and sessions"></p>
 
 ---
 
@@ -32,20 +34,11 @@ See [Linux](#linux) below for containers and cloud boxes.
 
 ## Terminal
 
-A tab is a real shell with a controlling TTY: job control, `Ctrl+C`, and TUIs
-work as they would in a native terminal app. Close the tab and the shell
-keeps running.
+A tab is a real shell with a TTY: job control, `Ctrl+C`, and TUIs work locally.
 
-- **Reattach from any device.** Open the session's link from your phone or a
-  second laptop and pick up where you left off. A reconnect replays exactly
-  the bytes you missed, from a 4 MiB per-session output ring.
-- **Splits.** `⌘D` / `⌘⇧D` split a pane; `⌘⌥T` opens a new tab in the same
-  directory.
-- **Session profiles** name a connect command in `~/.kitterm/profiles.json`
-  (`{"profiles":[{"name":"vm","command":"ssh dev-vm"}]}`), so `/?profile=vm`
-  or a click in `/sessions` opens a tab that is that remote shell.
-- **Linux** puts an agent in a container that outlives your laptop. The
-  tarball is statically linked, so the host needs no Swift toolchain.
+- Close the tab; reattach from any device replays the exact missed bytes.
+- `⌘D` / `⌘⇧D` split a pane; `⌘⌥T` opens a new tab, same directory.
+- Session profiles in `~/.kitterm/profiles.json` open a named remote shell.
 
 ### Linux
 
@@ -71,56 +64,38 @@ For a container with this already wired up, see
 
 ## Dashboard
 
-`/sessions` is a dashboard, not a control panel: it presents and monitors,
-and holds no typed input of its own. You act on an agent by opening its pane.
+`/sessions` is a dashboard, not a control panel: you act through a pane.
 
-The band at the top gives four counts — working, needing you, the range's
-spend, and the current window's quota share — plus the brand.
+- **USAGE** charts cost or tokens per day over 7, 30, or 90 days.
+- **QUOTA** draws one bar per Claude Code rate-limit window, with its age.
+- **VALUE** counts merged PRs, lines, releases, and model hours, per dollar.
+- **WHERE** breaks the range's spend down by project, goal, task, or role.
+- **MODELS** lists the top three models by cost, others in one row.
+- **LEAKS** names unattributed spend: no-cost rounds, sessions under 95% cached.
+- The tree lists workspaces, projects, goals, tasks, and sessions, with cost.
 
-**USAGE** charts cost or tokens per day over 7, 30, or 90 days.
-**QUOTA** draws one bar per Claude Code rate-limit window, with its reset
-time and its age.
-**VALUE** counts merged pull requests, merged lines, releases, and hours of
-model time, each with its unit cost — proxies for value, not value.
-**WHERE** breaks the range's spend down by project, goal, task, or role.
-**MODELS** lists the top three models by cost, with the rest folded into one
-row.
-**LEAKS** names the spend nothing else can attribute: rounds with no cost
-line, and sessions under 95% cached.
-
-Every figure on the page follows the one range that USAGE's toggles set.
-
-Below the panels sits the tree: workspaces, then projects, then goals, then
-tasks, then the sessions under each. A goal or task carries its state
-(`[working]`, `[needs you]`, `[done]`, …) and its cost in the range. A
-running session has no bill yet, so its cost column shows a running estimate,
-`~$4.20`, until the bill lands.
+Every figure follows the USAGE range. A running session shows `~$` until billed.
 
 ## The foreman and crew
 
-`docs/goals/` is the control plane for agent work on this repository. Each
-goal is one folder — `goal.md`, `plan.md`, `STATE.md`, `corpus/`, `rounds/` —
-and a goal's status lives in its `STATE.md`.
+`docs/goals/` is the control plane for agent work; status lives in `STATE.md`.
 
-One foreman runs per daemon, in a pane of its own, on the kitterm MCP tools.
-It reads every goal's `STATE.md` and spawns one crew session per round to do
-the work. It writes one record under `rounds/` when the round ends.
-`kitterm goal new <path> <slug>` writes a new goal folder from the template.
-
-The record names the round's cost. The record also names the round's pull
-request, so a goal's ledger reads as cost and result per round, not a guess
-at total effort.
+- A goal folder holds `goal.md`, `plan.md`, `STATE.md`, `corpus/`, `rounds/`.
+- One foreman per daemon reads every `STATE.md` and spawns a crew session.
+- Each round writes one record under `rounds/`, naming its cost and PR.
+- `kitterm goal new <path> <slug>` writes a goal folder from the template.
 
 ## The MCP bridge
 
-`kitterm mcp` is a stdio MCP server that hands an agent the foreman toolset:
-`list_sessions`, `get_session`, `spawn_session`, `rename_session`,
-`send_input`, `list_commands`, `wait_for_command`, `read_output`,
-`read_screen`, `wait_for_events`, `post_note`, `list_approvals`,
-`kill_session`, `archive_session`, `list_archives`, `list_projects`.
+`kitterm mcp` is a stdio MCP server that hands an agent the foreman toolset.
 
-Register it once with `claude mcp add kitterm -- kitterm mcp`, or add it
-directly to `.mcp.json`:
+- Session: `list_sessions`, `get_session`, `spawn_session`, `rename_session`.
+- Input and output: `send_input`, `read_output`, `read_screen`.
+- Commands: `list_commands`, `wait_for_command`, `wait_for_events`.
+- Bookkeeping: `post_note`, `list_approvals`, `kill_session`,
+  `archive_session`, `list_archives`, `list_projects`.
+
+Register with `claude mcp add kitterm -- kitterm mcp`, or add it to `.mcp.json`:
 
 ```json
 {
@@ -137,19 +112,20 @@ The tools that drive shells need `--agent-control` on the daemon.
 
 ## Statusline
 
-`kitterm statusline install` wraps the Claude Code statusline command. It
-then posts the quota reading — the `rate_limits` object Claude Code already
-hands the statusline script — to the daemon on every render. `/sessions`
-draws the QUOTA panel from it.
+`kitterm statusline install` wraps the Claude Code statusline command.
+
+- It posts the quota reading to the daemon on every render.
+- The reading is the `rate_limits` object Claude Code hands the script.
+- `/sessions` draws the QUOTA panel from it.
 
 ## Security
 
-kitterm binds `127.0.0.1` by default; `--lan` is the only path that widens
-it, and it requires a token. A **watch** token can observe sessions and
-read the API, but only a **full** token can type, take control, or spawn a
-shell. `--agent-control` gates the routes that spawn a session and type
-into one — off by default, since it lets any admitted client drive a shell
-as your user.
+kitterm binds `127.0.0.1` by default; `--lan` widens that, and needs a token.
+
+- A **watch** token can observe sessions and read the API.
+- A **full** token can type, take control, or spawn a shell.
+- `--agent-control` gates the routes that spawn a session or type into one.
+- Off by default: it lets any admitted client drive a shell as you.
 
 ## Building from source
 
