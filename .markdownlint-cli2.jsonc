@@ -1,0 +1,10 @@
+{
+  // MD033/MD041 disabled: the README opens with a centered <div> title
+  // block (badges + name), which is inline HTML and not an H1 first line
+  // by design.
+  "config": {
+    "MD033": false,
+    "MD041": false,
+    "MD013": { "line_length": 80, "code_blocks": false }
+  }
+}
