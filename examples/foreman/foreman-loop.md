@@ -80,6 +80,42 @@ Two files, two scopes:
   lines, so their shape is an interface. Keep the five bullets at the top
   and the five sections in this order.
 
+## Goal or chore
+
+Not every change is a goal. A goal has a folder, a plan, a corpus, a
+budget of rounds, and a direction check; that machinery pays for itself
+only when the work needs it. Use this test before creating a folder:
+
+A change is a **goal** when any of these holds:
+
+- its completion condition needs more than one round to prove;
+- it changes a contract: a route, a file format, the design in a `.pen`
+  file, a token, a public command;
+- the human wants to direct it round by round, or wants research before
+  the plan.
+
+Everything else is a **chore**: a fix, a wording change, a document, a
+dependency bump, a one-file enhancement, a number that drifted. A chore
+has no folder. Run it as one crew session with one prompt, one PR, and
+one line in `docs/goals/CHORES.md`:
+
+```
+- <ISO date> · <what, one sentence> · PR #N · <cost line>
+```
+
+Two rules keep the two apart:
+
+- A chore that belongs to a done goal's surface **resumes that goal**
+  for one round: set `Status: active`, queue the item, run "One round",
+  write the record, set `Status: done` again. It gets the goal's record
+  because the goal's corpus is the contract it must keep. Do not create
+  a second goal for the same surface.
+- A chore that needs a second round is not a chore. Stop, write it up as
+  a goal, and tell the human.
+
+The human names goals. You may run a chore on the human's word without a
+folder, and say so in the digest.
+
 ## Read before you type
 
 Do this before every `send_input` into a pane that runs an interactive agent.
@@ -196,10 +232,11 @@ case: it spends the budget and it gets a record.
    is not a failure: call `wait_for_command` again with the same index. Read
    the exit code and the output of every check. A red floor makes the
    regression this round's job and pushes the queue item back; write the red
-   check in the record. Then start the agent:
+   check in the record. Then start the agent with the model "The model"
+   below picks for the task:
 
    ```
-   send_input session=<id> text="claude"
+   send_input session=<id> text="claude --model <id>"
    ```
 
    Run "Read before you type". A fresh `claude` may sit at the folder-trust
@@ -221,12 +258,10 @@ case: it spends the budget and it gets a record.
    - the floor commands to run after the work, and the rule to add one
      deterministic check for the behaviour the item closes;
    - commit on the branch, do not push, do not commit under `docs/goals/`;
-   - the report: the crew posts its note before the floor, then posts the
-     update after; a session that dies at its last step still leaves its
-     evidence. The first note carries the commit shas so far, the diff file
-     list, the tests added, and any proposal. The second note carries those
-     fields at their final values and the floor results. Each `post_note`
-     stays under 1900 bytes;
+   - the report: the prompt asks for the three notes of "The crew's notes"
+     below, by name — the plan first, a blocker if one comes, the done note
+     last; a session that dies at its last step still leaves its evidence.
+     Each `post_note` stays under 1900 bytes;
    - a session the crew spawns inside the round carries `crew:helper` with
      the round's `goal:` and `round:` labels, and the crew ends it;
    - when a decision needs a human, ask in the pane and stop.
@@ -309,6 +344,23 @@ case: it spends the budget and it gets a record.
    branch, in one commit that names the goal and the round. Then report the
    digest under "Reports".
 
+### The model
+
+Name the model when you start the crew, with `claude --model <id>`. Pick
+by the task, not by habit:
+
+| Task | Model | Why |
+|---|---|---|
+| Product code with tests; a design to implement; a round that reads a corpus | `claude-fable-5-1` (the default) | the rounds so far: $5–$38 each, floor green |
+| A document, a wording change, a README, a one-file fix with a clear diff | `claude-sonnet-5` | the work is reading and writing prose; a smaller model does it at a fraction of the cost |
+| A repair that must hold a whole subsystem in view: a red floor across many files, a migration, a rename across the tree | `claude-opus-5[1m]` | the context is the job |
+| A mechanical script: capture screenshots, run a checklist, copy figures into a table | `claude-haiku-4-5-20251001` | fast and cheap; no judgment needed |
+
+Write the model in the round record's `Sessions:` line and in the chore
+line, so the cost has a model beside it. When a crew on the smaller
+model asks for a decision the task should not need, or fails its floor
+twice, rerun the round on the default; that is the one correction.
+
 ## Monitor
 
 Hold one `wait_for_events` for the whole daemon, whatever the number of
@@ -379,6 +431,44 @@ goal folder, a waiting, stopped, or done goal included. Post each digest
 with `post_note` in one call, then print it in your pane. Send a push
 notification for an "at once" item when the human is away from the terminal.
 Do not narrate events; report the ones that need the human.
+
+### Proactive, not on request
+
+The human does not ask for a catch-up. Bring the result:
+
+- **A round closes**: the digest in the pane, and one push notification
+  under 200 characters that names the outcome and the link: `round 12
+  done: WHERE columns per filter · PR #134`. A failed round or a stop
+  rule: the same, with the reason.
+- **A PR is ready to merge** (its checks are green and the round is
+  recorded): say so once, with the link, and what merging changes for
+  the running daemon.
+- **Something needs the human** (`needs-input`, `needs-approval`, a
+  `propose`, a decision a crew asked for): a push notification at once,
+  then the pane.
+- **A day passes with work and no report**: one digest at the day's end.
+- **Nothing is running and nothing waits**: say so once, with the
+  proposals open, and hold. Do not send a notification for that.
+
+A notification is one line the human acts on; the pane carries the rest.
+Never notify for progress inside a round.
+
+### The crew's notes
+
+A crew posts three notes, not one, so you relay a blocker while it is
+still cheap:
+
+1. **Plan**, within its first minutes: the files it expects to touch, the
+   check it will add, and any assertion it believes is chartered. Read it
+   and correct the scope before the work, not after.
+2. **Blocker**, when it needs a decision, a permission, or a fact only the
+   human has. It stops after this note. Relay it at once.
+3. **Done**, under 1900 bytes: the shas, the files, the floor, the
+   assertions replaced and why, the choices where the design was silent.
+
+The prompt asks for all three by name. A crew that posts only the last one
+has still done the round; note the missing plan in the record's
+reflection, because the plan is what catches a wrong charter early.
 
 ## Direction
 
