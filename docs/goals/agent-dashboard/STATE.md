@@ -1,14 +1,19 @@
 # STATE: agent-dashboard
 
-- Status: done
-- Round: 2 of 3 in this budget (sixth budget)
+- Status: active
+- Round: 2 of 3 in this budget (sixth budget), resumed for one round
 - Rounds total: 17
 - Last floor: green (2026-09-20, round 17 after: vitest 1449 in 58 files)
-- Updated: 2026-09-20, done: PR #134 merged, v0.31.0 released and running
+- Updated: 2026-09-21, resumed for one round: a quota window vanishes
 
 ## Queue
 
-Empty. Rounds 10–17 are on PR #134.
+1. `a-window-is-never-dropped` (the human's on 2026-09-21; a chore on
+   this goal's surface, so the goal resumes for one round). The QUOTA
+   panel draws the windows of the latest posted reading, and a
+   statusline post without `five_hour` makes the Session row vanish
+   until a later post carries it. Keep every window by key with its own
+   `receivedAt`; print an older window with its own age.
 
 ## Failures
 
@@ -194,7 +199,9 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-None. Seventeen rounds, PRs #125–#134, released as v0.30.0 and v0.31.0.
+Round 18, `a-window-is-never-dropped`, then `Status: done` again.
+
+Before the resume: none. Seventeen rounds, PRs #125–#134, released as v0.30.0 and v0.31.0.
 The page is the human's design in `corpus/dashboard.pen`. Four
 proposals wait above; to reopen for one, set `Status: active` and
 write it as the queue.
