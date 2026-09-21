@@ -1,14 +1,18 @@
 # STATE: agent-dashboard
 
-- Status: done
-- Round: 3 of 3 in this budget (sixth budget)
+- Status: active
+- Round: 0 of 3 in this budget (seventh budget)
 - Rounds total: 18
 - Last floor: green (2026-09-21, round 18 after: swift test 847, Linux build, vitest 1452 in 58 files)
-- Updated: 2026-09-21, round 18 closed, done again
+- Updated: 2026-09-21, round 19 queued: the bill behind trailing lines
 
 ## Queue
 
-Empty.
+1. `the-bill-behind-trailing-lines` (found by round 18's own cost line).
+   Claude Code appends `queue-operation` lines after the `cost-state`
+   line at exit; `TranscriptBill` reads any line after `cost-state` as
+   a resume and answers "no bill yet". Only an `assistant` line after it
+   is a resume. The USAGE note's "48 sessions unbilled" is likely this.
 
 ## Failures
 
@@ -197,7 +201,7 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-None. Eighteen rounds. Seventeen rounds, PRs #125–#134, released as v0.30.0 and v0.31.0.
+Round 19, `the-bill-behind-trailing-lines`, on the same branch as round 18. Seventeen rounds, PRs #125–#134, released as v0.30.0 and v0.31.0.
 The page is the human's design in `corpus/dashboard.pen`. Four
 proposals wait above; to reopen for one, set `Status: active` and
 write it as the queue.
