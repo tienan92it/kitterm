@@ -1,19 +1,14 @@
 # STATE: agent-dashboard
 
-- Status: active
-- Round: 2 of 3 in this budget (sixth budget), resumed for one round
-- Rounds total: 17
-- Last floor: green (2026-09-20, round 17 after: vitest 1449 in 58 files)
-- Updated: 2026-09-21, resumed for one round: a quota window vanishes
+- Status: done
+- Round: 3 of 3 in this budget (sixth budget)
+- Rounds total: 18
+- Last floor: green (2026-09-21, round 18 after: swift test 847, Linux build, vitest 1452 in 58 files)
+- Updated: 2026-09-21, round 18 closed, done again
 
 ## Queue
 
-1. `a-window-is-never-dropped` (the human's on 2026-09-21; a chore on
-   this goal's surface, so the goal resumes for one round). The QUOTA
-   panel draws the windows of the latest posted reading, and a
-   statusline post without `five_hour` makes the Session row vanish
-   until a later post carries it. Keep every window by key with its own
-   `receivedAt`; print an older window with its own age.
+Empty.
 
 ## Failures
 
@@ -35,6 +30,9 @@ None.
 
 ## Done
 
+- `a-window-is-never-dropped`, round 18, `2166959`, PR #142. See
+  `rounds/018.md`. A quota window keeps its last value and time when a
+  post omits it.
 - `quota-resets-at-a-time`, round 17, `fbe03ce` on PR #134. See
   `rounds/017.md`. The reset cell prints a local clock time.
 - `a-running-session-has-a-cost`, round 16, `f97e397` on PR #134. See
@@ -199,9 +197,7 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-Round 18, `a-window-is-never-dropped`, then `Status: done` again.
-
-Before the resume: none. Seventeen rounds, PRs #125–#134, released as v0.30.0 and v0.31.0.
+None. Eighteen rounds. Seventeen rounds, PRs #125–#134, released as v0.30.0 and v0.31.0.
 The page is the human's design in `corpus/dashboard.pen`. Four
 proposals wait above; to reopen for one, set `Status: active` and
 write it as the queue.
