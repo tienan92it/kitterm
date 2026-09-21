@@ -521,6 +521,7 @@ const BLOCK_SURFACES: Array<{ block: string; stack: string[]; why: string }> = [
   { block: "quota-reset", stack: ["var(--ui-bg)"], why: "in .quota-bar, on the body" },
   { block: "quota-age", stack: ["var(--ui-bg)"], why: "in .quota-bar, on the body" },
   { block: "quota-note", stack: ["var(--ui-bg)"], why: "in .panel-body, on the body" },
+  { block: "panel-sentence", stack: ["var(--ui-bg)"], why: "in .panel-body, on the body: MODELS and LEAKS with no session" },
   { block: "yield", stack: ["var(--ui-bg)"], why: "in .panel-body, on the body" },
   { block: "yield-tile", stack: ["var(--ui-bg)"], why: "in .yield, on the body; its left edge is a mark" },
   { block: "yield-count", stack: ["var(--ui-bg)"], why: "in .yield-tile, on the body" },
