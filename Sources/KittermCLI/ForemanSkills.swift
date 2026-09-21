@@ -290,10 +290,10 @@ enum ForemanSkills {
            - the floor commands to run after the work, and the rule to add one
              deterministic check for the behaviour the item closes;
            - commit on the branch, do not push, do not commit under `docs/goals/`;
-           - the report: the prompt asks for the three notes of "The crew's notes"
-             below, by name — the plan first, a blocker if one comes, the done note
-             last; a session that dies at its last step still leaves its evidence.
-             Each `post_note` stays under 1900 bytes;
+           - the report: the prompt asks for the three notes of "The crew's notes":
+             the plan first, a blocker if one comes, the done note last; a session
+             that dies at its last step still leaves its evidence. Each `post_note`
+             stays under 1900 bytes;
            - a session the crew spawns inside the round carries `crew:helper` with
              the round's `goal:` and `round:` labels, and the crew ends it;
            - when a decision needs a human, ask in the pane and stop.
