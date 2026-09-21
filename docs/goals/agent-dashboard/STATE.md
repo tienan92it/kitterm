@@ -1,18 +1,14 @@
 # STATE: agent-dashboard
 
-- Status: active
-- Round: 0 of 3 in this budget (seventh budget)
-- Rounds total: 18
-- Last floor: green (2026-09-21, round 18 after: swift test 847, Linux build, vitest 1452 in 58 files)
-- Updated: 2026-09-21, round 19 queued: the bill behind trailing lines
+- Status: done
+- Round: 1 of 3 in this budget (seventh budget)
+- Rounds total: 19
+- Last floor: green (2026-09-21, round 19 after: swift test 851, Linux build, bench p95 2.68 ms, vitest 1452)
+- Updated: 2026-09-21, round 19 closed, done again; PR #142 ready
 
 ## Queue
 
-1. `the-bill-behind-trailing-lines` (found by round 18's own cost line).
-   Claude Code appends `queue-operation` lines after the `cost-state`
-   line at exit; `TranscriptBill` reads any line after `cost-state` as
-   a resume and answers "no bill yet". Only an `assistant` line after it
-   is a resume. The USAGE note's "48 sessions unbilled" is likely this.
+Empty.
 
 ## Failures
 
@@ -34,6 +30,9 @@ None.
 
 ## Done
 
+- `the-bill-behind-trailing-lines`, round 19, `5db4a60`, PR #142. See
+  `rounds/019.md`. A bill behind Claude Code's trailing records is a
+  bill; the rollup re-bills what it skipped: $184.49 more on 30 days.
 - `a-window-is-never-dropped`, round 18, `2166959`, PR #142. See
   `rounds/018.md`. A quota window keeps its last value and time when a
   post omits it.
@@ -201,7 +200,8 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-Round 19, `the-bill-behind-trailing-lines`, on the same branch as round 18. Seventeen rounds, PRs #125–#134, released as v0.30.0 and v0.31.0.
+None. Nineteen rounds. Merge PR #142; a release bills the two rounds
+the running daemon still refuses. Seventeen rounds, PRs #125–#134, released as v0.30.0 and v0.31.0.
 The page is the human's design in `corpus/dashboard.pen`. Four
 proposals wait above; to reopen for one, set `Status: active` and
 write it as the queue.
