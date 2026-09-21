@@ -98,18 +98,48 @@ final class TranscriptBillTests: XCTestCase {
 
     // MARK: - The other shapes a tail can have
 
+    // The records Claude Code appends after a bill, the shapes of 2026-09-21:
+    // the two `queue-operation` lines of session `37052c8b…` (`cost-state`
+    // at line 350 of 352), the `system`, `ai-title` and `agent-name` lines
+    // three other sessions carried, and the `user` line with its
+    // `attachment` of a resume the human typed into and no turn answered.
+    static let queueEnqueue = #"{"type":"queue-operation","operation":"enqueue","timestamp":"2026-09-21T10:28:21.151Z","sessionId":"e89e7ec8-9e61-4900-800f-aa72ed555d63","content":"<task-notification>done</task-notification>"}"#
+    static let queueDequeue = #"{"type":"queue-operation","operation":"dequeue","timestamp":"2026-09-21T10:28:21.161Z","sessionId":"e89e7ec8-9e61-4900-800f-aa72ed555d63"}"#
+    static let system = #"{"parentUuid":"p","isSidechain":false,"type":"system","subtype":"informational","content":"agents-md: AGENTS.md loaded","uuid":"s","timestamp":"2026-09-21T10:28:22.000Z"}"#
+    static let aiTitle = #"{"type":"ai-title","aiTitle":"a title","sessionId":"e89e7ec8-9e61-4900-800f-aa72ed555d63"}"#
+    static let agentName = #"{"type":"agent-name","agentName":"a name","sessionId":"e89e7ec8-9e61-4900-800f-aa72ed555d63"}"#
+    static let user = #"{"parentUuid":"p","isSidechain":false,"type":"user","message":{"role":"user","content":"continue"},"uuid":"u","timestamp":"2026-09-21T10:28:23.000Z","cwd":"/x","sessionId":"e89e7ec8-9e61-4900-800f-aa72ed555d63"}"#
+    static let attachment = #"{"parentUuid":"u","isSidechain":false,"type":"attachment","attachment":{"type":"queued_command","prompt":"continue"},"uuid":"t","timestamp":"2026-09-21T10:28:23.100Z"}"#
+    /// One turn after the bill: the resume that makes the bill stale.
+    static let turn = #"{"parentUuid":"u","isSidechain":false,"requestId":"req_1","type":"assistant","message":{"model":"claude-fable-5-1","id":"m","type":"message","role":"assistant","content":[{"type":"text","text":"…"}],"usage":{"input_tokens":1,"output_tokens":1}},"uuid":"a","timestamp":"2026-09-21T10:28:24.000Z","cwd":"/x","sessionId":"e89e7ec8-9e61-4900-800f-aa72ed555d63"}"#
+    /// A tool result whose object carries the assistant type key below the
+    /// top level: the gate hits, the parse says `user`.
+    static let quotingUser = #"{"parentUuid":"a","isSidechain":false,"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":"…"}]},"toolUseResult":{"type":"assistant","note":"a transcript line the tool read"},"uuid":"q","timestamp":"2026-09-21T10:28:25.000Z"}"#
+
+    private func write(_ lines: [String], as name: String) throws -> String {
+        let path = scratch.appendingPathComponent(name)
+        try lines.joined(separator: "\n").appending("\n").write(to: path, atomically: true, encoding: .utf8)
+        return path.path
+    }
+
+    private func billLines() throws -> [String] {
+        try String(contentsOfFile: Self.fixture("bill.jsonl"), encoding: .utf8)
+            .split(separator: "\n").map(String.init)
+    }
+
     /// A transcript that is still running ends in a turn, not a bill. The
-    /// same holds for a session resumed after its `cost-state` line: the
-    /// line is there, above, and it is stale, so the reader does not go
-    /// looking for it.
+    /// same holds for a session resumed after its `cost-state` line: an
+    /// `assistant` line after the bill says the bill is stale, whatever
+    /// records follow the turn, and the reader does not go looking for it.
+    /// (Round 19 of `agent-dashboard` replaced this test's resume case: it
+    /// appended a `system` line after the bill, which is a record, not a
+    /// turn, and reads as the bill now.)
     func testALastLineThatIsNotCostStateIsNoBillYet() throws {
-        let lines = try String(contentsOfFile: Self.fixture("bill.jsonl"), encoding: .utf8)
-            .split(separator: "\n", omittingEmptySubsequences: false)
-        // The bill with a turn appended after it, the way a resume does.
-        let resumed = scratch.appendingPathComponent("resumed.jsonl")
-        try (lines[0..<3] + [lines[0]]).joined(separator: "\n").appending("\n")
-            .write(to: resumed, atomically: true, encoding: .utf8)
-        XCTAssertEqual(TranscriptBill.read(path: resumed.path), .noBill(.noCostStateLine))
+        let bill = try billLines()
+        let resumed = try write(bill + [Self.user, Self.turn], as: "resumed.jsonl")
+        XCTAssertEqual(TranscriptBill.read(path: resumed), .noBill(.noCostStateLine))
+        let resumedThenRecords = try write(bill + [Self.turn, Self.queueEnqueue, Self.queueDequeue], as: "resumed-records.jsonl")
+        XCTAssertEqual(TranscriptBill.read(path: resumedThenRecords), .noBill(.noCostStateLine))
 
         let empty = scratch.appendingPathComponent("empty.jsonl")
         try Data().write(to: empty)
@@ -118,6 +148,41 @@ final class TranscriptBillTests: XCTestCase {
         let notJSON = scratch.appendingPathComponent("prose.jsonl")
         try "not a transcript\n".write(to: notJSON, atomically: true, encoding: .utf8)
         XCTAssertEqual(TranscriptBill.read(path: notJSON.path), .noBill(.noCostStateLine))
+        // Records with no bill before them, walked to the file's start.
+        let recordsOnly = try write([Self.system, Self.queueEnqueue], as: "records-only.jsonl")
+        XCTAssertEqual(TranscriptBill.read(path: recordsOnly), .noBill(.noCostStateLine))
+    }
+
+    /// Claude Code appends records after the bill at exit and on a resume
+    /// the human typed into: none is a turn, so the bill behind them stands.
+    /// Session `37052c8b…` of 2026-09-21 ended `cost-state`,
+    /// `queue-operation`, `queue-operation` and read as unbilled.
+    func testRecordsAfterTheBillDoNotHideIt() throws {
+        let bill = try billLines()
+        let trailing: [(String, [String])] = [
+            ("queue", [Self.queueEnqueue, Self.queueDequeue]),
+            ("exit", [Self.system, Self.aiTitle, Self.agentName]),
+            ("typed", [Self.user, Self.attachment]),
+            ("quoting", [Self.quotingUser]),
+        ]
+        for (name, records) in trailing {
+            let path = try write(bill + records, as: "\(name).jsonl")
+            guard case .bill(let read) = TranscriptBill.read(path: path) else {
+                return XCTFail("\(name): expected the bill behind \(records.count) records, got \(TranscriptBill.read(path: path))")
+            }
+            XCTAssertEqual(read.totalCostUSD, 2.6361237500000003, name)
+            XCTAssertEqual(read.sessionId, "e89e7ec8-9e61-4900-800f-aa72ed555d63", name)
+        }
+        // A bill alone at the end still reads as today.
+        guard case .bill(let plain) = TranscriptBill.read(path: try write(bill, as: "plain.jsonl")) else {
+            return XCTFail("expected the bill")
+        }
+        XCTAssertEqual(plain.totalCostUSD, 2.6361237500000003)
+        // The walk stops at the first bill it meets: an older bill above a
+        // newer one is never the answer.
+        let twice = try write(bill + [Self.turn] + [bill.last!.replacingOccurrences(of: "2.6361237500000003", with: "9.5")] + [Self.queueDequeue], as: "twice.jsonl")
+        guard case .bill(let newer) = TranscriptBill.read(path: twice) else { return XCTFail("expected the newer bill") }
+        XCTAssertEqual(newer.totalCostUSD, 9.5)
     }
 
     /// The reader needs the last line and the newline before it, and nothing

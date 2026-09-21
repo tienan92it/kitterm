@@ -124,6 +124,29 @@ final class ArchiveCostRouteTests: XCTestCase {
         )
     }
 
+    /// A finished session whose bill sits behind the `queue-operation`
+    /// lines Claude Code appends at exit answers the bill, not "no bill
+    /// yet" (round 19 of `agent-dashboard`; archive `F64B8927…` on the
+    /// real machine read as unbilled for that).
+    func testABillBehindTrailingLinesIsABill() async throws {
+        let transcript = stateDir.appendingPathComponent("trailing.jsonl")
+        let fixture = try String(contentsOfFile: TranscriptBillTests.fixture("bill.jsonl"), encoding: .utf8)
+        try (fixture + TranscriptBillTests.queueEnqueue + "\n" + TranscriptBillTests.queueDequeue + "\n")
+            .write(to: transcript, atomically: true, encoding: .utf8)
+        let id = try await spawn()
+        try await hook(id, transcript: transcript.path)
+        _ = try await request("POST", "/api/sessions/\(id.uuidString)/archive")
+
+        let answer = try await request("GET", "/api/archives/\(id.uuidString)/cost")
+        XCTAssertEqual(answer.status, 200, answer.body)
+        let json = try json(answer.body)
+        XCTAssertEqual(json["hasBill"] as? Bool, true, answer.body)
+        XCTAssertEqual(json["estimated"] as? Bool, false)
+        XCTAssertNil(json["reason"])
+        let bill = try XCTUnwrap(json["bill"] as? [String: Any])
+        XCTAssertEqual(bill["totalCostUSD"] as? Double, 2.6361237500000003)
+    }
+
     /// A transcript cut mid-line is "no bill yet" on the archive route too.
     func testATruncatedTranscriptIsNoBillYet() async throws {
         let id = try await spawn()

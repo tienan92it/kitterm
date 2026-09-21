@@ -147,6 +147,15 @@ public struct TokenCounts: Codable, Equatable, Sendable {
 /// of its own. A price table would make each day exact and `goal.md`
 /// excludes one.
 public struct TranscriptUsage: Equatable, Sendable {
+    /// The version of this reader and of `TranscriptBill`, kept on every
+    /// rollup record. A record read by an older version is read again once
+    /// while its transcript is on disk (`UsageRollup.refresh`), because
+    /// the fingerprint alone cannot tell a judgment the reader changed
+    /// from one the file did. Raise it when a reader's judgment of an
+    /// unchanged file changes; 2 is round 19 of `agent-dashboard`, where a
+    /// bill behind trailing `queue-operation` lines became a bill.
+    public static let readerVersion = 2
+
     /// The `sessionId` on the lines; the file's name.
     public var sessionId: String?
     /// The `cwd` on the first line that carries one.
@@ -154,7 +163,7 @@ public struct TranscriptUsage: Equatable, Sendable {
     /// Tokens per day, keyed by `DayKey.description`, in the zone the read
     /// was given.
     public var days: [String: TokenCounts]
-    /// What the last line said.
+    /// What the last deciding line said (`TranscriptBill.parseTail`).
     public var bill: TranscriptBill.Outcome
     /// Lines the reader could not use: not JSON, or an assistant line with a
     /// `usage` but no parsable `timestamp`. Reported, never guessed at.

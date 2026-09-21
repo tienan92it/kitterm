@@ -153,8 +153,14 @@ true statement and zeros would be a false one. A `cost-state` line with no model
 of zero, and answers as one. Full grade only: the bill is what a watch token exists to
 withhold.
 
-A running session has no bill and, since `agent-dashboard` round 16, an estimate. When
-the last line is not a bill, the same route walks the transcript's `"type":"assistant"`
+The bill is the last `cost-state` line when no `assistant` line follows it: Claude Code
+appends records with no usage after it (`queue-operation` at exit, `ai-title`,
+`agent-name`, `system`, a typed-in resume's `user` and `attachment` lines), and since
+`agent-dashboard` round 19 `TranscriptBill.parseTail` walks the complete lines of the
+64 KiB tail from the end, over every such record, until a `cost-state` or an `assistant`
+line decides; measured 2026-09-21 over 654 transcripts, the bill and its trailing records
+were 2686 bytes at most. A running session has no bill and, since `agent-dashboard`
+round 16, an estimate. When the last deciding line is a turn, the same route walks the transcript's `"type":"assistant"`
 lines after the last `cost-state` line, sums each request's `message.usage` per
 `message.model` (one request is several lines with one usage; the lines of a request sit
 together, so a line whose `requestId` is the previous counted one's is skipped), and
@@ -214,7 +220,12 @@ per-model split.
 
 `UsageRollup` refreshes on start and every five minutes, on its own queue and never on
 the event loop: one listing per project directory under `~/.claude/projects/`, one `stat`
-per transcript, and a full read only of a file whose size or mtime changed. The file is
+per transcript, and a full read only of a file whose size or mtime changed, or whose
+record an older reader wrote (`readerVersion` on every record, `TranscriptUsage.readerVersion`;
+round 19 of `agent-dashboard` raised it to 2 when a bill behind trailing lines became a
+bill, so a file the old reader judged unbilled is read once more and billed, while a
+record whose transcript is gone keeps what it has; a format version bump would drop the
+file whole, days of gone transcripts included). The file is
 keyed by transcript, not by day: a record holds what `TranscriptUsage` read from one
 session — the bill's total, the project its cwd resolved to, and tokens per day — and a
 day is a sum over the records at serve time. That is what makes the rollup never lose a
