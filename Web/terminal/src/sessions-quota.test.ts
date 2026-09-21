@@ -155,6 +155,104 @@ describe("quotaPanel", () => {
     expect(quotaReadAge({ receivedAt: NOW - 3 * HOUR }, NOW), "from receivedAt when the daemon sends no age").toBe("read 3h ago");
   });
 
+  it("draws both windows from one post as before: no window carries its own age", () => {
+    // Round 18: the daemon sends each window's `receivedAt` and
+    // `ageSeconds`. From one post they equal the reading's, and the output
+    // is the screenshot's, unchanged.
+    const panel = quotaPanel(
+      reading({
+        rateLimits: {
+          five_hour: { used_percentage: 24, resets_at: seconds(NOW + 49 * MIN), receivedAt: NOW - 4 * MIN, ageSeconds: 240 },
+          seven_day: { used_percentage: 27.4, resets_at: seconds(NOW + 38 * HOUR), receivedAt: NOW - 4 * MIN, ageSeconds: 240 },
+        },
+      }),
+      NOW,
+    );
+    expect(panel?.note).toBe("read 4m ago");
+    expect(panel?.bars.map((b) => [b.label, b.percent, b.reset, b.state])).toEqual([
+      ["Session (5h)", "24%", "resets today 08:49", "fresh"],
+      ["Weekly", "27%", "resets tomorrow 22:00", "fresh"],
+    ]);
+    // A window a minute older than the reading, or less, says nothing:
+    // the cell's unit is the minute.
+    const close = quotaPanel(
+      reading({
+        rateLimits: {
+          five_hour: { used_percentage: 24, resets_at: seconds(NOW + 49 * MIN), receivedAt: NOW - 5 * MIN, ageSeconds: 300 },
+          seven_day: { used_percentage: 27.4, resets_at: seconds(NOW + 38 * HOUR), receivedAt: NOW - 4 * MIN, ageSeconds: 240 },
+        },
+      }),
+      NOW,
+    );
+    expect(close?.bars[0].reset).toBe("resets today 08:49");
+  });
+
+  it("keeps the Session row when the newest post carried Weekly alone, with the Session window's own age", () => {
+    // Round 18, the human's defect: a statusline post without `five_hour`
+    // made the Session row vanish. The daemon now keeps the window at its
+    // earlier time, and the row stays with its age after the reset time.
+    // The reading is 4 minutes old (the Weekly post); the Session window
+    // is 16 minutes old.
+    const panel = quotaPanel(
+      reading({
+        rateLimits: {
+          five_hour: { used_percentage: 24, resets_at: seconds(NOW + 49 * MIN), receivedAt: NOW - 16 * MIN, ageSeconds: 960 },
+          seven_day: { used_percentage: 45, resets_at: seconds(NOW + 38 * HOUR), receivedAt: NOW - 4 * MIN, ageSeconds: 240 },
+        },
+      }),
+      NOW,
+    );
+    expect(panel?.note).toBe("read 4m ago");
+    expect(panel?.bars.map((b) => [b.label, b.percent, b.reset, b.state, b.level])).toEqual([
+      ["Session (5h)", "24%", "resets today 08:49 · read 16m ago", "fresh", "accent"],
+      ["Weekly", "45%", "resets tomorrow 22:00", "fresh", "accent"],
+    ]);
+    // The fill and the level are the window's own, whatever its age.
+    expect(panel?.bars[0]).toMatchObject({ fill: 0.24, key: "five_hour" });
+    // From a daemon before round 18, a window carries no time of its own,
+    // and the reading's is what it meant: nothing is printed.
+    expect(quotaPanel(reading(), NOW)?.bars[0].reset).toBe("resets today 08:49");
+    // A window older by an hour and more prints two units, like the reset form.
+    const old = quotaPanel(
+      reading({
+        rateLimits: {
+          five_hour: { used_percentage: 24, resets_at: seconds(NOW + 49 * MIN), receivedAt: NOW - (3 * HOUR + 12 * MIN), ageSeconds: 3 * 3600 + 12 * 60 },
+          seven_day: { used_percentage: 45, resets_at: seconds(NOW + 38 * HOUR), receivedAt: NOW - 4 * MIN, ageSeconds: 240 },
+        },
+      }),
+      NOW,
+    );
+    expect(old?.bars[0].reset).toBe("resets today 08:49 · read 3h 12m ago");
+    expect(old?.bars[0].state, "the reading is fresh, so the bar is").toBe("fresh");
+  });
+
+  it("says reset and the window's own age on a window past its reset that an older post carried", () => {
+    // Round 18 on round 14's form: the Session window reset 12 minutes
+    // ago and was read 16 minutes ago by an earlier post; the Weekly post
+    // 4 minutes ago is the reading. The cell carries the window's age,
+    // not the reading's.
+    const panel = quotaPanel(
+      reading({
+        rateLimits: {
+          five_hour: { used_percentage: 91, resets_at: seconds(NOW - 12 * MIN), receivedAt: NOW - 16 * MIN, ageSeconds: 960 },
+          seven_day: { used_percentage: 45, resets_at: seconds(NOW + 38 * HOUR), receivedAt: NOW - 4 * MIN, ageSeconds: 240 },
+        },
+      }),
+      NOW,
+    );
+    expect(panel?.bars[0]).toEqual({
+      key: "five_hour",
+      label: "Session (5h)",
+      fill: 0.91,
+      level: "accent",
+      percent: "91%",
+      reset: "reset · read 16m ago",
+      state: "reset",
+    });
+    expect(panel?.bars[1].reset).toBe("resets tomorrow 22:00");
+    expect(panel?.note).toBe("read 4m ago");
+  });
+
   it("keeps a stale reading's bars and says how old they are", () => {
     const panel = quotaPanel(reading({ receivedAt: NOW - 3 * HOUR, ageSeconds: 3 * 3600, stale: true }), NOW);
     expect(panel?.note).toBe("read 3h ago; open a Claude Code session to refresh it.");

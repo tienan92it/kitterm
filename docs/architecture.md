@@ -257,10 +257,17 @@ before, on a marked line a reinstall reads back, so the human's own statusline i
 opened and never lost. The prompt does not wait: the script exits before the connection
 opens, with the daemon up or down.
 
-`UsageLimitsStore` keeps the newest reading, whichever session posted it, because the
-quota is one account's, and writes it to `~/.kitterm/usage-limits.json` so a restart does
-not turn "read four minutes ago" into "never read". `GET /api/usage/limits` serves the
-object as posted with `ageSeconds`, and `stale` past an hour: a statusline renders only
+`UsageLimitsStore` merges every post over the windows it holds, whichever session posted
+it, because the quota is one account's and a render does not always carry every window:
+each window the post carries replaces that key at the post's time, a window the post does
+not carry keeps its last value and its own `receivedAt`, and the oldest goes past
+`maxWindows` (`UsageLimits.merging`; before round 18 of `agent-dashboard` a post replaced
+the whole reading, and a post without `five_hour` made the Session row vanish). It writes
+the windows to `~/.kitterm/usage-limits.json` (version 2, a time per window; a version-1
+file loads with every window at the file's time) so a restart does not turn "read four
+minutes ago" into "never read". `GET /api/usage/limits` serves every window held with its
+own `receivedAt` and `ageSeconds`, the newest post's at the top level, and `stale` past an
+hour on that post: a statusline renders only
 while a session is active, so a reading ages whenever the human is away from every pane,
 stays exact while no other device spends the same account, and goes wrong silently when
 one does; an hour is a fifth of the shortest window. The page draws one bar per window
@@ -268,9 +275,12 @@ as a track with a fill and the percentage beside it, the fill in the accent unde
 and the fill and the percentage in the caution colour at 80 % and over, with its reset
 as a clock time in the viewer's zone (`resets today 20:20`, `resets tomorrow 04:00`,
 `resets Sep 25, 04:00`; the band alone keeps the countdown), prints the age after the
-last bar, keeps a stale reading's fill grey, keeps a window past its reset at its last value with the fill and the
-percentage in the faint grey and `reset · read 1d 19h ago` in its reset cell (never
-`resets … ago`), and says in words when no reading has ever arrived. Full grade only
+last bar, adds a window's own age after its reset time when an older post carried it
+(`resets today 21:40 · read 12m ago`, more than a minute older than the newest post),
+keeps a stale reading's fill grey, keeps a window past its reset at its last value with
+the fill and the percentage in the faint grey and `reset · read 1d 19h ago` from its own
+age in its reset cell (never `resets … ago`), and says in words when no reading has ever
+arrived. Full grade only
 on both routes, like the bill and the rollup.
 
 ### The numbers on the page
@@ -641,7 +651,7 @@ State lives in `~/.kitterm/`. The default port is 3418.
 ├── push.json                 Web Push subscriptions, one per browser endpoint (0600)
 ├── usage-daily.json          the daily cost and token rollup, one record per transcript
 │                             read, kept after Claude Code deletes the transcript (0600)
-├── usage-limits.json         the newest quota reading a statusline posted (0600)
+├── usage-limits.json         the quota windows the statusline posted, a time per window (0600)
 ├── vapid.json                the VAPID key pair every subscription is bound to (0600)
 ├── takeover/                 live-upgrade handoff, between execv and adoption
 └── web-root                  the web bundle the running daemon pinned
