@@ -29,6 +29,19 @@ enum GoalsTemplates {
     /// The placeholder `kitterm goal new` replaces in `STATE.md`.
     static let slugPlaceholder = "<goal slug>"
 
+    /// The SHA-256 of `loop` at every version this binary or an earlier one
+    /// wrote, newest first, so `kitterm project init --refresh` rewrites a
+    /// `LOOP.md` that is still a template and refuses one a human edited.
+    /// When `loop` changes, append the hash it had before the change;
+    /// `GoalsTemplatesTests` pins that the current one is listed. Seeded
+    /// from `git log -- examples/goals/LOOP.md`: 7f30556 (#139, current),
+    /// 41b6a76 (#113) and ac20d04 (#111).
+    static let loopHistory: [String] = [
+        "b7ced93af014fa729fbad0f1cdb7fef2d9d5f4a71697be7f3aec7f7446d65d58",
+        "34d7ceab34de1916f645df4f4ab28128cd3f4fc0bfa9644428482b78f09fb6b9",
+        "d428fec3d6b8f8aca9b92e685e067943824b30039e96c8c0433bb15fec430292",
+    ]
+
     static let loop = #"""
         # LOOP
 

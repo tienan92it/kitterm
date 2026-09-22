@@ -188,8 +188,9 @@ enum KittermMain {
               kitterm mcp             # stdio MCP server: the foreman toolset
               kitterm token create <name> [--watch] | list | revoke <name>
               kitterm project add <path> [--name NAME] [--knowledge DIR] | list | remove <id>
-              kitterm project init <path> [--name NAME] [--knowledge DIR]
-                                      # write docs/goals/LOOP.md and facts.md, then add
+              kitterm project init <path> [--name NAME] [--knowledge DIR] [--refresh]
+                                      # write docs/goals/LOOP.md and facts.md, then add;
+                                      # --refresh rewrites an unedited LOOP.md from the template
               kitterm goal new <path> <slug> [--knowledge DIR]
                                       # write docs/goals/<slug>/ from the template
               kitterm goal list <path> [--knowledge DIR]
@@ -256,7 +257,9 @@ enum KittermMain {
             else the nearest .git; see AGENTS.md "Projects"). project init
             also writes the project files of the goal loop (LOOP.md and
             facts.md, from examples/goals/) into --knowledge, default
-            docs/goals, and never overwrites a file.
+            docs/goals, and never overwrites a file. With --refresh it
+            rewrites LOOP.md alone, only when the file is still one of the
+            template's versions; a file edited by hand is refused.
 
             goal new writes one goal folder, <knowledge>/<slug>/, from the
             template under examples/goals/goal/ (goal.md, plan.md, STATE.md,

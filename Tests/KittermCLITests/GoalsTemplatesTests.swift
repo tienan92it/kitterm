@@ -1,4 +1,5 @@
 import Foundation
+import KittermDaemon
 import XCTest
 
 @testable import KittermCLI
@@ -40,6 +41,19 @@ final class GoalsTemplatesTests: XCTestCase {
         for (path, contents) in GoalsTemplates.files where !path.hasSuffix(".gitkeep") {
             XCTAssertTrue(contents.hasPrefix("# "), "\(path) starts with a title")
             XCTAssertTrue(contents.hasSuffix("\n"), "\(path) ends with a newline")
+        }
+    }
+
+    /// `loopHistory` names every version of `LOOP.md` the binary ever
+    /// wrote, the current one first: a change to the template that forgets
+    /// to append the old hash fails here, before `--refresh` refuses every
+    /// project as edited by hand.
+    func testLoopHistoryHoldsTheCurrentTemplate() {
+        XCTAssertEqual(GoalsTemplates.loopHistory.first, TokenStore.hash(GoalsTemplates.loop))
+        XCTAssertEqual(Set(GoalsTemplates.loopHistory).count, GoalsTemplates.loopHistory.count, "no duplicate")
+        for hash in GoalsTemplates.loopHistory {
+            XCTAssertEqual(hash.count, 64, hash)
+            XCTAssertTrue(hash.allSatisfy { $0.isHexDigit && !$0.isUppercase }, hash)
         }
     }
 
