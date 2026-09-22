@@ -7,7 +7,7 @@ import KittermDaemon
 enum ProjectCommand {
     static let usage = """
         usage: kitterm project add <path> [--name <name>] [--knowledge <dir>] \
-        | init <path> [--name <name>] [--knowledge <dir>] | list | remove <id>
+        | init <path> [--name <name>] [--knowledge <dir>] [--refresh] | list | remove <id>
         """
 
     /// Run one subcommand. `out` takes every line meant for stdout, so a
@@ -33,24 +33,29 @@ enum ProjectCommand {
     }
 
     /// A validated `add` or `init` request: the canonical root, the name,
-    /// and the knowledge directory relative to the root.
+    /// the knowledge directory relative to the root, and whether `init`
+    /// refreshes `LOOP.md` instead of writing the package.
     private struct Target {
         let root: String
         let folder: String
         let name: String
         let knowledge: String
+        let refresh: Bool
     }
 
-    /// Parse `<path> [--name <name>] [--knowledge <dir>]` and validate every
-    /// value the same way for `add` and `init`.
+    /// Parse `<path> [--name <name>] [--knowledge <dir>] [--refresh]` and
+    /// validate every value the same way for `add` and `init`.
     private static func target(_ args: [String]) throws -> Target {
         var path: String?
         var nameOption: String?
         var knowledgeOption: String?
+        var refresh = false
         var index = 0
         while index < args.count {
             let arg = args[index]
             switch arg {
+            case "--refresh":
+                refresh = true
             case "--name", "--knowledge":
                 guard index + 1 < args.count else { throw CLIError.usage("\(arg) needs a value") }
                 if arg == "--name" { nameOption = args[index + 1] } else { knowledgeOption = args[index + 1] }
@@ -76,7 +81,12 @@ enum ProjectCommand {
         guard !name.isEmpty, name.count <= ProjectStore.maxNameLength else {
             throw CLIError.usage("name must be 1 to \(ProjectStore.maxNameLength) characters")
         }
-        return Target(root: root, folder: folder, name: name, knowledge: try knowledge(knowledgeOption))
+        if refresh, nameOption != nil {
+            throw CLIError.usage("--refresh rewrites LOOP.md only; --name has no effect with it")
+        }
+        return Target(
+            root: root, folder: folder, name: name, knowledge: try knowledge(knowledgeOption), refresh: refresh
+        )
     }
 
     /// The canonical root of an existing directory; a relative path resolves
@@ -103,7 +113,9 @@ enum ProjectCommand {
     }
 
     private static func add(_ args: [String], out: (String) -> Void) throws {
-        try register(try target(args), out: out)
+        let target = try target(args)
+        guard !target.refresh else { throw CLIError.usage("unknown option --refresh\n\(usage)") }
+        try register(target, out: out)
     }
 
     /// Append the project to `projects.json` and print its row.
@@ -124,6 +136,10 @@ enum ProjectCommand {
     /// write, so a refused command leaves the project and the file untouched.
     private static func initialize(_ args: [String], out: (String) -> Void) throws {
         let target = try target(args)
+        if target.refresh {
+            try refreshLoop(under: target.knowledge, root: target.root, out: out)
+            return
+        }
         try refuseExisting(GoalsTemplates.project.map(\.path), under: target.knowledge, root: target.root)
         if let registered = ProjectStore.load().first(where: { $0.root == target.root }) {
             throw CLIError.usage("\(target.root) is already registered as \"\(registered.id)\" (nothing written)")
@@ -132,16 +148,50 @@ enum ProjectCommand {
         try register(target, out: out)
     }
 
+    /// `init --refresh`: rewrite `<root>/<directory>/LOOP.md` from the
+    /// template when the file is byte for byte one of the template's
+    /// versions (`history`, the SHA-256 of each), and refuse everything
+    /// else: a file a human edited, a file already equal to the template, a
+    /// missing file, and a symlink on the path. `facts.md` and the goal
+    /// folders are never read or written. The project is not registered.
+    static func refreshLoop(
+        under directory: String, root: String, history: [String] = GoalsTemplates.loopHistory,
+        out: (String) -> Void
+    ) throws {
+        let path = "LOOP.md"
+        try refuseSymlinks(on: [path], under: directory, root: root)
+        let file = root + "/" + directory + "/" + path
+        guard let existing = try? Data(contentsOf: URL(fileURLWithPath: file)) else {
+            throw CLIError.usage("no \(directory)/\(path) to refresh (nothing written)")
+        }
+        let template = Data(GoalsTemplates.loop.utf8)
+        guard existing != template else {
+            throw CLIError.usage("\(path) is current (nothing written)")
+        }
+        let was = TokenStore.hash(String(decoding: existing, as: UTF8.self))
+        guard history.contains(was) else {
+            throw CLIError.usage("\(path) was edited by hand (nothing written)")
+        }
+        try template.write(to: URL(fileURLWithPath: file), options: .atomic)
+        let now = TokenStore.hash(GoalsTemplates.loop)
+        out("rewrote \(file) from template \(now.prefix(7)) (was \(was.prefix(7)))")
+    }
+
     /// Refuse when any of `paths` exists under `<root>/<directory>`, and
-    /// refuse a symlink anywhere on a path under the root: a checked-in
-    /// `docs/goals -> /elsewhere` would otherwise take the files outside
-    /// the repository.
+    /// refuse a symlink anywhere on a path under the root.
     static func refuseExisting(_ paths: [String], under directory: String, root: String) throws {
         let existing = paths.filter { FileManager.default.fileExists(atPath: root + "/" + directory + "/" + $0) }
         guard existing.isEmpty else {
             let list = existing.map { "\(directory)/\($0)" }.joined(separator: ", ")
             throw CLIError.usage("refusing to overwrite: \(list) (nothing written)")
         }
+        try refuseSymlinks(on: paths, under: directory, root: root)
+    }
+
+    /// Refuse a symlink anywhere on a path under the root: a checked-in
+    /// `docs/goals -> /elsewhere` would otherwise take the files outside
+    /// the repository.
+    static func refuseSymlinks(on paths: [String], under directory: String, root: String) throws {
         var linked: [String] = []
         for path in paths {
             let components = (directory + "/" + path).split(separator: "/").map(String.init)

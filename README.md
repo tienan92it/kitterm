@@ -84,6 +84,7 @@ Every figure follows the USAGE range. A running session shows `~$` until billed.
 - One foreman per daemon reads every `STATE.md` and spawns a crew session.
 - Each round writes one record under `rounds/`, naming its cost and PR.
 - `kitterm goal new <path> <slug>` writes a goal folder from the template.
+- `kitterm project init --refresh <path>` rewrites an unedited `LOOP.md` from the template.
 
 ## The MCP bridge
 

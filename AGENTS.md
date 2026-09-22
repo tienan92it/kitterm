@@ -172,7 +172,11 @@ crashes after the exec.
 - `examples/goals/` holds the generic templates: `LOOP.md` and `facts.md` for the
   project, and `examples/goals/goal/` for one goal folder. `kitterm project init <path>`
   writes the two project files into a project's knowledge directory and registers the
-  project; `kitterm goal new <path> <slug>` writes `docs/goals/<slug>/` from the goal
+  project; `kitterm project init --refresh <path>` rewrites `LOOP.md` alone from the
+  template when the file is byte for byte one of the template's shipped versions
+  (`GoalsTemplates.loopHistory`, the SHA-256 of each; a change to the template appends
+  the old hash, and `GoalsTemplatesTests` pins the current one) and refuses a file edited
+  by hand, a current file, and a symlink, with nothing written; `kitterm goal new <path> <slug>` writes `docs/goals/<slug>/` from the goal
   template with the slug in `STATE.md` and refuses an existing folder; `kitterm goal
   list <path>` prints each goal folder's slug and status; `kitterm goal cost <path>
   [<slug>] [--json]` prints the ledger (`GoalLedger.swift`): per goal and per round,
