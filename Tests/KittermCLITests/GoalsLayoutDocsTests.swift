@@ -64,7 +64,11 @@ final class GoalsLayoutDocsTests: XCTestCase {
     /// `docs/goals/LOOP.md`, its generic derivation `examples/goals/LOOP.md`,
     /// the `foreman-loop` skill, and the two copies the binary embeds. Each
     /// rule below is the sentence that carries it, and every source must hold
-    /// that sentence whole; only the line breaks may differ.
+    /// that sentence whole; only the line breaks may differ. `loop-and-skill`
+    /// round 1 moved the record's and the labels' rules into `LOOP.md`'s
+    /// "Parsed shapes" with their words kept, so their pins stay; the two
+    /// procedure sentences that left `LOOP.md` for the skill are
+    /// `skillRules` below.
     ///
     /// A marker of a few words proves that the words co-occur, not that the
     /// files agree: a file can hold `is Propose, not Frozen` inside a sentence
@@ -83,14 +87,6 @@ final class GoalsLayoutDocsTests: XCTestCase {
         (
             "`resumed-from` carries the pane's previous id as well as an archive id",
             "| `resumed-from` | archive id, or the id the pane held before an epoch change | foreman, on a respawn |"
-        ),
-        (
-            "the crew posts a plan, a blocker and a done note",
-            """
-            The prompt asks for the three notes of "The crew's notes": the plan
-            first, a blocker if one comes, the done note last; a session that dies
-            at its last step still leaves its evidence.
-            """
         ),
         (
             "an assertion this round must change is Chartered, and the crew replaces it",
@@ -136,14 +132,6 @@ final class GoalsLayoutDocsTests: XCTestCase {
             """
         ),
         (
-            "the bill exists only once `claude` exits, so a session a correction still needs is archived at step 6",
-            """
-            The bill exists only once `claude` exits, and archiving is what ends
-            it; a session the round still needs for a correction is archived at
-            step 6 and its line written then.
-            """
-        ),
-        (
             "the `Cost:` line's numbers have one definition and one rounding",
             """
             On the `Cost:` line, `$D` is `totalCostUSD` rounded to the cent; `Nk in`
@@ -160,6 +148,28 @@ final class GoalsLayoutDocsTests: XCTestCase {
             When `GET /api/archives/<id>/cost` answers `hasBill: false` or 404, the
             line reads `- Cost: none recorded (<reason>)` with the reason the route
             gave.
+            """
+        ),
+    ]
+
+    /// The procedure sentences `loop-and-skill` round 1 took out of
+    /// `LOOP.md`: tier 3 and 4 of `goal.md`, so the skill and its embedded
+    /// copy alone must carry them, in these words.
+    static let skillRules: [(rule: String, sentence: String)] = [
+        (
+            "the crew posts a plan, a blocker and a done note",
+            """
+            The prompt asks for the three notes of "The crew's notes": the plan
+            first, a blocker if one comes, the done note last; a session that dies
+            at its last step still leaves its evidence.
+            """
+        ),
+        (
+            "the bill exists only once `claude` exits, so a session a correction still needs is archived at step 6",
+            """
+            The bill exists only once `claude` exits, and archiving is what ends
+            it; a session the round still needs for a correction is archived at
+            step 6 and its line written then.
             """
         ),
     ]
@@ -202,6 +212,16 @@ final class GoalsLayoutDocsTests: XCTestCase {
             }
             for retired in Self.retiredWordings where oneLine.contains(Self.oneLine(retired)) {
                 XCTFail("\(name) still carries the wording a round retired: `\(retired)`")
+            }
+        }
+    }
+
+    func testTheSkillCarriesTheProcedureSentences() throws {
+        let skill = try String(contentsOf: Self.root.appendingPathComponent("examples/foreman/foreman-loop.md"), encoding: .utf8)
+        for (name, text) in [("examples/foreman/foreman-loop.md", skill), ("ForemanSkills.foremanLoop", ForemanSkills.foremanLoop)] {
+            let oneLine = Self.oneLine(text)
+            for (rule, sentence) in Self.skillRules where !oneLine.contains(Self.oneLine(sentence)) {
+                XCTFail("\(name) does not carry the rule that \(rule), in these words: \(Self.collapsed(sentence))")
             }
         }
     }
