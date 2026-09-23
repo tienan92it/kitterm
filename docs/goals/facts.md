@@ -10,6 +10,17 @@ decision moves to `docs/adr/`.
 
 ## Toolchain
 
+- A `SIGPIPE` race in a shell pipeline becomes deterministic when the
+  writer's input is larger than the pipe buffer: the writer blocks in
+  `write`, the reader exits, and the writer always takes the signal.
+  256 KiB was enough. Use it to pin a flake instead of looping
+  (2026-09-23, green-ci-again round 1).
+- `set -o pipefail` in a wrapper script reports the *writer's* status
+  when the reader exits early, so a wrapper that hands stdin on with
+  `printf ... | inner` reports 141 rather than the inner's own status.
+  A wrapper whose job is to pass a status through does not set
+  `pipefail` (2026-09-23, green-ci-again round 1).
+
 - Skipping the Linux build hides a real class of error, not just a slow
   gate. Linux Swift 6.1 rejects concurrency that the macOS toolchain
   accepts. On 2026-09-11 `agent-push` round 2 was green on macOS with 668
