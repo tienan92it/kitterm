@@ -91,7 +91,9 @@ The flow has three parts.
 
 1. **Live.** `PtySession` appends every output byte to the ring at an absolute offset.
    The daemon batches the bytes to the client (about 2 ms or 64 KB). The client counts
-   what it receives.
+   what it receives. The ring leads the socket: `GET /api/sessions/<id>/output` reads
+   the ring, so it can hold bytes no client has received yet, and the stream a client
+   assembled equals the ring only once the session is quiet.
 2. **Detached.** The socket drops. The WebSocket handler detaches the session but keeps
    reading the PTY. Output still appends to the ring. The ring rotates past 4 MiB. The
    read side never pauses.

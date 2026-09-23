@@ -135,10 +135,20 @@ final class LiveTakeoverTests: XCTestCase {
         XCTAssertFalse(logState.resync)
         XCTAssertEqual(logState.offset, counted)
 
-        // Typing continues into the same `cat`.
+        // Typing continues into the same `cat`. The line comes back twice: the
+        // tty echoes it as it is typed, and `cat` echoes it when it is
+        // scheduled. Wait for the second, the last byte the session writes,
+        // before comparing. The daemon appends to the ring first and batches
+        // the frame to the client after (`docs/architecture.md`, "Live"), so
+        // a ring read between the two sees bytes the socket has not carried
+        // yet. On a loaded runner the two echoes are two reads and two frames,
+        // and a wait for the first alone compared inside that window: 157
+        // ring bytes against 141 received, one `after-takeover\r\n` short
+        // (run 35594039620; round 3 of `green-ci-again`).
         _ = try await request("POST", "/api/sessions/\(sessionID)/input", body: Data("after-takeover\n".utf8))
-        try await waitFor("cat echoes the second line") {
-            client.received.range(of: Data("after-takeover\r\n".utf8)) != nil
+        let echoedTwice = Data("after-takeover\r\nafter-takeover\r\n".utf8)
+        try await waitFor("cat echoes the second line after the tty's echo") {
+            client.received.suffix(echoedTwice.count) == echoedTwice
         }
 
         // The stream the client assembled across the boundary is byte for
