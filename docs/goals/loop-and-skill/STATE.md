@@ -1,15 +1,17 @@
 # STATE: loop-and-skill
 
 - Status: active
-- Round: 0 of 3 in this budget (first budget)
-- Rounds total: 0
-- Last floor: none yet
-- Updated: 2026-09-23, created
+- Round: 1 of 3 in this budget (first budget)
+- Rounds total: 1
+- Last floor: green (2026-09-23, round 1 after: swift test 860, KittermCLITests 117, Linux build)
+- Updated: 2026-09-23, round 1 closed
 
 ## Queue
 
-1. `loop-holds-the-contract` (capability 1).
-2. `the-skill-holds-the-procedure` (capability 2).
+1. `the-skill-holds-the-procedure` (capability 2), and with it the
+   three leftovers of round 1: the intro's line 3, the two references
+   to the now-absent `One round` and `Reports`, and where "commit after
+   every round" belongs.
 
 ## Failures
 
@@ -21,7 +23,9 @@ None.
 
 ## Done
 
-Nothing yet.
+- `loop-holds-the-contract` (capability 1), round 1, `48f712b` and
+  `dc3f26f`. See `rounds/001.md`. `LOOP.md` 367 → 326 lines with a
+  `Parsed shapes` section; the procedure left for the skill.
 
 ## Direction
 
@@ -37,5 +41,4 @@ the machine's procedure.
 
 ## Next action
 
-Round 1, `loop-holds-the-contract`, on `loop-and-skill/round-1` from
-`origin/main`.
+Round 2, `the-skill-holds-the-procedure`, on the same branch.
