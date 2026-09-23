@@ -190,6 +190,34 @@ final class StatuslineInstallTests: XCTestCase {
         XCTAssertEqual(noLimits.stdout, "inner ran")
     }
 
+    /// The wrapper's exit status is the previous statusline's own, also when
+    /// that statusline exits without reading stdin. The hand-off is a pipe,
+    /// `printf '%s' "$input" | <inner>`; an inner that never reads leaves the
+    /// writer to take `SIGPIPE`, and the wrapper must not report that as its
+    /// own status (141). A render larger than the pipe buffer makes the
+    /// writer block until the inner has exited, so the race is lost every
+    /// time and the test is deterministic.
+    func testTheWrapperReportsTheInnerStatusWhenTheInnerReadsNoStdin() throws {
+        try #"{"statusLine":{"type":"command","command":"printf 'inner ran'"}}"#
+            .write(to: settings, atomically: true, encoding: .utf8)
+        try run(["install", "--dir", dir.path])
+        let state = dir.appendingPathComponent("state", isDirectory: true)
+        try FileManager.default.createDirectory(at: state, withIntermediateDirectories: true)
+
+        let pad = String(repeating: "x", count: 256 * 1024)
+        let render = #"{"model":{"display_name":"Fable"},"pad":""# + pad + #""}"#
+
+        let quiet = try runWrapper(stdin: render, stateDir: state)
+        XCTAssertEqual(quiet.status, 0, "the inner exited 0; the writer's SIGPIPE is not the wrapper's status")
+        XCTAssertEqual(quiet.stdout, "inner ran")
+
+        try #"{"statusLine":{"type":"command","command":"exit 7"}}"#
+            .write(to: settings, atomically: true, encoding: .utf8)
+        try run(["install", "--dir", dir.path])
+        let failing = try runWrapper(stdin: render, stateDir: state)
+        XCTAssertEqual(failing.status, 7, "a failing inner's own status comes through")
+    }
+
     // MARK: - Helpers
 
     /// Run the installed wrapper as Claude Code would: the render on stdin,

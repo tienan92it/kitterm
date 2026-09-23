@@ -266,7 +266,10 @@ and skips the post when the daemon's port file is absent, `jq` is missing, or th
 carries no `rate_limits`. Then it hands the same stdin to the command that was configured
 before, on a marked line a reinstall reads back, so the human's own statusline is never
 opened and never lost. The prompt does not wait: the script exits before the connection
-opens, with the daemon up or down.
+opens, with the daemon up or down. The wrapper's exit status is that command's own: the
+hand-off is a pipe, and a statusline that exits before it reads stdin leaves the writer to
+take `SIGPIPE`, so the wrapper sets no `pipefail` and never reports the writer's 141 as its
+own status.
 
 `UsageLimitsStore` merges every post over the windows it holds, whichever session posted
 it, because the quota is one account's and a render does not always carry every window:

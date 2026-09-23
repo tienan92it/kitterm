@@ -29,6 +29,17 @@ import Foundation
 /// daemon's own port file at render time, so the wrapper follows a daemon
 /// that moves and never carries a stale port.
 ///
+/// ## The exit status is the previous statusline's
+///
+/// The hand-off is a pipe, `printf '%s' "$input" | <inner>`. A statusline
+/// that exits before it reads stdin (one that fails to start, or one that
+/// never reads) leaves the writer to take `SIGPIPE`, which is how a pipe
+/// ends and not an error of the wrapper's. So the wrapper does not set
+/// `pipefail`: the pipeline's status is the inner's own, 0 or 127 or
+/// whatever it exited with, and never the writer's 141. `pipefail` was
+/// what made the CI runner report 141 four times in thirty runs, when the
+/// test's inner `printf` exited before the writer wrote.
+///
 /// ## The settings file
 ///
 /// `settings.json` is read as JSON and written back pretty-printed with
@@ -209,7 +220,11 @@ enum StatuslineCommand {
             # the last post or a minute passed. It is skipped when the render carries
             # no rate_limits (an API-key account, or a session before its first
             # response), when jq is missing, or when the daemon's port file is absent.
-            set -uo pipefail
+            #
+            # The exit status is the previous statusline's own. No pipefail: when
+            # that statusline exits before reading stdin, the printf that hands it
+            # the input takes SIGPIPE, and that is not the wrapper's failure.
+            set -u
             input=$(cat)
 
             limits=$(printf '%s' "$input" | jq -c '.rate_limits // empty' 2>/dev/null)
