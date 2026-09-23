@@ -1,7 +1,8 @@
 # LOOP
 
-The procedure, the authority, the budget, and the stop rules for every goal
-loop in this repository. This file changes when the process changes.
+The contract for every goal loop in this repository: the authority tiers,
+the parsed shapes, the budget, and the stop rules. This file changes when
+the process changes.
 `STATE.md` changes after every round.
 
 The repository is the control plane. The package is small on purpose.
@@ -61,10 +62,11 @@ one line in `<knowledge directory>/CHORES.md`:
 Two rules keep the two apart:
 
 - A chore that belongs to a done goal's surface **resumes that goal**
-  for one round: set `Status: active`, queue the item, run "One round",
-  write the record, set `Status: done` again. It gets the goal's record
-  because the goal's corpus is the contract it must keep. Do not create
-  a second goal for the same surface.
+  for one round: set `Status: active`, queue the item, run "One round"
+  of the foreman's own procedure, in its skill, write the record, set
+  `Status: done` again. It gets the goal's record because the goal's
+  corpus is the contract it must keep. Do not create a second goal for
+  the same surface.
 - A chore that needs a second round is not a chore. Stop, write it up as
   a goal, and tell the human.
 
@@ -281,14 +283,15 @@ plane; the foreman rebuilds its view from them and from the daemon.
    sessions across all projects. A review session and a crew's helper count
    toward the cap of three. Start the runnable goal with the oldest
    `Updated` date first.
-3. **Delegate.** Run "One round" for that goal. The crew session does the
-   work. The foreman reads, routes, verifies, and records.
+3. **Delegate.** Run "One round" of the foreman's own procedure, in its
+   skill, for that goal. The crew session does the work. The foreman
+   reads, routes, verifies, and records.
 4. **Monitor.** Hold one `wait_for_events` for the whole daemon. On each
    scan compare `heldSince` with now: archive a crew session that sits at an
    empty prompt one hour past `completed`. Respawn a crew once after an
    `epoch` change; when the respawn does not restore the round, record a
    killed attempt (see "Budget") and stop the goal.
-5. **Report.** See "Reports".
+5. **Report.** See "Reports" of the foreman's own procedure, in its skill.
 
 ## Direction
 

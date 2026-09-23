@@ -37,7 +37,7 @@ enum GoalsTemplates {
     /// from `git log -- examples/goals/LOOP.md`: `loop-and-skill` round 1
     /// (current), 7f30556 (#139), 41b6a76 (#113) and ac20d04 (#111).
     static let loopHistory: [String] = [
-        "5b29ffc3d2da59061ce105765a88d2dad5557f3bf49397055aad501664c2cf8a",
+        "68a25c51fe74dc68c28c4f906fd6e93fbe8a126b283172cbc46ab0c4e9a9630e",
         "b7ced93af014fa729fbad0f1cdb7fef2d9d5f4a71697be7f3aec7f7446d65d58",
         "34d7ceab34de1916f645df4f4ab28128cd3f4fc0bfa9644428482b78f09fb6b9",
         "d428fec3d6b8f8aca9b92e685e067943824b30039e96c8c0433bb15fec430292",
@@ -46,8 +46,9 @@ enum GoalsTemplates {
     static let loop = #"""
         # LOOP
 
-        The procedure, the authority, the budget, and the stop rules for every goal
-        loop in this repository. This file changes when the process changes.
+        The contract for every goal loop in this repository: the authority tiers,
+        the parsed shapes, the budget, and the stop rules. This file changes when
+        the process changes.
         `STATE.md` changes after every round.
 
         The repository is the control plane. The package is small on purpose.
@@ -107,10 +108,11 @@ enum GoalsTemplates {
         Two rules keep the two apart:
 
         - A chore that belongs to a done goal's surface **resumes that goal**
-          for one round: set `Status: active`, queue the item, run "One round",
-          write the record, set `Status: done` again. It gets the goal's record
-          because the goal's corpus is the contract it must keep. Do not create
-          a second goal for the same surface.
+          for one round: set `Status: active`, queue the item, run "One round"
+          of the foreman's own procedure, in its skill, write the record, set
+          `Status: done` again. It gets the goal's record because the goal's
+          corpus is the contract it must keep. Do not create a second goal for
+          the same surface.
         - A chore that needs a second round is not a chore. Stop, write it up as
           a goal, and tell the human.
 
@@ -327,14 +329,15 @@ enum GoalsTemplates {
            sessions across all projects. A review session and a crew's helper count
            toward the cap of three. Start the runnable goal with the oldest
            `Updated` date first.
-        3. **Delegate.** Run "One round" for that goal. The crew session does the
-           work. The foreman reads, routes, verifies, and records.
+        3. **Delegate.** Run "One round" of the foreman's own procedure, in its
+           skill, for that goal. The crew session does the work. The foreman
+           reads, routes, verifies, and records.
         4. **Monitor.** Hold one `wait_for_events` for the whole daemon. On each
            scan compare `heldSince` with now: archive a crew session that sits at an
            empty prompt one hour past `completed`. Respawn a crew once after an
            `epoch` change; when the respawn does not restore the round, record a
            killed attempt (see "Budget") and stop the goal.
-        5. **Report.** See "Reports".
+        5. **Report.** See "Reports" of the foreman's own procedure, in its skill.
 
         ## Direction
 
