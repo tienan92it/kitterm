@@ -10,15 +10,21 @@ public enum PullRequestBase {
     /// The base for a GitHub remote URL in any form `git remote get-url`
     /// prints — `git@github.com:owner/repo.git`,
     /// `ssh://git@github.com/owner/repo.git`, `https://github.com/owner/repo`
-    /// with or without `.git` — else nil.
+    /// with or without `.git` — else nil. The host may carry an SSH config
+    /// alias after `github.com`, `git@github.com-work:owner/repo.git`, the
+    /// way a multi-account setup names a `Host` in `~/.ssh/config`: the
+    /// alias is an SSH host name, not a web host, so it never reaches the
+    /// base. An alias holds `[A-Za-z0-9_-]` and never `.`, because
+    /// `github.com.evil.example` is another host.
     public static func parse(remote: String) -> String? {
         let trimmed = remote.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let host = trimmed.range(of: "github.com") else { return nil }
         // What precedes the host is a scheme or a user, `https://`,
-        // `ssh://git@`, `git@`; what follows is `:` or `/` then the path.
+        // `ssh://git@`, `git@`; what follows is the alias, if any, then
+        // `:` or `/` then the path.
         let before = trimmed[..<host.lowerBound]
         guard before.isEmpty || before.hasSuffix("@") || before.hasSuffix("://") else { return nil }
-        let after = trimmed[host.upperBound...]
+        let after = trimmed[host.upperBound...].drop(while: isAliasCharacter)
         guard let separator = after.first, separator == ":" || separator == "/" else { return nil }
         var path = after.dropFirst()
         if path.hasSuffix("/") { path = path.dropLast() }
@@ -30,6 +36,10 @@ public enum PullRequestBase {
 
     private static func isNameCharacter(_ c: Character) -> Bool {
         c.isASCII && (c.isLetter || c.isNumber || c == "-" || c == "_" || c == ".")
+    }
+
+    private static func isAliasCharacter(_ c: Character) -> Bool {
+        c.isASCII && (c.isLetter || c.isNumber || c == "-" || c == "_")
     }
 }
 

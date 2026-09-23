@@ -348,8 +348,9 @@ and a goal's `r6/3` moved to the name's tooltip. `PR #124` is a link wherever th
 prints a pull request number: `GET /api/projects` carries `pullRequestBase`, read off
 each root's `origin` remote by `RemoteOrigins` (one `git remote get-url origin` per
 root every five minutes, on its own queue) and parsed by `PullRequestBase` for the
-three GitHub forms; a remote off GitHub, or none, carries no field and the page prints
-the number as text.
+three GitHub forms, with an SSH config host alias after `github.com` allowed
+(`git@github.com-work:owner/repo.git`; `[A-Za-z0-9_-]`, no `.`); a remote off GitHub,
+or none, carries no field and the page prints the number as text.
 
 ### What the spend bought
 

@@ -22,6 +22,20 @@ final class PullRequestBaseTests: XCTestCase {
         XCTAssertEqual(PullRequestBase.parse(remote: "git@github.com:tienan92it/kitterm"), base)
     }
 
+    /// A multi-account SSH setup names a `Host` alias in `~/.ssh/config`,
+    /// so the remote reads `git@github.com-tienan92it:nghenhan/nghenhan-mt5.git`;
+    /// the alias is the SSH host, not the web host, and the base is the
+    /// same `https://github.com/` one.
+    func testAnSSHConfigHostAliasParsesToTheSameBase() {
+        let base = "https://github.com/nghenhan/nghenhan-mt5/pull/"
+        XCTAssertEqual(PullRequestBase.parse(remote: "git@github.com-tienan92it:nghenhan/nghenhan-mt5.git\n"), base)
+        XCTAssertEqual(PullRequestBase.parse(remote: "git@github.com-work:nghenhan/nghenhan-mt5.git"), base)
+        XCTAssertEqual(PullRequestBase.parse(remote: "git@github.com_2:nghenhan/nghenhan-mt5"), base)
+        XCTAssertEqual(PullRequestBase.parse(remote: "ssh://git@github.comX/nghenhan/nghenhan-mt5.git"), base)
+        XCTAssertNil(PullRequestBase.parse(remote: "git@github.comX"), "an alias with no separator and no path")
+        XCTAssertNil(PullRequestBase.parse(remote: "git@github.com-work"), "an alias with no separator and no path")
+    }
+
     func testARemoteOffGitHubOrAMalformedOneYieldsNothing() {
         XCTAssertNil(PullRequestBase.parse(remote: "https://gitlab.com/owner/repo.git"))
         XCTAssertNil(PullRequestBase.parse(remote: "git@bitbucket.org:owner/repo.git"))
@@ -31,6 +45,9 @@ final class PullRequestBaseTests: XCTestCase {
         XCTAssertNil(PullRequestBase.parse(remote: "https://github.com/owner/repo/extra.git"), "three components")
         XCTAssertNil(PullRequestBase.parse(remote: "https://notgithub.com/owner/repo.git"), "the host is a suffix, not the host")
         XCTAssertNil(PullRequestBase.parse(remote: "https://github.com.evil.test/owner/repo.git"), "the host is a prefix, not the host")
+        XCTAssertNil(PullRequestBase.parse(remote: "git@github.com.evil.example:owner/repo.git"), "a dot after the prefix is another host, not an alias")
+        XCTAssertNil(PullRequestBase.parse(remote: "git@github.com-work.evil.test:owner/repo.git"), "an alias never holds a dot")
+        XCTAssertNil(PullRequestBase.parse(remote: "git@gitlab.com-work:owner/repo.git"), "an alias on another host")
     }
 
     func testTheOriginsAreReadOncePerRootPerInterval() {
