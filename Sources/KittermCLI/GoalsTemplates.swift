@@ -34,9 +34,12 @@ enum GoalsTemplates {
     /// `LOOP.md` that is still a template and refuses one a human edited.
     /// When `loop` changes, append the hash it had before the change;
     /// `GoalsTemplatesTests` pins that the current one is listed. Seeded
-    /// from `git log -- examples/goals/LOOP.md`: 7f30556 (#139, current),
-    /// 41b6a76 (#113) and ac20d04 (#111).
+    /// from `git log -- examples/goals/LOOP.md`: `loop-and-skill` round 2
+    /// (current), round 1 (a5592bd), 7f30556 (#139), 41b6a76 (#113) and
+    /// ac20d04 (#111).
     static let loopHistory: [String] = [
+        "092652221ab14e27f5bce545447cc6b237dfb8b3ddee95915f5e0f0040b4459c",
+        "68a25c51fe74dc68c28c4f906fd6e93fbe8a126b283172cbc46ab0c4e9a9630e",
         "b7ced93af014fa729fbad0f1cdb7fef2d9d5f4a71697be7f3aec7f7446d65d58",
         "34d7ceab34de1916f645df4f4ab28128cd3f4fc0bfa9644428482b78f09fb6b9",
         "d428fec3d6b8f8aca9b92e685e067943824b30039e96c8c0433bb15fec430292",
@@ -45,8 +48,9 @@ enum GoalsTemplates {
     static let loop = #"""
         # LOOP
 
-        The procedure, the authority, the budget, and the stop rules for every goal
-        loop in this repository. This file changes when the process changes.
+        The contract for every goal loop in this repository: the authority tiers,
+        the parsed shapes, the budget, and the stop rules. This file changes when
+        the process changes.
         `STATE.md` changes after every round.
 
         The repository is the control plane. The package is small on purpose.
@@ -106,10 +110,11 @@ enum GoalsTemplates {
         Two rules keep the two apart:
 
         - A chore that belongs to a done goal's surface **resumes that goal**
-          for one round: set `Status: active`, queue the item, run "One round",
-          write the record, set `Status: done` again. It gets the goal's record
-          because the goal's corpus is the contract it must keep. Do not create
-          a second goal for the same surface.
+          for one round: set `Status: active`, queue the item, run "One round"
+          of the foreman's own procedure, in its skill, write the record, set
+          `Status: done` again. It gets the goal's record because the goal's
+          corpus is the contract it must keep. Do not create a second goal for
+          the same surface.
         - A chore that needs a second round is not a chore. Stop, write it up as
           a goal, and tell the human.
 
@@ -143,221 +148,69 @@ enum GoalsTemplates {
         charters it to change. It cannot delete or weaken the evidence that decides
         whether the product improved.
 
-        ## Budget
+        ## Parsed shapes
 
-        - Three rounds per direction check. `STATE.md` counts them.
-        - One correction per round. A second failure ends the round as failed.
-        - A round attempt the host machine kills does not spend the budget and
-          writes no round record. Note it in `STATE.md` under `Failures` as
-          `attempt killed: <ISO date>, <what died>`. Leave the round counter and
-          the queue item where they are. Run the round again. A failed round is
-          the other case: it spends the budget and it gets a record.
-        - One crew session per round, plus review sessions when the round's
-          capability touches `<a file where a regression costs the most>`.
+        The product reads the package: the daemon for
+        `GET /api/projects/<id>/knowledge` and the fleet view, the CLI for
+        `kitterm goal list` and `kitterm goal cost`, the daemon and the MCP bridge
+        for the labels. Every shape below names the parser that reads it, so a
+        reader knows why the shape is fixed. A line that drifts from its shape is
+        not an error: the parser leaves the field absent, and the product no
+        longer sees it.
 
-        ## One round
+        ### `STATE.md`
 
-        1. **Read.** Read `goal.md`, `facts.md`, `plan.md`, `STATE.md`, and the
-           decisions `STATE.md` cites. Take the head of the queue. Stop when the
-           budget is spent.
-        2. **Verify the world.** Spawn one crew session in the repository root with
-           labels `crew:<goal>`, `goal:<slug>`, `round:<n>`, `task:<queue-item>`,
-           and no input. Run the floor from `plan.md` in the shell with
-           `send_input` and `wait_for_command`. A red floor makes the regression
-           this round's job and pushes the queue item back. Then send
-           `claude --model <id>` with the model "The model" below picks for the
-           task, and read the screen.
-        3. **Send one request.** Type the round prompt in one `send_input`: the
-           queue item, its proof from `plan.md`, the facts that apply, the frozen
-           and propose paths, the corpus request it serves, the rule to add a
-           deterministic check, and two rules for the crew's own sessions. The
-           prompt asks for the three notes of "The crew's notes": the plan first,
-           a blocker if one comes, the done note last; a session that dies at its
-           last step still leaves its evidence. A session
-           the crew spawns inside the round carries `crew:helper` with the round's
-           `goal:` and `round:` labels, and the crew ends it. From here the foreman
-           loop applies: read before you type, wait on `wait_for_events`, route
-           `needs-input` and `needs-approval` to the human, never answer for them.
-        4. **Collect.** On `completed`, read the last command output and the screen.
-           Run the floor again. Read the diff. Collect the visible proof the crew
-           posted with `post_note`: a screenshot path, a test name, a URL. Archive
-           the session, then read `GET /api/archives/<id>/cost` for every session
-           the record's `Sessions:` line names and write one `- Cost:` line per
-           session, in that order, under the record's header. The bill exists only
-           once `claude` exits, and archiving is what ends it; a session the round
-           still needs for a correction is archived at step 6 and its line written
-           then.
-        5. **Classify the largest gap.** One class per round:
-           - **world**: the environment, the build, the toolchain.
-           - **domain**: the product's own logic.
-           - **contract**: an interface between two layers (route, protocol, type).
-           - **runtime**: a crash, a timeout, a resource limit.
-           - **steering**: the prompt or the plan misled the crew.
-           - **surface**: the effect happened; the proof is not visible.
-           - **harness**: the loop's own tools, skills, or this file.
-           Write the class and its evidence in the round record. A round with no
-           gap records `none`.
-        6. **Close or record.** Floor green and the diff holds the check: mark the
-           item done, archive the crew session, record the archive id. Otherwise
-           record the gap, send one correction, and count it inside this round.
-        7. **Reflect.** Answer one question in the record: what cost time that a
-           rule or a check could prevent? Append a fact to `facts.md`. Propose a
-           rule change to this file when the answer is a procedure.
-        8. **Update `STATE.md`.** Queue, failures, next action, round counter,
-           budget left.
+        `KnowledgeSummary` parses `STATE.md` for `GET /api/projects/<id>/knowledge`,
+        the fleet view, and `kitterm goal list`. The shape:
 
-        ### The model
+        ```markdown
+        # STATE: <slug>
 
-        Name the model when the crew starts, with `claude --model <id>`. Pick
-        by the task, not by habit:
+        - Status: active | waiting | stopped | done
+        - Round: <n> of <m> in this budget (<ordinal> budget)
+        - Rounds total: <n>
+        - Last floor: green | red (<check>) (<ISO date>, round <n>)
+        - Updated: <ISO date>
 
-        | Task | Model | Why |
-        |---|---|---|
-        | Product code with tests; a design to implement; a round that reads a corpus | `claude-fable-5-1` (the default) | the rounds so far: $5–$38 each, floor green |
-        | A document, a wording change, a README, a one-file fix with a clear diff | `claude-sonnet-5` | the work is reading and writing prose; a smaller model does it at a fraction of the cost |
-        | A repair that must hold a whole subsystem in view: a red floor across many files, a migration, a rename across the tree | `claude-opus-5[1m]` | the context is the job |
-        | A mechanical script: capture screenshots, run a checklist, copy figures into a table | `claude-haiku-4-5-20251001` | fast and cheap; no judgment needed |
-
-        Write the model in the round record's `Sessions:` line and in the
-        chore line, so the cost has a model beside it. When a crew on the
-        smaller model asks for a decision the task should not need, or fails
-        its floor twice, rerun the round on the default; that is the one
-        correction.
-
-        ## One foreman for every project
-
-        The foreman keeps no state of its own. The repositories are the control
-        plane; the foreman rebuilds its view from them and from the daemon.
-
-        1. **Scan.** On start, and after every event batch, list the projects with
-           `list_projects`. For each project read every
-           `<knowledge directory>/<slug>/STATE.md`. A project with no goal folder
-           is reported once as "no goal" and skipped.
-           The folder name is the goal's slug; the `goal:` label carries it. Match
-           a live session to its goal by the `goal:` and `round:` labels, never by
-           id. The round's own session is the one with `crew:<slug>`; a
-           `crew:helper` session beside it is a fixture the crew made. A round is
-           open while a live session carries `crew:<slug>`; a `crew:helper` session
-           does not hold the round open.
-        2. **Schedule.** A goal is runnable when its `Status` is `active`, its
-           budget has rounds left, no round is open, and no proposal blocks the next
-           action. `Status` is one of `active`, `waiting`, `stopped`, `done`; only
-           `active` runs. Run at most one round per goal and at most three crew
-           sessions across all projects. A review session and a crew's helper count
-           toward the cap of three. Start the runnable goal with the oldest
-           `Updated` date first.
-        3. **Delegate.** Run "One round" for that goal. The crew session does the
-           work. The foreman reads, routes, verifies, and records.
-        4. **Monitor.** Hold one `wait_for_events` for the whole daemon. On each
-           scan compare `heldSince` with now: archive a crew session that sits at an
-           empty prompt one hour past `completed`. Respawn a crew once after an
-           `epoch` change; when the respawn does not restore the round, record a
-           killed attempt (see "Budget") and stop the goal.
-        5. **Report.** See "Reports".
-
-        ## Reports
-
-        The foreman reports in three cases. The shape is the same in each case:
-        what needs the human first, then one block per project.
-
-        | When | What |
-        |---|---|
-        | At once | `needs-input`, `needs-approval`, a `propose` decision, a stop rule, a failed round. Name the project, the goal, the round, and link the pane. |
-        | After every round | One digest. |
-        | When the human asks "status" | One digest. |
-
-        Digest shape:
-
-        ```
-        Needs you
-        - <project> / <goal> round <n>: <what>, <link>
-
-        <project> — <goal title>
-        - round <n> of <budget>, status <active|waiting|stopped|done>
-        - last floor: green | red (<check>)
-        - next: <next action>
-        - proposals: <path>: <what>, or none
+        ## Queue
+        ## Failures
+        ## Proposals waiting on the human
+        ## Done
+        ## Next action
         ```
 
-        Send a push notification for an "at once" item when the human is away from
-        the terminal. Do not narrate events; report the ones that need the human.
+        The card parses the `- Status:`, `- Round: N of M`, and `## Next action`
+        lines, so their shape is an interface. Keep the five bullets at the top
+        and the five sections in this order. What each parser takes:
 
-        ### Proactive, not on request
+        - `- Status:`: the value is the goal's status (`KnowledgeSummary.status`);
+          `kitterm goal list` prints it and the route orders the goals by it
+          (`KnowledgeSummary.isOrderedBefore`).
+        - `- Round: N of M`: `N` and `M` are the leading digits of the first and
+          the third word, so `3 of 3, budget spent` keeps the budget
+          (`KnowledgeSummary.roundCounter`).
+        - `- Last floor:`: the value, whole (`KnowledgeSummary.lastFloor`).
+        - `- Rounds total:` and `- Updated:`: no parser reads them. The template
+          writes them, `GoalsLayoutDocsTests` pins the five bullets and the five
+          sections, and "One foreman for every project" orders the schedule by
+          `Updated`.
+        - `## Next action`: the first paragraph, capped at 512 bytes
+          (`KnowledgeSummary.nextAction`).
+        - `## Proposals waiting on the human`: the top-level bullets are counted
+          (`KnowledgeSummary.proposals`); the fleet view marks the goal
+          `[needs you]` while the count is above zero.
+        - `## Queue`, `## Failures`, `## Done`: the goal's tasks, in that order,
+          with the states `pending`, `failed`, `done` (`KnowledgeSummary.tasks`).
+          An item is a column-0 `- `, `* ` or `N. ` line; an indented line is a
+          continuation. Its slugs are the backticked kebab words on its first line
+          before the first comma, so ``- `a` (1) and `b` (2), round 1, `9784fd2`.``
+          yields `a` and `b` and not the sha; `round N` and `PR #N` come from the
+          whole first line. Prose under a heading (`None.`) names no task. A slug
+          in two sections keeps the state a reader needs most, `failed` over
+          `pending` over `done`, at its first position. The fleet view lists every
+          task that is not done and the first two done ones under the goal.
 
-        The human does not ask for a catch-up. The foreman brings the result:
-
-        - **A round closes**: the digest in the pane, and one push notification
-          under 200 characters that names the outcome and the link: `round 12
-          done: WHERE columns per filter · PR #134`. A failed round or a stop
-          rule: the same, with the reason.
-        - **A PR is ready to merge** (its checks are green and the round is
-          recorded): say so once, with the link, and what merging changes for
-          the running daemon.
-        - **Something needs the human** (`needs-input`, `needs-approval`, a
-          `propose`, a decision a crew asked for): a push notification at once,
-          then the pane.
-        - **A day passes with work and no report**: one digest at the day's end.
-        - **Nothing is running and nothing waits**: say so once, with the
-          proposals open, and hold. Do not send a notification for that.
-
-        A notification is one line the human acts on; the pane carries the
-        rest. Never notify for progress inside a round.
-
-        ### The crew's notes
-
-        A crew posts three notes, not one, so the foreman relays a blocker
-        while it is still cheap:
-
-        1. **Plan**, within its first minutes: the files it expects to touch,
-           the check it will add, and any assertion it believes is chartered.
-           The foreman reads it and corrects the scope before the work, not
-           after.
-        2. **Blocker**, when it needs a decision, a permission, or a fact only
-           the human has. It stops after this note. The foreman relays it at
-           once.
-        3. **Done**, under 1900 bytes: the shas, the files, the floor, the
-           assertions replaced and why, the choices where the design was silent.
-
-        The prompt asks for all three by name. A crew that posts only the last
-        one has still done the round; the foreman notes the missing plan in the
-        record's reflection, because the plan is what catches a wrong charter
-        early.
-
-        ## Direction
-
-        After a goal spends its budget the foreman sets its `Status` to `waiting`,
-        reports, and keeps the other goals running. At every direction check the
-        human prunes `facts.md` and the goal's open proposals. The human answers
-        per goal:
-
-        - **continue**: the foreman resets `Round: 0 of 3 in this budget (<ordinal>
-          budget)`, sets `Status: active`, and notes the decision in `STATE.md`.
-        - **redirect**: the human edits `goal.md` or `plan.md`, then says continue.
-        - **stop**: the foreman sets `Status: stopped` and archives or ends the
-          goal's crew sessions. The folder stays where it is.
-        - **done**: when the completion condition in `goal.md` holds, the foreman
-          sets `Status: done`, notes the date, and stops scheduling the goal. The
-          folder stays; the human can reopen it with `Status: active` and a new
-          queue at any time.
-        - **new goal**: the human names a slug. The foreman creates
-          `<knowledge directory>/<slug>/` from the template
-          (`kitterm goal new <path> <slug>`), and the human writes `goal.md`,
-          `plan.md`, and the corpus before the first round.
-
-        ## Stop rules
-
-        The foreman stops one goal and tells the human when:
-
-        - the budget is spent;
-        - a repair needs a change under Frozen;
-        - the floor is red at the start of two rounds in a row;
-        - a failure does not reproduce in a fresh session;
-        - the crew session reports `exited` with a non-zero code twice;
-        - the daemon `epoch` changes and the crew is gone (respawn once, then stop).
-
-        A stopped goal does not stop the foreman. The other goals keep running.
-
-        ## Round record
+        ### The round record
 
         Write `<slug>/rounds/NNN.md` with this shape. Three-digit number, one file per
         round, never rewritten after the round ends.
@@ -403,7 +256,30 @@ enum GoalsTemplates {
         line reads `- Cost: none recorded (<reason>)` with the reason the route
         gave.
 
-        ## Labels
+        Archive the session, then read `GET /api/archives/<id>/cost` for every
+        session the record's `Sessions:` line names and write one `- Cost:` line
+        per session, in that order, under the record's header.
+
+        Two parsers read the record:
+
+        - `KnowledgeSummary.roundRecord`, for `rounds` of
+          `GET /api/projects/<id>/knowledge` and the fleet view: the file name
+          `NNN.md` is the round number; the queue item is what follows
+          `# Round NNN:`; the day is the `YYYY-MM-DD` the `- Started:` line begins
+          with, and a record with no day is in no range of the fleet view; the cost
+          and the duration sum the header's `- Cost:` lines, the lines before the
+          first `## ` heading, a `none recorded` line skipped
+          (`KnowledgeSummary.costLine`); the pull request is the first `PR #N` on
+          the `- Result:` line, so a result given as a sha names none; the
+          correction is a `## Correction` heading.
+        - `kitterm goal cost` (`GoalLedger`): the ids on the `- Sessions:` line
+          and after `Archives:`; the sha on the `- Base:` line and the sha or the
+          `PR #N` after `Result:`; the `- Cost:` line at the same position as each
+          session the `Sessions:` line names, read when the session's archived
+          transcript holds no bill; the first `N new` under `## Floor` as the
+          tests added; the first word under `## Decision` as the decision.
+
+        ### Labels
 
         | Key | Value | Set by |
         |---|---|---|
@@ -412,6 +288,95 @@ enum GoalsTemplates {
         | `round` | round number | foreman |
         | `task` | queue item slug | foreman |
         | `resumed-from` | archive id, or the id the pane held before an epoch change | foreman, on a respawn |
+
+        Filter the fleet by any label: `list_sessions label="goal:<slug>"`.
+        `SessionLabels` names the keys the loop reserves and passes them through
+        on every session row; the fleet view joins a live session to its goal
+        folder by `goal:<slug>` and marks the queue item `[working]` by
+        `task:<slug>` under it. A session the crew spawns inside the round
+        carries `crew:helper` with the round's `goal:` and `round:` labels, and
+        the crew ends it.
+
+        ## Budget
+
+        - Three rounds per direction check. `STATE.md` counts them.
+        - One correction per round. A second failure ends the round as failed.
+        - A round attempt the host machine kills does not spend the budget and
+          writes no round record. Note it in `STATE.md` under `Failures` as
+          `attempt killed: <ISO date>, <what died>`. Leave the round counter and
+          the queue item where they are. Run the round again. A failed round is
+          the other case: it spends the budget and it gets a record.
+        - One crew session per round, plus review sessions when the round's
+          capability touches `<a file where a regression costs the most>`.
+        - Commit after every round. The record, the state, and any fact go into
+          one commit on the goal's branch before the foreman reports the digest. A
+          record that sits uncommitted is not written.
+
+        ## One foreman for every project
+
+        The foreman keeps no state of its own. The repositories are the control
+        plane; the foreman rebuilds its view from them and from the daemon.
+
+        1. **Scan.** On start, and after every event batch, list the projects with
+           `list_projects`. For each project read every
+           `<knowledge directory>/<slug>/STATE.md`. A project with no goal folder
+           is reported once as "no goal" and skipped.
+           The folder name is the goal's slug; the `goal:` label carries it. Match
+           a live session to its goal by the `goal:` and `round:` labels, never by
+           id. The round's own session is the one with `crew:<slug>`; a
+           `crew:helper` session beside it is a fixture the crew made. A round is
+           open while a live session carries `crew:<slug>`; a `crew:helper` session
+           does not hold the round open.
+        2. **Schedule.** A goal is runnable when its `Status` is `active`, its
+           budget has rounds left, no round is open, and no proposal blocks the next
+           action. `Status` is one of `active`, `waiting`, `stopped`, `done`; only
+           `active` runs. Run at most one round per goal and at most three crew
+           sessions across all projects. A review session and a crew's helper count
+           toward the cap of three. Start the runnable goal with the oldest
+           `Updated` date first.
+        3. **Delegate.** Run "One round" of the foreman's own procedure, in its
+           skill, for that goal. The crew session does the work. The foreman
+           reads, routes, verifies, and records.
+        4. **Monitor.** Hold one `wait_for_events` for the whole daemon. On each
+           scan compare `heldSince` with now: archive a crew session that sits at an
+           empty prompt one hour past `completed`. Respawn a crew once after an
+           `epoch` change; when the respawn does not restore the round, record a
+           killed attempt (see "Budget") and stop the goal.
+        5. **Report.** See "Reports" of the foreman's own procedure, in its skill.
+
+        ## Direction
+
+        After a goal spends its budget the foreman sets its `Status` to `waiting`,
+        reports, and keeps the other goals running. At every direction check the
+        human prunes `facts.md` and the goal's open proposals. The human answers
+        per goal:
+
+        - **continue**: the foreman resets `Round: 0 of 3 in this budget (<ordinal>
+          budget)`, sets `Status: active`, and notes the decision in `STATE.md`.
+        - **redirect**: the human edits `goal.md` or `plan.md`, then says continue.
+        - **stop**: the foreman sets `Status: stopped` and archives or ends the
+          goal's crew sessions. The folder stays where it is.
+        - **done**: when the completion condition in `goal.md` holds, the foreman
+          sets `Status: done`, notes the date, and stops scheduling the goal. The
+          folder stays; the human can reopen it with `Status: active` and a new
+          queue at any time.
+        - **new goal**: the human names a slug. The foreman creates
+          `<knowledge directory>/<slug>/` from the template
+          (`kitterm goal new <path> <slug>`), and the human writes `goal.md`,
+          `plan.md`, and the corpus before the first round.
+
+        ## Stop rules
+
+        The foreman stops one goal and tells the human when:
+
+        - the budget is spent;
+        - a repair needs a change under Frozen;
+        - the floor is red at the start of two rounds in a row;
+        - a failure does not reproduce in a fresh session;
+        - the crew session reports `exited` with a non-zero code twice;
+        - the daemon `epoch` changes and the crew is gone (respawn once, then stop).
+
+        A stopped goal does not stop the foreman. The other goals keep running.
 
         """#
 

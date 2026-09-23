@@ -1,15 +1,14 @@
 # STATE: loop-and-skill
 
-- Status: active
-- Round: 0 of 3 in this budget (first budget)
-- Rounds total: 0
-- Last floor: none yet
-- Updated: 2026-09-23, created
+- Status: done
+- Round: 2 of 3 in this budget (first budget)
+- Rounds total: 2
+- Last floor: green (2026-09-23, round 2 after: swift test and KittermCLITests exit 0, Linux build)
+- Updated: 2026-09-23, round 2 closed, done
 
 ## Queue
 
-1. `loop-holds-the-contract` (capability 1).
-2. `the-skill-holds-the-procedure` (capability 2).
+Empty. Both capabilities are on the branch.
 
 ## Failures
 
@@ -21,7 +20,12 @@ None.
 
 ## Done
 
-Nothing yet.
+- `the-skill-holds-the-procedure` (capability 2), round 2, `bde1581`
+  and `94af778`. See `rounds/002.md`. The skill 572 → 445 lines; the
+  two files share no heading, where thirteen were shared at the start.
+- `loop-holds-the-contract` (capability 1), round 1, `48f712b` and
+  `dc3f26f`. See `rounds/001.md`. `LOOP.md` 367 → 326 lines with a
+  `Parsed shapes` section; the procedure left for the skill.
 
 ## Direction
 
@@ -37,5 +41,5 @@ the machine's procedure.
 
 ## Next action
 
-Round 1, `loop-holds-the-contract`, on `loop-and-skill/round-1` from
-`origin/main`.
+None. Two rounds. Merge the PR; a release carries the new template and
+the new skill to `kitterm goal new` and `kitterm skills install`.
