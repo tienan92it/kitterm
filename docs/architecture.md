@@ -91,7 +91,9 @@ The flow has three parts.
 
 1. **Live.** `PtySession` appends every output byte to the ring at an absolute offset.
    The daemon batches the bytes to the client (about 2 ms or 64 KB). The client counts
-   what it receives.
+   what it receives. The ring leads the socket: `GET /api/sessions/<id>/output` reads
+   the ring, so it can hold bytes no client has received yet, and the stream a client
+   assembled equals the ring only once the session is quiet.
 2. **Detached.** The socket drops. The WebSocket handler detaches the session but keeps
    reading the PTY. Output still appends to the ring. The ring rotates past 4 MiB. The
    read side never pauses.
@@ -190,8 +192,10 @@ whole knowledge package (`GoalLedger`): for every session a round record names, 
 archive's transcript when it reads as a bill, else the record's own `Cost:` line, and
 prints per round the dollars, the tokens, the cache-read share of input, the wall-clock,
 the tests added, the files changed from `git diff`, the decision and the PR, with totals
-per goal. The transcript is exact and the line is rounded, so `--json` carries the
-transcript's field names wherever one was read.
+per goal. A round whose files git did not count prints a dash and a footer line with the
+reason, git's own `fatal:` line included; nothing git writes to stderr is dropped. The
+transcript is exact and the line is rounded, so `--json` carries the transcript's field
+names wherever one was read.
 
 ### The model
 
@@ -266,7 +270,10 @@ and skips the post when the daemon's port file is absent, `jq` is missing, or th
 carries no `rate_limits`. Then it hands the same stdin to the command that was configured
 before, on a marked line a reinstall reads back, so the human's own statusline is never
 opened and never lost. The prompt does not wait: the script exits before the connection
-opens, with the daemon up or down.
+opens, with the daemon up or down. The wrapper's exit status is that command's own: the
+hand-off is a pipe, and a statusline that exits before it reads stdin leaves the writer to
+take `SIGPIPE`, so the wrapper sets no `pipefail` and never reports the writer's 141 as its
+own status.
 
 `UsageLimitsStore` merges every post over the windows it holds, whichever session posted
 it, because the quota is one account's and a render does not always carry every window:

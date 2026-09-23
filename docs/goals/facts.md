@@ -10,6 +10,31 @@ decision moves to `docs/adr/`.
 
 ## Toolchain
 
+- The ring leads the socket: the daemon appends a session's output to
+  its ring, then batches to clients. An assertion that the ring equals
+  a client's stream holds only at a quiet point, so wait for the
+  session's last byte, not its first echo (2026-09-23,
+  green-ci-again round 3).
+
+- A regex for a git short sha must not require a digit: about one
+  7-character sha in a thousand is `a`-`f` alone, and a pattern that
+  wants a digit drops it silently (2026-09-23, green-ci-again round 2).
+- A fixture loop that makes commits does not sample shas independently:
+  commits within the same second share a tree and a time and so repeat
+  the same sha. Pin a date (`GIT_COMMITTER_DATE=@<epoch>`) to reach a
+  chosen sha instead of looping (2026-09-23, green-ci-again round 2).
+
+- A `SIGPIPE` race in a shell pipeline becomes deterministic when the
+  writer's input is larger than the pipe buffer: the writer blocks in
+  `write`, the reader exits, and the writer always takes the signal.
+  256 KiB was enough. Use it to pin a flake instead of looping
+  (2026-09-23, green-ci-again round 1).
+- `set -o pipefail` in a wrapper script reports the *writer's* status
+  when the reader exits early, so a wrapper that hands stdin on with
+  `printf ... | inner` reports 141 rather than the inner's own status.
+  A wrapper whose job is to pass a status through does not set
+  `pipefail` (2026-09-23, green-ci-again round 1).
+
 - Skipping the Linux build hides a real class of error, not just a slow
   gate. Linux Swift 6.1 rejects concurrency that the macOS toolchain
   accepts. On 2026-09-11 `agent-push` round 2 was green on macOS with 668
