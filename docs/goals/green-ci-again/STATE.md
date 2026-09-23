@@ -1,10 +1,10 @@
 # STATE: green-ci-again
 
-- Status: active
-- Round: 2 of 3 in this budget (first budget)
-- Rounds total: 2
-- Last floor: green (2026-09-23, round 2 after: swift test 864, KittermCLITests 121, Linux build)
-- Updated: 2026-09-23, round 2 closed
+- Status: waiting
+- Round: 3 of 3 in this budget (first budget)
+- Rounds total: 3
+- Last floor: green (2026-09-23, round 3 after: swift test 864, KittermDaemonTests 680, Linux build)
+- Updated: 2026-09-23, round 3 closed; the budget is spent
 
 ## Queue
 
@@ -22,6 +22,9 @@ None.
 
 ## Done
 
+- `the-takeover-stops-racing` (capability 3), round 3, `b275e87`. See
+  `rounds/003.md`. The test's defect, not the product's: it compared
+  the ring with the client's stream at an unsynchronised instant.
 - `the-git-diff-says-why-it-failed` (capability 2), round 2, `b883574`
   and `7fd2219`. See `rounds/002.md`. Git was never reached: a sha
   pattern that demanded a digit dropped one short sha in a thousand.
@@ -41,4 +44,5 @@ than it saves.
 
 ## Next action
 
-Round 3, `the-takeover-stops-racing`, on the same branch.
+The first budget is spent, so the goal waits. Merge the PR, then the
+foreman watches twenty runs for capability 4.

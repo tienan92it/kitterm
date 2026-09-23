@@ -10,6 +10,12 @@ decision moves to `docs/adr/`.
 
 ## Toolchain
 
+- The ring leads the socket: the daemon appends a session's output to
+  its ring, then batches to clients. An assertion that the ring equals
+  a client's stream holds only at a quiet point, so wait for the
+  session's last byte, not its first echo (2026-09-23,
+  green-ci-again round 3).
+
 - A regex for a git short sha must not require a digit: about one
   7-character sha in a thousand is `a`-`f` alone, and a pattern that
   wants a digit drops it silently (2026-09-23, green-ci-again round 2).
