@@ -260,6 +260,9 @@ the crew ends it.
   the other case: it spends the budget and it gets a record.
 - One crew session per round, plus review sessions when the round's
   capability touches `<a file where a regression costs the most>`.
+- Commit after every round. The record, the state, and any fact go into
+  one commit on the goal's branch before the foreman reports the digest. A
+  record that sits uncommitted is not written.
 
 ## One foreman for every project
 

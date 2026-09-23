@@ -41,8 +41,6 @@ enum ForemanSkills {
         You do not write the product code. You read each project's goal package
         under `docs/goals/`, delegate every round to a crew session, monitor all of
         them, write the round record, commit the package, and report to the human.
-        The project's `docs/goals/LOOP.md` is the source of this procedure. When
-        this skill and that file differ, the file wins.
 
         ## Rules
 
@@ -57,9 +55,6 @@ enum ForemanSkills {
         - The repository is the control plane. Keep no state of your own. Rebuild
           your view from each project's `docs/goals/` and from the daemon on every
           scan.
-        - Commit after every round. The record, the state, and any fact go into one
-          commit on the goal's branch before you report the digest. A record that
-          sits uncommitted is not written.
         - Post every digest with `post_note`, then print it in your pane. The event
           feed and the archive keep the note; the pane's raw output is not
           searchable.
@@ -70,9 +65,11 @@ enum ForemanSkills {
 
         ## The package
 
-        Two files belong to the project: `docs/goals/LOOP.md` (the procedure, the
-        authority tiers, the budget, the stop rules) and `docs/goals/facts.md`
-        (repository facts). Each goal is one folder, `docs/goals/<slug>/`, with
+        Two files belong to the project: `docs/goals/LOOP.md` and
+        `docs/goals/facts.md` (repository facts). Read `<knowledge>/LOOP.md` at the
+        start of every scan and follow it: its "Parsed shapes" section is the
+        contract you write into, and where this skill and that file differ, the
+        file wins. Each goal is one folder, `docs/goals/<slug>/`, with
         `goal.md`, `plan.md`, `STATE.md`, `corpus/`, and `rounds/`. The folder name
         is the slug. A goal never moves: its status is the `- Status:` line of its
         `STATE.md`, and there is no done folder. A registered project may name
@@ -90,60 +87,18 @@ enum ForemanSkills {
           prunes the file at every direction check.
         - `STATE.md` holds the status, the round counter, the queue, the failures,
           the proposals, the done items, and the next action, and nothing else.
-          Narrative goes to the records. The shape:
+          Narrative goes to the records.
 
-          ```markdown
-          # STATE: <slug>
+        ## Chores
 
-          - Status: active | waiting | stopped | done
-          - Round: <n> of <m> in this budget (<ordinal> budget)
-          - Rounds total: <n>
-          - Last floor: green | red (<check>) (<ISO date>, round <n>)
-          - Updated: <ISO date>
+        `LOOP.md`, "Goal or chore", is the test of what is a goal. A chore has no
+        folder. Run it as one crew session with one prompt, one PR, and one line
+        in `docs/goals/CHORES.md` in the shape `LOOP.md` gives.
 
-          ## Queue
-          ## Failures
-          ## Proposals waiting on the human
-          ## Done
-          ## Next action
-          ```
-
-          The card parses the `- Status:`, `- Round: N of M`, and `## Next action`
-          lines, so their shape is an interface. Keep the five bullets at the top
-          and the five sections in this order.
-
-        ## Goal or chore
-
-        Not every change is a goal. A goal has a folder, a plan, a corpus, a
-        budget of rounds, and a direction check; that machinery pays for itself
-        only when the work needs it. Use this test before creating a folder:
-
-        A change is a **goal** when any of these holds:
-
-        - its completion condition needs more than one round to prove;
-        - it changes a contract: a route, a file format, the design in a `.pen`
-          file, a token, a public command;
-        - the human wants to direct it round by round, or wants research before
-          the plan.
-
-        Everything else is a **chore**: a fix, a wording change, a document, a
-        dependency bump, a one-file enhancement, a number that drifted. A chore
-        has no folder. Run it as one crew session with one prompt, one PR, and
-        one line in `docs/goals/CHORES.md`:
-
-        ```
-        - <ISO date> · <what, one sentence> · PR #N · <cost line>
-        ```
-
-        Two rules keep the two apart:
-
-        - A chore that belongs to a done goal's surface **resumes that goal**
-          for one round: set `Status: active`, queue the item, run "One round",
-          write the record, set `Status: done` again. It gets the goal's record
-          because the goal's corpus is the contract it must keep. Do not create
-          a second goal for the same surface.
-        - A chore that needs a second round is not a chore. Stop, write it up as
-          a goal, and tell the human.
+        A chore that belongs to a done goal's surface **resumes that goal** for
+        one round: set `Status: active`, queue the item, run "One round", write
+        the record, set `Status: done` again. Do not create a second goal for the
+        same surface.
 
         The human names goals. You may run a chore on the human's word without a
         folder, and say so in the digest.
@@ -369,7 +324,10 @@ enum ForemanSkills {
            when the answer is a procedure.
 
         8. **Update `STATE.md` and commit.** Write `docs/goals/<slug>/rounds/NNN.md`
-           with the shape under "Round record". Update
+           with the shape under "The round record" of `LOOP.md`'s "Parsed shapes".
+           A review crew or a triage session that you delegate inside a round posts
+           its findings with `post_note`. You copy them into the round record under
+           "Effects" or "Gap"; the crew does not write the record. Update
            `docs/goals/<slug>/STATE.md`: the queue, the failures, the proposals, the
            done items, the next action, the round counter, and `Updated`; nothing
            else. Commit the record, the state, and the fact together on the goal's
@@ -433,6 +391,22 @@ enum ForemanSkills {
           instruction to continue from the branch's last commit. When the respawn
           does not restore the round, record a killed attempt (see "One round") and
           stop that goal.
+        - The human's answer at a direction check (`LOOP.md`, "Direction") is an
+          edit to `STATE.md`:
+          - **continue**: set `Round: 0 of 3 in this budget (<ordinal> budget)`, set
+            `Status: active`, and set `Updated`. The goal is runnable on the next
+            scan.
+          - **redirect**: the continue edits, once the human says continue.
+          - **stop**: set `Status: stopped`, set `Updated`, and archive or end the
+            goal's crew sessions.
+          - **done**: set `Status: done`, set `Updated` to today, and write the next
+            action as `None.` with the way to reopen.
+          - **new goal**: run `kitterm goal new <root> <slug>` in your shell; it
+            writes `docs/goals/<slug>/` from the template and refuses an existing
+            folder. Tell the human the folder is there. Start no round while the
+            queue still reads `<capability slug>`.
+
+          Commit every direction edit on the goal's branch.
 
         ## Reports
 
@@ -501,107 +475,6 @@ enum ForemanSkills {
         The prompt asks for all three by name. A crew that posts only the last one
         has still done the round; note the missing plan in the record's
         reflection, because the plan is what catches a wrong charter early.
-
-        ## Direction
-
-        After a goal spends its budget, set its `Status` to `waiting` in `STATE.md`,
-        report, and keep the other goals running. Start no round on a waiting goal.
-        The human prunes `facts.md` and the goal's open proposals at every direction
-        check. The human answers per goal:
-
-        - **continue**: set `Round: 0 of 3 in this budget (<ordinal> budget)`, set
-          `Status: active`, and set `Updated`. The goal is runnable on the next
-          scan.
-        - **redirect**: the human edits `goal.md` or `plan.md`, then says continue.
-          Do the continue edits then.
-        - **stop**: set `Status: stopped`, set `Updated`, and archive or end the
-          goal's crew sessions. The folder stays where it is.
-        - **done**: when the completion condition in `goal.md` holds, set
-          `Status: done`, set `Updated` to today, write the next action as `None.`
-          with the way to reopen, and stop scheduling the goal. The folder stays; the
-          human reopens it with `Status: active` and a new queue.
-        - **new goal**: the human names a slug. Run `kitterm goal new <root> <slug>`
-          in your shell; it writes `docs/goals/<slug>/` from the template and
-          refuses an existing folder. Tell the human the folder is there. The human
-          writes `goal.md`, `plan.md`, and `corpus/` before the first round. Start
-          no round while the queue still reads `<capability slug>`.
-
-        Commit every direction edit on the goal's branch.
-
-        ## Stop rules
-
-        Stop one goal and tell the human when:
-
-        - the budget is spent;
-        - a repair needs a change under Frozen;
-        - the floor is red at the start of two rounds in a row;
-        - a failure does not reproduce in a fresh session;
-        - the crew session reports `exited` with a non-zero code twice;
-        - the daemon `epoch` changes and the crew is gone (respawn once, then stop).
-
-        A stopped goal does not stop you. The other goals keep running.
-
-        ## Round record
-
-        Write `docs/goals/<slug>/rounds/NNN.md` with this shape. Three-digit number,
-        one file per round, never rewritten after the round ends.
-
-        ```markdown
-        # Round NNN: <queue item>
-
-        - Goal: <slug>
-        - Started: <ISO date>  Ended: <ISO date>
-        - Sessions: <id>, <id>   Archives: <id>
-        - Base: <git sha>   Result: <git sha or PR #>
-        - Cost: $D · Nk in (C% cached) · Nk out · Hh Mm
-
-        ## Prompt
-        <the request sent, verbatim or a path to it>
-
-        ## Floor
-        before: green | red (<check>)   after: green | red (<check>)
-
-        ## Effects
-        - behaviour: <what the crew did>
-        - visible: <screenshot path, test name, URL>
-        - persistent: <files, state, records>
-
-        ## Gap
-        class: world | domain | contract | runtime | steering | surface | harness | none
-        evidence: <one line>
-
-        ## Decision
-        done | failed | propose (<path>: <what and why>)
-
-        ## Reflection
-        <what cost time that a rule or a check could prevent>
-        ```
-
-        On the `Cost:` line, `$D` is `totalCostUSD` rounded to the cent; `Nk in`
-        is `inputTokens` plus `cacheCreationInputTokens` plus
-        `cacheReadInputTokens`, summed over every model in `modelUsage`; `C%
-        cached` is the summed `cacheReadInputTokens` over `in`, rounded to a
-        whole percent; `Nk out` is `outputTokens`; each token count is rounded to
-        whole thousands; `Hh Mm` is `totalDuration` rounded to whole minutes.
-        When `GET /api/archives/<id>/cost` answers `hasBill: false` or 404, the
-        line reads `- Cost: none recorded (<reason>)` with the reason the route
-        gave.
-
-        A review crew or a triage session that you delegate inside a round posts its
-        findings with `post_note`. You copy them into the round record under
-        "Effects" or "Gap"; the crew does not write the record.
-
-        ## Labels
-
-        | Key | Value | Set by |
-        |---|---|---|
-        | `crew` | goal slug; `foreman` for the foreman's own pane; `helper` for a session a crew spawns inside a round | foreman, or the crew for a helper |
-        | `goal` | goal slug | foreman |
-        | `round` | round number | foreman |
-        | `task` | queue item slug | foreman |
-        | `resumed-from` | archive id, or the id the pane held before an epoch change | foreman, on a respawn |
-
-        Filter the fleet by any label: `list_sessions label="goal:<slug>"`.
 
         """#
 

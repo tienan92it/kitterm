@@ -60,15 +60,16 @@ final class GoalsLayoutDocsTests: XCTestCase {
         }
     }
 
-    /// The rules of the loop are written once and read in five places:
+    /// The rules of the loop are written once and read in three places:
     /// `docs/goals/LOOP.md`, its generic derivation `examples/goals/LOOP.md`,
-    /// the `foreman-loop` skill, and the two copies the binary embeds. Each
-    /// rule below is the sentence that carries it, and every source must hold
-    /// that sentence whole; only the line breaks may differ. `loop-and-skill`
-    /// round 1 moved the record's and the labels' rules into `LOOP.md`'s
-    /// "Parsed shapes" with their words kept, so their pins stay; the two
-    /// procedure sentences that left `LOOP.md` for the skill are
-    /// `skillRules` below.
+    /// and the copy the binary embeds. Each rule below is the sentence that
+    /// carries it, and every copy must hold that sentence whole; only the
+    /// line breaks may differ. `loop-and-skill` round 1 moved the record's
+    /// and the labels' rules into `LOOP.md`'s "Parsed shapes" with their
+    /// words kept; round 2 took the skill out of this list, because the
+    /// skill holds the procedure and `LOOP.md` the contract, and no sentence
+    /// is pinned against both. The procedure sentences the skill alone must
+    /// carry are `skillRules` below.
     ///
     /// A marker of a few words proves that the words co-occur, not that the
     /// files agree: a file can hold `is Propose, not Frozen` inside a sentence
@@ -82,6 +83,14 @@ final class GoalsLayoutDocsTests: XCTestCase {
             writes no round record. Note it in `STATE.md` under `Failures` as
             `attempt killed: <ISO date>, <what died>`. Leave the round counter and
             the queue item where they are. Run the round again.
+            """
+        ),
+        (
+            "the package is committed after every round, before the digest",
+            """
+            Commit after every round. The record, the state, and any fact go into
+            one commit on the goal's branch before the foreman reports the digest. A
+            record that sits uncommitted is not written.
             """
         ),
         (
@@ -154,7 +163,8 @@ final class GoalsLayoutDocsTests: XCTestCase {
 
     /// The procedure sentences `loop-and-skill` round 1 took out of
     /// `LOOP.md`: tier 3 and 4 of `goal.md`, so the skill and its embedded
-    /// copy alone must carry them, in these words.
+    /// copy alone must carry them, in these words. The retired wordings
+    /// below are checked against the skill too.
     static let skillRules: [(rule: String, sentence: String)] = [
         (
             "the crew posts a plan, a blocker and a done note",
@@ -197,31 +207,43 @@ final class GoalsLayoutDocsTests: XCTestCase {
         text.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
     }
 
-    func testTheLoopFilesCarryTheSameRuleSentences() throws {
+    private static func loopFiles() throws -> [(name: String, text: String)] {
         var files: [(name: String, text: String)] = try [
             "docs/goals/LOOP.md",
             "examples/goals/LOOP.md",
-            "examples/foreman/foreman-loop.md",
         ].map { (name: $0, text: try String(contentsOf: Self.root.appendingPathComponent($0), encoding: .utf8)) }
         files.append(("GoalsTemplates.loop", GoalsTemplates.loop))
-        files.append(("ForemanSkills.foremanLoop", ForemanSkills.foremanLoop))
-        for (name, text) in files {
+        return files
+    }
+
+    private static func skillFiles() throws -> [(name: String, text: String)] {
+        let skill = try String(contentsOf: Self.root.appendingPathComponent("examples/foreman/foreman-loop.md"), encoding: .utf8)
+        return [("examples/foreman/foreman-loop.md", skill), ("ForemanSkills.foremanLoop", ForemanSkills.foremanLoop)]
+    }
+
+    func testTheLoopFilesCarryTheSameRuleSentences() throws {
+        for (name, text) in try Self.loopFiles() {
             let oneLine = Self.oneLine(text)
             for (rule, sentence) in Self.loopRules where !oneLine.contains(Self.oneLine(sentence)) {
                 XCTFail("\(name) does not carry the rule that \(rule), in these words: \(Self.collapsed(sentence))")
-            }
-            for retired in Self.retiredWordings where oneLine.contains(Self.oneLine(retired)) {
-                XCTFail("\(name) still carries the wording a round retired: `\(retired)`")
             }
         }
     }
 
     func testTheSkillCarriesTheProcedureSentences() throws {
-        let skill = try String(contentsOf: Self.root.appendingPathComponent("examples/foreman/foreman-loop.md"), encoding: .utf8)
-        for (name, text) in [("examples/foreman/foreman-loop.md", skill), ("ForemanSkills.foremanLoop", ForemanSkills.foremanLoop)] {
+        for (name, text) in try Self.skillFiles() {
             let oneLine = Self.oneLine(text)
             for (rule, sentence) in Self.skillRules where !oneLine.contains(Self.oneLine(sentence)) {
                 XCTFail("\(name) does not carry the rule that \(rule), in these words: \(Self.collapsed(sentence))")
+            }
+        }
+    }
+
+    func testNoFileCarriesARetiredWording() throws {
+        for (name, text) in try Self.loopFiles() + Self.skillFiles() {
+            let oneLine = Self.oneLine(text)
+            for retired in Self.retiredWordings where oneLine.contains(Self.oneLine(retired)) {
+                XCTFail("\(name) still carries the wording a round retired: `\(retired)`")
             }
         }
     }
@@ -234,29 +256,29 @@ final class GoalsLayoutDocsTests: XCTestCase {
             XCTAssertTrue(skill.contains(path), "foreman-loop names `\(path)`")
         }
         XCTAssertTrue(skill.contains("post_note"), "the digest goes to the event feed")
-        XCTAssertTrue(skill.contains("Commit after every round"), "the package is committed each round")
         XCTAssertTrue(skill.contains("send_input keys=[\"down\"]"), "an arrow key goes by name")
         XCTAssertFalse(skill.contains("curl"), "no shell workaround in the skill")
         XCTAssertFalse(skill.contains("\\u001b[B"), "no arrow key inside a text argument")
     }
 
     /// The `- Round:` and `- Last floor:` lines have one shape: the
-    /// template's line is the skill's shape-block line with its
-    /// placeholders filled, and the skill's continue edit writes the same
-    /// shape. The card parses `Round: N of M`, so the shape is an interface.
-    func testStateLineShapesMatchTheSkill() throws {
+    /// template's line is the shape-block line of `LOOP.md`'s "Parsed
+    /// shapes" with its placeholders filled, and the skill's continue edit
+    /// writes the same shape. The card parses `Round: N of M`, so the shape
+    /// is an interface.
+    func testStateLineShapesMatchTheLoop() throws {
         let template = GoalsTemplates.state.split(separator: "\n").map(String.init)
-        let skill = ForemanSkills.foremanLoop.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+        let loop = GoalsTemplates.loop.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
         let line = { (lines: [String], key: String) throws -> String in
             try XCTUnwrap(lines.first { $0.hasPrefix("- \(key):") }, "a `- \(key):` line")
         }
-        let round = try line(skill, "Round")
+        let round = try line(loop, "Round")
         XCTAssertEqual(round, "- Round: <n> of <m> in this budget (<ordinal> budget)")
         let filled = round.replacingOccurrences(of: "<n>", with: "0")
             .replacingOccurrences(of: "<m>", with: "3")
             .replacingOccurrences(of: "<ordinal>", with: "first")
         XCTAssertEqual(try line(template, "Round"), filled)
-        XCTAssertEqual(try line(template, "Last floor"), try line(skill, "Last floor"))
+        XCTAssertEqual(try line(template, "Last floor"), try line(loop, "Last floor"))
         XCTAssertTrue(
             ForemanSkills.foremanLoop.contains("set `Round: 0 of 3 in this budget (<ordinal> budget)`"),
             "the continue edit writes the shape"
