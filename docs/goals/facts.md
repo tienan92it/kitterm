@@ -10,6 +10,14 @@ decision moves to `docs/adr/`.
 
 ## Toolchain
 
+- A regex for a git short sha must not require a digit: about one
+  7-character sha in a thousand is `a`-`f` alone, and a pattern that
+  wants a digit drops it silently (2026-09-23, green-ci-again round 2).
+- A fixture loop that makes commits does not sample shas independently:
+  commits within the same second share a tree and a time and so repeat
+  the same sha. Pin a date (`GIT_COMMITTER_DATE=@<epoch>`) to reach a
+  chosen sha instead of looping (2026-09-23, green-ci-again round 2).
+
 - A `SIGPIPE` race in a shell pipeline becomes deterministic when the
   writer's input is larger than the pipe buffer: the writer blocks in
   `write`, the reader exits, and the writer always takes the signal.

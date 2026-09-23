@@ -1,10 +1,10 @@
 # STATE: green-ci-again
 
 - Status: active
-- Round: 1 of 3 in this budget (first budget)
-- Rounds total: 1
-- Last floor: green (2026-09-23, round 1 after: swift test 862, KittermCLITests 119, Linux build)
-- Updated: 2026-09-23, round 1 closed
+- Round: 2 of 3 in this budget (first budget)
+- Rounds total: 2
+- Last floor: green (2026-09-23, round 2 after: swift test 864, KittermCLITests 121, Linux build)
+- Updated: 2026-09-23, round 2 closed
 
 ## Queue
 
@@ -22,6 +22,9 @@ None.
 
 ## Done
 
+- `the-git-diff-says-why-it-failed` (capability 2), round 2, `b883574`
+  and `7fd2219`. See `rounds/002.md`. Git was never reached: a sha
+  pattern that demanded a digit dropped one short sha in a thousand.
 - `the-wrapper-stops-taking-sigpipe` (capability 1), round 1, `4917187`.
   See `rounds/001.md`. A product defect: the wrapper reported the
   writer's 141 instead of the previous statusline's own status. Four of
@@ -38,4 +41,4 @@ than it saves.
 
 ## Next action
 
-Round 2, `the-git-diff-says-why-it-failed`, on the same branch.
+Round 3, `the-takeover-stops-racing`, on the same branch.
