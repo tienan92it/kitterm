@@ -22,9 +22,12 @@ import KittermDaemon
 /// Files changed come from `git diff --name-only <base>..<result>` in the
 /// checkout, with the first sha on the record's `Base:` line and the last on
 /// its `Result:` line, because `totalLinesAdded` in the transcript reads 0
-/// on a round that edits through heredocs. Tests added is the first `N new`
-/// in the record's `## Floor` section. The decision is the first word of
-/// `## Decision`. The PR is the first `#N` on the `Result:` line.
+/// on a round that edits through heredocs. A round with no count prints a
+/// dash and a footer that says why (`FilesChanged.reason`): the line that
+/// names no sha, or git's status and what it wrote to stderr. Tests added is
+/// the first `N new` in the record's `## Floor` section. The decision is the
+/// first word of `## Decision`. The PR is the first `#N` on the `Result:`
+/// line.
 enum GoalLedger {
     // MARK: - The record
 
@@ -194,12 +197,51 @@ enum GoalLedger {
         }
     }
 
+    /// What `git diff --name-only <base>..<result>` answered: the count, or
+    /// why there is none. A dash in the table is a fact only when the reason
+    /// is printed beside it, so every case but `count` carries one.
+    enum FilesChanged: Equatable {
+        case count(Int)
+        /// The record's `Base:` or `Result:` line names no sha, so git was
+        /// never asked. `line` names the one, `Base:`, `Result:` or both.
+        case noSha(line: String)
+        /// git could not be started; `error` is what `Process.run` threw.
+        case notRun(error: String)
+        /// git exited with `status` for `range` (`<base>..<result>`); `stderr`
+        /// is what it said, whole.
+        case failed(range: String, status: Int32, stderr: String)
+
+        var count: Int? {
+            if case .count(let value) = self { return value }
+            return nil
+        }
+
+        /// One line for the table's footer and `--json`; nil for a count.
+        /// A failure quotes git's first stderr line, which is where git puts
+        /// its `fatal:`.
+        var reason: String? {
+            switch self {
+            case .count:
+                return nil
+            case .noSha(let line):
+                return "the \(line) line names no sha"
+            case .notRun(let error):
+                return "git did not start: \(error)"
+            case .failed(let range, let status, let stderr):
+                let said = stderr.split(separator: "\n").first.map(String.init) ?? "nothing on stderr"
+                return "git diff --name-only \(range) exited \(status): \(said)"
+            }
+        }
+    }
+
     /// One round of the ledger: the record, the bills its sessions answered,
     /// and the file count from git.
     struct Row: Equatable {
         var record: Record
         var bills: [SessionBill]
-        var filesChanged: Int?
+        var files: FilesChanged
+
+        var filesChanged: Int? { files.count }
 
         var costUSD: Double { bills.reduce(0) { $0 + $1.costUSD } }
         var durationMs: Int { bills.reduce(0) { $0 + $1.durationMs } }
@@ -236,22 +278,34 @@ enum GoalLedger {
         return bills
     }
 
-    /// `git diff --name-only <base>..<result>` in `root`, or nil when git
-    /// fails, which is what an unresolved sha does.
-    static func filesChanged(root: String, base: String?, result: String?) -> Int? {
-        guard let base, let result else { return nil }
+    /// `git diff --name-only <base>..<result>` in `root`: the count of the
+    /// names it printed, or why there is none. An unresolved sha is a
+    /// `failed` with git's own `fatal:` line; nothing git says is dropped.
+    static func filesChanged(root: String, base: String?, result: String?) -> FilesChanged {
+        guard let base, let result else {
+            let missing = [base == nil ? "Base:" : nil, result == nil ? "Result:" : nil].compactMap { $0 }
+            return .noSha(line: missing.joined(separator: " and "))
+        }
+        let range = "\(base)..\(result)"
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["git", "-C", root, "diff", "--name-only", "\(base)..\(result)"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
+        process.arguments = ["git", "-C", root, "diff", "--name-only", range]
+        let output = Pipe()
+        let errors = Pipe()
+        process.standardOutput = output
+        process.standardError = errors
         process.standardInput = FileHandle.nullDevice
-        do { try process.run() } catch { return nil }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        do { try process.run() } catch { return .notRun(error: "\(error)") }
+        // stdout to its end, then stderr: git writes a few lines to one of
+        // them and nothing to the other, so neither read waits on a pipe
+        // the other is filling.
+        let names = output.fileHandleForReading.readDataToEndOfFile()
+        let said = errors.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return nil }
-        return String(decoding: data, as: UTF8.self).split(separator: "\n").count
+        guard process.terminationStatus == 0 else {
+            return .failed(range: range, status: process.terminationStatus, stderr: String(decoding: said, as: UTF8.self))
+        }
+        return .count(String(decoding: names, as: UTF8.self).split(separator: "\n").count)
     }
 
     // MARK: - Reading a package
@@ -287,7 +341,7 @@ enum GoalLedger {
                 Row(
                     record: record,
                     bills: bills(for: record),
-                    filesChanged: filesChanged(root: root, base: record.base, result: record.result)
+                    files: filesChanged(root: root, base: record.base, result: record.result)
                 )
             }
             return Goal(slug: slug, rows: rows)
@@ -409,6 +463,14 @@ enum GoalLedger {
                 ? "  1 round recorded no bill and is not counted."
                 : "  \(unrecorded) rounds recorded no bill and are not counted.")
         }
+        // A dash in the files column is a fact only with its reason beside
+        // it: one line per round whose diff git did not count, with what
+        // git said.
+        for row in goal.rows {
+            if let reason = row.files.reason {
+                output.append("  " + String(format: "%03d", row.record.number) + " files not counted: " + reason)
+            }
+        }
         return output
     }
 
@@ -438,6 +500,8 @@ enum GoalLedger {
         var cacheReadShare: Double?
         var testsAdded: Int?
         var filesChanged: Int?
+        /// Why `filesChanged` is null (`FilesChanged.reason`); null with a count.
+        var filesChangedReason: String?
         var decision: String?
         var pr: Int?
         var base: String?
@@ -446,7 +510,7 @@ enum GoalLedger {
         enum CodingKeys: String, CodingKey {
             case goal, round, slug, sessions, source, totalCostUSD, totalDuration, totalAPIDuration
             case inputTokens, outputTokens, thinkingTokens, cacheReadInputTokens, cacheCreationInputTokens
-            case `in`, cacheReadShare, testsAdded, filesChanged, decision, pr, base, result
+            case `in`, cacheReadShare, testsAdded, filesChanged, filesChangedReason, decision, pr, base, result
         }
 
         // Explicit nulls: a consumer sees every field on every round.
@@ -469,6 +533,7 @@ enum GoalLedger {
             try c.encode(cacheReadShare, forKey: .cacheReadShare)
             try c.encode(testsAdded, forKey: .testsAdded)
             try c.encode(filesChanged, forKey: .filesChanged)
+            try c.encode(filesChangedReason, forKey: .filesChangedReason)
             try c.encode(decision, forKey: .decision)
             try c.encode(pr, forKey: .pr)
             try c.encode(base, forKey: .base)
@@ -504,7 +569,7 @@ enum GoalLedger {
             var json = RoundJSON(
                 goal: goal.slug, round: record.number, slug: record.slug,
                 sessions: record.sessions.map(\.uuidString),
-                testsAdded: record.testsAdded, filesChanged: row.filesChanged,
+                testsAdded: record.testsAdded, filesChanged: row.filesChanged, filesChangedReason: row.files.reason,
                 decision: record.decision, pr: record.pr, base: record.base, result: record.result
             )
             guard row.hasBill else { return json }

@@ -268,7 +268,8 @@ final class GoalCostTests: XCTestCase {
         XCTAssertEqual(one["in"] as? Int, 1_100_502)
         XCTAssertEqual(one["cacheReadShare"] as? Double, 1_022_235.0 / 1_100_502.0)
         XCTAssertEqual(one["testsAdded"] as? Int, 28)
-        XCTAssertEqual(one["filesChanged"] as? Int, 12)
+        XCTAssertEqual(one["filesChanged"] as? Int, 12, String(describing: one["filesChangedReason"]))
+        XCTAssertTrue(one["filesChangedReason"] is NSNull)
         XCTAssertEqual(one["decision"] as? String, "done")
         XCTAssertEqual(one["pr"] as? Int, 12)
         XCTAssertEqual(one["base"] as? String, shas[0])
@@ -285,7 +286,7 @@ final class GoalCostTests: XCTestCase {
         XCTAssertEqual(two["in"] as? Int, 0)
         XCTAssertTrue(two["cacheReadShare"] is NSNull, "no share of nothing: \(String(describing: two["cacheReadShare"]))")
         XCTAssertEqual(two["testsAdded"] as? Int, 0)
-        XCTAssertEqual(two["filesChanged"] as? Int, 3)
+        XCTAssertEqual(two["filesChanged"] as? Int, 3, String(describing: two["filesChangedReason"]))
         XCTAssertEqual(two["decision"] as? String, "failed")
         XCTAssertTrue(two["pr"] is NSNull)
 
@@ -298,7 +299,7 @@ final class GoalCostTests: XCTestCase {
             XCTAssertTrue(three[field] is NSNull, "\(field) is null on a round with no bill, not absent")
         }
         XCTAssertEqual(three["testsAdded"] as? Int, 20)
-        XCTAssertEqual(three["filesChanged"] as? Int, 7)
+        XCTAssertEqual(three["filesChanged"] as? Int, 7, String(describing: three["filesChangedReason"]))
         XCTAssertEqual(three["decision"] as? String, "done")
         XCTAssertEqual(three["pr"] as? Int, 9)
 
@@ -353,13 +354,20 @@ final class GoalCostTests: XCTestCase {
         done.
 
         """)
-        XCTAssertEqual(try run(["cost", project, "lines"]), [
+        let lines = try run(["cost", project, "lines"])
+        // The whole output is the message, so a dash where a count belongs
+        // prints its own footer line with what git said.
+        XCTAssertEqual(Array(lines.prefix(5)), [
             "lines                               $      in  cached      out  wall tests  files   decision      PR",
             "  001 the-bill-in-the-record     4.74   3.33M     97%    36.0k 10m00     —      4   propose        —",
             "  002 no-bill                       —       —       —        —     —     —      —   done           —",
             "  total                          4.74   3.33M     97%    36.0k 10m00     —      4",
             "  1 round recorded no bill and is not counted.",
-        ])
+        ], lines.joined(separator: "\n"))
+        // Round 2's dash is explained by git itself; the wording after
+        // `fatal:` is git's own and differs between versions.
+        XCTAssertEqual(lines.count, 6, lines.joined(separator: "\n"))
+        XCTAssertTrue(lines[5].hasPrefix("  002 files not counted: git diff --name-only 0000000..\(c1) exited 128: fatal: "), lines[5])
 
         let rounds = try XCTUnwrap((try json(try run(["cost", project, "lines", "--json"]))["goals"] as? [[String: Any]])?.first?["rounds"] as? [[String: Any]])
         let one = rounds[0]
@@ -374,8 +382,48 @@ final class GoalCostTests: XCTestCase {
         }
         XCTAssertTrue(one["testsAdded"] is NSNull)
         XCTAssertEqual(one["decision"] as? String, "propose")
+        XCTAssertTrue(one["filesChangedReason"] is NSNull, "a count has no reason")
         XCTAssertTrue(rounds[1]["source"] is NSNull)
         XCTAssertTrue(rounds[1]["filesChanged"] is NSNull)
+        XCTAssertEqual(
+            (rounds[1]["filesChangedReason"] as? String)?.hasPrefix("git diff --name-only 0000000..\(c1) exited 128: fatal: "), true,
+            String(describing: rounds[1]["filesChangedReason"])
+        )
+    }
+
+    // MARK: - The files column's failure path
+
+    /// `filesChanged` never swallows what git said: an unresolved sha is
+    /// git's own `fatal:` line with its status, a directory that is no
+    /// checkout likewise, and a record that names no sha says which line.
+    /// Two of thirty CI runs printed a dash here that nothing could explain
+    /// (`green-ci-again` round 2).
+    func testFilesChangedSaysWhyItHasNoCount() throws {
+        XCTAssertEqual(GoalLedger.filesChanged(root: project, base: nil, result: "1234567"), .noSha(line: "Base:"))
+        XCTAssertEqual(GoalLedger.filesChanged(root: project, base: "1234567", result: nil), .noSha(line: "Result:"))
+        XCTAssertEqual(GoalLedger.filesChanged(root: project, base: nil, result: nil), .noSha(line: "Base: and Result:"))
+        XCTAssertEqual(GoalLedger.FilesChanged.noSha(line: "Base:").reason, "the Base: line names no sha")
+
+        let notACheckout = GoalLedger.filesChanged(root: project, base: "1234567", result: "89abcde")
+        guard case .failed(let range, let status, let stderr) = notACheckout else {
+            return XCTFail("\(notACheckout)")
+        }
+        XCTAssertEqual(range, "1234567..89abcde")
+        // 129 with a `warning:` on git 2.39, which prints its usage after it.
+        XCTAssertNotEqual(status, 0)
+        XCTAssertTrue(stderr.lowercased().contains("not a git repository"), stderr)
+        XCTAssertEqual(notACheckout.reason, "git diff --name-only 1234567..89abcde exited \(status): " + stderr.split(separator: "\n")[0])
+
+        try git("init", "-q")
+        let c0 = try commit("init", files: 1)
+        let c1 = try commit("work", files: 2)
+        XCTAssertEqual(GoalLedger.filesChanged(root: project, base: c0, result: c1), .count(2))
+        XCTAssertNil(GoalLedger.FilesChanged.count(2).reason)
+        let unresolved = GoalLedger.filesChanged(root: project, base: "0000000", result: c1)
+        guard case .failed(_, 128, let said) = unresolved else { return XCTFail("\(unresolved)") }
+        XCTAssertTrue(said.hasPrefix("fatal: "), said)
+        XCTAssertTrue(said.contains("0000000..\(c1)"), said)
+        XCTAssertEqual(GoalLedger.FilesChanged.notRun(error: "x").reason, "git did not start: x")
     }
 
     // MARK: - The parser
