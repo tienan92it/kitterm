@@ -67,9 +67,8 @@ enum GoalLedger {
     }
 
     private static let uuidPattern = regex("[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}")
-    /// A short or full sha: hex, 7 to 40 characters, with at least one digit
-    /// so that a word like `deadbeef` is not taken for one.
-    private static let shaPattern = regex("\\b(?=[0-9a-f]*[0-9])[0-9a-f]{7,40}\\b")
+    /// A short or full sha: hex, 7 to 40 characters, as a whole word.
+    private static let shaPattern = regex("\\b[0-9a-f]{7,40}\\b")
     private static let prPattern = regex("#([0-9]+)\\b")
     private static let newTestsPattern = regex("\\b([0-9]+) new\\b")
     private static let headingPattern = regex("^# Round ([0-9]+): (.+)$")
@@ -81,6 +80,20 @@ enum GoalLedger {
                 Range(match.range(at: index), in: text).map { String(text[$0]) } ?? ""
             }
         }
+    }
+
+    /// The shas in `text`, in order. The ones with a digit when there are
+    /// any, else every hex word: a word like `deadbeef` or `effaced` is hex
+    /// too, so a digit used to be required, but one short sha in a thousand
+    /// is `a` to `f` alone (`dcaacec`), and that rule read a real sha as no
+    /// sha and printed a dash for a round git could count (`green-ci-again`
+    /// round 2). A hex word alone on a line is now taken and git says
+    /// `unknown revision` in the footer, which is a fact where the dash was
+    /// not.
+    private static func shas(in text: String) -> [String] {
+        let words = matches(shaPattern, in: text).map { $0[0] }
+        let withDigit = words.filter { $0.contains(where: \.isNumber) }
+        return withDigit.isEmpty ? words : withDigit
     }
 
     /// Parse one record's text. `number` is the file's `NNN`; the heading's
@@ -138,9 +151,9 @@ enum GoalLedger {
             }
         } else if line.hasPrefix("- Base:") {
             let parts = line.components(separatedBy: "Result:")
-            record.base = matches(shaPattern, in: parts[0]).first?[0]
+            record.base = shas(in: parts[0]).first
             if parts.count > 1 {
-                record.result = matches(shaPattern, in: parts[1]).last?[0]
+                record.result = shas(in: parts[1]).last
                 record.pr = matches(prPattern, in: parts[1]).first.flatMap { Int($0[1]) }
             }
         } else if line.hasPrefix("- Cost:") {

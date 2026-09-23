@@ -190,8 +190,10 @@ whole knowledge package (`GoalLedger`): for every session a round record names, 
 archive's transcript when it reads as a bill, else the record's own `Cost:` line, and
 prints per round the dollars, the tokens, the cache-read share of input, the wall-clock,
 the tests added, the files changed from `git diff`, the decision and the PR, with totals
-per goal. The transcript is exact and the line is rounded, so `--json` carries the
-transcript's field names wherever one was read.
+per goal. A round whose files git did not count prints a dash and a footer line with the
+reason, git's own `fatal:` line included; nothing git writes to stderr is dropped. The
+transcript is exact and the line is rounded, so `--json` carries the transcript's field
+names wherever one was read.
 
 ### The model
 

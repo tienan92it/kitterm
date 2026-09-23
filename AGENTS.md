@@ -182,9 +182,14 @@ crashes after the exec.
   [<slug>] [--json]` prints the ledger (`GoalLedger.swift`): per goal and per round,
   dollars, tokens, the cache-read share of input, wall-clock, tests added (the first
   `N new` of the record's `## Floor`), files changed (`git diff --name-only
-  <base>..<result>` from the record's `Base:` and `Result:` shas, a dash when either
-  does not resolve), the decision and the PR the `Result:` line names, with totals per
-  goal and a footer for the rounds that predate the bill. For every session a record's
+  <base>..<result>` from the record's `Base:` and `Result:` shas, a hex word of 7 to 40
+  characters, the one with a digit preferred when a line holds both; a dash when a line
+  names none or git fails, and then one footer line per such round that says which line
+  or what git said, `git diff --name-only X..Y exited 128: fatal: …` (`FilesChanged`,
+  `filesChangedReason` in `--json`), because a dash with no reason hid a parser that
+  read a digitless sha as no sha, round 2 of `green-ci-again`), the decision and the PR
+  the `Result:` line names, with totals per goal and a footer for the rounds that
+  predate the bill. For every session a record's
   `Sessions:` line names, the archive's transcript (`agentTranscript`, under
   `KITTERM_STATE_DIR`) wins when `TranscriptBill` reads a bill from it, else the
   record's `Cost:` line at the same position is parsed; `--json` prints one object per

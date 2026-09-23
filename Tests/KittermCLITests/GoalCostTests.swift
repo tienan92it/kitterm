@@ -41,14 +41,14 @@ final class GoalCostTests: XCTestCase {
     // MARK: - Fixture
 
     @discardableResult
-    private func git(_ arguments: String...) throws -> String {
+    private func git(_ arguments: String..., environment: [String: String] = [:]) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["git", "-C", project] + arguments
         process.environment = ProcessInfo.processInfo.environment.merging([
             "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.test",
             "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.test",
-        ]) { $1 }
+        ]) { $1 }.merging(environment) { $1 }
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
@@ -59,13 +59,15 @@ final class GoalCostTests: XCTestCase {
         return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// One commit adding `count` files; returns its short sha.
-    private func commit(_ name: String, files count: Int) throws -> String {
+    /// One commit adding `count` files; returns its short sha. `date` pins
+    /// the author and committer date (`@<epoch> +0000`), and with it the sha.
+    private func commit(_ name: String, files count: Int, at date: String? = nil) throws -> String {
         for index in 0..<count {
             try Data("\(name) \(index)\n".utf8).write(to: URL(fileURLWithPath: "\(project!)/\(name)-\(index).txt"))
         }
         try git("add", ".")
-        try git("commit", "-q", "-m", name)
+        let dates = date.map { ["GIT_AUTHOR_DATE": $0, "GIT_COMMITTER_DATE": $0] } ?? [:]
+        try git("commit", "-q", "-m", name, environment: dates)
         return try git("rev-parse", "--short", "HEAD")
     }
 
@@ -389,6 +391,47 @@ final class GoalCostTests: XCTestCase {
             (rounds[1]["filesChangedReason"] as? String)?.hasPrefix("git diff --name-only 0000000..\(c1) exited 128: fatal: "), true,
             String(describing: rounds[1]["filesChangedReason"])
         )
+    }
+
+    // MARK: - A sha with no digit
+
+    /// A short sha of only `a` to `f` is one in a thousand, and `dcaacec`
+    /// is the fixture's first commit at this date. The parser used to ask
+    /// for a digit, read the line as naming no sha, and the table printed a
+    /// dash for a round git could have counted: two of thirty runner runs
+    /// and one of fifty here (`green-ci-again` round 2). The digit is still
+    /// preferred when the line holds both, so a word like `deadbeef` beside
+    /// a sha never wins.
+    func testAShortShaWithNoDigitIsStillASha() throws {
+        let letters = GoalLedger.parse("- Base: dcaacec (main)   Result: abcdefa on goals/x\n", number: 1)
+        XCTAssertEqual(letters.base, "dcaacec")
+        XCTAssertEqual(letters.result, "abcdefa")
+        let both = GoalLedger.parse("- Base: deadbeef 1234567 (main)   Result: 89abcde effaced\n", number: 2)
+        XCTAssertEqual(both.base, "1234567", "the sha with a digit over the hex word")
+        XCTAssertEqual(both.result, "89abcde")
+
+        try git("init", "-q")
+        let c0 = try commit("init", files: 1, at: "@1700000531 +0000")
+        XCTAssertEqual(c0, "dcaacec", "the pinned date's sha, abbreviated to 7 in a one-commit repository")
+        let c1 = try commit("work", files: 4)
+        try writeState("letters")
+        try writeRecord("letters", 1, """
+        # Round 001: letters
+
+        - Base: \(c0) (main)   Result: \(c1)
+
+        ## Decision
+
+        done.
+
+        """)
+        let lines = try run(["cost", project, "letters"])
+        XCTAssertEqual(lines, [
+            "letters                         $      in  cached      out  wall tests  files   decision      PR",
+            "  001 letters                   —       —       —        —     —     —      4   done           —",
+            "  total                         —       —       —        —     —     —      4",
+            "  1 round predates the bill and is not counted.",
+        ], lines.joined(separator: "\n"))
     }
 
     // MARK: - The files column's failure path
