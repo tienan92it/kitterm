@@ -8,9 +8,9 @@
 
 ## Queue
 
-1. `the-git-diff-says-why-it-failed` (capability 2).
-3. `the-takeover-stops-racing` (capability 3).
-4. `twenty-green-runs` (capability 4).
+1. `twenty-green-runs` (capability 4). A measurement, not a change: the
+   foreman watches twenty consecutive `ci.yml` runs on `main`. Thirteen
+   green as of 2026-09-23; the last red predates the three fixes.
 
 ## Failures
 
