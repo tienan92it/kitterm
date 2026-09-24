@@ -290,6 +290,10 @@ decision moves to `docs/adr/`.
 
 ## Foreman
 
+- Take a finished item out of `## Queue` when it goes into `## Done`.
+  A slug in both sections reads as `pending`, because pending wins over
+  done, so a finished task shows unfinished on the page and carries no
+  pull request. Two of `green-ci-again`'s three did (2026-09-24).
 - Write `PR #N` into the round record's `- Result:` line and into the
   `STATE.md` Done bullet's first line when the pull request opens. The
   fleet view reads the task's pull request from that bullet and the
