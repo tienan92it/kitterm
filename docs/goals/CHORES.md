@@ -8,3 +8,4 @@ chore"). Newest first.
 - 2026-09-21 · README leads with the dashboard frame exported from Pen; feature sections as short lists, on Sonnet 5 · PR #141 · Cost: $2.33 · 6508k in (98% cached) · 49k out · 0h 09m
 - 2026-09-22 · `kitterm project init --refresh` rewrites an unedited LOOP.md from the template, on the default model · PR #145 · Cost: $4.24 · 3377k in (97% cached) · 22k out · 0h 13m
 - 2026-09-23 · pullRequestBase accepts an SSH config host alias, on the default model · PR #147 · Cost: $2.66 · 1633k in (94% cached) · 10k out · 0h 05m
+- 2026-09-24 · a running session's estimate counts its subagents: 73% → 83% of the bill on the dearest session · PR #153 · Cost: $7.97 · 7326k in (97% cached) · 51k out · 0h 17m
