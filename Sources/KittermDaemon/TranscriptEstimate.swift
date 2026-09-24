@@ -67,8 +67,11 @@ public struct TranscriptEstimate: Codable, Equatable, Sendable {
     public var inTokens: Int
     public var cacheReadTokens: Int
     public var outTokens: Int
-    /// API requests counted, not lines.
+    /// API requests counted, not lines, the parent's and its subagents'.
     public var turns: Int
+    /// Subagent transcripts under `<session>/subagents/` summed with the
+    /// parent; zero for a session that spawned none.
+    public var subagentFiles: Int
     /// Epoch milliseconds: when the file was last checked for new turns.
     public var asOf: Int64
     /// Epoch milliseconds of the first counted turn, so a page can place
@@ -83,7 +86,8 @@ public struct TranscriptEstimate: Codable, Equatable, Sendable {
         /// No assistant turn after the last `cost-state` line: a session
         /// that has not answered yet.
         case noTurns
-        /// The file is over `TranscriptEstimateCache.maxBytes`.
+        /// The transcript and its subagent files together are over
+        /// `TranscriptEstimateCache.maxBytes`.
         case transcriptTooLarge
     }
 
@@ -108,14 +112,29 @@ public struct TranscriptEstimate: Codable, Equatable, Sendable {
 /// not the file the entry summed: it is read again from zero. A line that
 /// fails to parse is skipped and the offset moves past it.
 ///
+/// ## The subagent files
+///
+/// Every file, the parent and each subagent, is its own entry keyed by its
+/// path, so each is read from its own offset. Every call lists
+/// `<session>/subagents/` (one `readdir` and one `stat` per file; 0.13 ms
+/// for 48 files on this machine, 2026-09-24), because that is what notices
+/// a file that appeared or vanished: a new file is read whole, a listed
+/// file that grew reads only its growth, and the entry of a file no longer
+/// listed is dropped with its sums. A directory that does not exist lists
+/// nothing. A subagent entry also carries the parent's start time it was
+/// gated by (`Entry.since`); when the parent's turns close under a new
+/// `cost-state` line and reopen, that time moves and the subagent files
+/// are read again from zero under the new gate.
+///
 /// Confined to `TranscriptBill.queue` by its callers, so a long first
 /// walk never runs twice at once; the lock keeps a caller on another
 /// queue correct, not fast.
 public final class TranscriptEstimateCache: @unchecked Sendable {
-    /// A file over this is not estimated. The first sight of a path walks
-    /// the whole file on the serial transcript queue, behind which every
-    /// bill read and every session list's model read waits, and it holds a
-    /// line at a time in memory; 512 MiB is minutes of that queue, for a
+    /// A session whose transcript and subagent files together are over
+    /// this is not estimated. The first sight of a path walks the whole
+    /// file on the serial transcript queue, behind which every bill read
+    /// and every session list's model read waits, and it holds a line at
+    /// a time in memory; 512 MiB is minutes of that queue, for a
     /// transcript Claude Code itself can no longer resume. The largest on
     /// this machine on 2026-09-20 was 57 MB.
     public static let maxBytes: Int64 = 512 << 20
@@ -126,14 +145,34 @@ public final class TranscriptEstimateCache: @unchecked Sendable {
     /// A line longer than this is skipped whole, so a damaged file cannot
     /// make the reader hold it in memory.
     static let maxLineBytes = 16 << 20
-    /// How many paths the cache keeps; the least recently asked goes first.
-    static let maxEntries = 512
+    /// How many files the cache keeps; the least recently asked goes first.
+    /// A session's subagents are one entry each, and one session on this
+    /// machine held 239 files (2026-09-20), so the bound is well above that.
+    static let maxEntries = 4096
 
     struct Sums: Equatable {
         var perModel: [String: TranscriptEstimate.ModelUsage] = [:]
         var lastRequestId: String?
         var startTime: Int64?
         var turns: Int { perModel.values.reduce(0) { $0 + $1.turns } }
+
+        /// Add another file's sums: the parent's and its subagents' turns
+        /// are one session's. The request id is per file and does not carry.
+        mutating func add(_ other: Sums) {
+            for (model, share) in other.perModel {
+                var mine = perModel[model] ?? .zero
+                mine.inputTokens += share.inputTokens
+                mine.outputTokens += share.outputTokens
+                mine.cacheReadInputTokens += share.cacheReadInputTokens
+                mine.cacheCreationInputTokens += share.cacheCreationInputTokens
+                mine.cacheCreation1hInputTokens += share.cacheCreation1hInputTokens
+                mine.turns += share.turns
+                perModel[model] = mine
+            }
+            if let theirs = other.startTime {
+                startTime = min(startTime ?? theirs, theirs)
+            }
+        }
     }
 
     struct Entry: Equatable {
@@ -149,32 +188,104 @@ public final class TranscriptEstimateCache: @unchecked Sendable {
         /// a grown file reads only the growth.
         var bytesRead: Int64
         var touched: Int64
+        /// For a subagent file: the parent's first turn after its last
+        /// `cost-state` line, epoch milliseconds; a turn before it is not
+        /// counted. Nil for the parent itself.
+        var since: Int64?
+
+        static func fresh(since: Int64?, touched: Int64) -> Entry {
+            Entry(size: 0, mtime: 0, offset: 0, sums: Sums(), droppingLongLine: false, bytesRead: 0, touched: touched, since: since)
+        }
+    }
+
+    /// One listed subagent file, with the fingerprint the listing took.
+    struct Subagent: Equatable {
+        var path: String
+        var size: Int64
+        var mtime: Int64
     }
 
     private let lock = NIOLock()
     private var entries: [String: Entry] = [:]
+    /// The subagent paths each parent listed last, so a file that vanished
+    /// loses its entry.
+    private var subagentPaths: [String: [String]] = [:]
     private let maxBytes: Int64
 
     public init(maxBytes: Int64 = TranscriptEstimateCache.maxBytes) {
         self.maxBytes = maxBytes
     }
 
-    /// The estimate for the transcript at `path`, as of `now`.
+    /// The estimate for the session whose transcript is at `path`, its
+    /// subagent files included, as of `now`.
     public func estimate(forTranscriptAt path: String, now: Date = Date()) -> TranscriptEstimate.Outcome {
         guard let (size, mtime) = TranscriptModelCache.fingerprint(path) else {
-            lock.withLock { _ = entries.removeValue(forKey: path) }
+            forget(path)
             return .unreadable("cannot stat \(path): \(String(cString: strerror(errno)))")
         }
-        guard size <= maxBytes else {
-            lock.withLock { _ = entries.removeValue(forKey: path) }
+        let subagents = Self.listSubagents(of: path)
+        let total = subagents.reduce(size) { $0 + $1.size }
+        guard total <= maxBytes else {
+            forget(path)
             return .noEstimate(.transcriptTooLarge)
         }
         let asOf = Int64(now.timeIntervalSince1970 * 1000)
+        let parent: Entry
+        switch refresh(path, size: size, mtime: mtime, since: nil, asOf: asOf) {
+        case .entry(let entry): parent = entry
+        case .unreadable(let reason):
+            forget(path)
+            return .unreadable(reason)
+        }
+        // A file listed last time and not now is gone with its sums.
+        let listed = Set(subagents.map(\.path))
+        lock.withLock {
+            for gone in subagentPaths[path] ?? [] where !listed.contains(gone) {
+                entries.removeValue(forKey: gone)
+            }
+            subagentPaths[path] = subagents.map(\.path)
+        }
+        var sums = parent.sums
+        // A subagent turn follows a parent turn, so with no parent turn there
+        // is nothing under the gate to count.
+        if let since = parent.sums.startTime {
+            for subagent in subagents {
+                switch refresh(subagent.path, size: subagent.size, mtime: subagent.mtime, since: since, asOf: asOf) {
+                case .entry(let entry): sums.add(entry.sums)
+                case .unreadable: lock.withLock { _ = entries.removeValue(forKey: subagent.path) }
+                }
+            }
+        }
+        return Self.outcome(of: sums, asOf: asOf, subagentFiles: subagents.count)
+    }
+
+    /// For a test: the entry a path holds.
+    func entry(for path: String) -> Entry? { lock.withLock { entries[path] } }
+
+    /// Drop a parent and every subagent entry it listed.
+    private func forget(_ path: String) {
+        lock.withLock {
+            entries.removeValue(forKey: path)
+            for subagent in subagentPaths.removeValue(forKey: path) ?? [] {
+                entries.removeValue(forKey: subagent)
+            }
+        }
+    }
+
+    enum Refreshed {
+        case entry(Entry)
+        case unreadable(String)
+    }
+
+    /// The entry for one file at the fingerprint just taken: the cached one
+    /// when the file only grew under the same gate, read on from its offset;
+    /// a fresh one read from zero otherwise; untouched when nothing changed.
+    private func refresh(_ path: String, size: Int64, mtime: Int64, since: Int64?, asOf: Int64) -> Refreshed {
         var entry: Entry
-        if let cached = lock.withLock({ entries[path] }), cached.offset <= size, cached.mtime <= mtime {
+        if let cached = lock.withLock({ entries[path] }), cached.offset <= size, cached.mtime <= mtime, cached.since == since {
             entry = cached
         } else {
-            entry = Entry(size: 0, mtime: 0, offset: 0, sums: Sums(), droppingLongLine: false, bytesRead: 0, touched: asOf)
+            entry = .fresh(since: since, touched: asOf)
         }
         if entry.size != size || entry.mtime != mtime {
             switch Self.walk(path: path, from: entry.offset, to: size, entry: &entry) {
@@ -193,11 +304,41 @@ public final class TranscriptEstimateCache: @unchecked Sendable {
                 entries.removeValue(forKey: oldest.key)
             }
         }
-        return Self.outcome(of: entry.sums, asOf: asOf)
+        return .entry(entry)
     }
 
-    /// For a test: the entry a path holds.
-    func entry(for path: String) -> Entry? { lock.withLock { entries[path] } }
+    // MARK: - The subagent directory
+
+    /// `<transcript minus .jsonl>/subagents`, where Claude Code writes a
+    /// session's subagent transcripts.
+    static func subagentDirectory(of transcript: String) -> String {
+        let stem = transcript.hasSuffix(".jsonl") ? String(transcript.dropLast(".jsonl".count)) : transcript
+        return stem + "/subagents"
+    }
+
+    /// The regular `*.jsonl` files under the session's subagent directory
+    /// with their fingerprints, by name; none when the directory is missing
+    /// or a file went away between the listing and its `stat`.
+    static func listSubagents(of transcript: String) -> [Subagent] {
+        let directory = subagentDirectory(of: transcript)
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: directory) else { return [] }
+        var listed: [Subagent] = []
+        for name in names.sorted() where name.hasSuffix(".jsonl") {
+            let path = directory + "/" + name
+            var status = stat()
+            guard stat(path, &status) == 0, (status.st_mode & S_IFMT) == S_IFREG else { continue }
+            #if canImport(Darwin)
+            let spec = status.st_mtimespec
+            #else
+            let spec = status.st_mtim
+            #endif
+            listed.append(Subagent(
+                path: path, size: Int64(status.st_size),
+                mtime: Int64(spec.tv_sec) * 1_000_000_000 + Int64(spec.tv_nsec)
+            ))
+        }
+        return listed
+    }
 
     // MARK: - The walk
 
@@ -239,7 +380,7 @@ public final class TranscriptEstimateCache: @unchecked Sendable {
                 if entry.droppingLongLine {
                     entry.droppingLongLine = false
                 } else {
-                    take(carry[start..<newline], into: &entry.sums)
+                    take(carry[start..<newline], into: &entry.sums, since: entry.since)
                 }
                 start = newline + 1
             }
@@ -258,7 +399,9 @@ public final class TranscriptEstimateCache: @unchecked Sendable {
 
     /// One complete line: a `cost-state` line closes the sums, an
     /// assistant line adds its request's usage, anything else is skipped.
-    static func take(_ line: ArraySlice<UInt8>, into sums: inout Sums) {
+    /// With `since`, a turn timestamped before it is the old bill's and is
+    /// skipped too.
+    static func take(_ line: ArraySlice<UInt8>, into sums: inout Sums, since: Int64? = nil) {
         if contains(line, costStateGate),
            let object = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
            object["type"] as? String == "cost-state" {
@@ -272,6 +415,8 @@ public final class TranscriptEstimateCache: @unchecked Sendable {
               let model = message["model"] as? String, !model.isEmpty, model != TranscriptModel.syntheticModel,
               let usage = message["usage"] as? [String: Any]
         else { return }
+        let stamp = (object["timestamp"] as? String).flatMap(TranscriptUsage.parseUTC).map { Int64($0.timeIntervalSince1970 * 1000) }
+        if let since, let stamp, stamp < since { return }
         let request = object["requestId"] as? String ?? ""
         if !request.isEmpty, request == sums.lastRequestId { return }
         sums.lastRequestId = request.isEmpty ? nil : request
@@ -284,13 +429,11 @@ public final class TranscriptEstimateCache: @unchecked Sendable {
         share.cacheCreation1hInputTokens += creation?["ephemeral_1h_input_tokens"] as? Int ?? 0
         share.turns += 1
         sums.perModel[model] = share
-        if sums.startTime == nil, let stamp = object["timestamp"] as? String, let instant = TranscriptUsage.parseUTC(stamp) {
-            sums.startTime = Int64(instant.timeIntervalSince1970 * 1000)
-        }
+        if sums.startTime == nil, let stamp { sums.startTime = stamp }
     }
 
     /// The sums priced, or `.noEstimate(.noTurns)` with nothing to price.
-    static func outcome(of sums: Sums, asOf: Int64) -> TranscriptEstimate.Outcome {
+    static func outcome(of sums: Sums, asOf: Int64, subagentFiles: Int) -> TranscriptEstimate.Outcome {
         guard sums.turns > 0 else { return .noEstimate(.noTurns) }
         var priced: [String: TranscriptEstimate.ModelUsage] = [:]
         var unpriced: [String] = []
@@ -319,6 +462,7 @@ public final class TranscriptEstimateCache: @unchecked Sendable {
             cacheReadTokens: rows.reduce(0) { $0 + $1.cacheReadInputTokens },
             outTokens: rows.reduce(0) { $0 + $1.outputTokens },
             turns: sums.turns,
+            subagentFiles: subagentFiles,
             asOf: asOf,
             startTime: sums.startTime,
             unpricedModels: unpriced.sorted()
