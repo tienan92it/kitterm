@@ -1,15 +1,16 @@
 # STATE: proxy-is-a-boundary
 
 - Status: active
-- Round: 0 of 3 in this budget (first budget)
-- Rounds total: 0
-- Last floor: none yet
-- Updated: 2026-09-24, created
+- Round: 1 of 3 in this budget (first budget)
+- Rounds total: 1
+- Last floor: green (2026-09-24, round 1 after: swift test 875, KittermDaemonTests 691, Linux build)
+- Updated: 2026-09-24, round 1 closed
 
 ## Queue
 
-1. `the-three-configurations` (capability 1).
-2. `the-daemon-refuses-the-combination` (capability 2).
+1. `the-daemon-refuses-the-combination` (capability 2), and with it the
+   two findings of round 1: `/api/lan` hands a proxied request both
+   tokens, and a typo in `--trusted-host` fails open silently.
 
 ## Failures
 
@@ -21,7 +22,10 @@ None.
 
 ## Done
 
-Nothing yet.
+- `the-three-configurations` (capability 1), round 1, `280be50`. See
+  `rounds/001.md`. Four tests over real sockets; the bypass is on the
+  record with its verbatim responses, and two findings are worse than
+  the proposal said.
 
 ## Direction
 
@@ -33,5 +37,4 @@ not belong in a done goal's list; it belongs in a goal of its own.
 
 ## Next action
 
-Round 1, `the-three-configurations`, on `proxy-is-a-boundary/round-1`
-from `origin/main`.
+Round 2, `the-daemon-refuses-the-combination`, on the same branch.
