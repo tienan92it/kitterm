@@ -20,11 +20,9 @@ None.
 
 ## Done
 
-- `the-skill-holds-the-procedure` (capability 2), round 2, `bde1581`
-  and `94af778`. See `rounds/002.md`. The skill 572 → 445 lines; the
+- `the-skill-holds-the-procedure` (capability 2), round 2, PR #149. See `rounds/002.md`. The skill 572 → 445 lines; the
   two files share no heading, where thirteen were shared at the start.
-- `loop-holds-the-contract` (capability 1), round 1, `48f712b` and
-  `dc3f26f`. See `rounds/001.md`. `LOOP.md` 367 → 326 lines with a
+- `loop-holds-the-contract` (capability 1), round 1, PR #149. See `rounds/001.md`. `LOOP.md` 367 → 326 lines with a
   `Parsed shapes` section; the procedure left for the skill.
 
 ## Direction
