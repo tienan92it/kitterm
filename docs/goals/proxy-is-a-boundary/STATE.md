@@ -15,12 +15,12 @@
 ## Failures
 
 - Round 2 stopped nine minutes in: `You've reached your Fable limit`.
-  The session `DE67ECB7-84F8-42AF-BDF3-17D3E5E66477` is held at its
-  prompt with the work unwritten to git — the `/api/lan` grade fix and
-  the `AGENTS.md` edits were in progress. Nothing is committed. Not a
-  spent round: the budget and the queue item stay where they are.
-  Resume the same session when the limit resets, or respawn with the
-  plan and this round's correction.
+  Not a spent round — the budget and the queue item stay where they
+  are. The crew's work was uncommitted in the working tree and the
+  foreman saved it as `38f65af`, a WIP commit that is **not reviewed**:
+  thirteen files, including the `--lan` refusal, the `/api/lan` grade
+  fix and the `AGENTS.md` edits. The session
+  `DE67ECB7-84F8-42AF-BDF3-17D3E5E66477` is held at its prompt.
 
 ## Proposals waiting on the human
 
