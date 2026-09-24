@@ -221,7 +221,9 @@ enum KittermMain {
             the ephemeral one printed at start (~/.kitterm/token), the
             watch-only one (~/.kitterm/token-watch, observers who can never
             type or take control), or a named token from `kitterm token`
-            (hashed, persistent, revocable without restart).
+            (hashed, persistent, revocable without restart). --lan needs
+            --trusted-host: without one a proxy on loopback would inherit
+            full access with no token, so the daemon refuses to start.
             --tls-cert/--tls-key add an encrypted listener on PORT+1 (or
             --tls-port) for other devices, while the plain listener stays on
             loopback. Bring a real certificate — `tailscale cert <name>` is
@@ -431,6 +433,11 @@ enum KittermMain {
                     detail: "the kitterm service manages the daemon; to change flags run: kitterm service install \(array.joined(separator: " "))"
                 )
             }
+            // A plist this build refuses would come back as a KeepAlive loop
+            // with the refusal in server.log; say it here instead.
+            if let arguments = installedServiceArguments() {
+                _ = try DaemonFlags.parse(arguments).validatedTrustedHosts()
+            }
             // kickstart restarts the process against the definition launchd is
             // already holding, so a plist the installer rewrote since bootstrap
             // would survive a restart untouched — which is exactly how a daemon
@@ -494,6 +501,7 @@ enum KittermMain {
             _ = try tls.makeSSLContext()
         }
         _ = try flags.validatedSessionLinger()
+        _ = try flags.validatedTrustedHosts()
         try DaemonPaths.ensureStateDirectory()
         if let existing = livePid() {
             print("kitterm already running (pid \(existing), port \(readPort() ?? port))")
@@ -593,6 +601,36 @@ enum KittermMain {
         if openBrowser {
             openBrowserIfPossible(port: port)
         }
+    }
+
+    /// The command line of a live process, `ps -o args=`, split on blanks;
+    /// nil when `ps` answers nothing. Every daemon flag is blank-free, so the
+    /// split is exact for the one caller, `upgrade`.
+    static func processArguments(pid: pid_t) -> [String]? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/ps")
+        process.arguments = ["-o", "args=", "-p", "\(pid)"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return nil }
+        let output = String(
+            data: pipe.fileHandleForReading.readDataToEndOfFile(),
+            encoding: .utf8
+        ) ?? ""
+        process.waitUntilExit()
+        let words = output.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }).map(String.init)
+        return words.isEmpty ? nil : words
+    }
+
+    /// The `ProgramArguments` of the installed LaunchAgent, nil when the file
+    /// is absent or unreadable (`service sync` reports that case itself).
+    private static func installedServiceArguments() -> [String]? {
+        guard let data = try? Data(contentsOf: launchAgentPlist),
+              let parsed = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
+              let dictionary = parsed as? [String: Any]
+        else { return nil }
+        return dictionary["ProgramArguments"] as? [String]
     }
 
     /// The daemon writes the token at bind time; give it a moment.
@@ -1003,6 +1041,23 @@ enum KittermMain {
         // longer describes what is running.
         let port = readPort() ?? KittermConstants.defaultPort
         let runningBefore = daemonVersion(port: port)
+        // The staged build refuses `--lan` without `--trusted-host`
+        // (`DaemonFlags.validatedTrustedHosts`). Staged under a daemon that
+        // runs so, it would take over at the next start, refuse, and leave
+        // launchd restarting it into the same refusal with the message in
+        // server.log. Read the running daemon's own arguments and say it
+        // here, where it was typed, with nothing changed.
+        if let pid = livePid(), let arguments = processArguments(pid: pid) {
+            do {
+                _ = try DaemonFlags.parse(arguments).validatedTrustedHosts()
+            } catch {
+                throw CLIError.upgradeFailed(
+                    detail: "\(error.localizedDescription). The upgrade is not staged: the new build "
+                        + "refuses the running daemon's flags (\(arguments.dropFirst().joined(separator: " "))), "
+                        + "so restart it with --trusted-host <your public name> first"
+                )
+            }
+        }
         print("upgrading kitterm in \(prefix.path) …")
 
         let process = Process()
@@ -1344,6 +1399,9 @@ enum KittermMain {
         flags: DaemonFlags
     ) throws {
         let executable = try serviceExecutablePath(action: "service install")
+        // Refuse here, in the terminal: a plist launchd cannot start is a
+        // KeepAlive loop whose only trace is server.log.
+        _ = try flags.validatedTrustedHosts()
         let plist = launchAgentPlist
         try FileManager.default.createDirectory(
             at: plist.deletingLastPathComponent(),

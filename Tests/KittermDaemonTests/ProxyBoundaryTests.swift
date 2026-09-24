@@ -17,8 +17,6 @@ import XCTest
 /// between the two requests is what `viaTrustedHost` turns on.
 ///
 /// No `Origin` header is needed to reach any branch: `Host` alone decides.
-/// The unsafe configuration gets one extra request with a cross-origin
-/// `Origin` because that branch skips the origin check as well.
 ///
 /// The requests are hand-written HTTP/1.1 over a POSIX socket because
 /// `URLSession` overwrites the `Host` header. Every assertion pins the
@@ -26,8 +24,8 @@ import XCTest
 /// that answer by grade: `GET /api/profiles` (403 `watch-only token` below
 /// full) and `GET /api/lan` (the control token, to a peer read as loopback).
 ///
-/// This suite has no convention for a test that pins a known defect, so
-/// the unsafe test says what it is in its name and in the comment above it.
+/// Round 1 pinned the third configuration as the bypass it was; round 2
+/// flipped that test to the refusal the daemon now answers with.
 final class ProxyBoundaryTests: XCTestCase {
     /// The public name the proxy forwards. Not resolved, not connected to.
     private static let publicHost = "mac.tailnet.ts.net"
@@ -101,50 +99,57 @@ final class ProxyBoundaryTests: XCTestCase {
 
     // MARK: - Configuration 3: `--lan`, no `--trusted-host`
 
-    /// THIS TEST ASSERTS TODAY'S UNSAFE BEHAVIOUR ON PURPOSE. It documents
-    /// the hole `agent-push` round 1 measured on 2026-09-11: with `--lan` and
-    /// no `--trusted-host`, a request through a loopback proxy naming a
-    /// public host is read as the local human and gets full grade with no
-    /// token, the control token included. Behind `tailscale serve` that is
-    /// every device on the tailnet.
-    ///
-    /// Capability 2 of `proxy-is-a-boundary` flips this test: the daemon
-    /// then refuses to start on this combination, and the assertions below
-    /// change to the refusal. Until then, a green suite with this test
-    /// passing is NOT a safe daemon; it is a daemon whose hole is on the
-    /// record. Do not "fix" this test by weakening it.
-    func testLanWithoutTrustedHostGrantsFullAccessToAProxiedRequest() async throws {
-        let daemon = try await startServe(["--lan"])
-        defer { stop(daemon) }
-
-        let proxied = try get("/api/sessions", host: Self.publicHost, port: daemon.port)
-        XCTAssertEqual(proxied.status, 200, "the bypass: \(proxied.body)")
-        try assertEmptySessionList(proxied.body)
-
-        // Full grade, not watch: the profiles route answers, and the lan
-        // route hands the proxied request the run's own control token.
-        try assertFullGrade(daemon, host: Self.publicHost)
-
-        // The branch skips the origin check as well: a cross-origin page on
-        // the tailnet is admitted like everything else.
-        let crossOrigin = try get(
-            "/api/sessions", host: Self.publicHost, port: daemon.port,
-            extraHeaders: ["Origin: https://evil.example"]
+    /// The daemon refuses to start. Round 1 measured this configuration as
+    /// the bypass: a request through a loopback proxy naming a public host
+    /// was read as the local human and got full grade with no token, the
+    /// control token included, so behind `tailscale serve` every device on
+    /// the tailnet had a shell. No request can reach that branch now, because
+    /// `serve` exits before it binds, with one sentence in `server.log` that
+    /// names both flags and the fix (`DaemonFlags.lanNeedsTrustedHost`).
+    func testLanWithoutTrustedHostRefusesToStart() async throws {
+        let refusal = try await serveRefuses(["--lan"])
+        XCTAssertEqual(refusal.status, 1)
+        XCTAssertTrue(
+            refusal.log.contains("error: " + Self.lanNeedsTrustedHost + "\n"),
+            "the refusal, verbatim, in server.log: \(refusal.log)"
         )
-        XCTAssertEqual(crossOrigin.status, 200, crossOrigin.body)
-        try assertEmptySessionList(crossOrigin.body)
-
-        let local = try get("/api/sessions", host: "127.0.0.1:\(daemon.port)", port: daemon.port)
-        XCTAssertEqual(local.status, 200, local.body)
-        try assertEmptySessionList(local.body)
+        // Nothing bound: the port the daemon was told to use answers nobody.
+        XCTAssertThrowsError(try get("/api/sessions", host: Self.publicHost, port: refusal.port))
     }
+
+    /// `kitterm start` refuses in the terminal, before it spawns anything:
+    /// the same sentence on stderr, exit 1, and no daemon on the port.
+    func testStartRefusesLanWithoutTrustedHostInTheTerminal() throws {
+        let port = try freePort()
+        let process = Process()
+        process.executableURL = executable
+        process.arguments = ["start", "--port", "\(port)", "--lan"]
+        process.environment = environment
+        let stderr = Pipe()
+        process.standardError = stderr
+        process.standardOutput = FileHandle.nullDevice
+        try process.run()
+        let text = String(decoding: stderr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        process.waitUntilExit()
+        XCTAssertEqual(process.terminationStatus, 1)
+        XCTAssertEqual(text, "error: " + Self.lanNeedsTrustedHost + "\n")
+        XCTAssertThrowsError(try get("/api/health", host: "127.0.0.1:\(port)", port: port))
+    }
+
+    /// The words `DaemonFlags.lanNeedsTrustedHost` holds, repeated here so a
+    /// change to them fails this suite and not only the CLI's.
+    private static let lanNeedsTrustedHost =
+        "--lan must be given with --trusted-host <your public name>: "
+        + "without it a proxy on loopback inherits full access with no token"
 
     // MARK: - A `--trusted-host` that never matches
 
     /// A misspelt `--trusted-host` is accepted and protects nothing: the
     /// real name misses the allowlist, so the request falls into
-    /// configuration 3. Recorded, not fixed, this round; the daemon cannot
-    /// know the name is wrong without a source of truth it does not have.
+    /// configuration 3's branch. The daemon cannot know the name is wrong
+    /// without a source of truth it does not have, so the bypass stays open
+    /// here; what changed in round 2 is that it is no longer silent (the
+    /// next test).
     func testAMisspeltTrustedHostLeavesTheBypassOpen() async throws {
         let daemon = try await startServe(["--lan", "--trusted-host", "mac.tailnet.ts.nett"])
         defer { stop(daemon) }
@@ -153,6 +158,25 @@ final class ProxyBoundaryTests: XCTestCase {
         XCTAssertEqual(proxied.status, 200, "the typo is not a boundary: \(proxied.body)")
         try assertEmptySessionList(proxied.body)
         try assertFullGrade(daemon, host: Self.publicHost)
+    }
+
+    /// The first request naming a host that matches no `--trusted-host`
+    /// writes one line to `server.log` naming the host it saw and the hosts
+    /// it holds (`UnmatchedHostLog`); a second request adds no line, and a
+    /// loopback `Host` never does.
+    func testAMisspeltTrustedHostIsReportedOnceInTheLog() async throws {
+        let daemon = try await startServe(["--lan", "--trusted-host", "mac.tailnet.ts.nett"])
+        defer { stop(daemon) }
+        let expected = "warning: a loopback peer named Host \"mac.tailnet.ts.net\", which matches no "
+            + "--trusted-host (mac.tailnet.ts.nett); if a proxy forwarded it, that proxy is not a "
+            + "boundary and its callers get full access with no token\n"
+
+        _ = try get("/api/sessions", host: "127.0.0.1:\(daemon.port)", port: daemon.port)
+        _ = try get("/api/sessions", host: Self.publicHost, port: daemon.port)
+        _ = try get("/api/sessions", host: Self.publicHost.uppercased() + ":443", port: daemon.port)
+        try await waitFor("the warning in server.log") { self.serverLog().contains(expected) }
+        let log = serverLog()
+        XCTAssertEqual(log.components(separatedBy: "warning: a loopback peer").count - 1, 1, log)
     }
 
     // MARK: - Helpers
@@ -193,6 +217,27 @@ final class ProxyBoundaryTests: XCTestCase {
             throw error
         }
         return daemon
+    }
+
+    /// A `kitterm serve` that must exit on its own: its status and what it
+    /// wrote to `server.log`, which is where `serve` sends stderr.
+    private func serveRefuses(_ flags: [String]) async throws -> (status: Int32, log: String, port: Int) {
+        try XCTSkipUnless(
+            FileManager.default.isExecutableFile(atPath: executable.path),
+            "kitterm binary not built beside the test bundle"
+        )
+        let port = try freePort()
+        let process = Process()
+        process.executableURL = executable
+        process.arguments = ["serve", "--port", "\(port)"] + flags
+        process.environment = environment
+        try process.run()
+        try await waitFor("serve to exit") { !process.isRunning }
+        return (process.terminationStatus, serverLog(), port)
+    }
+
+    private func serverLog() -> String {
+        (try? String(contentsOf: stateDir.appendingPathComponent("server.log"), encoding: .utf8)) ?? ""
     }
 
     private func stop(_ daemon: Daemon) {

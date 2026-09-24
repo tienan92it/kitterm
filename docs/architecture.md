@@ -415,7 +415,28 @@ can reach it has a shell. The controls below decide who can reach it.
   though the proxy connects from loopback. This stops the proxy from leaking loopback's
   trust. Set it whenever a proxy fronts the daemon. Without it, `--lan` makes the daemon
   read the proxy's loopback connection as local and skip the token
-  ([Reaching the daemon from a phone](#reaching-the-daemon-from-a-phone)).
+  ([Reaching the daemon from a phone](#reaching-the-daemon-from-a-phone)), so **`--lan`
+  without `--trusted-host` does not start.** `serve`, `start`, `service install` and a
+  service `restart` refuse with one sentence and exit 1:
+
+  ```
+  error: --lan must be given with --trusted-host <your public name>: without it a proxy on loopback inherits full access with no token
+  ```
+
+  `serve` writes the sentence to `server.log`; the other commands print it. `kitterm
+  upgrade` reads the running daemon's argv and refuses to stage a build while it carries
+  the combination, with the same sentence and `The upgrade is not staged`, so a person
+  upgrading into this reads it where they typed. A live takeover into this build from an
+  older CLI is not caught: the successor refuses before it adopts, the panes go, and
+  launchd restarts it into the same refusal, which `server.log` and `kitterm restart`
+  then print. A `--trusted-host` the daemon cannot match (`mac.tailnet.ts.nett`) is
+  accepted, because the daemon has no source of truth for its own name; the first
+  loopback request per unmatched name writes one warning line to `server.log` that names
+  the host it saw and the hosts it holds (`UnmatchedHostLog`).
+- **`/api/lan` answers the tokens to the grade.** A caller the policy graded full gets
+  `token` and `watchToken`. A watch-grade caller gets `{ok, enabled, url}` and no token.
+  The peer address decided this before, and a watch token through a `--trusted-host`
+  proxy is a loopback peer, so it was handed the control token, which spawns a shell.
 - **Token grades.** A **full** token can do everything. A **watch** token can observe
   sessions and read the API, but can never type, take control, or open a shell. The
   WebSocket handler takes a watch-only path that cannot reach `spawnNew`. `POST /input`
@@ -454,9 +475,11 @@ The daemon sets the auth cookie, so later visits carry no token in the URL.
 - **`tailscaled` owns the certificate and renews it.** kitterm reads no private key on
   this path, and `--tls-cert` stays unused.
 - **`--trusted-host` is not optional.** The proxy connects from loopback. Without the
-  flag, and with `--lan`, the daemon reads that peer as local and grants full access to
+  flag, and with `--lan`, the daemon read that peer as local and granted full access to
   the whole tailnet with no token. That would defeat both the token grades and
-  `--agent-control`. With the flag, the request is remote and must present a token.
+  `--agent-control`, so the daemon now refuses to start on that combination
+  ([Security](#security)). With the flag, the request is remote and must present a
+  token.
 - **`tailscale serve` injects `Tailscale-User-*` headers.** kitterm ignores them. The
   token remains the only credential.
 - **The cost: the tailnet becomes a dependency.** The MagicDNS name does not resolve on
@@ -623,7 +646,8 @@ Measured on 2026-09-11 against a scratch daemon under `KITTERM_STATE_DIR`, on
 - `dig @1.1.1.1 <machine>.<tailnet>.ts.net` returned nothing; the tailnet resolver
   returned the `100.x` address.
 - Behind `tailscale serve`, `GET /api/sessions` with no token answered: `200` and full
-  access with `--lan` and no `--trusted-host`; `403 non-loopback Host` with neither
+  access with `--lan` and no `--trusted-host` (a combination the daemon refuses to start
+  on since `proxy-is-a-boundary` round 2); `403 non-loopback Host` with neither
   flag; `403 missing or invalid token` with `--trusted-host`, with or without `--lan`.
   A full token then answered `200`.
 

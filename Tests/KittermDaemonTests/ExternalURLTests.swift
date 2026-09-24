@@ -10,7 +10,10 @@ import XCTest
 /// here hands out links that cannot connect, which is invisible until someone
 /// opens one on a phone — so each deployment shape gets a test.
 final class ExternalURLTests: XCTestCase {
-    private func lanResponse(policy: AccessPolicy, port: Int, tlsPort: Int?) throws -> String {
+    private func lanResponse(
+        policy: AccessPolicy, port: Int, tlsPort: Int?,
+        host: String = "127.0.0.1", uri: String = "/api/lan"
+    ) throws -> String {
         let handler = HTTPAPIHandler(
             registry: SessionRegistry(),
             policy: policy,
@@ -24,8 +27,8 @@ final class ExternalURLTests: XCTestCase {
         defer { _ = try? channel.finish() }
 
         var headers = HTTPHeaders()
-        headers.add(name: "Host", value: "127.0.0.1")
-        let head = HTTPRequestHead(version: .http1_1, method: .GET, uri: "/api/lan", headers: headers)
+        headers.add(name: "Host", value: host)
+        let head = HTTPRequestHead(version: .http1_1, method: .GET, uri: uri, headers: headers)
         try channel.writeInbound(HTTPServerRequestPart.head(head))
         try channel.writeInbound(HTTPServerRequestPart.end(nil))
 
@@ -78,6 +81,48 @@ final class ExternalURLTests: XCTestCase {
         XCTAssertTrue(
             body.contains(#""url":"https://kitterm.example.com""#),
             "expected the bare proxied name, got \(body)"
+        )
+    }
+
+    // MARK: - The tokens go to the grade, not to the peer
+
+    /// A watch token through a `--trusted-host` proxy: the peer is loopback
+    /// (the proxy), the grade is watch. The route used to check the peer and
+    /// hand this caller the control token, which spawns a shell. It gets the
+    /// URL and `enabled` and neither token, the shape the page reads as a
+    /// link with no token in it.
+    func testWatchGradeThroughTheProxyGetsNoToken() throws {
+        let body = try lanResponse(
+            policy: .lan(token: "ctl", watchToken: "ktw_w", trustedHosts: ["mac.tailnet.ts.net"]),
+            port: 3418, tlsPort: nil,
+            host: "mac.tailnet.ts.net", uri: "/api/lan?token=ktw_w"
+        )
+        XCTAssertEqual(body, #"{"ok":true,"enabled":true,"url":"http://mac.tailnet.ts.net:3418"}"#)
+    }
+
+    /// The full token through the same proxy: today's answer, both tokens.
+    func testFullGradeThroughTheProxyGetsBothTokens() throws {
+        let body = try lanResponse(
+            policy: .lan(token: "ctl", watchToken: "ktw_w", trustedHosts: ["mac.tailnet.ts.net"]),
+            port: 3418, tlsPort: nil,
+            host: "mac.tailnet.ts.net", uri: "/api/lan?token=ctl"
+        )
+        XCTAssertEqual(
+            body,
+            #"{"ok":true,"enabled":true,"url":"http://mac.tailnet.ts.net:3418","token":"ctl","watchToken":"ktw_w"}"#
+        )
+    }
+
+    /// The local human, loopback peer and loopback `Host`, no token: full
+    /// grade, both tokens, as the share buttons rely on.
+    func testTheLocalUserGetsBothTokens() throws {
+        let body = try lanResponse(
+            policy: .lan(token: "ctl", watchToken: "ktw_w", trustedHosts: ["mac.tailnet.ts.net"]),
+            port: 3418, tlsPort: nil
+        )
+        XCTAssertEqual(
+            body,
+            #"{"ok":true,"enabled":true,"url":"http://mac.tailnet.ts.net:3418","token":"ctl","watchToken":"ktw_w"}"#
         )
     }
 
