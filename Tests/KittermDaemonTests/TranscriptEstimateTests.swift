@@ -6,7 +6,8 @@ import XCTest
 /// `TranscriptEstimateCache` over transcripts written into a scratch
 /// directory: the sum of a running session's turns priced by
 /// `ModelPricing`, what a resumed transcript counts, what a grown file
-/// reads, what a malformed line does, and when the bill wins.
+/// reads, what a malformed line does, when the bill wins, and how the
+/// subagent files under `<session>/subagents/` join the sum.
 final class TranscriptEstimateTests: XCTestCase {
     private var scratch: URL!
 
@@ -45,6 +46,15 @@ final class TranscriptEstimateTests: XCTestCase {
         let path = scratch.appendingPathComponent(name).path
         let body = lines.joined(separator: "\n") + (trailingNewline ? "\n" : "")
         try body.write(toFile: path, atomically: true, encoding: .utf8)
+        return path
+    }
+
+    /// Write a subagent transcript under `<parent minus .jsonl>/subagents/`.
+    private func writeSubagent(_ lines: [String], of parent: String, as name: String) throws -> String {
+        let directory = TranscriptEstimateCache.subagentDirectory(of: parent)
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        let path = directory + "/" + name
+        try (lines.joined(separator: "\n") + "\n").write(toFile: path, atomically: true, encoding: .utf8)
         return path
     }
 
@@ -252,6 +262,164 @@ final class TranscriptEstimateTests: XCTestCase {
         guard case .unreadable(let reason) = TranscriptEstimateCache().estimate(forTranscriptAt: scratch.appendingPathComponent("gone.jsonl").path)
         else { return XCTFail("a missing file is unreadable") }
         XCTAssertTrue(reason.contains("gone.jsonl"), reason)
+    }
+
+
+    // MARK: - The subagent files
+
+    /// A parent with two subagent files prices to the sum worked by hand
+    /// over all three: Opus 5 at $5 in and $25 out, Haiku 4.5 at $1 in and
+    /// $5 out; the turns count together and `subagentFiles` says two.
+    func testASessionWithTwoSubagentFilesPricesToTheSumOfAllThree() throws {
+        let parent = try write([
+            user(),
+            assistant("claude-opus-5", request: "p1", input: 100_000, cacheCreation: 0, cacheRead: 0, output: 10_000),
+        ])
+        _ = try writeSubagent([
+            assistant("claude-opus-5", request: "a1", input: 200_000, cacheCreation: 0, cacheRead: 0, output: 4_000, timestamp: "2026-09-20T01:00:02.000Z"),
+            assistant("claude-opus-5", request: "a2", input: 100_000, cacheCreation: 0, cacheRead: 0, output: 0, timestamp: "2026-09-20T01:00:03.000Z"),
+        ], of: parent, as: "agent-a.jsonl")
+        _ = try writeSubagent([
+            assistant("claude-haiku-4-5-20251001", request: "b1", input: 1_000_000, cacheCreation: 0, cacheRead: 0, output: 20_000, timestamp: "2026-09-20T01:00:02.000Z"),
+        ], of: parent, as: "agent-b.jsonl")
+        let estimate = try estimate(TranscriptEstimateCache(), parent)
+        // Opus: 400,000 × 5 + 14,000 × 25 = 2,350,000 µ$; Haiku: 1,000,000 × 1 + 20,000 × 5 = 1,100,000 µ$.
+        XCTAssertEqual(estimate.costUSD, 2.35 + 1.1, accuracy: 1e-9)
+        XCTAssertEqual(estimate.turns, 4)
+        XCTAssertEqual(estimate.subagentFiles, 2)
+        XCTAssertEqual(estimate.modelUsage["claude-opus-5"]?.turns, 3)
+        XCTAssertEqual(estimate.modelUsage["claude-opus-5"]?.inputTokens, 400_000)
+        XCTAssertEqual(estimate.modelUsage["claude-haiku-4-5-20251001"]?.outputTokens, 20_000)
+        XCTAssertEqual(estimate.inTokens, 1_400_000)
+        XCTAssertEqual(estimate.outTokens, 34_000)
+        XCTAssertEqual(estimate.startTime, 1_789_866_001_000, "the parent's first turn, the earliest")
+    }
+
+    /// An empty `subagents/` directory, and no directory at all, each leave
+    /// the estimate the parent's alone.
+    func testAnEmptySubagentDirectoryEqualsTheParentAlone() throws {
+        let lines = [assistant("claude-opus-5", request: "p1", input: 100_000, cacheCreation: 0, cacheRead: 0, output: 0)]
+        let parent = try write(lines)
+        let alone = try estimate(TranscriptEstimateCache(), parent)
+        XCTAssertEqual(alone.subagentFiles, 0)
+
+        try FileManager.default.createDirectory(atPath: TranscriptEstimateCache.subagentDirectory(of: parent), withIntermediateDirectories: true)
+        let withEmpty = try estimate(TranscriptEstimateCache(), parent)
+        XCTAssertEqual(withEmpty.costUSD, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(withEmpty.turns, 1)
+        XCTAssertEqual(withEmpty.subagentFiles, 0)
+        XCTAssertEqual(withEmpty.modelUsage, alone.modelUsage)
+    }
+
+    /// A subagent file that appears between two calls is counted on the
+    /// second, whole; one that vanishes drops its share on the next.
+    func testASubagentFileThatAppearsBetweenTwoCallsCountsOnTheSecond() throws {
+        let parent = try write([assistant("claude-opus-5", request: "p1", input: 100_000, cacheCreation: 0, cacheRead: 0, output: 0)])
+        let cache = TranscriptEstimateCache()
+        XCTAssertEqual(try estimate(cache, parent).costUSD, 0.5, accuracy: 1e-9)
+
+        let agent = try writeSubagent([
+            assistant("claude-opus-5", request: "a1", input: 200_000, cacheCreation: 0, cacheRead: 0, output: 0, timestamp: "2026-09-20T01:00:02.000Z"),
+        ], of: parent, as: "agent-a.jsonl")
+        let second = try estimate(cache, parent)
+        XCTAssertEqual(second.costUSD, 1.5, accuracy: 1e-9)
+        XCTAssertEqual(second.turns, 2)
+        XCTAssertEqual(second.subagentFiles, 1)
+        XCTAssertNotNil(cache.entry(for: agent))
+
+        try FileManager.default.removeItem(atPath: agent)
+        let third = try estimate(cache, parent)
+        XCTAssertEqual(third.costUSD, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(third.subagentFiles, 0)
+        XCTAssertNil(cache.entry(for: agent), "a vanished file loses its entry")
+    }
+
+    /// A grown subagent file reads only its growth and adds only its new
+    /// turns; the parent, unchanged, reads nothing.
+    func testAGrownSubagentFileReadsOnlyItsGrowth() throws {
+        let parent = try write([assistant("claude-opus-5", request: "p1", input: 100_000, cacheCreation: 0, cacheRead: 0, output: 0)])
+        let first = [assistant("claude-opus-5", request: "a1", input: 200_000, cacheCreation: 0, cacheRead: 0, output: 0, timestamp: "2026-09-20T01:00:02.000Z")]
+        let agent = try writeSubagent(first, of: parent, as: "agent-a.jsonl")
+        let cache = TranscriptEstimateCache()
+        XCTAssertEqual(try estimate(cache, parent).costUSD, 1.5, accuracy: 1e-9)
+        let agentSize = Int64(first.joined(separator: "\n").utf8.count + 1)
+        XCTAssertEqual(cache.entry(for: agent)?.bytesRead, agentSize, "the first sight walks the whole file")
+        let parentRead = try XCTUnwrap(cache.entry(for: parent)?.bytesRead)
+
+        let growth = assistant("claude-opus-5", request: "a2", input: 0, cacheCreation: 0, cacheRead: 0, output: 40_000, timestamp: "2026-09-20T01:00:03.000Z") + "\n"
+        try append(growth, to: agent)
+        try touch(agent, plus: 2)
+        let grown = try estimate(cache, parent)
+        XCTAssertEqual(grown.turns, 3)
+        XCTAssertEqual(grown.costUSD, 1.5 + 1.0, accuracy: 1e-9)
+        XCTAssertEqual(cache.entry(for: agent)?.bytesRead, agentSize + Int64(growth.utf8.count), "the growth alone")
+        XCTAssertEqual(cache.entry(for: parent)?.bytesRead, parentRead, "the parent was one stat")
+
+        XCTAssertEqual(try estimate(cache, parent).turns, 3)
+        XCTAssertEqual(cache.entry(for: agent)?.bytesRead, agentSize + Int64(growth.utf8.count), "an unchanged file reads nothing")
+    }
+
+    /// A resumed parent's old subagents are the old bill's: a subagent turn
+    /// before the parent's first turn after its `cost-state` line is
+    /// skipped, and a parent that gains a bill re-gates its subagents.
+    func testAResumedParentSkipsTheOldRunsSubagentTurns() throws {
+        let parent = try write([assistant("claude-opus-5", request: "p1", input: 100_000, cacheCreation: 0, cacheRead: 0, output: 0)])
+        let agent = try writeSubagent([
+            assistant("claude-opus-5", request: "a1", input: 200_000, cacheCreation: 0, cacheRead: 0, output: 0, timestamp: "2026-09-20T01:00:02.000Z"),
+        ], of: parent, as: "agent-a.jsonl")
+        let cache = TranscriptEstimateCache()
+        XCTAssertEqual(try estimate(cache, parent).costUSD, 1.5, accuracy: 1e-9)
+
+        // The bill lands, then a resume with one turn.
+        try append(costState(1.5) + "\n", to: parent)
+        try touch(parent, plus: 2)
+        XCTAssertEqual(cache.estimate(forTranscriptAt: parent), .noEstimate(.noTurns), "nothing after the bill, the subagent's old turn included")
+
+        try append(assistant("claude-opus-5", request: "p2", input: 0, cacheCreation: 0, cacheRead: 0, output: 20_000, timestamp: "2026-09-20T02:00:00.000Z") + "\n", to: parent)
+        try touch(parent, plus: 4)
+        let resumed = try estimate(cache, parent)
+        XCTAssertEqual(resumed.turns, 1, "the old subagent turn is the old bill's")
+        XCTAssertEqual(resumed.costUSD, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(resumed.subagentFiles, 1)
+        XCTAssertEqual(cache.entry(for: agent)?.since, 1_789_869_600_000)
+
+        // A subagent of the new run counts.
+        try append(assistant("claude-opus-5", request: "a2", input: 100_000, cacheCreation: 0, cacheRead: 0, output: 0, timestamp: "2026-09-20T02:00:01.000Z") + "\n", to: agent)
+        try touch(agent, plus: 2)
+        let again = try estimate(cache, parent)
+        XCTAssertEqual(again.turns, 2)
+        XCTAssertEqual(again.costUSD, 1.0, accuracy: 1e-9)
+    }
+
+    /// A finished parent is the bill's: the route reads the bill first and
+    /// never asks for the estimate, subagents or not, and the estimate of a
+    /// file whose last line is the bill has no turns whatever its subagents.
+    func testAFinishedParentReturnsTheBillAndIgnoresSubagents() throws {
+        let parent = try write([
+            assistant("claude-opus-5", request: "p1", input: 1_000_000, cacheCreation: 0, cacheRead: 0, output: 0),
+            costState(7.5),
+        ])
+        _ = try writeSubagent([
+            assistant("claude-opus-5", request: "a1", input: 1_000_000, cacheCreation: 0, cacheRead: 0, output: 0),
+        ], of: parent, as: "agent-a.jsonl")
+        guard case .bill(let bill) = TranscriptBill.read(path: parent) else { return XCTFail("no bill") }
+        XCTAssertEqual(bill.totalCostUSD, 7.5)
+        XCTAssertEqual(TranscriptEstimateCache().estimate(forTranscriptAt: parent), .noEstimate(.noTurns))
+        let (status, body) = HTTPAPIHandler.costBody(.bill(bill), estimate: nil, join: AgentJoin(sessionID: "s", transcriptPath: parent))
+        XCTAssertEqual(status, .ok)
+        XCTAssertTrue(body.contains(#""totalCostUSD":7.5"#), body)
+        XCTAssertTrue(body.contains(#""estimated":false"#), body)
+        XCTAssertFalse(body.contains(#""subagentFiles""#), body)
+    }
+
+    /// The cap is over the parent and its subagent files together.
+    func testTheCapCountsTheSubagentFilesToo() throws {
+        let lines = [assistant("claude-opus-5", request: "p1", input: 100_000, cacheCreation: 0, cacheRead: 0, output: 0)]
+        let parent = try write(lines)
+        let parentSize = Int64(lines.joined(separator: "\n").utf8.count + 1)
+        _ = try writeSubagent(lines, of: parent, as: "agent-a.jsonl")
+        guard case .estimate = TranscriptEstimateCache(maxBytes: parentSize * 2).estimate(forTranscriptAt: parent) else { return XCTFail("two files fit the cap exactly") }
+        XCTAssertEqual(TranscriptEstimateCache(maxBytes: parentSize * 2 - 1).estimate(forTranscriptAt: parent), .noEstimate(.transcriptTooLarge))
     }
 
     // MARK: - The table
