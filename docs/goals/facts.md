@@ -290,6 +290,14 @@ decision moves to `docs/adr/`.
 
 ## Foreman
 
+- Write `PR #N` into the round record's `- Result:` line and into the
+  `STATE.md` Done bullet's first line when the pull request opens. The
+  fleet view reads the task's pull request from that bullet and the
+  round's from that line; a bullet naming only a sha shows no pull
+  request on the page. The foreman told another project's foreman this
+  and then made the same mistake in five of its own records
+  (2026-09-24, after green-ci-again).
+
 - The knowledge route reads a task's pull request from `PR #N` on the
   first line of its `STATE.md` Done bullet, and a round's from its
   record's `- Result:` line. A bullet that names a sha and no PR shows
