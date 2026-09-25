@@ -1,19 +1,14 @@
 # STATE: landing-page
 
-- Status: active
-- Round: 0 of 3 in this budget (second budget)
-- Rounds total: 2
-- Last floor: green (2026-09-20, round 2 after: html-validate 0 errors, Chromium clean, Lighthouse 95/100/100/100)
-- Updated: 2026-09-25, resumed for one round on the human's word
+- Status: done
+- Round: 1 of 3 in this budget (second budget)
+- Rounds total: 3
+- Last floor: green (2026-09-25, round 3 after: html-validate 0 errors, Chromium clean, Lighthouse 100/100/100/100)
+- Updated: 2026-09-25, round 3 closed, done
 
 ## Queue
 
-1. `the-font-is-first-party`. Serve JetBrains Mono 400 and 600 from
-   `site/` with `@font-face` and `font-display: swap`, drop the Google
-   Fonts links, and repaint the favicon's old palette (`#161b22`,
-   `#30363d`, `#3fb950`) with the dashboard tokens. Proof: Lighthouse
-   performance above 95 with accessibility 100, and the HTML and render
-   floor.
+Empty.
 
 ## Failures
 
@@ -21,10 +16,13 @@ None.
 
 ## Proposals waiting on the human
 
-None. The font proposal is queued as round 3.
+None.
 
 ## Done
 
+- `the-font-is-first-party`, round 3, `5194017`. See `rounds/003.md`.
+  JetBrains Mono is served from `site/fonts/`; Lighthouse performance 95
+  to 100; the favicon wears the dashboard tokens.
 - `the-page-moves-as-the-notes-say` (capability 2), round 2, PR #135.
   See `rounds/002.md`. The staggered entrance, the turning marks, the
   blinking cursor, all off under reduced motion; Lighthouse 95/100/100/100.
@@ -46,4 +44,5 @@ daemon with a ledger." Approved 2026-09-20. The frames live in
 
 ## Next action
 
-Round 3: `the-font-is-first-party`.
+None. Merge the round's PR; Cloudflare Pages then serves the fonts from
+kitterm.dev. To reopen: set `Status: active` and write a queue.
