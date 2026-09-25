@@ -30,12 +30,12 @@ capability 1 row of `plan.md` still describes the old walk.
 
 ## Done
 
-- `project-identity` (1), round 1, `rounds/001.md`
-- `dashboard` (2), round 2, `rounds/002.md`
-- `scaffold-and-docs` (3), round 3, `rounds/003.md`
-- `goal-loop-skill` (4), round 4, `rounds/004.md`
-- `review-fixes`, round 5, `rounds/005.md`
-- `knowledge-on-dashboard` (5), rounds 6 and 7, `rounds/006.md`,
+- `project-identity` (1), round 1, PR #71, `rounds/001.md`
+- `dashboard` (2), round 2, PR #72, `rounds/002.md`
+- `scaffold-and-docs` (3), round 3, PR #73, `rounds/003.md`
+- `goal-loop-skill` (4), round 4, PR #74, `rounds/004.md`
+- `review-fixes`, round 5, PR #75, `rounds/005.md`
+- `knowledge-on-dashboard` (5), rounds 6 and 7, `rounds/006.md`, PR #76.
   `rounds/007.md`
 - `dogfood` (6), round 8, `rounds/008.md`
 

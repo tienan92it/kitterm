@@ -22,6 +22,19 @@ None.
 paints the danger tint on its mark alone now, and `contrast-tokens` is
 done.
 
+## Done
+
+- `restart-says-restarted` (capability 1), round 5, `6fabb90`, PR #159.
+  See `rounds/005.md`. `kitterm restart` records `restarted`.
+- `say-when-it-died` (capability 3 repair), round 4, `30fff62`, PR #91.
+  See `rounds/004.md`. The review's blocking item.
+- `say-it-on-the-page` (capability 3), round 3, `39127a2`, PR #91. See
+  `rounds/003.md`.
+- `report-the-previous-run` (capability 2), round 2, `884be00`, PR #88.
+  See `rounds/002.md`.
+- `record-how-a-run-ends` (capability 1), round 1, `f76ec7c`, PR #85.
+  See `rounds/001.md`.
+
 ## Review, 2026-09-10, before the merge
 
 Two independent reviewers read `goals/say-it-on-the-page`, one on

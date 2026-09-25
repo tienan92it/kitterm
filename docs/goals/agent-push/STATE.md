@@ -29,24 +29,24 @@ needed.
 
 ## Done
 
-- `secure-context` (capability 1), round 1, `35cef92`. See
+- `secure-context` (capability 1), round 1, `35cef92`, PR #93. See
   `rounds/001.md`. The goal does not stop: a phone gets a real secure
   context over the tailnet, with no certificate to install and nothing on
   the public internet.
 
-- `subscriptions` (capability 2), round 2, `c005f49`. See
+- `subscriptions` (capability 2), round 2, `c005f49`, PR #99. See
   `rounds/002.md`. `push.json` at `0600`, full grade only, one per
   endpoint, removable, and proved to survive both a restart and a
   takeover with real processes.
 
-- `send-on-transition` (capability 3), round 3, `64ff789`. See
+- `send-on-transition` (capability 3), round 3, `64ff789`, PR #102. See
   `rounds/003.md`. The daemon sends one Web Push message per transition
   into `needs-input`, `needs-approval` and `failed`, and none for
   anything else. Dedupe per session and state, 4 per session per minute,
   and a 404 or 410 forgets the endpoint. The VAPID pair is its own
   `0600` file.
 
-- `the-toggle` (capability 4), round 4, `eb66c4f`. See `rounds/004.md`.
+- `the-toggle` (capability 4), round 4, `eb66c4f`, PR #103. See `rounds/004.md`.
   The toggle is a pure function with eight states, hidden for a watch
   client. `GET /api/push/vapid` is full grade only. The service worker is
   served at `/sw.js` so its scope is `/`. Corpus request

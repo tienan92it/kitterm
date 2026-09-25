@@ -28,18 +28,18 @@ the rule (PR #151).
 - `the-ledger-prints-api-time`, round 5, PR #160. See `rounds/005.md`.
   The text ledger prints `api` beside `wall`: 12m17 of API time in the
   16h17 overnight round.
-- `keep-the-join` (capability 1), round 1, `b39ba30`. See
+- `keep-the-join` (capability 1), round 1, `b39ba30`, PR #107. See
   `rounds/001.md`. Every hook records the Claude Code session id and
   transcript path on the session, the archive keeps them, and the row
   exposes `agentSessionId` and `agentTranscript`.
-- `read-the-bill` (capability 2), round 2, `0476af1`. See
+- `read-the-bill` (capability 2), round 2, `0476af1`, PR #110. See
   `rounds/002.md`. `GET /api/sessions/<id>/cost` reads the transcript's
   last line in one 64 KiB `pread` off the event loop. The foreman read a
   real bill through it: fleet-catch-up round 1 cost $7.14.
-- `the-bill-in-the-record` (capability 3), round 3, `3c26f67` plus the
+- `the-bill-in-the-record` (capability 3), round 3, `3c26f67`, PR #111 plus the
   foreman's commit. See `rounds/003.md`, which carries the first
   `Cost:` line: $4.74 · 3331k in (97% cached) · 36k out · 0h 10m.
-- `the-ledger` (capability 4), round 4, `100a760` plus the foreman's
+- `the-ledger` (capability 4), round 4, `100a760`, PR #113 plus the foreman's
   commit. See `rounds/004.md`. `kitterm goal cost` prints the ledger from
   the archive's transcript or the record's line; Collect now reads
   "archive, then read"; the corpus table was re-aligned to match.

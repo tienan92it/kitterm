@@ -27,11 +27,11 @@ None.
 
 ## Done
 
-- `every-wait-has-a-deadline` (capability 1), round 1, `3a71946`. See
+- `every-wait-has-a-deadline` (capability 1), round 1, `3a71946`, PR #116. See
   `rounds/001.md`. One helper, twelve sites, a 30 s deadline measured at
   over 2000x the observed maximum, and a source check that refuses a
   thirteenth bare call.
-- `the-name-never-clips` (capability 2), round 2, `8f8e1b7`. See
+- `the-name-never-clips` (capability 2), round 2, `8f8e1b7`, PR #117. See
   `rounds/002.md`. The name no longer shrinks; the count drops first,
   then the select narrows, then it goes. Every real project name reads
   whole at 390 px with a profile selected.

@@ -30,13 +30,13 @@ None.
 
 ## Done
 
-- `send-input-keys` (capability 1), round 1, `3ee32e7`. See
+- `send-input-keys` (capability 1), round 1, `3ee32e7`, PR #84. See
   `rounds/001.md`.
-- `nearest-git-wins` (capability 3), round 2, `adcda4b`. See
+- `nearest-git-wins` (capability 3), round 2, `adcda4b`, PR #87. See
   `rounds/002.md`. Taken out of order: capability 2 needed a release.
-- `skill-drops-curl` (capability 2), round 3, `7d600c3`. See
+- `skill-drops-curl` (capability 2), round 3, `7d600c3`, PR #89. See
   `rounds/003.md`.
-- `four-loop-rules` (capability 4), rounds 4 and 5, `61b3f78` plus the
+- `four-loop-rules` (capability 4), rounds 4 and 5, `61b3f78`, PR #92 plus the
   foreman's commit. See `rounds/004.md` and `rounds/005.md`. Round 4
   wrote the four rules and closed the three proposals rounds 1, 2 and 3
   left open. Review then found four defects in it, and round 5 repaired

@@ -51,11 +51,11 @@ replaced the strip with the band.
   reason in place of `[send]`, never queued. Proved live: a line typed on
   the page at 390 px reached a `claude` pane on a scratch daemon, which
   answered `PONG`. 390 px height 1326, unchanged.
-- `three-levels-no-filters` (capability 1), round 1, `259e38e`. See
+- `three-levels-no-filters` (capability 1), round 1, `259e38e`, PR #119. See
   `rounds/001.md`. Workspace, project, goal state; a heading only over
   two or more projects; working read from a live `goal:` label; the
   filter feature gone symbol by symbol. 390 px height 1400 to 1159.
-- `daily-rollup` (capability 4), round 2, `ac379ff`. See `rounds/002.md`.
+- `daily-rollup` (capability 4), round 2, `ac379ff`, PR #120. See `rounds/002.md`.
   The daemon keys its rollup on the transcript and sums days at serve
   time, so a refresh is idempotent and a day whose source is gone
   survives. Full scan 2.5 s over 382 MB, no-change 19 ms. It also fixed
