@@ -20,7 +20,7 @@ None.
 
 ## Done
 
-- `the-font-is-first-party`, round 3, `5194017`. See `rounds/003.md`.
+- `the-font-is-first-party`, round 3, PR #158. See `rounds/003.md`.
   JetBrains Mono is served from `site/fonts/`; Lighthouse performance 95
   to 100; the favicon wears the dashboard tokens.
 - `the-page-moves-as-the-notes-say` (capability 2), round 2, PR #135.
