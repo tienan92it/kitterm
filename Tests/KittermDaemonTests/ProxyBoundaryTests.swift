@@ -130,7 +130,7 @@ final class ProxyBoundaryTests: XCTestCase {
         process.standardOutput = FileHandle.nullDevice
         try process.run()
         let text = String(decoding: stderr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        process.waitUntilExit()
+        waitForExit(of: process)
         XCTAssertEqual(process.terminationStatus, 1)
         XCTAssertEqual(text, "error: " + Self.lanNeedsTrustedHost + "\n")
         XCTAssertThrowsError(try get("/api/health", host: "127.0.0.1:\(port)", port: port))
