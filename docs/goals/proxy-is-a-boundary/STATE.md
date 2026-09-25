@@ -23,10 +23,10 @@ None.
 
 ## Done
 
-- `the-daemon-refuses-the-combination` (capability 2), round 2,
+- `the-daemon-refuses-the-combination` (capability 2), round 2, PR #155,
   `0152915`, PR #155. See `rounds/002.md`. Three holes closed, one of
   them a privilege escalation in the recommended configuration.
-- `the-three-configurations` (capability 1), round 1, `280be50`. See
+- `the-three-configurations` (capability 1), round 1, `280be50`, PR #155. See
   `rounds/001.md`. Four tests over real sockets; the bypass is on the
   record with its verbatim responses, and two findings are worse than
   the proposal said.

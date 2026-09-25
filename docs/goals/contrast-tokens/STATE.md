@@ -20,35 +20,35 @@ None. The human ruled on 2026-09-11; see "Direction".
 
 ## Done
 
-- `derive-the-pairs` (capability 1), round 1, `94297dd`. See
+- `derive-the-pairs` (capability 1), round 1, `94297dd`, PR #90. See
   `rounds/001.md`.
-- `raise-the-mixes` (capability 2), round 2, `64112dc`. See
+- `raise-the-mixes` (capability 2), round 2, `64112dc`, PR #90. See
   `rounds/002.md`. `--ui-text-muted` 66% to 82%, `--ui-text-faint` 46% to
   72%, one rule for all 17 themes, 95 entries dropped. The crew refused
   the rule that clears more, because it puts muted above body text, and
   it photographed both pages.
-- `open-the-elevation` (capability 3), round 3, `fae03f8`. See
+- `open-the-elevation` (capability 3), round 3, `fae03f8`, PR #95. See
   `rounds/003.md`. The four surface tokens drop from 7/12/17/23 percent
   of `--ui-lift` to 3/6/9/12, and `.pane-close` stops fading. 44 entries
   dropped and one whole pair is gone. Cards sit closer to the page and
   keep their border.
-- `keep-the-cues` (round 4, the repair), `1c01d28`. See `rounds/004.md`.
+- `keep-the-cues` (round 4, the repair), `1c01d28`, PR #95. See `rounds/004.md`.
   A review before the merge found three elements that lost their only
   cue to the elevation drop. `.quiet` and `.more` take an inset
   `--ui-border` ring on hover; `.selection-action:active` takes an inset
   `--ui-accent` ring, because `--ui-border` measured no better than what
   the press had lost.
-- `ratchet-known-below` (capability 4), round 5, `e52edbd`. See
+- `ratchet-known-below` (capability 4), round 5, `e52edbd`, PR #98. See
   `rounds/005.md`. `KNOWN_BELOW` is a ratchet with five checks, all five
   planted and watched to fail. The three opacities are gone: 134 falls to
   110. Every entry names its blocker.
-- `raise-the-accent-soft` (capability 5), round 6, `7c68f19`. See
+- `raise-the-accent-soft` (capability 5), round 6, `7c68f19`, PR #101. See
   `rounds/006.md`. The token darkens the accent before thinning it, which
   clears 13 rather than the plan's 18: the last five need a fill the eye
   cannot find on `nord` and `gruvbox-dark`. 110 falls to 97. The focus
   ring and `.launch:hover` are unchanged, and accent text on the fill
   improves.
-- `sink-the-well` (capability 6), round 7, `7a45e87`. See
+- `sink-the-well` (capability 6), round 7, `7a45e87`, PR #104. See
   `rounds/007.md`. `--ui-bg-sunken` goes to 25% of `--ui-bg` toward
   black, which clears 13 and deepens the recess rather than flattening
   it. The token paints four surfaces beyond the preview, which the plan

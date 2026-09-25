@@ -29,9 +29,9 @@ three are recorded in the round records and in `facts.md`.
 
 ## Done
 
-- `paced-input-race` (1) and `takeover-race` (2), round 1, `9784fd2`.
+- `paced-input-race` (1) and `takeover-race` (2), round 1, `9784fd2`, PR #79.
   See `rounds/001.md`.
-- `wait-helper-audit` (3), round 2, `7198ef1`. See `rounds/002.md`.
+- `wait-helper-audit` (3), round 2, `7198ef1`, PR #81. See `rounds/002.md`.
 
 ## Completion
 

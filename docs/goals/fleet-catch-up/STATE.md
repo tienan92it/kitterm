@@ -23,18 +23,18 @@ PR #125 then removed the select and `[new]`.
 
 ## Done
 
-- `a-row-is-one-line` (capability 1), round 1, `f38dea5`. See
+- `a-row-is-one-line` (capability 1), round 1, `f38dea5`, PR #106. See
   `rounds/001.md`. A row is dot, name, state, what, since; `pid`,
   `exit 0`, `attached`, the shell, the tags and the root path are gone.
-- `each-fact-once` (capability 2), round 2, `508c8df`. See
+- `each-fact-once` (capability 2), round 2, `508c8df`, PR #108. See
   `rounds/002.md`. A strip session is not a row; the card counts only
   what it lists; the proposals count reads from `STATE.md` and shows
   once at the top; the sub-headers and the chip are gone.
-- `catch-up-first` (capability 3), round 3, `96bd091`. See
+- `catch-up-first` (capability 3), round 3, `96bd091`, PR #109. See
   `rounds/003.md`. The first screen at 390 px holds every attention
   item and the count line with 419 px to spare; template goals read "not
   written yet"; done goals fold; the tools sit below the projects.
-- `the-terminal-surface` (capability 4), round 4, `10309d0`. See
+- `the-terminal-surface` (capability 4), round 4, `10309d0`, PR #112. See
   `rounds/004.md`. Monospace, hairline sections, bracketed buttons, four
   gutter glyphs, no pill, shadow, tint or transition. 390 px height 1336.
 
