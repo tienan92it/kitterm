@@ -19,12 +19,13 @@ three are recorded in the round records and in `facts.md`.
 
 ## Proposals waiting on the human
 
-- `LOOP.md` Budget: say how a round attempt the host machine kills is
-  recorded, so it does not spend the budget (`rounds/001.md`).
 - `ClaudePromptSubmitTests:182` waits two seconds for "first paint done";
   the real condition is `inputIsCanonical == false`. Round 2 could not
   widen the real `claude` binary's startup to prove the weakness and left
   the test alone (`rounds/002.md`).
+
+2026-09-25, the foreman closed the killed-attempt rule as shipped
+(PR #92).
 
 ## Done
 

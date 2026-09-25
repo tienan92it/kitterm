@@ -19,14 +19,12 @@ None.
 - `Sources/KittermDaemon/ModelPricing.swift` is a rate table copied from
   platform.claude.com on 2026-09-20; nothing updates it. Own it, or
   move the rates to a file. See `rounds/016.md`.
-- Read `<session>/subagents/*.jsonl` into the running estimate; a
-  session with subagents estimates up to 17% under. One round.
-- `site/index.html` sets `--accent: #3fb950`; the landing redesign in
-  `dashboard.pen` (frames `Landing 1200`, `Landing 390`, `Landing
-  notes`) replaces it when the human approves.
 - `goal.md` condition 6 says the 390 px page is under 1200 px. The
   design measures about 2500 on the real tree. Reset the number or
   strike the condition.
+
+2026-09-25, the foreman closed two as shipped: the subagents in the
+running estimate (PR #153) and the landing accent (PR #135).
 
 ## Done
 

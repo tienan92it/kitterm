@@ -16,11 +16,12 @@ None.
 
 ## Proposals waiting on the human
 
-- Two from round 4, for a later budget. Print `totalAPIDuration` beside
-  the wall-clock in the ledger, because `totalDuration` counts the time a
-  session was open and an overnight round read as seventeen hours. And
-  have the foreman write the PR number into a record's `Result:` line
-  after the merge, so the ledger's `PR` column fills.
+- Print `totalAPIDuration` beside the wall-clock in the text ledger,
+  because `totalDuration` counts the time a session was open and an
+  overnight round read as seventeen hours. `--json` carries it already.
+
+2026-09-25, the foreman closed the `Result:` half: `facts.md` carries
+the rule (PR #151).
 
 ## Done
 

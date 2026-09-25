@@ -17,11 +17,10 @@ None.
 
 ## Proposals waiting on the human
 
-- `LOOP.md` Authority: a test that pins a layout `goal.md` replaces is
-  Propose, not Frozen (`rounds/001.md`).
-- `examples/foreman/foreman-loop.md`: post the round's note before the
-  floor and update it after, so a session that dies at its last step
-  still leaves its evidence (`rounds/005.md`).
+None.
+
+2026-09-25, the foreman closed both as shipped: the Chartered tier
+(PR #92) and "The crew's notes" in the skill (PR #139).
 
 ## Done
 

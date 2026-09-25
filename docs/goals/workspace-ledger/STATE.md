@@ -16,17 +16,11 @@ None.
 
 ## Proposals waiting on the human
 
-- `corpus/01-where-did-it-go.md` line 5 says `kitterm` is $699.93. The
-  route says $906.68 today, because the research counted the main
-  directory alone and `ProjectStore` folds the worktrees in. The corpus
-  is Frozen, so the human updates the number. The page is built against
-  the route.
-- `plan.md` row 5 says "sparkline". Round 5 shipped one SVG bar a day, so
-  a silent day is a visible gap and the chart adds no colour pair for the
-  ratchet to measure. The plan is the human's to change.
-- `plan.md` has no row for capability 6, `the-strip-holds-only-what-needs-you`.
-  Round 6's record offers one. The human has not answered; it blocks
-  nothing, because the capability is shipped and its record stands.
+None.
+
+2026-09-25, the foreman closed all three: the human amended the corpus
+number in `2eee3cf`; `agent-dashboard` now owns the chart; PR #128
+replaced the strip with the band.
 
 ## Done
 

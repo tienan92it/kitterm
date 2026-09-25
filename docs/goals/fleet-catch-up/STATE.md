@@ -16,13 +16,10 @@ None.
 
 ## Proposals waiting on the human
 
-- One defect seen on the live daemon after v0.29.0, not in the fixture:
-  when a project has a profile, the card's heading line holds the name,
-  the profile select and `[new]`, and at 390 px the **name** clips
-  (`kitte…`, `nghenhan-m…`). Round 4 tested with one profile and found
-  the tally clipped first; the real profile name "local shell" is wider.
-  The name must never clip: the select should shrink or drop to its own
-  line first. One round.
+None.
+
+2026-09-25, the foreman closed the clipped name: PR #117 fixed it and
+PR #125 then removed the select and `[new]`.
 
 ## Done
 
