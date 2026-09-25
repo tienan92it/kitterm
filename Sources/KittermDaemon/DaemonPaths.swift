@@ -114,6 +114,14 @@ public enum DaemonPaths: Sendable {
         stateDirectory.appendingPathComponent("last-run.json")
     }
 
+    /// What the CLI means by the signal it is about to send (`StopIntent`):
+    /// `kitterm restart` writes `restarted` for the daemon's pid, and the
+    /// daemon's stop path reads it once and deletes it, so `last-run.json`
+    /// tells a restart from a stop.
+    public static var stopIntentFile: URL {
+        stateDirectory.appendingPathComponent("stop-intent.json")
+    }
+
     /// Web Push subscriptions (`PushSubscriptionStore`): one entry per
     /// browser endpoint, `0600`, reloaded by every run because the browser's
     /// subscription outlives a restart and a live upgrade.

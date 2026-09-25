@@ -695,6 +695,8 @@ State lives in `~/.kitterm/`. The default port is 3418.
 │                             output.log)
 ├── respawn.json              names and labels of live sessions, for a respawn
 ├── last-run.json             how the last run ended, or nothing where its end should be
+├── stop-intent.json          `kitterm restart`'s word for the SIGTERM it is about to send,
+│                             consumed by the daemon's stop path
 ├── push.json                 Web Push subscriptions, one per browser endpoint (0600)
 ├── usage-daily.json          the daily cost and token rollup, one record per transcript
 │                             read, kept after Claude Code deletes the transcript (0600)

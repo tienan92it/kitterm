@@ -421,10 +421,19 @@ enum KittermMain {
     /// `kitterm restart` — restarts whichever mechanism owns the daemon.
     private static func restart<S: Sequence>(_ args: S) throws where S.Element == String {
         let array = Array(args)
+        // The daemon reads a restart and a stop as the same SIGTERM, so say
+        // which this is before anything signals (`StopIntent`): the stop path
+        // reads the file once, for this pid alone, and records `restarted`.
+        // No live pid means nothing to restart, and a start is not a restart.
+        if let pid = livePid() {
+            StopIntent.write(.restarted, pid: pid, to: DaemonPaths.stopIntentFile)
+        }
         // Only the login agent's plist is configuration of record. A session job
         // from `kitterm start` is not — restarting it with new flags just
         // rewrites it, which is what it did before launchd owned the daemon.
-        if loginAgentInstalled(), serviceLoaded() {
+        // A moved state directory is a separate daemon, never the service's,
+        // so it takes the stop-and-start path as `stop` and `start` do.
+        if !DaemonPaths.isStateDirectoryOverridden, loginAgentInstalled(), serviceLoaded() {
             // The service's plist is the configuration of record; restarting
             // with different flags must go through `service install`.
             guard array.isEmpty else {

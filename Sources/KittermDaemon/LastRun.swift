@@ -57,12 +57,12 @@ public struct LastRun: Codable, Equatable, Sendable {
     /// live upgrade (`docs/live-upgrade.md`): same pid, same shells, the
     /// successor adopts every master, so it must never read as a death.
     ///
-    /// Nothing writes `restarted` today. `kitterm restart` reaches the daemon
-    /// as a plain `SIGTERM`, the same byte `kitterm stop` sends, so the
-    /// daemon cannot tell them apart from inside; recording the difference
-    /// needs the CLI to state its intent before it signals. The value stays
-    /// in the contract because it is the shape the plan pins and because a
-    /// reader must accept it from a daemon that does write it.
+    /// `kitterm restart` reaches the daemon as a plain `SIGTERM`, the same
+    /// byte `kitterm stop` sends, so the daemon cannot tell them apart from
+    /// inside. The CLI states its intent before it signals (`StopIntent`,
+    /// `~/.kitterm/stop-intent.json`, bound to the daemon's pid and to a
+    /// minute), and `DaemonServer.stop()` consumes it; a stop with no intent,
+    /// or a stale one, is `stopped`.
     public enum Reason: String, Codable, Sendable {
         case stopped
         case restarted
@@ -117,7 +117,8 @@ public struct LastRun: Codable, Equatable, Sendable {
 /// Every write is a whole-file atomic replace of a record under 200 bytes,
 /// made off the event loop: from `runDaemon` at start and stop, from
 /// `prepareHandoff` on the takeover path, and from a `Task` on the refresh
-/// cadence. Nothing here runs on the output path.
+/// cadence. Nothing here runs on the output path. The one other file in
+/// this story, `stop-intent.json`, is `StopIntent`'s, and the CLI writes it.
 public final class LastRunStore: @unchecked Sendable {
     private let file: URL
     private let lock = NIOLock()
