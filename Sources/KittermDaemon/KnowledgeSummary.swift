@@ -79,7 +79,8 @@ public struct KnowledgeSummary: Equatable, Sendable {
         public var costUSD: Double?
         /// The summed `Hh Mm` of those lines, in milliseconds.
         public var durationMs: Int?
-        /// The `PR #N` the `- Result:` line names.
+        /// The `PR #N` a `- Result:` bullet names, else the one after
+        /// `Result:` on the `- Base:` line (`roundRecord`).
         public var pr: Int?
         /// The record carries a `## Correction` section: the one correction
         /// `LOOP.md` allows a round was spent.
@@ -254,9 +255,15 @@ public struct KnowledgeSummary: Equatable, Sendable {
     /// Read one record, `rounds/<number>.md`. The task is the text after
     /// `# Round NNN:` on the first `# ` heading, trimmed; the date is the
     /// first ten characters of the `- Started:` value when they are a day;
-    /// the cost and the duration sum the header's `- Cost:` lines; the PR
-    /// is the first `PR #N` on the `- Result:` line, so a result given as
-    /// a sha names none; the correction is a `## Correction` heading.
+    /// the cost and the duration sum the header's `- Cost:` lines; the
+    /// correction is a `## Correction` heading.
+    ///
+    /// The PR is the first `PR #N` on a `- Result:` bullet, its own line;
+    /// `LOOP.md`'s own shape instead puts `Result:` on the `- Base:` line
+    /// (`- Base: <sha>   Result: <sha or PR #N>`), so a record with no
+    /// `- Result:` bullet takes the first `PR #N` after `Result:` there.
+    /// A `- Result:` bullet wins when a record somehow carries both. A
+    /// result given as a sha, on either shape, names no PR.
     public static func roundRecord(number: Int, text: String) -> RoundRecord {
         var record = RoundRecord(number: number)
         if let title = heading(text, prefix: "Round") {
@@ -277,6 +284,9 @@ public struct KnowledgeSummary: Equatable, Sendable {
         }
         if let result = bulletValue(text, key: "Result") {
             record.pr = firstNumber(prPattern, in: result)
+        } else if let base = bulletValue(text, key: "Base"),
+                  let resultRange = base.range(of: "Result:") {
+            record.pr = firstNumber(prPattern, in: String(base[resultRange.upperBound...]))
         }
         record.correction = section(text, heading: "Correction") != nil
         return record

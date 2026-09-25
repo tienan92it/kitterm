@@ -1,10 +1,10 @@
 # STATE: agent-dashboard
 
 - Status: done
-- Round: 3 of 3 in this budget (seventh budget)
-- Rounds total: 21
-- Last floor: green (2026-09-21, round 21 after: vitest 1476 in 60 files)
-- Updated: 2026-09-21, round 21 closed, done
+- Round: 1 of 3 in this budget (eighth budget)
+- Rounds total: 22
+- Last floor: green (2026-09-25, round 22 after: swift test 909, Linux build)
+- Updated: 2026-09-25, round 22 closed, done
 
 ## Queue
 
@@ -16,6 +16,10 @@ None.
 
 ## Proposals waiting on the human
 
+- `LOOP.md`, "The round record": the parser sentence says the PR is on
+  the `- Result:` line, and the shape above it puts `Result:` on the
+  `- Base:` line. Round 22 made the parser read both; the sentence to
+  write is in `rounds/022.md`, "Decision".
 - `Sources/KittermDaemon/ModelPricing.swift` is a rate table copied from
   platform.claude.com on 2026-09-20; nothing updates it. Own it, or
   move the rates to a file. See `rounds/016.md`.
@@ -28,6 +32,9 @@ running estimate (PR #153) and the landing accent (PR #135).
 
 ## Done
 
+- `the-record-names-its-pr`, round 22, PR #162. See `rounds/022.md`.
+  The route reads a round's PR off the `Base:` line: 27 of 85 rounds
+  carry one, up from 11.
 - `the-no-transcript-first-run`, round 21, `9885c28`, PR #144. See
   `rounds/021.md`. A daemon with no transcript says what fills each panel.
 - `the-first-run-state`, round 20, `64491e2`, PR #143. See
@@ -202,7 +209,6 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-None. Twenty-one rounds. Merge PR #144. Seventeen rounds, PRs #125–#134, released as v0.30.0 and v0.31.0.
-The page is the human's design in `corpus/dashboard.pen`. Four
-proposals wait above; to reopen for one, set `Status: active` and
-write it as the queue.
+None. Merge the round's PR and release; the fleet view names the round
+PRs once the daemon runs the new binary. The `LOOP.md` sentence waits on
+the human.
