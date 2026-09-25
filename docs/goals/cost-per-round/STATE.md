@@ -1,17 +1,14 @@
 # STATE: cost-per-round
 
-- Status: active
-- Round: 0 of 3 in this budget (second budget)
-- Rounds total: 4
-- Last floor: green (2026-09-16, round 4 after the foreman's command: swift test 726, bench p95 2.57 ms, Linux green)
-- Updated: 2026-09-25, resumed for one round on the human's word
+- Status: done
+- Round: 1 of 3 in this budget (second budget)
+- Rounds total: 5
+- Last floor: green (2026-09-25, round 5 after: swift test 895, KittermCLITests 133, Linux build)
+- Updated: 2026-09-25, round 5 closed, done
 
 ## Queue
 
-1. `the-ledger-prints-api-time`. The text ledger of `kitterm goal cost`
-   prints the bill's `totalAPIDuration` in an `api` column beside
-   `wall`, per round and in the goal's total, a dash where a round has
-   no bill. `--json` is unchanged.
+Empty. All four capabilities in `plan.md` are done.
 
 ## Failures
 
@@ -19,13 +16,18 @@ None.
 
 ## Proposals waiting on the human
 
-None. The API-time proposal is queued as round 5.
+- `corpus/01-what-did-that-goal-cost.md`: its ledger table has no `api`
+  column since round 5. The corpus is Frozen, so the human re-aligns it.
+  See `rounds/005.md`.
 
 2026-09-25, the foreman closed the `Result:` half: `facts.md` carries
 the rule (PR #151).
 
 ## Done
 
+- `the-ledger-prints-api-time`, round 5, `493a6cf`. See `rounds/005.md`.
+  The text ledger prints `api` beside `wall`: 12m17 of API time in the
+  16h17 overnight round.
 - `keep-the-join` (capability 1), round 1, `b39ba30`. See
   `rounds/001.md`. Every hook records the Claude Code session id and
   transcript path on the session, the archive keeps them, and the row
@@ -55,4 +57,5 @@ price table is added.
 
 ## Next action
 
-Round 5: `the-ledger-prints-api-time`.
+None. Merge the round's PR. To reopen, set `Status: active` with a new
+budget and queue.
