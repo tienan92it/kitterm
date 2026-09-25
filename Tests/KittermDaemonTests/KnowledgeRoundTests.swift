@@ -47,6 +47,32 @@ final class KnowledgeRoundTests: XCTestCase {
         - Result: `goals/x`, merged as a squash
         """
 
+    /// `LOOP.md`'s own shape: `Result:` on the `- Base:` line, no separate
+    /// bullet. 74 of 85 kitterm records write it this way (e.g.
+    /// `docs/goals/landing-page/rounds/003.md`).
+    private let resultOnBaseLine = """
+        # Round 003: landing-round
+
+        - Started: 2026-09-20  Ended: 2026-09-20
+        - Base: dfdffbc   Result: 5194017 on `landing-page/round-3`, PR #158
+
+        ## Decision
+        done
+        """
+
+    /// Both shapes on the same record: a `- Result:` bullet and a PR after
+    /// `Result:` on the `- Base:` line. The bullet wins.
+    private let bothShapes = """
+        # Round 004: both-shapes
+
+        - Started: 2026-09-21
+        - Base: aaaaaaa   Result: bbbbbbb, PR #100
+        - Result: `goals/y`, PR #200
+
+        ## Decision
+        done
+        """
+
     func testReadsEveryFieldOfAPricedRecord() {
         let record = KnowledgeSummary.roundRecord(number: 3, text: priced)
         XCTAssertEqual(record, .init(
@@ -75,6 +101,16 @@ final class KnowledgeRoundTests: XCTestCase {
         XCTAssertEqual(empty, .init(number: 9))
         let titled = KnowledgeSummary.roundRecord(number: 4, text: "# Round 004:\n")
         XCTAssertNil(titled.task)
+    }
+
+    func testThePRAfterResultOnTheBaseLineIsReadWithNoResultBullet() {
+        let record = KnowledgeSummary.roundRecord(number: 3, text: resultOnBaseLine)
+        XCTAssertEqual(record.pr, 158)
+    }
+
+    func testAResultBulletWinsOverAPROnTheBaseLine() {
+        let record = KnowledgeSummary.roundRecord(number: 4, text: bothShapes)
+        XCTAssertEqual(record.pr, 200, "the Result bullet, when a record carries both shapes, wins")
     }
 
     func testTwoCostLinesSumAndTheJSONOmitsWhatIsAbsent() {
