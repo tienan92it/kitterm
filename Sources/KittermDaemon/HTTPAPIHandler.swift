@@ -327,36 +327,29 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         case (.POST, "/api/upgrade/takeover"):
             serveTakeover(grade: grade, head: head, context: context)
         case (.GET, "/api/lan"):
-            // Share-link support: the LAN base URL, plus the token — but only
-            // for loopback callers (the machine's own user).
+            // Share-link support: the LAN base URL, plus the token pair — but
+            // only for a caller the policy graded full. The grade, never the
+            // peer address: a watch token through a `--trusted-host` proxy
+            // connects from loopback, and a peer check handed it the control
+            // token, which spawns a shell (`docs/goals/proxy-is-a-boundary`,
+            // round 2). A watch caller gets the URL and `enabled` alone, the
+            // shape the page already handles as a link with no token.
             let body: String
+            var tokenField = ""
+            if grade == .full, let token = policy.token {
+                tokenField += #","token":"\#(token)""#
+            }
+            if grade == .full, let watch = policy.watchToken {
+                tokenField += #","watchToken":"\#(watch)""#
+            }
             // Where another device should reach this daemon, in preference
             // order: the public name over TLS (a cert never matches a bare
             // IP), then a public name behind a proxy, then the plaintext LAN
             // IP. The share and watch buttons build their links from this, so
             // getting it right here is what keeps them correct everywhere.
             if let external = externalBase() {
-                let isLocal = AccessPolicy.isLoopback(context.channel.remoteAddress)
-                var tokenField = ""
-                if isLocal, let token = policy.token {
-                    tokenField += #","token":"\#(token)""#
-                }
-                if isLocal, let watch = policy.watchToken {
-                    tokenField += #","watchToken":"\#(watch)""#
-                }
                 body = #"{"ok":true,"enabled":true,"url":"\#(external)"\#(tokenField)}"#
             } else if policy.lanEnabled, let ip = NetworkInterfaces.primaryLANIPv4() {
-                // Tokens only for loopback callers (the machine's own user):
-                // the full token for control links, the watch token for
-                // read-only share links.
-                let isLocal = AccessPolicy.isLoopback(context.channel.remoteAddress)
-                var tokenField = ""
-                if isLocal, let token = policy.token {
-                    tokenField += #","token":"\#(token)""#
-                }
-                if isLocal, let watch = policy.watchToken {
-                    tokenField += #","watchToken":"\#(watch)""#
-                }
                 body = #"{"ok":true,"enabled":true,"url":"http://\#(ip):\#(port)"\#(tokenField)}"#
             } else {
                 body = #"{"ok":true,"enabled":false}"#

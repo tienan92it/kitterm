@@ -56,6 +56,26 @@ struct DaemonFlags {
         return sessionLinger
     }
 
+    /// The message `--lan` without `--trusted-host` is refused with. One
+    /// string, so the tests and the docs quote the words the daemon prints.
+    static let lanNeedsTrustedHost =
+        "--lan must be given with --trusted-host <your public name>: "
+        + "without it a proxy on loopback inherits full access with no token"
+
+    /// Refuse `--lan` with no `--trusted-host`. With `--lan` the daemon skips
+    /// the loopback `Host` check, so a reverse proxy that connects from
+    /// loopback (`tailscale serve`) is read as the local human and gets full
+    /// access with no token, and only a trusted host makes that request
+    /// remote. Measured in `docs/goals/proxy-is-a-boundary/rounds/001.md`.
+    /// The check sits here so `serve`, `start`, `service install` and a
+    /// service `restart` refuse with the same words.
+    func validatedTrustedHosts() throws -> Set<String> {
+        if lan, trustedHosts.isEmpty {
+            throw CLIError.usage(Self.lanNeedsTrustedHost)
+        }
+        return trustedHosts
+    }
+
     /// Both halves or neither; the port defaults beside the plain one.
     func tlsConfig(port: Int) throws -> TLSConfig? {
         switch (tlsCert, tlsKey) {
@@ -101,7 +121,7 @@ struct DaemonFlags {
             recordSessions: record,
             retainLogs: retainLogs,
             agentControl: agentControl,
-            trustedHosts: trustedHosts,
+            trustedHosts: try validatedTrustedHosts(),
             tls: try tlsConfig(port: port),
             orchestratedLingerSeconds: try validatedSessionLinger()
                 ?? KittermConstants.orchestratedSessionLingerSeconds,

@@ -269,12 +269,14 @@ public final class DaemonServer: @unchecked Sendable {
                 generate: { TokenStore.generate(grade: .watch) }
             )
             let named = CachedTokenStore()
+            let unmatchedHosts = UnmatchedHostLog(trustedHosts: config.trustedHosts)
             policy = config.allowLAN
                 ? .lan(
                     token: token,
                     watchToken: watchToken,
                     namedTokens: named,
-                    trustedHosts: config.trustedHosts
+                    trustedHosts: config.trustedHosts,
+                    onUnmatchedLoopbackHost: { unmatchedHosts.report($0) }
                 )
                 : .proxied(
                     token: token,

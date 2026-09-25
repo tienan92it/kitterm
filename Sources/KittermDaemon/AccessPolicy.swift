@@ -23,23 +23,32 @@ public struct AccessPolicy: @unchecked Sendable {
     /// arriving through a reverse proxy or an overlay network. Lowercased,
     /// port-stripped.
     public let trustedHosts: Set<String>
+    /// Told the `Host` of a loopback request that LAN mode admitted at full
+    /// grade although the name is neither a loopback name nor a trusted host.
+    /// That is the request a proxy forwards when `--trusted-host` is misspelt
+    /// (`mac.tailnet.ts.nett`): the daemon cannot know the true name, so it
+    /// cannot refuse, but it can say so once (`DaemonServer` logs it).
+    let onUnmatchedLoopbackHost: (@Sendable (String) -> Void)?
 
     public static let loopbackOnly = AccessPolicy(
-        lanEnabled: false, token: nil, watchToken: nil, namedTokens: nil, trustedHosts: []
+        lanEnabled: false, token: nil, watchToken: nil, namedTokens: nil, trustedHosts: [],
+        onUnmatchedLoopbackHost: nil
     )
 
     public static func lan(
         token: String,
         watchToken: String? = nil,
         namedTokens: CachedTokenStore? = nil,
-        trustedHosts: Set<String> = []
+        trustedHosts: Set<String> = [],
+        onUnmatchedLoopbackHost: (@Sendable (String) -> Void)? = nil
     ) -> AccessPolicy {
         AccessPolicy(
             lanEnabled: true,
             token: token,
             watchToken: watchToken,
             namedTokens: namedTokens,
-            trustedHosts: Self.normalize(trustedHosts)
+            trustedHosts: Self.normalize(trustedHosts),
+            onUnmatchedLoopbackHost: onUnmatchedLoopbackHost
         )
     }
 
@@ -56,7 +65,8 @@ public struct AccessPolicy: @unchecked Sendable {
             token: token,
             watchToken: watchToken,
             namedTokens: namedTokens,
-            trustedHosts: Self.normalize(trustedHosts)
+            trustedHosts: Self.normalize(trustedHosts),
+            onUnmatchedLoopbackHost: nil
         )
     }
 
@@ -97,6 +107,12 @@ public struct AccessPolicy: @unchecked Sendable {
                    originHeader: origin
                ) {
                 return .reject(reason)
+            }
+            // LAN mode admits any Host here, so a public name that missed
+            // the trusted set is the one signal of a proxy that is not a
+            // boundary; report it, then admit as before.
+            if lanEnabled, let host, !LoopbackSecurity.isLoopbackAuthority(host) {
+                onUnmatchedLoopbackHost?(host)
             }
             return .allow(.full)
         }

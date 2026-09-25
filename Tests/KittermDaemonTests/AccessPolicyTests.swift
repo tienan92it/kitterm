@@ -257,6 +257,37 @@ final class AccessPolicyTests: XCTestCase {
     /// the fault, because it keeps session cookies across a reload — but an
     /// installed app starts a new session on every launch and discards it, so
     /// it met a 403 each time with no address bar to present a token in.
+    /// Under `--lan` a loopback peer is admitted whatever its `Host`. When
+    /// that `Host` is neither a loopback name nor a trusted host, the policy
+    /// tells its observer the name before admitting: the one signal of a
+    /// proxy whose `--trusted-host` is misspelt. A loopback `Host` and a
+    /// trusted `Host` (the token path) tell it nothing.
+    func testUnmatchedLoopbackHostIsReportedAndStillAdmitted() {
+        nonisolated(unsafe) var reported: [String] = []
+        let policy = AccessPolicy.lan(
+            token: "ctl",
+            trustedHosts: ["mac.tailnet.ts.nett"],
+            onUnmatchedLoopbackHost: { reported.append($0) }
+        )
+        for host in ["127.0.0.1:3418", "kitterm.localhost", "mac.tailnet.ts.nett"] {
+            var headers = HTTPHeaders()
+            headers.add(name: "Host", value: host)
+            _ = policy.decide(remote: loopbackPeer, headers: headers, uri: "/api/sessions")
+        }
+        XCTAssertEqual(reported, [])
+
+        var headers = HTTPHeaders()
+        headers.add(name: "Host", value: "mac.tailnet.ts.net")
+        XCTAssertEqual(
+            policy.decide(remote: loopbackPeer, headers: headers, uri: "/api/sessions"),
+            .allow(.full)
+        )
+        XCTAssertEqual(reported, ["mac.tailnet.ts.net"])
+        // A LAN peer naming the same host is remote already; nothing to say.
+        _ = policy.decide(remote: lanPeer, headers: headers, uri: "/api/sessions")
+        XCTAssertEqual(reported, ["mac.tailnet.ts.net"])
+    }
+
     func testAuthCookieOutlivesTheBrowserSession() {
         let header = AccessPolicy.setCookieHeaderValue(for: "abc123")
         XCTAssertTrue(
