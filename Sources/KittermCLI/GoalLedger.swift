@@ -262,6 +262,15 @@ enum GoalLedger {
         var cacheRead: Int { bills.reduce(0) { $0 + $1.cacheRead } }
         var outTokens: Int { bills.reduce(0) { $0 + $1.outTokens } }
         var hasBill: Bool { !bills.isEmpty }
+
+        /// `totalAPIDuration` summed over the round's bills, only when every
+        /// session billed from a transcript: a `Cost:` line carries no API
+        /// time, so a line-sourced or mixed round has none either, the same
+        /// rule `--json`'s own `totalAPIDuration` already follows.
+        var apiDurationMs: Int? {
+            guard hasBill, bills.allSatisfy({ $0.source == .transcript }) else { return nil }
+            return bills.reduce(0) { $0 + ($1.bill?.totalAPIDuration ?? 0) }
+        }
     }
 
     struct Goal: Equatable {
@@ -414,10 +423,10 @@ enum GoalLedger {
             if row.hasBill {
                 numbers = [
                     dollars(row.costUSD), tokens(row.inTokens), cached(read: row.cacheRead, of: row.inTokens),
-                    tokens(row.outTokens), wall(row.durationMs),
+                    tokens(row.outTokens), wall(row.durationMs), row.apiDurationMs.map(wall) ?? dash,
                 ]
             } else {
-                numbers = Array(repeating: dash, count: 5)
+                numbers = Array(repeating: dash, count: 6)
             }
             lines.append(Cells(
                 name: "  " + String(format: "%03d", record.number) + " " + record.slug,
@@ -431,6 +440,7 @@ enum GoalLedger {
         }
         let billed = goal.rows.filter(\.hasBill)
         let inTotal = billed.reduce(0) { $0 + $1.inTokens }
+        let apiTotals = goal.rows.compactMap(\.apiDurationMs)
         let tests = goal.rows.compactMap(\.record.testsAdded)
         let files = goal.rows.compactMap(\.filesChanged)
         lines.append(Cells(
@@ -441,14 +451,15 @@ enum GoalLedger {
                 billed.isEmpty ? dash : cached(read: billed.reduce(0) { $0 + $1.cacheRead }, of: inTotal),
                 billed.isEmpty ? dash : tokens(billed.reduce(0) { $0 + $1.outTokens }),
                 billed.isEmpty ? dash : wall(billed.reduce(0) { $0 + $1.durationMs }),
+                apiTotals.isEmpty ? dash : wall(apiTotals.reduce(0, +)),
                 tests.isEmpty ? dash : "+\(tests.reduce(0, +))",
                 files.isEmpty ? dash : String(files.reduce(0, +)),
             ],
             decision: "", pr: ""
         ))
 
-        let headers = ["$", "in", "cached", "out", "wall", "tests", "files"]
-        let minimums = [6, 8, 8, 9, 6, 6, 7]
+        let headers = ["$", "in", "cached", "out", "wall", "api", "tests", "files"]
+        let minimums = [6, 8, 8, 9, 6, 6, 6, 7]
         let widths = (0..<headers.count).map { column in
             max(minimums[column], headers[column].count, lines.map { $0.values[column].count }.max() ?? 0)
         }
