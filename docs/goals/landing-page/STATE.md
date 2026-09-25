@@ -1,14 +1,14 @@
 # STATE: landing-page
 
 - Status: done
-- Round: 2 of 3 in this budget (first budget)
-- Rounds total: 2
-- Last floor: green (2026-09-20, round 2 after: html-validate 0 errors, Chromium clean, Lighthouse 95/100/100/100)
-- Updated: 2026-09-20, done: PR #135 merged, kitterm.dev serves the page
+- Round: 1 of 3 in this budget (second budget)
+- Rounds total: 3
+- Last floor: green (2026-09-25, round 3 after: html-validate 0 errors, Chromium clean, Lighthouse 100/100/100/100)
+- Updated: 2026-09-25, round 3 closed, done
 
 ## Queue
 
-Empty. Both capabilities are on the PR.
+Empty.
 
 ## Failures
 
@@ -16,12 +16,13 @@ None.
 
 ## Proposals waiting on the human
 
-- Self-host JetBrains Mono in `site/` (or preload it): the Google Fonts
-  stylesheet costs about 990 ms of first paint and holds Lighthouse
-  performance at 95. See `rounds/002.md`.
+None.
 
 ## Done
 
+- `the-font-is-first-party`, round 3, PR #158. See `rounds/003.md`.
+  JetBrains Mono is served from `site/fonts/`; Lighthouse performance 95
+  to 100; the favicon wears the dashboard tokens.
 - `the-page-moves-as-the-notes-say` (capability 2), round 2, PR #135.
   See `rounds/002.md`. The staggered entrance, the turning marks, the
   blinking cursor, all off under reduced motion; Lighthouse 95/100/100/100.
@@ -43,6 +44,5 @@ daemon with a ledger." Approved 2026-09-20. The frames live in
 
 ## Next action
 
-None. PR #135 merged as `47140d6`; kitterm.dev serves the six pages.
-To reopen: set `Status: active` and write a queue (the font proposal
-above is the candidate).
+None. Merge the round's PR; Cloudflare Pages then serves the fonts from
+kitterm.dev. To reopen: set `Status: active` and write a queue.

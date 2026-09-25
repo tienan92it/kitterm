@@ -9,12 +9,18 @@
 <meta property="og:description" content="Shells that survive the tab. Sessions that show their cost. Nothing to sign up for.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://kitterm.dev/">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='1' y='1' width='30' height='30' rx='7' fill='%23161b22' stroke='%2330363d' stroke-width='2'/%3E%3Cpath d='M8 9 L14 16 L8 23' fill='none' stroke='%233fb950' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M19 9.5 L19 22.5' fill='none' stroke='%233fb950' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='1' y='1' width='30' height='30' rx='7' fill='%230e1d25' stroke='%23264653' stroke-width='2'/%3E%3Cpath d='M8 9 L14 16 L8 23' fill='none' stroke='%232a9d8f' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M19 9.5 L19 22.5' fill='none' stroke='%232a9d8f' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preload" href="fonts/jetbrains-mono-latin-400.woff2" as="font" type="font/woff2" crossorigin>
 <style>
 /* The dashboard's tokens (docs/goals/agent-dashboard/corpus/dashboard.pen). */
+@font-face{
+  font-family:"JetBrains Mono";font-style:normal;font-weight:400;font-display:swap;
+  src:url("fonts/jetbrains-mono-latin-400.woff2") format("woff2");
+}
+@font-face{
+  font-family:"JetBrains Mono";font-style:normal;font-weight:600;font-display:swap;
+  src:url("fonts/jetbrains-mono-latin-600.woff2") format("woff2");
+}
 :root{
   --bg:#050c10;--surface:#0e1d25;--border:#264653;
   --text:#e8eef0;--muted:#a7b8bf;--faint:#82969e;
