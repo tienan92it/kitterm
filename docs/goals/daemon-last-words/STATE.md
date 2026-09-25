@@ -1,10 +1,10 @@
 # STATE: daemon-last-words
 
 - Status: done
-- Round: 1 of 3 in this budget (second budget)
-- Rounds total: 4
-- Last floor: green (2026-09-11, round 4 after)
-- Updated: 2026-09-11, done
+- Round: 1 of 3 in this budget (third budget)
+- Rounds total: 5
+- Last floor: green (2026-09-25, round 5 after: swift test 898, KittermCLITests 124, Linux build)
+- Updated: 2026-09-25, round 5 closed, done
 
 ## Queue
 
@@ -16,11 +16,7 @@ None.
 
 ## Proposals waiting on the human
 
-- `plan.md` capability 1: the `restarted` reason still has no writer.
-  `kitterm restart` reaches the daemon as the same `SIGTERM` that
-  `kitterm stop` sends, so the CLI would have to write its intent before
-  signalling. Both are clean ends, so nothing is lost today. See
-  `rounds/001.md`.
+None.
 
 2026-09-25, the foreman closed the `tokens.css` item: the restart line
 paints the danger tint on its mark alone now, and `contrast-tokens` is
@@ -52,19 +48,6 @@ is the repository's own threshold for extracting a helper.
 
 ## Next action
 
-None. The goal is done. All four completion conditions hold and every
-capability is in `main`:
-
-1. A clean stop records its reason and the next start says so
-   (`63c7069`, #85, and `9009fbe`, #88).
-2. A `kill -9` leaves no clean reason and the next start names the
-   previous pid, when it was last alive, and how many sessions it held
-   (`9009fbe`, #88).
-3. The fleet view says it once above the cards, dismissible, absent after
-   a live upgrade, and it carries the date when the run did not die today
-   (`f47a314`, #91).
-4. `main` is green: `swift test` 646 tests and vitest 1350 tests, both 0
-   failures, plus the Linux build.
-
-To reopen it, set `Status: active`, give it a new budget and a new queue.
-Two proposals from its rounds are still open and are listed above.
+None. Round 5 gave `restarted` its writer. Merge the round's PR and
+release; an installed daemon records `restarted` only from a new
+binary. To reopen, set `Status: active` with a new queue.

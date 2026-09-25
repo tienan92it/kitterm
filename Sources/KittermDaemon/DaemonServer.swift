@@ -643,10 +643,14 @@ public final class DaemonServer: @unchecked Sendable {
         usageRollup?.stop()
         // Count before the shells go, so the record says what the run held,
         // and record the ending first: this path runs from the SIGTERM
-        // handler, which calls `exit(0)` the moment it returns.
+        // handler, which calls `exit(0)` the moment it returns. The signal
+        // itself says nothing about why; `kitterm restart` wrote its intent
+        // for this pid before it sent it (`StopIntent`), and a stop with no
+        // intent is `stopped`. The read is on this queue, off the loop.
         let held = loop.makePromise(of: Int.self)
         held.completeWithTask { await self.registry.count }
-        lastRun?.end(reason: .stopped, sessions: try? held.futureResult.wait())
+        let reason = StopIntent.consume(from: DaemonPaths.stopIntentFile, pid: getpid()) ?? .stopped
+        lastRun?.end(reason: reason, sessions: try? held.futureResult.wait())
         let done = loop.makePromise(of: Void.self)
         done.completeWithTask {
             await self.registry.terminateAll()
