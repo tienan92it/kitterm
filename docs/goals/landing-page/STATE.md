@@ -1,14 +1,19 @@
 # STATE: landing-page
 
-- Status: done
-- Round: 2 of 3 in this budget (first budget)
+- Status: active
+- Round: 0 of 3 in this budget (second budget)
 - Rounds total: 2
 - Last floor: green (2026-09-20, round 2 after: html-validate 0 errors, Chromium clean, Lighthouse 95/100/100/100)
-- Updated: 2026-09-20, done: PR #135 merged, kitterm.dev serves the page
+- Updated: 2026-09-25, resumed for one round on the human's word
 
 ## Queue
 
-Empty. Both capabilities are on the PR.
+1. `the-font-is-first-party`. Serve JetBrains Mono 400 and 600 from
+   `site/` with `@font-face` and `font-display: swap`, drop the Google
+   Fonts links, and repaint the favicon's old palette (`#161b22`,
+   `#30363d`, `#3fb950`) with the dashboard tokens. Proof: Lighthouse
+   performance above 95 with accessibility 100, and the HTML and render
+   floor.
 
 ## Failures
 
@@ -16,9 +21,7 @@ None.
 
 ## Proposals waiting on the human
 
-- Self-host JetBrains Mono in `site/` (or preload it): the Google Fonts
-  stylesheet costs about 990 ms of first paint and holds Lighthouse
-  performance at 95. See `rounds/002.md`.
+None. The font proposal is queued as round 3.
 
 ## Done
 
@@ -43,6 +46,4 @@ daemon with a ledger." Approved 2026-09-20. The frames live in
 
 ## Next action
 
-None. PR #135 merged as `47140d6`; kitterm.dev serves the six pages.
-To reopen: set `Status: active` and write a queue (the font proposal
-above is the candidate).
+Round 3: `the-font-is-first-party`.
