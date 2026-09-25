@@ -1,17 +1,14 @@
 # STATE: green-ci-again
 
-- Status: waiting
-- Round: 3 of 3 in this budget (first budget)
-- Rounds total: 3
-- Last floor: green (2026-09-23, round 3 after: swift test 864, KittermDaemonTests 680, Linux build)
-- Updated: 2026-09-25, the new foreman counted the runs; the budget is spent
+- Status: done
+- Round: 4 of 3 in this budget (first budget)
+- Rounds total: 4
+- Last floor: green (2026-09-25, round 4: twenty `ci.yml` runs on `main`, through `e343f0b`)
+- Updated: 2026-09-25, done
 
 ## Queue
 
-1. `twenty-green-runs` (capability 4). A measurement, not a change: the
-   foreman watches twenty consecutive `ci.yml` runs on `main`. Nineteen
-   green as of 2026-09-25, through `72b8352`; the last red, `7f30556` on
-   2026-09-21, predates the three fixes.
+Empty. All four capabilities in `plan.md` are done.
 
 ## Failures
 
@@ -23,6 +20,8 @@ None.
 
 ## Done
 
+- `twenty-green-runs` (capability 4), round 4, PR #156. See
+  `rounds/004.md`. Twenty green runs on `main`, `7c8479d` to `e343f0b`.
 - `the-takeover-stops-racing` (capability 3), round 3, PR #150. See
   `rounds/003.md`. The test's defect, not the product's: it compared
   the ring with the client's stream at an unsynchronised instant.
@@ -44,6 +43,5 @@ than it saves.
 
 ## Next action
 
-The first budget is spent, so the goal waits. PR #150 is merged. One
-more green `ci.yml` run on `main` closes capability 4; the foreman then
-records it and asks the human for direction.
+None. The five completion conditions of `goal.md` hold. Reopen with a
+new queue item and `Status: active` when a flake returns.
