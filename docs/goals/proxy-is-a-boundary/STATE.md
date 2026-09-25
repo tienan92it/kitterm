@@ -4,7 +4,7 @@
 - Round: 2 of 3 in this budget (first budget)
 - Rounds total: 2
 - Last floor: green (2026-09-25, round 2 after: swift test 886, Linux build)
-- Updated: 2026-09-24, round 2 stopped on a usage limit, its session held
+- Updated: 2026-09-25, PR #155 merged and v0.32.0 released
 
 ## Queue
 
@@ -41,5 +41,6 @@ not belong in a done goal's list; it belongs in a goal of its own.
 
 ## Next action
 
-None. Two rounds. Merge PR #155, then release: the refusal and the
-escalation fix reach an installed daemon only through a new binary.
+None. Two rounds. PR #155 merged as `72b8352` and v0.32.0 carries the
+refusal and the escalation fix. Reopen with a new queue item and
+`Status: active`.

@@ -4,13 +4,14 @@
 - Round: 3 of 3 in this budget (first budget)
 - Rounds total: 3
 - Last floor: green (2026-09-23, round 3 after: swift test 864, KittermDaemonTests 680, Linux build)
-- Updated: 2026-09-23, round 3 closed; the budget is spent
+- Updated: 2026-09-25, the new foreman counted the runs; the budget is spent
 
 ## Queue
 
 1. `twenty-green-runs` (capability 4). A measurement, not a change: the
-   foreman watches twenty consecutive `ci.yml` runs on `main`. Thirteen
-   green as of 2026-09-23; the last red predates the three fixes.
+   foreman watches twenty consecutive `ci.yml` runs on `main`. Nineteen
+   green as of 2026-09-25, through `72b8352`; the last red, `7f30556` on
+   2026-09-21, predates the three fixes.
 
 ## Failures
 
@@ -43,5 +44,6 @@ than it saves.
 
 ## Next action
 
-The first budget is spent, so the goal waits. Merge the PR, then the
-foreman watches twenty runs for capability 4.
+The first budget is spent, so the goal waits. PR #150 is merged. One
+more green `ci.yml` run on `main` closes capability 4; the foreman then
+records it and asks the human for direction.
