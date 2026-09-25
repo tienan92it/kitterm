@@ -1,14 +1,17 @@
 # STATE: cost-per-round
 
-- Status: done
-- Round: 4 of 3 in this budget (first budget)
+- Status: active
+- Round: 0 of 3 in this budget (second budget)
 - Rounds total: 4
 - Last floor: green (2026-09-16, round 4 after the foreman's command: swift test 726, bench p95 2.57 ms, Linux green)
-- Updated: 2026-09-16, done
+- Updated: 2026-09-25, resumed for one round on the human's word
 
 ## Queue
 
-Empty. All four capabilities in `plan.md` are done.
+1. `the-ledger-prints-api-time`. The text ledger of `kitterm goal cost`
+   prints the bill's `totalAPIDuration` in an `api` column beside
+   `wall`, per round and in the goal's total, a dash where a round has
+   no bill. `--json` is unchanged.
 
 ## Failures
 
@@ -16,9 +19,7 @@ None.
 
 ## Proposals waiting on the human
 
-- Print `totalAPIDuration` beside the wall-clock in the text ledger,
-  because `totalDuration` counts the time a session was open and an
-  overnight round read as seventeen hours. `--json` carries it already.
+None. The API-time proposal is queued as round 5.
 
 2026-09-25, the foreman closed the `Result:` half: `facts.md` carries
 the rule (PR #151).
@@ -54,24 +55,4 @@ price table is added.
 
 ## Next action
 
-None. The goal is done. All five completion conditions hold:
-
-1. A session that ran `claude` carries `agentSessionId` and
-   `agentTranscript` on the row, in the archive, and through a takeover.
-2. `GET /api/sessions/<id>/cost` and `GET /api/archives/<id>/cost` serve
-   the bill from the transcript's last line, unrounded, and say "no bill
-   yet" with a reason rather than zeros.
-3. Every round record written after round 3 carries a `Cost:` line, and
-   `LOOP.md` says to archive the session and then read it.
-4. `kitterm goal cost <root>` prints the ledger per goal and per round,
-   with the cache-read share of input, and `--json` carries the exact
-   numbers.
-5. `main` is green after the merge.
-
-The join is recorded only by a daemon that carries round 1, so bills
-start accumulating on their own once v0.29.0 is released and the daemon
-upgraded. Until then the foreman back-fills the `Cost:` line from the
-worktree's transcript, which is unique per round.
-
-Four rounds cost $32.95. To reopen, set `Status: active` with a new
-budget and queue.
+Round 5: `the-ledger-prints-api-time`.
