@@ -25,7 +25,7 @@ the rule (PR #151).
 
 ## Done
 
-- `the-ledger-prints-api-time`, round 5, `493a6cf`. See `rounds/005.md`.
+- `the-ledger-prints-api-time`, round 5, PR #160. See `rounds/005.md`.
   The text ledger prints `api` beside `wall`: 12m17 of API time in the
   16h17 overnight round.
 - `keep-the-join` (capability 1), round 1, `b39ba30`. See
