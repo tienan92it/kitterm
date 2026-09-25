@@ -1,26 +1,21 @@
 # STATE: proxy-is-a-boundary
 
-- Status: active
-- Round: 1 of 3 in this budget (first budget)
-- Rounds total: 1
-- Last floor: green (2026-09-24, round 1 after: swift test 875, KittermDaemonTests 691, Linux build)
+- Status: done
+- Round: 2 of 3 in this budget (first budget)
+- Rounds total: 2
+- Last floor: green (2026-09-25, round 2 after: swift test 886, Linux build)
 - Updated: 2026-09-24, round 2 stopped on a usage limit, its session held
 
 ## Queue
 
-1. `the-daemon-refuses-the-combination` (capability 2), and with it the
-   two findings of round 1: `/api/lan` hands a proxied request both
-   tokens, and a typo in `--trusted-host` fails open silently.
+Empty.
 
 ## Failures
 
-- Round 2 stopped nine minutes in: `You've reached your Fable limit`.
-  Not a spent round — the budget and the queue item stay where they
-  are. The crew's work was uncommitted in the working tree and the
-  foreman saved it as `38f65af`, a WIP commit that is **not reviewed**:
-  thirteen files, including the `--lan` refusal, the `/api/lan` grade
-  fix and the `AGENTS.md` edits. The session
-  `DE67ECB7-84F8-42AF-BDF3-17D3E5E66477` is held at its prompt.
+- Round 2 stopped overnight on the crew's model usage limit, nine
+  minutes in. No budget spent: the foreman saved the uncommitted work
+  as `38f65af` and the held session resumed the next day with its
+  context intact. See `rounds/002.md`.
 
 ## Proposals waiting on the human
 
@@ -28,6 +23,9 @@ None.
 
 ## Done
 
+- `the-daemon-refuses-the-combination` (capability 2), round 2,
+  `0152915`, PR #155. See `rounds/002.md`. Three holes closed, one of
+  them a privilege escalation in the recommended configuration.
 - `the-three-configurations` (capability 1), round 1, `280be50`. See
   `rounds/001.md`. Four tests over real sockets; the bypass is on the
   record with its verbatim responses, and two findings are worse than
@@ -43,8 +41,5 @@ not belong in a done goal's list; it belongs in a goal of its own.
 
 ## Next action
 
-Resume round 2 when the human's Fable limit resets. The crew's approved
-plan and the foreman's correction are both in the session's history;
-`rounds/001.md` holds the measurement it works from. The correction
-added the escalation fix and replaced the launchd-loop answer with a
-refusal in `kitterm upgrade`.
+None. Two rounds. Merge PR #155, then release: the refusal and the
+escalation fix reach an installed daemon only through a new binary.
