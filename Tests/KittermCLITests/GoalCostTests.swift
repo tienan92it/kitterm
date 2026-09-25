@@ -223,11 +223,11 @@ final class GoalCostTests: XCTestCase {
         try writeCorpusFixture()
         let lines = try run(["cost", project, "example"])
         XCTAssertEqual(lines, [
-            "example                         $      in  cached      out  wall tests  files   decision      PR",
-            "  001 send-on-transition     2.64   1.10M     93%    17.7k  5m48   +28     12   done         #12",
-            "  002 the-toggle             0.41       0       —        0  0m00    +0      3   failed         —",
-            "  003 subscriptions             —       —       —        —     —   +20      7   done          #9",
-            "  total                      3.05   1.10M     93%    17.7k  5m48   +48     22",
+            "example                         $      in  cached      out  wall   api tests  files   decision      PR",
+            "  001 send-on-transition     2.64   1.10M     93%    17.7k  5m48  4m05   +28     12   done         #12",
+            "  002 the-toggle             0.41       0       —        0  0m00  0m00    +0      3   failed         —",
+            "  003 subscriptions             —       —       —        —     —     —   +20      7   done          #9",
+            "  total                      3.05   1.10M     93%    17.7k  5m48  4m05   +48     22",
             "  1 round predates the bill and is not counted.",
         ])
         // Every line is the same shape: no tabs, no trailing space.
@@ -360,10 +360,10 @@ final class GoalCostTests: XCTestCase {
         // The whole output is the message, so a dash where a count belongs
         // prints its own footer line with what git said.
         XCTAssertEqual(Array(lines.prefix(5)), [
-            "lines                               $      in  cached      out  wall tests  files   decision      PR",
-            "  001 the-bill-in-the-record     4.74   3.33M     97%    36.0k 10m00     —      4   propose        —",
-            "  002 no-bill                       —       —       —        —     —     —      —   done           —",
-            "  total                          4.74   3.33M     97%    36.0k 10m00     —      4",
+            "lines                               $      in  cached      out  wall   api tests  files   decision      PR",
+            "  001 the-bill-in-the-record     4.74   3.33M     97%    36.0k 10m00     —     —      4   propose        —",
+            "  002 no-bill                       —       —       —        —     —     —     —      —   done           —",
+            "  total                          4.74   3.33M     97%    36.0k 10m00     —     —      4",
             "  1 round recorded no bill and is not counted.",
         ], lines.joined(separator: "\n"))
         // Round 2's dash is explained by git itself; the wording after
@@ -427,9 +427,9 @@ final class GoalCostTests: XCTestCase {
         """)
         let lines = try run(["cost", project, "letters"])
         XCTAssertEqual(lines, [
-            "letters                         $      in  cached      out  wall tests  files   decision      PR",
-            "  001 letters                   —       —       —        —     —     —      4   done           —",
-            "  total                         —       —       —        —     —     —      4",
+            "letters                         $      in  cached      out  wall   api tests  files   decision      PR",
+            "  001 letters                   —       —       —        —     —     —     —      4   done           —",
+            "  total                         —       —       —        —     —     —     —      4",
             "  1 round predates the bill and is not counted.",
         ], lines.joined(separator: "\n"))
     }
@@ -529,7 +529,7 @@ final class GoalCostTests: XCTestCase {
         XCTAssertThrowsError(try run(["cost", work.path + "/no/such/dir"]))
         try writeState("one")
         XCTAssertThrowsError(try run(["cost", project, "other"]), "a goal with no folder is an error")
-        XCTAssertEqual(try run(["cost", project, "one"]).first, "one                             $      in  cached      out  wall tests  files   decision      PR")
+        XCTAssertEqual(try run(["cost", project, "one"]).first, "one                             $      in  cached      out  wall   api tests  files   decision      PR")
         XCTAssertEqual(try run(["cost", project, "--json", "one"]).joined().contains("\"rounds\" : [\n\n  ]"), false)
     }
 

@@ -183,7 +183,12 @@ crashes after the exec.
   template with the slug in `STATE.md` and refuses an existing folder; `kitterm goal
   list <path>` prints each goal folder's slug and status; `kitterm goal cost <path>
   [<slug>] [--json]` prints the ledger (`GoalLedger.swift`): per goal and per round,
-  dollars, tokens, the cache-read share of input, wall-clock, tests added (the first
+  dollars, tokens, the cache-read share of input, wall-clock, the API time beside it
+  (`totalAPIDuration`, a dash when the round's bill came from a `Cost:` line rather
+  than a transcript — that line carries no API time — or predates the bill; the
+  goal's total sums only the rounds that have one, because `totalDuration` counts
+  the time a session was open, not the time it worked, and a round left open
+  overnight otherwise reads as hours of work), tests added (the first
   `N new` of the record's `## Floor`), files changed (`git diff --name-only
   <base>..<result>` from the record's `Base:` and `Result:` shas, a hex word of 7 to 40
   characters, the one with a digit preferred when a line holds both; a dash when a line
