@@ -21,10 +21,10 @@ None.
   `kitterm stop` sends, so the CLI would have to write its intent before
   signalling. Both are clean ends, so nothing is lost today. See
   `rounds/001.md`.
-- `Web/terminal/src/tokens.css`: `--ui-text` is under 4.5:1 on
-  `solarized-dark` and `synthwave-84`, and the danger tint the restart
-  line paints on takes them lower. This belongs to `contrast-tokens`,
-  whose round 3 is running now. See `rounds/003.md`.
+
+2026-09-25, the foreman closed the `tokens.css` item: the restart line
+paints the danger tint on its mark alone now, and `contrast-tokens` is
+done.
 
 ## Review, 2026-09-10, before the merge
 

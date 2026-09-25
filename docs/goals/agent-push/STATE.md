@@ -16,28 +16,16 @@ None.
 
 ## Proposals waiting on the human
 
-- **`Sources/`: two flags combine into an authorization bypass.** With
-  `--lan` set and no `--trusted-host`, a reverse proxy that connects from
-  loopback is read as the local human, and `GET /api/sessions` answers
-  `200` at full grade with no token. Behind `tailscale serve` that means
-  the whole tailnet. It defeats the token grades and `--agent-control`.
-  Round 1 measured all three configurations and the foreman confirmed the
-  branch in `AccessPolicy.decide`. The proposal is to make the daemon
-  refuse to start, or warn on every request, in that combination.
-  **Nothing is exposed today**: the live daemon runs without `--lan` and
-  `tailscale serve status` reports no serve config. See `rounds/001.md`.
-- Three from round 2, none blocking. `AGENTS.md`'s HTTP API list does not
-  name `POST` and `DELETE /api/push/subscriptions`. Capability 3 needs a
-  VAPID key pair, which belongs in its own `0600` file rather than in
-  `push.json`. Capability 4 may want `GET /api/push/subscriptions` for
-  the toggle's state, which `plan.md` row 2 does not ask for.
-- From round 3, and the second one needs the human. Capability 4 needs
-  `GET /api/push/vapid` for `applicationServerKey`;
-  `VAPIDKeys.publicKeyBase64URL` is ready and the route is not written,
-  which capability 4 can do itself. Separately, `failed` still has no
-  event on the feed, so a foreman polls rows for it; adding
-  `command.failed` would change `AGENTS.md` and was outside round 3's
-  authority.
+- `failed` has no event on the feed, so a foreman polls the session rows
+  for it. A `command.failed` event (a non-zero `commandEnded`, perhaps
+  for orchestrated sessions only) is a new event type on the feed's
+  contract, so it is a goal, not a chore.
+
+2026-09-25, the foreman closed the rest as shipped: the proxy bypass
+(PR #155), the subscription routes in `AGENTS.md`, the VAPID key in its
+own `0600` file (PR #102) and `GET /api/push/vapid` (PR #103). The page
+reads `pushManager.getSubscription()`, so no subscription route is
+needed.
 
 ## Done
 
