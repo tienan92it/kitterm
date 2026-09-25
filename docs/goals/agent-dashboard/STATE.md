@@ -1,14 +1,19 @@
 # STATE: agent-dashboard
 
-- Status: done
-- Round: 3 of 3 in this budget (seventh budget)
+- Status: active
+- Round: 0 of 3 in this budget (eighth budget)
 - Rounds total: 21
 - Last floor: green (2026-09-21, round 21 after: vitest 1476 in 60 files)
-- Updated: 2026-09-21, round 21 closed, done
+- Updated: 2026-09-25, resumed for one round on the human's word
 
 ## Queue
 
-Empty.
+1. `the-record-names-its-pr`. `KnowledgeSummary.roundRecord` reads the
+   `PR #N` after `Result:` on the `- Base:` line, the shape `LOOP.md`
+   gives, as well as on a `- Result:` bullet. 74 of 85 kitterm records
+   use the `LOOP.md` shape, and the route answers no `pr` for every one
+   of them, so the fleet view's task rows and `WHERE` name no pull
+   request for them.
 
 ## Failures
 
@@ -202,7 +207,4 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-None. Twenty-one rounds. Merge PR #144. Seventeen rounds, PRs #125–#134, released as v0.30.0 and v0.31.0.
-The page is the human's design in `corpus/dashboard.pen`. Four
-proposals wait above; to reopen for one, set `Status: active` and
-write it as the queue.
+Round 22: `the-record-names-its-pr`.
