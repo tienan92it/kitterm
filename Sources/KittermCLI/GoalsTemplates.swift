@@ -34,10 +34,11 @@ enum GoalsTemplates {
     /// `LOOP.md` that is still a template and refuses one a human edited.
     /// When `loop` changes, append the hash it had before the change;
     /// `GoalsTemplatesTests` pins that the current one is listed. Seeded
-    /// from `git log -- examples/goals/LOOP.md`: `loop-and-skill` round 2
-    /// (current), round 1 (a5592bd), 7f30556 (#139), 41b6a76 (#113) and
-    /// ac20d04 (#111).
+    /// from `git log -- examples/goals/LOOP.md`: `human-file-edits` (current),
+    /// `loop-and-skill` round 2 (092652221ab1), round 1 (a5592bd), 7f30556
+    /// (#139), 41b6a76 (#113) and ac20d04 (#111).
     static let loopHistory: [String] = [
+        "27900ae25babc94f383cc3769d77951b9d24413e1c09ffe509403eac6801c909",
         "092652221ab14e27f5bce545447cc6b237dfb8b3ddee95915f5e0f0040b4459c",
         "68a25c51fe74dc68c28c4f906fd6e93fbe8a126b283172cbc46ab0c4e9a9630e",
         "b7ced93af014fa729fbad0f1cdb7fef2d9d5f4a71697be7f3aec7f7446d65d58",
@@ -270,14 +271,18 @@ enum GoalsTemplates {
           and the duration sum the header's `- Cost:` lines, the lines before the
           first `## ` heading, a `none recorded` line skipped
           (`KnowledgeSummary.costLine`); the pull request is the first `PR #N` on
-          the `- Result:` line, so a result given as a sha names none; the
-          correction is a `## Correction` heading.
+          a `- Result:` bullet, else the first `PR #N` after `Result:` on the
+          `- Base:` line; the bullet wins when a record carries both; a result
+          given as a sha, on either shape, names none; the correction is a
+          `## Correction` heading.
         - `kitterm goal cost` (`GoalLedger`): the ids on the `- Sessions:` line
-          and after `Archives:`; the sha on the `- Base:` line and the sha or the
-          `PR #N` after `Result:`; the `- Cost:` line at the same position as each
-          session the `Sessions:` line names, read when the session's archived
-          transcript holds no bill; the first `N new` under `## Floor` as the
-          tests added; the first word under `## Decision` as the decision.
+          and after `Archives:`; the sha on the `- Base:` line; the result sha
+          and the `PR #N` by the same rule, from a `- Result:` bullet, else
+          after `Result:` on the `- Base:` line; the `- Cost:` line at the same
+          position as each session the `Sessions:` line names, read when the
+          session's archived transcript holds no bill; the first `N new` under
+          `## Floor` as the tests added; the first word under `## Decision` as
+          the decision.
 
         ### Labels
 

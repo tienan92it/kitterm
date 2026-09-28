@@ -59,9 +59,8 @@ All nine hold on a build from `main`:
    rendered page contains no `input`, `textarea` or `contenteditable`.
 5. `sessions.css` uses the space scale and the three type sizes from
    `design-foundation.md`, and a vitest reads the file and pins both.
-6. The page at 390 px is under 1200 px tall with the live tree loaded,
-   and the first screen holds the band, the meters, and the first
-   workspace.
+6. The first screen at 390 px holds the band, the meters, and the first
+   workspace; the page's height follows the tree.
 7. A session running an agent shows its model as a fact on its line, and
    the meters carry one row per model with its spend and its cache
    share. A model with no reading prints nothing rather than a guess.

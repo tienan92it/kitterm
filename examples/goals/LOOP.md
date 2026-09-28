@@ -222,14 +222,18 @@ Two parsers read the record:
   and the duration sum the header's `- Cost:` lines, the lines before the
   first `## ` heading, a `none recorded` line skipped
   (`KnowledgeSummary.costLine`); the pull request is the first `PR #N` on
-  the `- Result:` line, so a result given as a sha names none; the
-  correction is a `## Correction` heading.
+  a `- Result:` bullet, else the first `PR #N` after `Result:` on the
+  `- Base:` line; the bullet wins when a record carries both; a result
+  given as a sha, on either shape, names none; the correction is a
+  `## Correction` heading.
 - `kitterm goal cost` (`GoalLedger`): the ids on the `- Sessions:` line
-  and after `Archives:`; the sha on the `- Base:` line and the sha or the
-  `PR #N` after `Result:`; the `- Cost:` line at the same position as each
-  session the `Sessions:` line names, read when the session's archived
-  transcript holds no bill; the first `N new` under `## Floor` as the
-  tests added; the first word under `## Decision` as the decision.
+  and after `Archives:`; the sha on the `- Base:` line; the result sha
+  and the `PR #N` by the same rule, from a `- Result:` bullet, else
+  after `Result:` on the `- Base:` line; the `- Cost:` line at the same
+  position as each session the `Sessions:` line names, read when the
+  session's archived transcript holds no bill; the first `N new` under
+  `## Floor` as the tests added; the first word under `## Decision` as
+  the decision.
 
 ### Labels
 
