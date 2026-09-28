@@ -1,15 +1,14 @@
 # STATE: command-failed-event
 
 - Status: active
-- Round: 0 of 3 in this budget (first budget)
-- Rounds total: 0
-- Last floor: green (2026-09-28, main at d3546d9: swift test 909)
-- Updated: 2026-09-28, the human approved the package (PR #163)
+- Round: 1 of 3 in this budget (first budget)
+- Rounds total: 1
+- Last floor: green (2026-09-28, round 1 after: swift test 923, Linux build, bench p95 2.74 ms)
+- Updated: 2026-09-28, round 1 closed
 
 ## Queue
 
-1. `the-event` (capability 1).
-2. `the-contract-written-down` (capability 2).
+1. `the-contract-written-down` (capability 2).
 
 ## Failures
 
@@ -21,7 +20,10 @@ None.
 
 ## Done
 
-None.
+- `the-event` (capability 1), round 1, `ade5e7e`. See `rounds/001.md`.
+  The feed carries `command.failed {index, exit, command?}` for a
+  failed command in an orchestrated session; the review caught a
+  duplicate-mark defect before the merge.
 
 ## Direction
 
@@ -33,7 +35,6 @@ merged PR #163 on 2026-09-28.
 
 ## Next action
 
-Round 1: `the-event` from `plan.md` row 1; proof: a real-shell test that reads the feed, and the bench. Spawn one crew
-session in a worktree with labels `crew:command-failed-event`, `goal:command-failed-event`,
-`round:1`, `task:the-event`, and no input. Run the floor, start `claude`,
-and send the row.
+Round 2: `the-contract-written-down` from `plan.md` row 2, on the same
+branch; proof: the `ForemanSkills` golden test and the sentence checks
+green, and the three texts in the note.
