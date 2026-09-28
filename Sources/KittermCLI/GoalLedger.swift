@@ -26,8 +26,11 @@ import KittermDaemon
 /// dash and a footer that says why (`FilesChanged.reason`): the line that
 /// names no sha, or git's status and what it wrote to stderr. Tests added is
 /// the first `N new` in the record's `## Floor` section. The decision is the
-/// first word of `## Decision`. The PR is the first `#N` on the `Result:`
-/// line.
+/// first word of `## Decision`. The PR and the result sha are read from a
+/// standalone `- Result:` bullet when the record has one, else from
+/// `Result:` on the `- Base:` line; the bullet wins when a record carries
+/// both (`KnowledgeSummary.roundRecord` reads the PR by the same rule, since
+/// PR #162).
 enum GoalLedger {
     // MARK: - The record
 
@@ -96,6 +99,22 @@ enum GoalLedger {
         return withDigit.isEmpty ? words : withDigit
     }
 
+    /// The value of the first `- <key>:` bullet anywhere in `text`, trimmed;
+    /// nil when no line starts with it. Scans the whole text, not only the
+    /// header, the same reach as `KnowledgeSummary.bulletValue`, so a
+    /// standalone `- Result:` bullet is found whether it sits beside `- Base:`
+    /// or elsewhere in the record.
+    private static func bulletValue(_ text: String, key: String) -> String? {
+        let marker = "- \(key):"
+        for rawLine in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = rawLine.hasSuffix("\r") ? String(rawLine.dropLast()) : String(rawLine)
+            guard line.hasPrefix(marker) else { continue }
+            let value = line.dropFirst(marker.count).trimmingCharacters(in: .whitespaces)
+            return value.isEmpty ? nil : value
+        }
+        return nil
+    }
+
     /// Parse one record's text. `number` is the file's `NNN`; the heading's
     /// slug is the queue item, or the file name when the heading is missing.
     static func parse(_ text: String, number: Int) -> Record {
@@ -128,6 +147,16 @@ enum GoalLedger {
             default:
                 break
             }
+        }
+        // A standalone `- Result:` bullet wins over a `Result:` value riding
+        // the `- Base:` line, the same precedence `KnowledgeSummary.roundRecord`
+        // gives the PR: the older record shape (`agent-dashboard` rounds 1-9,
+        // `workspace-ledger` rounds 5-6) names the PR only on its own bullet,
+        // which `- Base:` never carries, so without this the ledger read no
+        // PR for eleven real records while the fleet view read it correctly.
+        if let resultBullet = bulletValue(text, key: "Result") {
+            record.pr = matches(prPattern, in: resultBullet).first.flatMap { Int($0[1]) }
+            record.result = shas(in: resultBullet).last
         }
         if let count = matches(newTestsPattern, in: floorText).first.flatMap({ Int($0[1]) }) {
             record.testsAdded = count
