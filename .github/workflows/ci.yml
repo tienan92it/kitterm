@@ -34,8 +34,11 @@ jobs:
 
   # The daemon ships to Linux containers, so a Darwin-only import or an
   # unavailable Foundation type has to fail here rather than in someone's box.
-  # Build only: seven test files use Bundle(for:), which corelibs-XCTest does
-  # not have, so `swift test` cannot run on Linux.
+  # Compile only: `--build-tests` compiles every test target too, so a test
+  # that uses an API the Linux toolchain lacks fails here and not on the
+  # first Linux machine that builds the tests. Nothing runs: 35 test files
+  # use Bundle(for:), which corelibs-XCTest does not have, so `swift test`
+  # cannot run on Linux (`docs/goals/linux-tests-compile/goal.md`).
   linux-build:
     runs-on: ubuntu-24.04
     container: swift:6.1
@@ -48,4 +51,4 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Swift build
-        run: swift build
+        run: swift build --build-tests
