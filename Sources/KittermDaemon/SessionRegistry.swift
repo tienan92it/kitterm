@@ -57,17 +57,33 @@ public actor SessionRegistry {
         for (_, session) in sessions { wire(session) }
     }
 
-    /// Point the session's `commandEnd` marks at the observer. The closure
-    /// holds the observer weakly so a session outliving it (a test) keeps
-    /// no dead reference alive.
+    /// Point the session's `commandEnd` marks at the observer, and its failed
+    /// commands at the event feed. The observer closure holds it weakly so a
+    /// session outliving it (a test) keeps no dead reference alive.
+    ///
+    /// `command.failed` is the feed's word for a non-zero exit in an
+    /// orchestrated session: `data` is `index` (the command's number on
+    /// `/commands`), `exit`, and `command` when the row has one. The session
+    /// decides when to call (non-zero, orchestrated, paired) on the event
+    /// loop; the append here is one small dictionary and a lock, no I/O.
     private func wire(_ session: PtySession) {
-        guard let observer else {
-            session.setCommandEndHandler(nil)
-            return
-        }
         let id = session.sessionID
-        session.setCommandEndHandler { [weak observer] exit in
-            observer?.commandEnded(session: id, exit: exit)
+        if let observer {
+            session.setCommandEndHandler { [weak observer] exit in
+                observer?.commandEnded(session: id, exit: exit)
+            }
+        } else {
+            session.setCommandEndHandler(nil)
+        }
+        if let eventLog {
+            session.setCommandFailedHandler { command in
+                var data = ["index": String(command.index)]
+                if let exit = command.exit { data["exit"] = String(exit) }
+                if let line = command.command { data["command"] = line }
+                eventLog.append(type: "command.failed", session: id, data: data)
+            }
+        } else {
+            session.setCommandFailedHandler(nil)
         }
     }
     private var lingerTasks: [UUID: Task<Void, Never>] = [:]

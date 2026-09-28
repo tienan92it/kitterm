@@ -145,6 +145,13 @@ public final class PtySession: @unchecked Sendable {
     /// (`PushNotifier` learns `failed` this way). A prompt mark never fires
     /// it, so the byte path pays only for the once-per-command case.
     private var onCommandEnd: ((Int32) -> Void)?
+    /// Called, with the lock released, when a `commandEnd` mark with a
+    /// non-zero exit lands in an orchestrated session, with the command it
+    /// closed as `/commands` numbers it. The registry sets it to append
+    /// `command.failed` to the event feed. Separate from `onCommandEnd` so
+    /// that listener's path is untouched; nil, exit 0, or a browser session
+    /// pays nothing, and a stray end that pairs to no command fires nothing.
+    private var onCommandFailed: ((SessionCommand) -> Void)?
     /// Live cwd tracking: a low-frequency poll of the shell's own directory via
     /// `proc_pidinfo`, so the client learns `cd`s even when the shell emits no
     /// OSC 7 (a bare macOS zsh does not). Diff-gated to one frame per change.
@@ -617,6 +624,7 @@ public final class PtySession: @unchecked Sendable {
         // making progress while no client is watching.
         var readyWaiters: [EventLoopPromise<Void>] = []
         var endedCommands: [(handler: (Int32) -> Void, exit: Int32)] = []
+        var failedCommands: [(handler: (SessionCommand) -> Void, command: SessionCommand)] = []
         let dispatch: (recorder: SessionRecorder?,
                        logStore: SessionLogStore?,
                        observers: [(Data) -> Void],
@@ -648,6 +656,22 @@ public final class PtySession: @unchecked Sendable {
                 if hit.kind == .commandEnd, let handler = onCommandEnd {
                     endedCommands.append((handler, hit.exit ?? 0))
                 }
+                // The failure event. Only a non-zero exit in an orchestrated
+                // session (a program's, not a browser tab's) with a listener
+                // pays the pairing pass: O(sessionMarkCap) tiny structs, the
+                // same pass a waiter on this command runs below. The index is
+                // the one `/commands` prints because it is the same pairing
+                // over the same store. The mark just appended is the last one,
+                // so the command it closed is the last finished command.
+                if hit.kind == .commandEnd, let exit = hit.exit, exit != 0,
+                   let handler = onCommandFailed,
+                   spawnedByAPI || !labelsStorage.isEmpty,
+                   let failed = SessionCommands.pair(
+                       from: markStore.marks,
+                       firstIndex: markStore.firstRetainedIndex
+                   ).last(where: { !$0.running }) {
+                    failedCommands.append((handler, failed))
+                }
             }
             // Only a closing mark can satisfy a waiter, so the pairing pass is
             // skipped entirely for the prompt marks that make up most traffic.
@@ -673,6 +697,7 @@ public final class PtySession: @unchecked Sendable {
         // Outside the lock: these callbacks re-enter this class.
         for promise in readyWaiters { promise.succeed(()) }
         for ended in endedCommands { ended.handler(ended.exit) }
+        for failed in failedCommands { failed.handler(failed.command) }
         guard let dispatch else { return }
 
         dispatch.recorder?.recordOutput(chunk)
@@ -1028,6 +1053,13 @@ public final class PtySession: @unchecked Sendable {
     /// the registry when it admits the session.
     public func setCommandEndHandler(_ handler: ((Int32) -> Void)?) {
         stateLock.withLock { onCommandEnd = handler }
+    }
+
+    /// Set, or clear, the listener for a failed command in an orchestrated
+    /// session (`command.failed` on the event feed). Called once by the
+    /// registry when it admits the session.
+    public func setCommandFailedHandler(_ handler: ((SessionCommand) -> Void)?) {
+        stateLock.withLock { onCommandFailed = handler }
     }
 
     public func marksSnapshot() -> [SessionMark] {
