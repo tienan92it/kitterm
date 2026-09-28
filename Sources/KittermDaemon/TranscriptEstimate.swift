@@ -35,10 +35,14 @@ import NIOConcurrencyHelpers
 /// Measured 2026-09-20 over 141 finished transcripts over $1: the estimate
 /// sits 1.25% under the bill at the median and 2.6% under at the tenth
 /// percentile, because the bill also counts requests that wrote no turn
-/// (a retry, an interrupted request, the Haiku title call). A session
-/// that ran subagents is further under, because their turns are in files
-/// under `<session>/subagents/` and this reads the one file: 17% on the
-/// dearest session on this machine. The `~` on the page is for that.
+/// (a retry, an interrupted request, the Haiku title call). Since the
+/// `subagent-estimate` chore, `listSubagents` also reads a session's
+/// `<session>/subagents/*.jsonl` files and sums their turns with the
+/// parent's, but the estimate still misses what the bill alone counts.
+/// Measured 2026-09-24 on the dearest session on this machine ($1,116.33,
+/// 81 subagent files): the estimate of the run since its last bill rose
+/// from 79% to 85% of the bill, and the whole session's from 73% to 83%.
+/// The `~` on the page is for the gap that remains.
 public struct TranscriptEstimate: Codable, Equatable, Sendable {
     /// One model's share, keyed by model id as the assistant lines name it.
     public struct ModelUsage: Codable, Equatable, Sendable {
