@@ -731,6 +731,13 @@ public func runDaemon(
     // still leaves the reader the answer they came for.
     FileHandle.standardError.write(Data(PreviousRun.logLine(previousRun).utf8))
 
+    // One line, once, if the price table is old enough that a rate change
+    // could have drifted past it. Nothing on the output or request path
+    // reads `ModelPricing` at start; this is the only per-run check.
+    if let warning = ModelPricing.staleWarningLine(asOf: Date()) {
+        FileHandle.standardError.write(Data(warning.utf8))
+    }
+
     let current = ServerBox(
         makeServer(config: config, takeover: takeover, lastRun: lastRun, previous: previousRun)
     )
