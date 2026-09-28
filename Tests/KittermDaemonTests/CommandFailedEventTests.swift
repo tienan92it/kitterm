@@ -267,6 +267,29 @@ final class CommandFailedEventTests: XCTestCase {
         XCTAssertEqual(session.commandsSnapshot().last?.index, 2, "the same number the listing gives")
     }
 
+    /// Two integrations in one shell (p10k and kitterm's snippet, say) both end
+    /// one command with 133;D: the second D pairs to no command. Before the
+    /// event was tied to its own mark, the pass reported the last finished
+    /// command again, so one failure made two events.
+    func testASecondEndMarkForOneCommandFiresNoSecondEvent() throws {
+        let session = try PtySession.spawn(cwd: NSTemporaryDirectory(), spawnedByAPI: true)
+        sessions.append(session)
+        nonisolated(unsafe) var fired: [SessionCommand] = []
+        session.setCommandFailedHandler { fired.append($0) }
+        func feed(_ text: String) {
+            var buffer = ByteBufferAllocator().buffer(capacity: text.utf8.count)
+            buffer.writeString(text)
+            session.handleRead(&buffer)
+        }
+        feed("\u{1b}]633;E;make test\u{07}\u{1b}]133;C\u{07}boom\u{1b}]133;D;1\u{07}")
+        XCTAssertEqual(fired.map(\.index), [1])
+        feed("\u{1b}]133;D;1\u{07}")  // the other integration's end for the same command
+        XCTAssertEqual(fired.map(\.index), [1], "a D that closed nothing is not a second failure")
+        feed("\u{1b}]133;D;0\u{07}")
+        XCTAssertEqual(fired.count, 1)
+        XCTAssertEqual(session.commandsSnapshot().count, 1, "the listing still holds one command")
+    }
+
     func testABrowserSessionNeverFiresItsFailedHandler() throws {
         let session = try PtySession.spawn(cwd: NSTemporaryDirectory())
         sessions.append(session)

@@ -625,6 +625,9 @@ public final class PtySession: @unchecked Sendable {
         var readyWaiters: [EventLoopPromise<Void>] = []
         var endedCommands: [(handler: (Int32) -> Void, exit: Int32)] = []
         var failedCommands: [(handler: (SessionCommand) -> Void, command: SessionCommand)] = []
+        // The `commandEnd` marks of this chunk that carry a non-zero exit, when
+        // this session reports failures: paired below, once, with the waiters.
+        var failedEnds: [(offset: UInt64, exit: Int32)] = []
         let dispatch: (recorder: SessionRecorder?,
                        logStore: SessionLogStore?,
                        observers: [(Data) -> Void],
@@ -658,46 +661,55 @@ public final class PtySession: @unchecked Sendable {
                 }
                 // The failure event. Only a non-zero exit in an orchestrated
                 // session (a program's, not a browser tab's) with a listener
-                // pays the pairing pass: O(sessionMarkCap) tiny structs, the
-                // same pass a waiter on this command runs below. The index is
-                // the one `/commands` prints because it is the same pairing
-                // over the same store. The mark just appended is the last one,
-                // so the command it closed is the last finished command.
+                // is a candidate; a browser tab, exit 0 and a prompt mark cost
+                // nothing here.
                 if hit.kind == .commandEnd, let exit = hit.exit, exit != 0,
-                   let handler = onCommandFailed,
-                   spawnedByAPI || !labelsStorage.isEmpty,
-                   let failed = SessionCommands.pair(
-                       from: markStore.marks,
-                       firstIndex: markStore.firstRetainedIndex
-                   ).last(where: { !$0.running }) {
-                    failedCommands.append((handler, failed))
+                   onCommandFailed != nil, spawnedByAPI || !labelsStorage.isEmpty {
+                    failedEnds.append((hit.offset, exit))
                 }
             }
-            // Only a closing mark can satisfy a waiter, so the pairing pass is
-            // skipped entirely for the prompt marks that make up most traffic.
-            if markHits.contains(where: { $0.kind == .commandEnd }), !commandWaiters.isEmpty {
-                let finished = Set(
-                    SessionCommands.pair(
-                        from: markStore.marks,
-                        firstIndex: markStore.firstRetainedIndex
-                    )
-                        .filter { !$0.running }
-                        .map(\.index)
+            // Only a closing mark can satisfy a waiter or fail a command, so
+            // the pairing pass — O(sessionMarkCap) tiny structs — is skipped
+            // entirely for the prompt marks that make up most traffic, and
+            // runs once for a chunk that needs it for both.
+            let sawEnd = markHits.contains(where: { $0.kind == .commandEnd })
+            if (sawEnd && !commandWaiters.isEmpty) || !failedEnds.isEmpty {
+                let commands = SessionCommands.pair(
+                    from: markStore.marks,
+                    firstIndex: markStore.firstRetainedIndex
                 )
-                commandWaiters.removeAll { waiter in
-                    guard finished.contains(waiter.index) else { return false }
-                    readyWaiters.append(waiter.promise)
-                    return true
+                if !commandWaiters.isEmpty {
+                    let finished = Set(commands.filter { !$0.running }.map(\.index))
+                    commandWaiters.removeAll { waiter in
+                        guard finished.contains(waiter.index) else { return false }
+                        readyWaiters.append(waiter.promise)
+                        return true
+                    }
+                }
+                // The command a D mark closed is the one whose end sits at that
+                // mark's offset, and its index is the one `/commands` prints
+                // because it is the same pairing over the same store. A D that
+                // closed nothing — a shell's first prompt, the second of two
+                // integrations both ending one command — fires nothing.
+                if let handler = onCommandFailed {
+                    for end in failedEnds {
+                        guard let failed = commands.first(where: { $0.endOffset == end.offset }),
+                              failed.exit == end.exit
+                        else { continue }
+                        failedCommands.append((handler, failed))
+                    }
                 }
             }
             let observerOutputs = observers.values.map(\.onOutput)
             let controller = attached ? onOutput : nil
             return (recorder, logStore, observerOutputs, controller)
         }
-        // Outside the lock: these callbacks re-enter this class.
+        // Outside the lock: these callbacks re-enter this class. The failure
+        // event lands before a waiter on the command is answered, so a caller
+        // that waits on command N and then reads the feed always finds it.
+        for failed in failedCommands { failed.handler(failed.command) }
         for promise in readyWaiters { promise.succeed(()) }
         for ended in endedCommands { ended.handler(ended.exit) }
-        for failed in failedCommands { failed.handler(failed.command) }
         guard let dispatch else { return }
 
         dispatch.recorder?.recordOutput(chunk)
