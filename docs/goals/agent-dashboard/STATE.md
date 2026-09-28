@@ -1,19 +1,14 @@
 # STATE: agent-dashboard
 
-- Status: active
-- Round: 1 of 3 in this budget (eighth budget)
-- Rounds total: 22
-- Last floor: green (2026-09-25, round 22 after: swift test 909, Linux build)
-- Updated: 2026-09-28, resumed for round 23 on the human's word
+- Status: done
+- Round: 2 of 3 in this budget (eighth budget)
+- Rounds total: 23
+- Last floor: green (2026-09-28, round 23 after: swift test 914, Linux build)
+- Updated: 2026-09-28, round 23 closed, done
 
 ## Queue
 
-1. `the-price-table-says-its-age`. `ModelPricing` carries the day its
-   rates were read as a value, not only in a comment. The daemon writes
-   one warning line to `server.log` at start when that day is more than
-   90 days old, and a test with an injected clock pins the rule. The
-   human chose this over a rates file on 2026-09-28. No test may fail
-   on the calendar: `green-ci-again` made a red CI mean a broken change.
+Empty.
 
 ## Failures
 
@@ -22,14 +17,17 @@ None.
 ## Proposals waiting on the human
 
 None. On 2026-09-28 the human answered all three: the `LOOP.md` sentence
-and condition 6 are applied in PR #166, and the price table is queued
-as round 23.
+and condition 6 are applied in PR #166, and the price table says its
+age since round 23.
 
 2026-09-25, the foreman closed two as shipped: the subagents in the
 running estimate (PR #153) and the landing accent (PR #135).
 
 ## Done
 
+- `the-price-table-says-its-age`, round 23, PR #167. See
+  `rounds/023.md`. The daemon warns in `server.log` once the rates are
+  over 90 days old.
 - `the-record-names-its-pr`, round 22, PR #162. See `rounds/022.md`.
   The route reads a round's PR off the `Base:` line: 27 of 85 rounds
   carry one, up from 11.
@@ -207,4 +205,5 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-Round 23: `the-price-table-says-its-age`.
+None. Merge the round's PR. To reopen, set `Status: active` with a new
+queue.
