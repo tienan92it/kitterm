@@ -1,10 +1,10 @@
 # STATE: command-failed-event
 
-- Status: waiting
+- Status: active
 - Round: 0 of 3 in this budget (first budget)
 - Rounds total: 0
 - Last floor: green (2026-09-28, main at d3546d9: swift test 909)
-- Updated: 2026-09-28, written by the foreman on the human's word
+- Updated: 2026-09-28, the human approved the package (PR #163)
 
 ## Queue
 
@@ -28,7 +28,8 @@ None.
 2026-09-28: the human chose this goal from the foreman's plan (the
 decision table after v0.33.0). The foreman drafted `goal.md` and
 `plan.md`; the status stays `waiting` until the human approves them by
-merging this package, then the foreman sets it `active`.
+merging this package, then the foreman sets it `active`. The human
+merged PR #163 on 2026-09-28.
 
 ## Next action
 
