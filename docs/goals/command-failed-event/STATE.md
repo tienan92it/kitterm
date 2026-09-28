@@ -20,10 +20,10 @@ None.
 
 ## Done
 
-- `the-contract-written-down` (capability 2), round 2, `a02f57a`. See
+- `the-contract-written-down` (capability 2), round 2, PR #169. See
   `rounds/002.md`. `AGENTS.md`, the MCP description and the foreman
   skill name the event.
-- `the-event` (capability 1), round 1, `ade5e7e`. See `rounds/001.md`.
+- `the-event` (capability 1), round 1, PR #169. See `rounds/001.md`.
   The feed carries `command.failed {index, exit, command?}` for a
   failed command in an orchestrated session; the review caught a
   duplicate-mark defect before the merge.
