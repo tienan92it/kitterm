@@ -1,10 +1,10 @@
 # STATE: agent-dashboard
 
 - Status: done
-- Round: 1 of 3 in this budget (eighth budget)
-- Rounds total: 22
-- Last floor: green (2026-09-25, round 22 after: swift test 909, Linux build)
-- Updated: 2026-09-25, round 22 closed, done
+- Round: 2 of 3 in this budget (eighth budget)
+- Rounds total: 23
+- Last floor: green (2026-09-28, round 23 after: swift test 914, Linux build)
+- Updated: 2026-09-28, round 23 closed, done
 
 ## Queue
 
@@ -16,22 +16,18 @@ None.
 
 ## Proposals waiting on the human
 
-- `LOOP.md`, "The round record": the parser sentence says the PR is on
-  the `- Result:` line, and the shape above it puts `Result:` on the
-  `- Base:` line. Round 22 made the parser read both; the sentence to
-  write is in `rounds/022.md`, "Decision".
-- `Sources/KittermDaemon/ModelPricing.swift` is a rate table copied from
-  platform.claude.com on 2026-09-20; nothing updates it. Own it, or
-  move the rates to a file. See `rounds/016.md`.
-- `goal.md` condition 6 says the 390 px page is under 1200 px. The
-  design measures about 2500 on the real tree. Reset the number or
-  strike the condition.
+None. On 2026-09-28 the human answered all three: the `LOOP.md` sentence
+and condition 6 are applied in PR #166, and the price table says its
+age since round 23.
 
 2026-09-25, the foreman closed two as shipped: the subagents in the
 running estimate (PR #153) and the landing accent (PR #135).
 
 ## Done
 
+- `the-price-table-says-its-age`, round 23, PR #167. See
+  `rounds/023.md`. The daemon warns in `server.log` once the rates are
+  over 90 days old.
 - `the-record-names-its-pr`, round 22, PR #162. See `rounds/022.md`.
   The route reads a round's PR off the `Base:` line: 27 of 85 rounds
   carry one, up from 11.
@@ -209,6 +205,5 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-None. Merge the round's PR and release; the fleet view names the round
-PRs once the daemon runs the new binary. The `LOOP.md` sentence waits on
-the human.
+None. Merge the round's PR. To reopen, set `Status: active` with a new
+queue.

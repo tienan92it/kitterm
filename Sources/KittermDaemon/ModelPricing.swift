@@ -14,7 +14,10 @@ import Foundation
 /// to the same question.
 ///
 /// The rates are the model pricing table at
-/// `platform.claude.com/docs/en/about-claude/pricing`, read 2026-09-20.
+/// `platform.claude.com/docs/en/about-claude/pricing`, read on the day
+/// `ratesReadOn` names below. Nothing checks the rates themselves against
+/// the page again; `isStale` only says when the day is old enough that a
+/// human should.
 /// Long context is standard pricing on every model here, so the `[1m]`
 /// tier Claude Code names in a bill's `modelUsage` prices as its family;
 /// an assistant line names the bare id, `claude-opus-5`, either way. A
@@ -76,5 +79,38 @@ public struct ModelPricing: Equatable, Sendable {
             + Double(cacheWrite1h) * self.cacheWrite1h
             + Double(cacheRead) * self.cacheRead
             + Double(output) * self.output) / 1_000_000
+    }
+
+    /// The day the rates above were read from `platform.claude.com`. The
+    /// one place the date is a literal; every sentence about it, in this
+    /// file or in `AGENTS.md`, names this value instead of repeating it.
+    public static let ratesReadOn = DayKey("2026-09-20")!
+
+    /// How many days a read table is trusted before a stale table should be
+    /// read again. Chosen with the human on 2026-09-28; not a measurement.
+    public static let staleAfterDays = 90
+
+    /// Whole days between `ratesReadOn` and `now`, in `zone`. Pure: the
+    /// daemon passes its own clock in, a test passes whatever it likes.
+    public static func ageDays(asOf now: Date, in zone: TimeZone = TimeZone(identifier: "UTC")!) -> Int {
+        DayKey(now, in: zone).number - ratesReadOn.number
+    }
+
+    /// True once the table is more than `staleAfterDays` old — day 90 itself
+    /// is still fresh, day 91 is stale, matching "more than 90 days" read
+    /// literally.
+    public static func isStale(asOf now: Date, in zone: TimeZone = TimeZone(identifier: "UTC")!) -> Bool {
+        ageDays(asOf: now, in: zone) > staleAfterDays
+    }
+
+    /// The one `server.log` line a stale table gets at daemon start, or nil
+    /// when the table is fresh. Nothing on the output path calls this; a
+    /// per-request check would repeat the same fact on every estimate.
+    public static func staleWarningLine(asOf now: Date, in zone: TimeZone = TimeZone(identifier: "UTC")!) -> String? {
+        guard isStale(asOf: now, in: zone) else { return nil }
+        let days = ageDays(asOf: now, in: zone)
+        return "warning: the price table in ModelPricing.swift was read \(ratesReadOn), "
+            + "\(days) days ago; the running-session estimate may drift from the bill "
+            + "until the rates are read again\n"
     }
 }
