@@ -10,6 +10,13 @@ decision moves to `docs/adr/`.
 
 ## Toolchain
 
+- On Linux, one test file with an import that does not resolve (`import
+  Darwin`, `import CryptoKit`) fails the whole test target, and swiftc
+  repeats that one error against every file in it, with or without
+  `-Xswiftc -continue-building-after-errors`. Clear the module-level
+  imports first; only then does a count of a target's errors mean
+  anything. `KittermProtocolTests` and `KittermScreenTests` compile on
+  Linux today (2026-09-28, `linux-tests-compile` round 1).
 - The ring leads the socket: the daemon appends a session's output to
   its ring, then batches to clients. An assertion that the ring equals
   a client's stream holds only at a quiet point, so wait for the
