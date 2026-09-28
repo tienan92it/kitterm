@@ -196,7 +196,10 @@ crashes after the exec.
   or what git said, `git diff --name-only X..Y exited 128: fatal: …` (`FilesChanged`,
   `filesChangedReason` in `--json`), because a dash with no reason hid a parser that
   read a digitless sha as no sha, round 2 of `green-ci-again`), the decision and the PR
-  the `Result:` line names, with totals per goal and a footer for the rounds that
+  a standalone `- Result:` bullet names, else the one riding `Result:` on the
+  `- Base:` line (the bullet wins when a record carries both, the same rule
+  `KnowledgeSummary.roundRecord` reads the PR by, `record-parsers-agree`), with
+  totals per goal and a footer for the rounds that
   predate the bill. For every session a record's
   `Sessions:` line names, the archive's transcript (`agentTranscript`, under
   `KITTERM_STATE_DIR`) wins when `TranscriptBill` reads a bill from it, else the
