@@ -1,14 +1,19 @@
 # STATE: linux-tests-compile
 
-- Status: waiting
+- Status: active
 - Round: 2 of 3 in this budget (first budget)
 - Rounds total: 2
 - Last floor: green (2026-09-28, round 2 after: swift test 922, the Linux --build-tests pipe green)
-- Updated: 2026-09-28, round 2 closed; the ci.yml diff waits on the human
+- Updated: 2026-09-28, the human applied the ci.yml diff; main's first run is red
 
 ## Queue
 
-1. `ci-compiles-them` (capability 3).
+1. `ci-compiles-them` (capability 3). The human applied the diff in
+   PR #168. The first `linux-build` on `main` with `--build-tests`
+   (run 36401242263, `e6ea063`) is red: `CommandFailedEventTests.swift`,
+   merged in PR #169 after PR #168, uses `URLSession` with no
+   `FoundationNetworking` import (4 errors). Guard it, then one green
+   run on `main` closes the goal.
 
 ## Failures
 
@@ -16,12 +21,7 @@ None.
 
 ## Proposals waiting on the human
 
-- `.github/workflows/ci.yml` (capability 3, Propose tier): the
-  `linux-build` job runs `swift build --build-tests`, and its comment
-  says it compiles every test target and runs none, because 35 test
-  files use `Bundle(for:)`. The exact diff is in `rounds/002.md` and
-  the PR description. One green `linux-build` run after the human
-  applies it closes the goal.
+None. The human applied the `ci.yml` diff on 2026-09-28.
 
 ## Done
 
@@ -43,6 +43,4 @@ merged PR #163 on 2026-09-28.
 
 ## Next action
 
-The human applies the `ci.yml` diff on PR #168. Then the foreman
-records one green `linux-build` run as capability 3 and sets the goal
-done.
+Round 3: `ci-compiles-them`, the import guard, then one green `linux-build` on `main`.
