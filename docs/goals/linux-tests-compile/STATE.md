@@ -1,10 +1,10 @@
 # STATE: linux-tests-compile
 
-- Status: waiting
+- Status: active
 - Round: 1 of 3 in this budget (first budget)
 - Rounds total: 1
 - Last floor: green (2026-09-28, round 1 after: swift test 914; the --build-tests pipe red, as measured)
-- Updated: 2026-09-28, round 1 closed; a proposal waits
+- Updated: 2026-09-28, the human answered the proposal: Crypto
 
 ## Queue
 
@@ -17,12 +17,10 @@ None.
 
 ## Proposals waiting on the human
 
-- `Package.swift`: give `KittermDaemonTests` the `Crypto` product of
-  `swift-crypto` on Linux only, so two WebPush test files can import
-  `Crypto` where `CryptoKit` is absent, as `Sources/WebPush.swift`
-  does. Without it, an unconditional `import CryptoKit` masks the whole
-  target on Linux. The alternative is a Linux-only fence around both
-  files. Capability 2 waits on this. See `rounds/001.md`.
+None. 2026-09-28, the human answered "Crypto": round 2 may add
+`.product(name: "Crypto", package: "swift-crypto", condition:
+.when(platforms: [.linux]))` to the `KittermDaemonTests` dependencies
+in `Package.swift`, and nothing else in that file.
 
 ## Done
 
@@ -41,6 +39,5 @@ merged PR #163 on 2026-09-28.
 
 ## Next action
 
-Waits on the `Package.swift` proposal. On the human's answer, round 2:
-`the-tests-compile-on-linux`, clearing the two module-level imports
-first, then every error the compiler then shows.
+Round 2: `the-tests-compile-on-linux` from `plan.md` row 2; proof: the
+`--build-tests` pipe green and `swift test` on macOS at 914 or more.
