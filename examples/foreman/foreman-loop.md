@@ -338,6 +338,9 @@ Act on each event, then run "Scan":
   with `send_input`.
 - `note`: relay it. The round record is the durable copy; the event ring
   drops a note on a daemon restart.
+- `command.failed`: read `/commands/<index>/output` with `read_output`.
+  Report it at once when it is the crew's floor or a command the round
+  depends on. Otherwise let the crew handle it; never act for the crew.
 - `agent.status` with `completed`: run step 4 of "One round" for that goal.
 - `session.exited` with a non-zero code: the crew failed. Report it. A
   second non-zero exit in the same goal is a stop rule.
