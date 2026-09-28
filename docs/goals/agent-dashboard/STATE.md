@@ -1,14 +1,19 @@
 # STATE: agent-dashboard
 
-- Status: done
+- Status: active
 - Round: 1 of 3 in this budget (eighth budget)
 - Rounds total: 22
 - Last floor: green (2026-09-25, round 22 after: swift test 909, Linux build)
-- Updated: 2026-09-25, round 22 closed, done
+- Updated: 2026-09-28, resumed for round 23 on the human's word
 
 ## Queue
 
-Empty.
+1. `the-price-table-says-its-age`. `ModelPricing` carries the day its
+   rates were read as a value, not only in a comment. The daemon writes
+   one warning line to `server.log` at start when that day is more than
+   90 days old, and a test with an injected clock pins the rule. The
+   human chose this over a rates file on 2026-09-28. No test may fail
+   on the calendar: `green-ci-again` made a red CI mean a broken change.
 
 ## Failures
 
@@ -16,16 +21,9 @@ None.
 
 ## Proposals waiting on the human
 
-- `LOOP.md`, "The round record": the parser sentence says the PR is on
-  the `- Result:` line, and the shape above it puts `Result:` on the
-  `- Base:` line. Round 22 made the parser read both; the sentence to
-  write is in `rounds/022.md`, "Decision".
-- `Sources/KittermDaemon/ModelPricing.swift` is a rate table copied from
-  platform.claude.com on 2026-09-20; nothing updates it. Own it, or
-  move the rates to a file. See `rounds/016.md`.
-- `goal.md` condition 6 says the 390 px page is under 1200 px. The
-  design measures about 2500 on the real tree. Reset the number or
-  strike the condition.
+None. On 2026-09-28 the human answered all three: the `LOOP.md` sentence
+and condition 6 are applied in PR #166, and the price table is queued
+as round 23.
 
 2026-09-25, the foreman closed two as shipped: the subagents in the
 running estimate (PR #153) and the landing accent (PR #135).
@@ -209,6 +207,4 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-None. Merge the round's PR and release; the fleet view names the round
-PRs once the daemon runs the new binary. The `LOOP.md` sentence waits on
-the human.
+Round 23: `the-price-table-says-its-age`.
