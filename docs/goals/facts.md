@@ -301,6 +301,13 @@ decision moves to `docs/adr/`.
 
 ## Foreman
 
+- `git merge-tree` proves two branches merge as text, not that the
+  result builds. When one PR adds a check, the other PR's new code has
+  never met it: PR #168 added `--build-tests` to Linux CI, PR #169
+  added a test file without the Linux import guard, both were green,
+  and `main` went red after both merged. Rebuild every open branch
+  against a new check before merging (2026-09-28,
+  `linux-tests-compile` round 3).
 - Take a finished item out of `## Queue` when it goes into `## Done`.
   A slug in both sections reads as `pending`, because pending wins over
   done, so a finished task shows unfinished on the page and carries no
