@@ -1,14 +1,14 @@
 # STATE: command-failed-event
 
-- Status: active
-- Round: 1 of 3 in this budget (first budget)
-- Rounds total: 1
-- Last floor: green (2026-09-28, round 1 after: swift test 923, Linux build, bench p95 2.74 ms)
-- Updated: 2026-09-28, round 1 closed
+- Status: done
+- Round: 2 of 3 in this budget (first budget)
+- Rounds total: 2
+- Last floor: green (2026-09-28, round 2 after: swift test 923, Linux build)
+- Updated: 2026-09-28, round 2 closed, done
 
 ## Queue
 
-1. `the-contract-written-down` (capability 2).
+Empty. Both capabilities in `plan.md` are done.
 
 ## Failures
 
@@ -20,6 +20,9 @@ None.
 
 ## Done
 
+- `the-contract-written-down` (capability 2), round 2, `a02f57a`. See
+  `rounds/002.md`. `AGENTS.md`, the MCP description and the foreman
+  skill name the event.
 - `the-event` (capability 1), round 1, `ade5e7e`. See `rounds/001.md`.
   The feed carries `command.failed {index, exit, command?}` for a
   failed command in an orchestrated session; the review caught a
@@ -35,6 +38,7 @@ merged PR #163 on 2026-09-28.
 
 ## Next action
 
-Round 2: `the-contract-written-down` from `plan.md` row 2, on the same
-branch; proof: the `ForemanSkills` golden test and the sentence checks
-green, and the three texts in the note.
+None. The five completion conditions of `goal.md` hold on the branch.
+Merge the PR and release; a foreman sees `command.failed` once the
+daemon runs the new binary. To reopen, set `Status: active` with a new
+queue.
