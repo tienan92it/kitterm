@@ -26,7 +26,7 @@ None.
 
 ## Done
 
-- `the-measurement` (capability 1), round 1, no code change. See
+- `the-measurement` (capability 1), round 1, PR #168, no code change. See
   `rounds/001.md`. Two targets compile; `KittermCLITests` has 10
   errors in 2 files; `KittermDaemonTests` is masked by two module-level
   imports, `Darwin` (cleared in the container) and `CryptoKit`.
