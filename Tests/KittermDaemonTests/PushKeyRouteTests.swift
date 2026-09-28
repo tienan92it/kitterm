@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import NIOCore
 import NIOHTTP1
 import NIOPosix
@@ -101,7 +104,7 @@ final class PushKeyRouteTests: XCTestCase {
     /// host, so the policy reads it as a remote caller; URLSession will not
     /// set `Host`.
     private func raw(_ method: String, _ target: String) throws -> (status: Int, body: String) {
-        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        let fd = socket(AF_INET, streamSocketType, 0)
         XCTAssertGreaterThanOrEqual(fd, 0)
         defer { close(fd) }
         var address = sockaddr_in()

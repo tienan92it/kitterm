@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import KittermProtocol
 import XCTest
 
@@ -298,7 +301,7 @@ final class ProxyBoundaryTests: XCTestCase {
     private func get(
         _ path: String, host: String, port: Int, extraHeaders: [String] = []
     ) throws -> (status: Int, body: String) {
-        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        let fd = socket(AF_INET, streamSocketType, 0)
         guard fd >= 0 else { throw CancellationError() }
         defer { close(fd) }
         var address = sockaddr_in()
@@ -307,7 +310,7 @@ final class ProxyBoundaryTests: XCTestCase {
         address.sin_addr.s_addr = inet_addr("127.0.0.1")
         let connected = withUnsafePointer(to: &address) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                systemConnect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
             }
         }
         guard connected == 0 else { throw CancellationError() }
@@ -318,7 +321,7 @@ final class ProxyBoundaryTests: XCTestCase {
         let bytes = Array(request.utf8)
         var sent = 0
         while sent < bytes.count {
-            let n = bytes[sent...].withUnsafeBufferPointer { Darwin.send(fd, $0.baseAddress, $0.count, 0) }
+            let n = bytes[sent...].withUnsafeBufferPointer { systemSend(fd, $0.baseAddress, $0.count, 0) }
             guard n > 0 else { throw CancellationError() }
             sent += n
         }
@@ -365,7 +368,7 @@ final class ProxyBoundaryTests: XCTestCase {
     }
 
     private func freePort() throws -> Int {
-        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        let fd = socket(AF_INET, streamSocketType, 0)
         defer { close(fd) }
         var address = sockaddr_in()
         address.sin_family = sa_family_t(AF_INET)
@@ -373,7 +376,7 @@ final class ProxyBoundaryTests: XCTestCase {
         address.sin_addr.s_addr = inet_addr("127.0.0.1")
         let bound = withUnsafePointer(to: &address) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                systemBind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
             }
         }
         guard bound == 0 else { throw CancellationError() }

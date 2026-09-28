@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import KittermProtocol
 import NIOCore
 import NIOHTTP1
@@ -289,7 +292,7 @@ final class PushSubscriptionRouteTests: XCTestCase {
     /// One HTTP/1.1 request over a raw socket with `Host` set to the trusted
     /// host, so the policy reads it as a remote caller.
     private func raw(_ method: String, _ target: String, body: String) throws -> (status: Int, body: String) {
-        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        let fd = socket(AF_INET, streamSocketType, 0)
         XCTAssertGreaterThanOrEqual(fd, 0)
         defer { close(fd) }
         var address = sockaddr_in()
@@ -397,7 +400,7 @@ final class PushSubscriptionRouteTests: XCTestCase {
     }
 
     private func freePort() throws -> Int {
-        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        let fd = socket(AF_INET, streamSocketType, 0)
         defer { close(fd) }
         var address = sockaddr_in()
         address.sin_family = sa_family_t(AF_INET)
@@ -405,7 +408,7 @@ final class PushSubscriptionRouteTests: XCTestCase {
         address.sin_addr.s_addr = inet_addr("127.0.0.1")
         let bound = withUnsafePointer(to: &address) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                systemBind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
             }
         }
         guard bound == 0 else { throw CancellationError() }

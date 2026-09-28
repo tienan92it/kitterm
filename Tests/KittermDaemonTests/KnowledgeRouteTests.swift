@@ -4,6 +4,9 @@ import Darwin
 import Glibc
 #endif
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import NIOCore
 import NIOHTTP1
 import NIOPosix
@@ -219,7 +222,7 @@ final class KnowledgeRouteTests: XCTestCase {
     /// byte for byte (a URL client folds `..` away) and the `Host` header is
     /// ours to set (URLSession will not).
     private func raw(_ target: String, host: String? = nil, extra: [String] = []) throws -> Answer {
-        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        let fd = socket(AF_INET, streamSocketType, 0)
         XCTAssertGreaterThanOrEqual(fd, 0)
         defer { close(fd) }
         var address = sockaddr_in()

@@ -1,4 +1,9 @@
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+// swift-crypto: the same P256, HKDF and AES.GCM where the framework is absent.
+import Crypto
+#endif
 import Foundation
 import XCTest
 

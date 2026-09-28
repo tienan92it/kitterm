@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import KittermProtocol
 import NIOPosix
 import XCTest
@@ -266,7 +269,7 @@ final class LiveTakeoverTests: XCTestCase {
     }
 
     private static func freePort() throws -> Int {
-        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        let fd = socket(AF_INET, streamSocketType, 0)
         defer { close(fd) }
         var address = sockaddr_in()
         address.sin_family = sa_family_t(AF_INET)
@@ -274,7 +277,7 @@ final class LiveTakeoverTests: XCTestCase {
         address.sin_addr.s_addr = inet_addr("127.0.0.1")
         let bound = withUnsafePointer(to: &address) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                systemBind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
             }
         }
         guard bound == 0 else { throw CancellationError() }

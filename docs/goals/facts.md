@@ -10,6 +10,17 @@ decision moves to `docs/adr/`.
 
 ## Toolchain
 
+- The Linux docker pipe tars `git ls-files`, so a file that is not in
+  the index is absent in the container, with no error: `git add` a new
+  file before the run. With `--build-tests` the pipe takes about 90 s
+  with the cache volume (2026-09-28, `linux-tests-compile` round 2).
+- On Linux, one test file with an import that does not resolve (`import
+  Darwin`, `import CryptoKit`) fails the whole test target, and swiftc
+  repeats that one error against every file in it, with or without
+  `-Xswiftc -continue-building-after-errors`. Clear the module-level
+  imports first; only then does a count of a target's errors mean
+  anything. `KittermProtocolTests` and `KittermScreenTests` compile on
+  Linux today (2026-09-28, `linux-tests-compile` round 1).
 - The ring leads the socket: the daemon appends a session's output to
   its ring, then batches to clients. An assertion that the ring equals
   a client's stream holds only at a quiet point, so wait for the

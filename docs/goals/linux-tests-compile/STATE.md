@@ -1,16 +1,14 @@
 # STATE: linux-tests-compile
 
 - Status: waiting
-- Round: 0 of 3 in this budget (first budget)
-- Rounds total: 0
-- Last floor: green (2026-09-28, main at d3546d9: swift test 909)
-- Updated: 2026-09-28, written by the foreman on the human's word
+- Round: 2 of 3 in this budget (first budget)
+- Rounds total: 2
+- Last floor: green (2026-09-28, round 2 after: swift test 922, the Linux --build-tests pipe green)
+- Updated: 2026-09-28, round 2 closed; the ci.yml diff waits on the human
 
 ## Queue
 
-1. `the-measurement` (capability 1).
-2. `the-tests-compile-on-linux` (capability 2).
-3. `ci-compiles-them` (capability 3).
+1. `ci-compiles-them` (capability 3).
 
 ## Failures
 
@@ -18,22 +16,33 @@ None.
 
 ## Proposals waiting on the human
 
-None.
+- `.github/workflows/ci.yml` (capability 3, Propose tier): the
+  `linux-build` job runs `swift build --build-tests`, and its comment
+  says it compiles every test target and runs none, because 35 test
+  files use `Bundle(for:)`. The exact diff is in `rounds/002.md` and
+  the PR description. One green `linux-build` run after the human
+  applies it closes the goal.
 
 ## Done
 
-None.
+- `the-tests-compile-on-linux` (capability 2), round 2, PR #168. See
+  `rounds/002.md`. All four test targets compile on Linux; macOS still
+  runs 922 tests; two named Linux-only fences.
+- `the-measurement` (capability 1), round 1, PR #168, no code change. See
+  `rounds/001.md`. Two targets compile; `KittermCLITests` has 10
+  errors in 2 files; `KittermDaemonTests` is masked by two module-level
+  imports, `Darwin` (cleared in the container) and `CryptoKit`.
 
 ## Direction
 
 2026-09-28: the human chose this goal from the foreman's plan (the
 decision table after v0.33.0). The foreman drafted `goal.md` and
 `plan.md`; the status stays `waiting` until the human approves them by
-merging this package, then the foreman sets it `active`.
+merging this package, then the foreman sets it `active`. The human
+merged PR #163 on 2026-09-28.
 
 ## Next action
 
-Round 1: `the-measurement` from `plan.md` row 1; proof: the grouped error list in the record. Spawn one crew
-session in a worktree with labels `crew:linux-tests-compile`, `goal:linux-tests-compile`,
-`round:1`, `task:the-measurement`, and no input. Run the floor, start `claude`,
-and send the row.
+The human applies the `ci.yml` diff on PR #168. Then the foreman
+records one green `linux-build` run as capability 3 and sets the goal
+done.
