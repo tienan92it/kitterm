@@ -227,11 +227,13 @@ Two parsers read the record:
   given as a sha, on either shape, names none; the correction is a
   `## Correction` heading.
 - `kitterm goal cost` (`GoalLedger`): the ids on the `- Sessions:` line
-  and after `Archives:`; the sha and the PR by the same rule; the
-  `- Cost:` line at the same position as each session the `Sessions:`
-  line names, read when the session's archived transcript holds no bill;
-  the first `N new` under `## Floor` as the tests added; the first word
-  under `## Decision` as the decision.
+  and after `Archives:`; the sha on the `- Base:` line; the result sha
+  and the `PR #N` by the same rule, from a `- Result:` bullet, else
+  after `Result:` on the `- Base:` line; the `- Cost:` line at the same
+  position as each session the `Sessions:` line names, read when the
+  session's archived transcript holds no bill; the first `N new` under
+  `## Floor` as the tests added; the first word under `## Decision` as
+  the decision.
 
 ### Labels
 
