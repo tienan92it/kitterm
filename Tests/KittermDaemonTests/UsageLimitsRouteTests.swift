@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import NIOCore
 import NIOHTTP1
 import NIOPosix
@@ -351,7 +354,7 @@ final class UsageLimitsRouteTests: XCTestCase {
     }
 
     private func raw(_ method: String, _ target: String, body: String? = nil) throws -> (status: Int, body: String) {
-        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        let fd = socket(AF_INET, streamSocketType, 0)
         XCTAssertGreaterThanOrEqual(fd, 0)
         defer { close(fd) }
         var address = sockaddr_in()

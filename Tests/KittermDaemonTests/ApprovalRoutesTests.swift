@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import KittermProtocol
 import NIOCore
 import NIOEmbedded

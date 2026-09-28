@@ -1,3 +1,8 @@
+#if canImport(Darwin)
+import Darwin
+#else
+import Glibc
+#endif
 import Foundation
 import XCTest
 
@@ -247,12 +252,17 @@ final class StatuslineInstallTests: XCTestCase {
 
     /// A TCP listener on a free loopback port that answers one request with
     /// a 200 and hands the request text back.
+    ///
+    /// `bind`, `accept` and `close` collide with the class's own members, so
+    /// they are qualified with the C library module, which is `Darwin` on
+    /// macOS and `Glibc` on Linux; the choice is made once in the three
+    /// wrappers below the class (the `PlatformSyscalls.swift` pattern).
     private final class Listener {
         let fd: Int32
         let port: Int
 
         init() throws {
-            let fd = socket(AF_INET, SOCK_STREAM, 0)
+            let fd = socket(AF_INET, streamSocketType, 0)
             guard fd >= 0 else { throw NSError(domain: "socket", code: Int(errno)) }
             var one: Int32 = 1
             setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, socklen_t(MemoryLayout<Int32>.size))
@@ -261,7 +271,7 @@ final class StatuslineInstallTests: XCTestCase {
             address.sin_port = 0
             address.sin_addr.s_addr = inet_addr("127.0.0.1")
             let bound = withUnsafePointer(to: &address) {
-                $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
+                $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { systemBind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
             }
             guard bound == 0, listen(fd, 4) == 0 else { throw NSError(domain: "bind", code: Int(errno)) }
             var actual = sockaddr_in()
@@ -281,9 +291,9 @@ final class StatuslineInstallTests: XCTestCase {
         func accept(deadline: TimeInterval) throws -> String {
             var set = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
             guard poll(&set, 1, Int32(deadline * 1000)) > 0 else { throw Timeout() }
-            let client = Darwin.accept(fd, nil, nil)
+            let client = systemAccept(fd, nil, nil)
             guard client >= 0 else { throw NSError(domain: "accept", code: Int(errno)) }
-            defer { Darwin.close(client) }
+            defer { systemClose(client) }
             var received = Data()
             var buffer = [UInt8](repeating: 0, count: 65536)
             while true {
@@ -303,6 +313,37 @@ final class StatuslineInstallTests: XCTestCase {
             return String(decoding: received, as: UTF8.self)
         }
 
-        func close() { Darwin.close(fd) }
+        func close() { systemClose(fd) }
     }
+}
+
+/// `SOCK_STREAM` is an `Int32` on Darwin and a `__socket_type` enum on Glibc.
+#if canImport(Darwin)
+private let streamSocketType = SOCK_STREAM
+#else
+private let streamSocketType = Int32(SOCK_STREAM.rawValue)
+#endif
+
+private func systemBind(_ fd: Int32, _ address: UnsafePointer<sockaddr>, _ length: socklen_t) -> Int32 {
+    #if canImport(Darwin)
+    return Darwin.bind(fd, address, length)
+    #else
+    return Glibc.bind(fd, address, length)
+    #endif
+}
+
+private func systemAccept(_ fd: Int32, _ address: UnsafeMutablePointer<sockaddr>?, _ length: UnsafeMutablePointer<socklen_t>?) -> Int32 {
+    #if canImport(Darwin)
+    return Darwin.accept(fd, address, length)
+    #else
+    return Glibc.accept(fd, address, length)
+    #endif
+}
+
+private func systemClose(_ fd: Int32) {
+    #if canImport(Darwin)
+    _ = Darwin.close(fd)
+    #else
+    _ = Glibc.close(fd)
+    #endif
 }

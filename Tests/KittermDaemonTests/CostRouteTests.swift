@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import KittermProtocol
 import NIOCore
 import NIOHTTP1
@@ -240,7 +243,7 @@ final class CostRouteTests: XCTestCase {
     /// One HTTP/1.1 request over a raw socket with `Host` set to the trusted
     /// host, so the policy reads it as a remote caller and grades the token.
     private func raw(_ method: String, _ target: String) throws -> (status: Int, body: String) {
-        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        let fd = socket(AF_INET, streamSocketType, 0)
         XCTAssertGreaterThanOrEqual(fd, 0)
         defer { close(fd) }
         var address = sockaddr_in()

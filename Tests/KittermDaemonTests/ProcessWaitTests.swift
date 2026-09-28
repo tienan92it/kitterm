@@ -7,6 +7,9 @@ import XCTest
 /// last output; and no test source waits without one.
 final class ProcessWaitTests: XCTestCase {
     private var stateDir: URL!
+    // corelibs-XCTest has no `XCTIssue` and no `XCTestCase.record(_:)`, so a
+    // failure cannot be captured and read back on Linux.
+    #if canImport(Darwin)
     private var captured: [XCTIssue] = []
     private var capturing = false
 
@@ -15,6 +18,7 @@ final class ProcessWaitTests: XCTestCase {
     override func record(_ issue: XCTIssue) {
         if capturing { captured.append(issue) } else { super.record(issue) }
     }
+    #endif
 
     override func setUpWithError() throws {
         stateDir = FileManager.default.temporaryDirectory
@@ -30,6 +34,9 @@ final class ProcessWaitTests: XCTestCase {
     /// `serve` would. The failure arrives at the deadline, not after, at the
     /// line of the wait, and says which test, which pid, and what the
     /// process last wrote to its `server.log`.
+    // corelibs-XCTest has no `XCTIssue` (`sourceCodeContext`,
+    // `compactDescription`) and no `XCTestCase.record(_:)` to capture it with.
+    #if canImport(Darwin)
     func testAStalledProcessFailsInsideTheDeadlineNamingTheTest() throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
@@ -62,6 +69,7 @@ final class ProcessWaitTests: XCTestCase {
         XCTAssertEqual(issue.sourceCodeContext.location?.fileURL.lastPathComponent, "ProcessWaitTests.swift")
         try poll("the helper to reap the stall") { !process.isRunning }
     }
+    #endif
 
     /// A process that exits passes the wait and leaves its status readable.
     func testAnExitedProcessPassesWithItsStatus() throws {
