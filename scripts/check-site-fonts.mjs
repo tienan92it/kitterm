@@ -3,13 +3,13 @@
 // (the-font-is-first-party): the page must load its font from site/
 // itself, never from Google's font hosts.
 //
-// Run: node site/check-fonts.mjs
+// Run: node scripts/check-site-fonts.mjs
 
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const siteDir = dirname(fileURLToPath(import.meta.url));
+const siteDir = join(dirname(fileURLToPath(import.meta.url)), "..", "site");
 const htmlPath = join(siteDir, "index.html");
 const html = readFileSync(htmlPath, "utf8");
 
