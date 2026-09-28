@@ -180,6 +180,10 @@ A foreman runs one loop.
      lines under 1 KiB as they come, such as a shell fed a script.
    - `note` — a crew agent reported progress ("plan ready for review"). Relay
      it.
+   - `command.failed` — a command exited non-zero in an orchestrated session.
+     Read `/commands/<index>/output` (`read_output`). Report it at once when
+     it is the crew's floor or a command the round depends on; otherwise let
+     the crew handle it. Never act for the crew.
    - `completed` — verify the work, then move the session to review or end it.
      A correction goes in the same way: read first, then `send_input`.
 

@@ -145,6 +145,13 @@ public final class PtySession: @unchecked Sendable {
     /// (`PushNotifier` learns `failed` this way). A prompt mark never fires
     /// it, so the byte path pays only for the once-per-command case.
     private var onCommandEnd: ((Int32) -> Void)?
+    /// Called, with the lock released, when a `commandEnd` mark with a
+    /// non-zero exit lands in an orchestrated session, with the command it
+    /// closed as `/commands` numbers it. The registry sets it to append
+    /// `command.failed` to the event feed. Separate from `onCommandEnd` so
+    /// that listener's path is untouched; nil, exit 0, or a browser session
+    /// pays nothing, and a stray end that pairs to no command fires nothing.
+    private var onCommandFailed: ((SessionCommand) -> Void)?
     /// Live cwd tracking: a low-frequency poll of the shell's own directory via
     /// `proc_pidinfo`, so the client learns `cd`s even when the shell emits no
     /// OSC 7 (a bare macOS zsh does not). Diff-gated to one frame per change.
@@ -617,6 +624,10 @@ public final class PtySession: @unchecked Sendable {
         // making progress while no client is watching.
         var readyWaiters: [EventLoopPromise<Void>] = []
         var endedCommands: [(handler: (Int32) -> Void, exit: Int32)] = []
+        var failedCommands: [(handler: (SessionCommand) -> Void, command: SessionCommand)] = []
+        // The `commandEnd` marks of this chunk that carry a non-zero exit, when
+        // this session reports failures: paired below, once, with the waiters.
+        var failedEnds: [(offset: UInt64, exit: Int32)] = []
         let dispatch: (recorder: SessionRecorder?,
                        logStore: SessionLogStore?,
                        observers: [(Data) -> Void],
@@ -648,29 +659,55 @@ public final class PtySession: @unchecked Sendable {
                 if hit.kind == .commandEnd, let handler = onCommandEnd {
                     endedCommands.append((handler, hit.exit ?? 0))
                 }
+                // The failure event. Only a non-zero exit in an orchestrated
+                // session (a program's, not a browser tab's) with a listener
+                // is a candidate; a browser tab, exit 0 and a prompt mark cost
+                // nothing here.
+                if hit.kind == .commandEnd, let exit = hit.exit, exit != 0,
+                   onCommandFailed != nil, spawnedByAPI || !labelsStorage.isEmpty {
+                    failedEnds.append((hit.offset, exit))
+                }
             }
-            // Only a closing mark can satisfy a waiter, so the pairing pass is
-            // skipped entirely for the prompt marks that make up most traffic.
-            if markHits.contains(where: { $0.kind == .commandEnd }), !commandWaiters.isEmpty {
-                let finished = Set(
-                    SessionCommands.pair(
-                        from: markStore.marks,
-                        firstIndex: markStore.firstRetainedIndex
-                    )
-                        .filter { !$0.running }
-                        .map(\.index)
+            // Only a closing mark can satisfy a waiter or fail a command, so
+            // the pairing pass — O(sessionMarkCap) tiny structs — is skipped
+            // entirely for the prompt marks that make up most traffic, and
+            // runs once for a chunk that needs it for both.
+            let sawEnd = markHits.contains(where: { $0.kind == .commandEnd })
+            if (sawEnd && !commandWaiters.isEmpty) || !failedEnds.isEmpty {
+                let commands = SessionCommands.pair(
+                    from: markStore.marks,
+                    firstIndex: markStore.firstRetainedIndex
                 )
-                commandWaiters.removeAll { waiter in
-                    guard finished.contains(waiter.index) else { return false }
-                    readyWaiters.append(waiter.promise)
-                    return true
+                if !commandWaiters.isEmpty {
+                    let finished = Set(commands.filter { !$0.running }.map(\.index))
+                    commandWaiters.removeAll { waiter in
+                        guard finished.contains(waiter.index) else { return false }
+                        readyWaiters.append(waiter.promise)
+                        return true
+                    }
+                }
+                // The command a D mark closed is the one whose end sits at that
+                // mark's offset, and its index is the one `/commands` prints
+                // because it is the same pairing over the same store. A D that
+                // closed nothing — a shell's first prompt, the second of two
+                // integrations both ending one command — fires nothing.
+                if let handler = onCommandFailed {
+                    for end in failedEnds {
+                        guard let failed = commands.first(where: { $0.endOffset == end.offset }),
+                              failed.exit == end.exit
+                        else { continue }
+                        failedCommands.append((handler, failed))
+                    }
                 }
             }
             let observerOutputs = observers.values.map(\.onOutput)
             let controller = attached ? onOutput : nil
             return (recorder, logStore, observerOutputs, controller)
         }
-        // Outside the lock: these callbacks re-enter this class.
+        // Outside the lock: these callbacks re-enter this class. The failure
+        // event lands before a waiter on the command is answered, so a caller
+        // that waits on command N and then reads the feed always finds it.
+        for failed in failedCommands { failed.handler(failed.command) }
         for promise in readyWaiters { promise.succeed(()) }
         for ended in endedCommands { ended.handler(ended.exit) }
         guard let dispatch else { return }
@@ -1028,6 +1065,13 @@ public final class PtySession: @unchecked Sendable {
     /// the registry when it admits the session.
     public func setCommandEndHandler(_ handler: ((Int32) -> Void)?) {
         stateLock.withLock { onCommandEnd = handler }
+    }
+
+    /// Set, or clear, the listener for a failed command in an orchestrated
+    /// session (`command.failed` on the event feed). Called once by the
+    /// registry when it admits the session.
+    public func setCommandFailedHandler(_ handler: ((SessionCommand) -> Void)?) {
+        stateLock.withLock { onCommandFailed = handler }
     }
 
     public func marksSnapshot() -> [SessionMark] {

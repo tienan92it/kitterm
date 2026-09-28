@@ -1,15 +1,14 @@
 # STATE: command-failed-event
 
-- Status: waiting
-- Round: 0 of 3 in this budget (first budget)
-- Rounds total: 0
-- Last floor: green (2026-09-28, main at d3546d9: swift test 909)
-- Updated: 2026-09-28, written by the foreman on the human's word
+- Status: done
+- Round: 2 of 3 in this budget (first budget)
+- Rounds total: 2
+- Last floor: green (2026-09-28, round 2 after: swift test 923, Linux build)
+- Updated: 2026-09-28, round 2 closed, done
 
 ## Queue
 
-1. `the-event` (capability 1).
-2. `the-contract-written-down` (capability 2).
+Empty. Both capabilities in `plan.md` are done.
 
 ## Failures
 
@@ -21,18 +20,25 @@ None.
 
 ## Done
 
-None.
+- `the-contract-written-down` (capability 2), round 2, PR #169. See
+  `rounds/002.md`. `AGENTS.md`, the MCP description and the foreman
+  skill name the event.
+- `the-event` (capability 1), round 1, PR #169. See `rounds/001.md`.
+  The feed carries `command.failed {index, exit, command?}` for a
+  failed command in an orchestrated session; the review caught a
+  duplicate-mark defect before the merge.
 
 ## Direction
 
 2026-09-28: the human chose this goal from the foreman's plan (the
 decision table after v0.33.0). The foreman drafted `goal.md` and
 `plan.md`; the status stays `waiting` until the human approves them by
-merging this package, then the foreman sets it `active`.
+merging this package, then the foreman sets it `active`. The human
+merged PR #163 on 2026-09-28.
 
 ## Next action
 
-Round 1: `the-event` from `plan.md` row 1; proof: a real-shell test that reads the feed, and the bench. Spawn one crew
-session in a worktree with labels `crew:command-failed-event`, `goal:command-failed-event`,
-`round:1`, `task:the-event`, and no input. Run the floor, start `claude`,
-and send the row.
+None. The five completion conditions of `goal.md` hold on the branch.
+Merge the PR and release; a foreman sees `command.failed` once the
+daemon runs the new binary. To reopen, set `Status: active` with a new
+queue.
