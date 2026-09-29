@@ -1,15 +1,14 @@
 # STATE: foreman-flow
 
-- Status: active
-- Round: 2 of 3 in this budget (first budget)
-- Rounds total: 2
-- Last floor: green (2026-09-29, round 2 after: vitest 1487, PR #176 CI green)
-- Updated: 2026-09-29, round 2 closed
+- Status: waiting
+- Round: 3 of 3 in this budget (first budget)
+- Rounds total: 3
+- Last floor: green (2026-09-29, round 3 after: swift test 944, PR #176 CI green)
+- Updated: 2026-09-29, round 3 closed; the first budget is spent
 
 ## Queue
 
-1. `the-ci-is-the-second-floor` (capability 3), PR #176.
-2. `the-bookkeeping-is-a-command` (capability 4), PR #176.
+1. `the-bookkeeping-is-a-command` (capability 4), PR #176.
 
 ## Failures
 
@@ -17,11 +16,15 @@ None.
 
 ## Proposals waiting on the human
 
-None. 2026-09-29, the human answered the `plan.md` question: one file per
-chore under `docs/goals/chores/` (capability 4).
+- `facts.md`, Toolchain: "Run the Linux build as soon as a `Sources/`
+  change compiles" is replaced by "The floor" in `LOOP.md` (round 3);
+  prune it at this direction check.
 
 ## Done
 
+- `the-ci-is-the-second-floor` (capability 3), round 3, PR #176. See
+  `rounds/003.md`. No local rerun when CI is green; rounds 1 to 3 spent
+  48% of their wall time outside the crew, against 56%.
 - `the-dashboard-shows-the-open-pr` (capability 2), round 2, PR #176. See
   `rounds/002.md`. A running round's task and PR show under its goal from
   the session's labels, before any merge.
@@ -40,4 +43,7 @@ goal stays `waiting` until the human approves the package by merging it.
 
 ## Next action
 
-Round 3: `the-ci-is-the-second-floor`.
+The first budget is spent, so the goal waits for the human's direction.
+On "continue": round 4, `the-bookkeeping-is-a-command` (one file per
+chore, the human's answer, and `kitterm archive cost <id> --line`), on
+PR #176.
