@@ -1,17 +1,16 @@
 # STATE: foreman-flow
 
 - Status: active
-- Round: 0 of 3 in this budget (first budget)
-- Rounds total: 0
-- Last floor: green (2026-09-29, main at 0227af8: swift test 931, ci.yml green)
-- Updated: 2026-09-29, the human approved the package (PR #175)
+- Round: 1 of 3 in this budget (first budget)
+- Rounds total: 1
+- Last floor: green (2026-09-29, round 1 after: swift test 939, PR #176 CI green)
+- Updated: 2026-09-29, round 1 closed
 
 ## Queue
 
-1. `the-pr-opens-first` (capability 1), PR #176.
-2. `the-dashboard-shows-the-open-pr` (capability 2), PR #176.
-3. `the-ci-is-the-second-floor` (capability 3), PR #176.
-4. `the-bookkeeping-is-a-command` (capability 4), PR #176.
+1. `the-dashboard-shows-the-open-pr` (capability 2), PR #176.
+2. `the-ci-is-the-second-floor` (capability 3), PR #176.
+3. `the-bookkeeping-is-a-command` (capability 4), PR #176.
 
 ## Failures
 
@@ -24,7 +23,9 @@ chore under `docs/goals/chores/` (capability 4).
 
 ## Done
 
-None.
+- `the-pr-opens-first` (capability 1), round 1, PR #176. See
+  `rounds/001.md`. The draft pull request opens before the crew; crews
+  push; `pr` is a reserved label.
 
 ## Direction
 
@@ -37,4 +38,4 @@ goal stays `waiting` until the human approves the package by merging it.
 
 ## Next action
 
-Round 1: `the-pr-opens-first`.
+Round 2: `the-dashboard-shows-the-open-pr`.
