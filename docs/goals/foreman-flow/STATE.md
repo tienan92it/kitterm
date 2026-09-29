@@ -1,10 +1,10 @@
 # STATE: foreman-flow
 
-- Status: waiting
+- Status: active
 - Round: 0 of 3 in this budget (first budget)
 - Rounds total: 0
 - Last floor: green (2026-09-29, main at 0227af8: swift test 931, ci.yml green)
-- Updated: 2026-09-29, written by the foreman on the human's word
+- Updated: 2026-09-29, the human approved the package (PR #175)
 
 ## Queue
 
@@ -19,9 +19,8 @@ None.
 
 ## Proposals waiting on the human
 
-- `plan.md`, capability 4: one file per chore under `docs/goals/chores/`,
-  or the chore's line appended after its merge. The foreman recommends one
-  file per chore.
+None. 2026-09-29, the human answered the `plan.md` question: one file per
+chore under `docs/goals/chores/` (capability 4).
 
 ## Done
 
@@ -38,6 +37,4 @@ goal stays `waiting` until the human approves the package by merging it.
 
 ## Next action
 
-Waits on the human: review PR #175, answer the `CHORES.md` question, and
-merge. Then round 1: `the-pr-opens-first`, on a new branch with its own
-draft PR, which carries the goal's rounds from then on.
+Round 1: `the-pr-opens-first`.
