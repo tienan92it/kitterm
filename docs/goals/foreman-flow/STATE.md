@@ -8,10 +8,10 @@
 
 ## Queue
 
-1. `the-pr-opens-first` (capability 1).
-2. `the-dashboard-shows-the-open-pr` (capability 2).
-3. `the-ci-is-the-second-floor` (capability 3).
-4. `the-bookkeeping-is-a-command` (capability 4).
+1. `the-pr-opens-first` (capability 1), PR #176.
+2. `the-dashboard-shows-the-open-pr` (capability 2), PR #176.
+3. `the-ci-is-the-second-floor` (capability 3), PR #176.
+4. `the-bookkeeping-is-a-command` (capability 4), PR #176.
 
 ## Failures
 
