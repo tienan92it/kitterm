@@ -248,11 +248,16 @@ every project", in one sentence each:
    then runs `LOOP.md`'s "One round" in one crew session with the labels
    `crew:<slug>`, `goal:<slug>`, `round:<n>`, `task:<item>`, and `pr:<N>`;
    the crew pushes to that branch after each commit and never to `main`.
-   The foreman writes `docs/goals/<slug>/rounds/NNN.md` with `PR #N` in its
-   `Result:`, updates the goal's `STATE.md`, commits the package on the
-   goal's branch, and pushes before it reports. A goal keeps one branch and
-   one pull request for all its rounds; the foreman runs `gh pr ready` when
-   the goal is done, rebases every open branch onto `main` after any merge
+   The foreman skips the floor before a round when the base sha's or the
+   pull request's own continuous integration is already green (`LOOP.md`,
+   "The floor"), and after the crew it reads the diff and waits on the
+   pull request's checks instead of rerunning them itself. The foreman
+   writes `docs/goals/<slug>/rounds/NNN.md` with `PR #N` in its `Result:`
+   and updates the goal's `STATE.md` while that check runs, commits the
+   package on the goal's branch, and pushes it once the check is green,
+   before it reports. A goal keeps one branch and one pull request for
+   all its rounds; the foreman runs `gh pr ready` when the goal is done,
+   rebases every open branch onto `main` after any merge
    (`--force-with-lease`, the foreman's one force-push), and never merges:
    the human merges, once per goal.
 4. **Monitor.** One `wait_for_events` watches the whole daemon; an idle crew

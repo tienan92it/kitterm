@@ -34,11 +34,12 @@ enum GoalsTemplates {
     /// `LOOP.md` that is still a template and refuses one a human edited.
     /// When `loop` changes, append the hash it had before the change;
     /// `GoalsTemplatesTests` pins that the current one is listed. Seeded
-    /// from `git log -- examples/goals/LOOP.md`: `foreman-flow` round 1
-    /// (current), `human-file-edits` (#166), `loop-and-skill` round 2
-    /// (092652221ab1), round 1 (a5592bd), 7f30556 (#139), 41b6a76 (#113) and
-    /// ac20d04 (#111).
+    /// from `git log -- examples/goals/LOOP.md`: `foreman-flow` round 3
+    /// (current, "The floor"), round 1 (e78e93d, "The pull request"),
+    /// `human-file-edits` (#166), `loop-and-skill` round 2 (092652221ab1),
+    /// round 1 (a5592bd), 7f30556 (#139), 41b6a76 (#113) and ac20d04 (#111).
     static let loopHistory: [String] = [
+        "9c7ae1a8428eea730235feec0a19c1f2589693a4e7ff125dac41ba48cdd22cb1",
         "e78e93da9c9eabc4918f4f8eb1fd2e88afe3bbb6e10cd01622ed17494b3b97f5",
         "27900ae25babc94f383cc3769d77951b9d24413e1c09ffe509403eac6801c909",
         "092652221ab14e27f5bce545447cc6b237dfb8b3ddee95915f5e0f0040b4459c",
@@ -155,6 +156,30 @@ enum GoalsTemplates {
         - The foreman cannot merge: the auto-mode classifier refuses
           `gh pr merge`. The human merges, once per goal, after the foreman has
           committed the package and marked the pull request ready.
+
+        ## The floor
+
+        `plan.md` names the floor's checks. From the round the pull request opens,
+        its CI run is part of the floor: a green run already proves the base sha.
+
+        - Before a round, the foreman checks whether the world already proved the
+          base sha: a green continuous-integration run on the base sha, or a
+          green run on the goal's pull request at the base (`gh run list`,
+          `gh pr checks <N>`). Either green skips the floor, and the foreman
+          writes which run it relied on in the round record's `Floor` "before"
+          line. Neither green: the foreman runs the floor as before the round.
+        - The crew runs `<the checks plan.md marks as its own>` once, after its
+          change, then pushes. A check `plan.md` marks as proved by the pull
+          request's continuous integration is not the crew's to run again;
+          `<a check that runs only for a narrow class of change>` runs only when
+          the round touches the surface it measures, as `plan.md`'s floor says.
+        - After the crew, the foreman does not rerun a check the crew already ran
+          or a check the pull request's CI already proves. It reads the diff and
+          sorts the paths into the Authority table below, then waits on
+          `gh pr checks <N>` for the crew's head sha; it writes the round record
+          and `STATE.md` while that check runs, and pushes them once the check is
+          green. A red check is the round's gap, and the one correction goes to
+          the crew, like any other gap.
 
         ## Authority
 

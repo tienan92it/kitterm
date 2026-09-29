@@ -190,8 +190,13 @@ case: it spends the budget and it gets a record.
    spawn_session name="<slug> round <n>" cwd="<worktree>" labels={crew:"<slug>", goal:"<slug>", round:"<n>", task:"<queue-item>", pr:"<N>"}
    ```
 
-   The shell sits at its prompt. Run the floor from `plan.md` in that shell,
-   one check per call:
+   The shell sits at its prompt. Check whether the world already proved the
+   base sha before you run the floor (`LOOP.md`, "The floor"): a green
+   continuous-integration run on the base sha, or a green run on the goal's
+   pull request at the base (`gh run list`, `gh pr checks <N>`). Either
+   green skips the floor; write which run you relied on in the round
+   record's `Floor` "before" line. Neither green: run the floor from
+   `plan.md` in that shell, one check per call:
 
    ```
    send_input session=<id> text="<floor command>"
@@ -227,8 +232,11 @@ case: it spends the budget and it gets a record.
      sha;
    - the authority tiers: the Frozen paths, the Propose paths, and the rule
      to describe a needed Propose change in the note instead of making it;
-   - the floor commands to run after the work, and the rule to add one
-     deterministic check for the behaviour the item closes;
+   - the floor to run after the work: the checks `plan.md` marks as the
+     crew's own, once, then push; a check `plan.md` marks as proved by the
+     pull request's continuous integration is not the crew's to run again;
+     and the rule to add one deterministic check for the behaviour the item
+     closes;
    - commit on the branch and push it after each commit, so the human
      watches the diff on the pull request; never push to `main`, never
      force-push, never merge; do not commit under `docs/goals/`;
@@ -254,8 +262,9 @@ case: it spends the budget and it gets a record.
    read_screen session=<id>
    ```
 
-   Read the crew's note. Run the floor again in the repository root on the
-   crew's branch and compare the result with the note. Read the diff:
+   Read the crew's note. Do not rerun a check the crew already ran, or a
+   check the pull request's continuous integration already proves
+   (`LOOP.md`, "The floor"). Read the diff:
 
    ```
    git diff --name-only <base>
@@ -283,6 +292,11 @@ case: it spends the budget and it gets a record.
    a session the round still needs for a correction is archived at step 6
    and its line written then.
 
+   Wait on `gh pr checks <N>` for the crew's head sha; do not rerun the
+   checks yourself. Write the round record and `STATE.md` while that check
+   runs (steps 7 and 8), and push them once it is green. A red check is
+   the round's gap, like a red floor was before.
+
 5. **Classify the largest gap.** One class per round: `world` (the
    environment, the daemon build, the toolchain), `domain` (the product's
    own logic), `contract` (an interface between two layers), `runtime` (a
@@ -292,8 +306,10 @@ case: it spends the budget and it gets a record.
    the class and its evidence in the record. A round with no gap records
    `none`.
 
-6. **Close or record.** Floor green and the diff holds the check: mark the
-   item done, end the session, and record the archive id:
+6. **Close or record.** The floor green — the crew's own checks, and the
+   pull request's continuous integration on the crew's head sha — and the
+   diff holds the check: mark the item done, end the session, and record
+   the archive id:
 
    ```
    archive_session session=<id>
@@ -319,9 +335,11 @@ case: it spends the budget and it gets a record.
    done items, the next action, the round counter, and `Updated`; nothing
    else. Write the pull request's number from the queue line in the
    record's `Result:`. Commit the record, the state, and the fact together
-   on the goal's branch, in one commit that names the goal and the round,
-   and push the branch. When the goal is done, run `gh pr ready <N>`; the
-   human merges. Then report the digest under "Reports".
+   on the goal's branch, in one commit that names the goal and the round.
+   Push the branch once the pull request's continuous integration on the
+   crew's head sha is green (step 4): write and commit while it runs, and
+   push after. When the goal is done, run `gh pr ready <N>`; the human
+   merges. Then report the digest under "Reports".
 
 ### The model
 

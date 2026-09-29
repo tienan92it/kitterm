@@ -104,6 +104,32 @@ and the fleet view shows the round and its pull request.
   `gh pr merge`. The human merges, once per goal, after the foreman has
   committed the package and marked the pull request ready.
 
+## The floor
+
+`plan.md` names the floor's checks. From the round the pull request opens,
+its CI run is part of the floor: a green run already proves the base sha.
+
+- Before a round, the foreman checks whether the world already proved the
+  base sha: `gh run list --workflow ci.yml --branch main` for a green run
+  on the base sha, or `gh pr checks <N>` for a green run on the goal's
+  pull request at the base. Either green skips the floor, and the foreman
+  writes which run it relied on in the round record's `Floor` "before"
+  line. Neither green: the foreman runs the floor as before the round.
+- The crew runs `swift test` once, after its change, and the web floor
+  when its change touches `Web/`, then pushes. The crew does not run the
+  Linux docker pipe: the pull request's `ci.yml` runs `linux-build`, which
+  compiles `Sources/` and `Tests/` on Linux, so that check is not the
+  crew's to run again. The bench stays local, on a scratch daemon, and
+  runs only when the round touches the output path, as `plan.md`'s floor
+  says.
+- After the crew, the foreman does not rerun a check the crew already ran
+  or a check the pull request's CI already proves. It reads the diff and
+  sorts the paths into the Authority table below, then waits on
+  `gh pr checks <N>` for the crew's head sha; it writes the round record
+  and `STATE.md` while that check runs, and pushes them once the check is
+  green. A red check is the round's gap, and the one correction goes to
+  the crew, like any other gap.
+
 ## Authority
 
 | Tier | Paths | Rule |
