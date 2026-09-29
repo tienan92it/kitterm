@@ -170,8 +170,11 @@ crashes after the exec.
   in `LOOP.md`: `goal.md`, `corpus/`, and an existing check are frozen inside a round;
   `plan.md`, `LOOP.md`, and `docs/adr/` take a proposal in the round record, not an edit
 - The daemon reads this package for the fleet view and never writes it. The foreman
-  (`docs/foreman.md`) writes each goal's `STATE.md` and `rounds/NNN.md`, appends to
-  `facts.md`, and commits the package on the goal's branch after every round
+  (`docs/foreman.md`) opens each goal's draft pull request on `<slug>/rounds`
+  (a chore's on `chore/<slug>`) before its crew starts, writes each goal's
+  `STATE.md` and `rounds/NNN.md`, appends to `facts.md`, and commits and pushes
+  the package on the goal's branch after every round; the crew pushes to that
+  branch and never to `main`, and the human merges once per goal
 - `examples/goals/` holds the generic templates: `LOOP.md` and `facts.md` for the
   project, and `examples/goals/goal/` for one goal folder. `kitterm project init <path>`
   writes the two project files into a project's knowledge directory and registers the

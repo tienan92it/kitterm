@@ -241,11 +241,20 @@ every project", in one sentence each:
 2. **Schedule.** Only an `active` goal with rounds left, no open round, and
    no blocking proposal runs, at most one round per goal and three crew
    sessions across all projects, the oldest `Updated` date first.
-3. **Delegate.** The foreman runs `LOOP.md`'s "One round" in one crew session
-   with the labels `crew:<slug>`, `goal:<slug>`, `round:<n>`, and
-   `task:<item>`, then writes `docs/goals/<slug>/rounds/NNN.md` and the
-   goal's `STATE.md` and commits the package on the goal's branch before it
-   reports.
+3. **Delegate.** Before the crew starts, the foreman cuts the goal's branch
+   `<slug>/rounds` (a chore's is `chore/<slug>`) in a worktree, commits the
+   queue line, pushes, and opens a draft pull request; the number goes on
+   the queue line as `, PR #N.` and on the crew session as `pr:<N>`. It
+   then runs `LOOP.md`'s "One round" in one crew session with the labels
+   `crew:<slug>`, `goal:<slug>`, `round:<n>`, `task:<item>`, and `pr:<N>`;
+   the crew pushes to that branch after each commit and never to `main`.
+   The foreman writes `docs/goals/<slug>/rounds/NNN.md` with `PR #N` in its
+   `Result:`, updates the goal's `STATE.md`, commits the package on the
+   goal's branch, and pushes before it reports. A goal keeps one branch and
+   one pull request for all its rounds; the foreman runs `gh pr ready` when
+   the goal is done, rebases every open branch onto `main` after any merge
+   (`--force-with-lease`, the foreman's one force-push), and never merges:
+   the human merges, once per goal.
 4. **Monitor.** One `wait_for_events` watches the whole daemon; an idle crew
    session is archived one hour past `completed`, and a crew lost to an
    `epoch` change is respawned once.

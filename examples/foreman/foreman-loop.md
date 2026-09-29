@@ -60,8 +60,11 @@ Two files, two scopes:
 ## Chores
 
 `LOOP.md`, "Goal or chore", is the test of what is a goal. A chore has no
-folder. Run it as one crew session with one prompt, one PR, and one line
-in `docs/goals/CHORES.md` in the shape `LOOP.md` gives.
+folder. Run it as one crew session with one prompt, one pull request, and
+one line in `docs/goals/CHORES.md` in the shape `LOOP.md` gives. Cut its
+branch `chore/<slug>` and open its draft pull request before the crew
+starts, as step 2 of "One round" does for a goal; the crew session carries
+`pr:<N>` beside `crew:<slug>`.
 
 A chore that belongs to a done goal's surface **resumes that goal** for
 one round: set `Status: active`, queue the item, run "One round", write
@@ -167,11 +170,24 @@ case: it spends the budget and it gets a record.
    the decision records `STATE.md` cites. Take the head of the queue. Stop
    when the budget is spent.
 
-2. **Verify the world.** Spawn one crew session in the repository root with
-   the four labels and no `input`:
+2. **Open the pull request, then verify the world.** The pull request
+   opens before the crew starts (`LOOP.md`, "The pull request"). On the
+   goal's first round, cut the branch `<slug>/rounds` from `origin/main`
+   in a worktree of your own (`git worktree add`), commit the queue line
+   in `STATE.md`, push the branch, and open a draft pull request:
 
    ```
-   spawn_session name="<slug> round <n>" cwd="<root>" labels={crew:"<slug>", goal:"<slug>", round:"<n>", task:"<queue-item>"}
+   gh pr create --draft --title "<goal title>" --body "<the goal's objective>"
+   ```
+
+   Write `, PR #N.` at the end of the queue item's first line in
+   `STATE.md`, commit, and push. A later round of the goal keeps the
+   branch, the worktree, and the pull request; write the number on the
+   new queue line the same way. Then spawn one crew session in the
+   worktree with the five labels and no `input`:
+
+   ```
+   spawn_session name="<slug> round <n>" cwd="<worktree>" labels={crew:"<slug>", goal:"<slug>", round:"<n>", task:"<queue-item>", pr:"<N>"}
    ```
 
    The shell sits at its prompt. Run the floor from `plan.md` in that shell,
@@ -206,13 +222,16 @@ case: it spends the budget and it gets a record.
      `docs/goals/facts.md`, the corpus request the item serves under
      `docs/goals/<slug>/corpus/`, and the last round records under
      `docs/goals/<slug>/rounds/`;
-   - the queue item, its proof column from `plan.md`, the branch to create,
-     and the base to branch from;
+   - the queue item, its proof column from `plan.md`, the branch and the
+     worktree the session sits in, the pull request's number, and the base
+     sha;
    - the authority tiers: the Frozen paths, the Propose paths, and the rule
      to describe a needed Propose change in the note instead of making it;
    - the floor commands to run after the work, and the rule to add one
      deterministic check for the behaviour the item closes;
-   - commit on the branch, do not push, do not commit under `docs/goals/`;
+   - commit on the branch and push it after each commit, so the human
+     watches the diff on the pull request; never push to `main`, never
+     force-push, never merge; do not commit under `docs/goals/`;
    - the report: the prompt asks for the three notes of "The crew's notes":
      the plan first, a blocker if one comes, the done note last; a session
      that dies at its last step still leaves its evidence. Each `post_note`
@@ -298,9 +317,11 @@ case: it spends the budget and it gets a record.
    "Effects" or "Gap"; the crew does not write the record. Update
    `docs/goals/<slug>/STATE.md`: the queue, the failures, the proposals, the
    done items, the next action, the round counter, and `Updated`; nothing
-   else. Commit the record, the state, and the fact together on the goal's
-   branch, in one commit that names the goal and the round. Then report the
-   digest under "Reports".
+   else. Write the pull request's number from the queue line in the
+   record's `Result:`. Commit the record, the state, and the fact together
+   on the goal's branch, in one commit that names the goal and the round,
+   and push the branch. When the goal is done, run `gh pr ready <N>`; the
+   human merges. Then report the digest under "Reports".
 
 ### The model
 
@@ -344,6 +365,12 @@ Act on each event, then run "Scan":
 - `agent.status` with `completed`: run step 4 of "One round" for that goal.
 - `session.exited` with a non-zero code: the crew failed. Report it. A
   second non-zero exit in the same goal is a stop rule.
+- A merge to `main`, which only the human makes: rebase every open goal
+  or chore branch onto `main` and push each one with `--force-with-lease`.
+  Only you force-push, and only for this. Two green pull requests made
+  `main` red on 2026-09-28, because one added a CI check and the other
+  added a file the check rejects; the rebase makes each pull request's CI
+  meet every new check before the pull request merges.
 - `session.lingered`, and on every scan: compare `heldSince` with now.
   Archive a crew session that sits at an empty prompt one hour past
   `completed`. The linger clock holds a session with `claude` in the
@@ -357,11 +384,12 @@ Act on each event, then run "Scan":
 - A result whose `epoch` changed: the daemon restarted and every session id
   you hold is gone. Call `list_sessions` and match a respawned pane by its
   labels and cwd, never by id. Respawn each open round's crew once with the
-  same four labels plus `resumed-from:<the id the pane held before>`, run
+  same five labels plus `resumed-from:<the id the pane held before>`, run
   the floor, start `claude`, and send the round prompt again with the
-  instruction to continue from the branch's last commit. When the respawn
-  does not restore the round, record a killed attempt (see "One round") and
-  stop that goal.
+  instruction to continue from the branch's last commit. The branch and
+  the pull request are still there; the respawn keeps `pr:<N>`. When the
+  respawn does not restore the round, record a killed attempt (see "One
+  round") and stop that goal.
 - The human's answer at a direction check (`LOOP.md`, "Direction") is an
   edit to `STATE.md`:
   - **continue**: set `Round: 0 of 3 in this budget (<ordinal> budget)`, set
@@ -417,9 +445,11 @@ The human does not ask for a catch-up. Bring the result:
   under 200 characters that names the outcome and the link: `round 12
   done: WHERE columns per filter · PR #134`. A failed round or a stop
   rule: the same, with the reason.
-- **A PR is ready to merge** (its checks are green and the round is
-  recorded): say so once, with the link, and what merging changes for
-  the running daemon.
+- **A goal is done** (its completion condition holds and the package is
+  committed): run `gh pr ready <N>`, then say so once, with the link,
+  and what merging changes for the running daemon. You cannot merge:
+  the auto-mode classifier refuses `gh pr merge`. The human merges,
+  once per goal.
 - **Something needs the human** (`needs-input`, `needs-approval`, a
   `propose`, a decision a crew asked for): a push notification at once,
   then the pane.

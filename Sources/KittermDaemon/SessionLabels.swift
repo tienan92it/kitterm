@@ -29,6 +29,10 @@ public struct SessionLabels: Sendable, Equatable {
     public static let projectKey = "project"
     public static let goalKey = "goal"
     public static let roundKey = "round"
+    /// `pr:<N>` is the number of the pull request the foreman opened before
+    /// the crew started (`LOOP.md`, "The pull request"); the fleet view
+    /// links a running round to it before anything merges.
+    public static let prKey = "pr"
 
     public let values: [String: String]
 
