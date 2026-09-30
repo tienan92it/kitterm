@@ -1,1 +1,1 @@
-- 2026-09-30 · the goal template and the foreman skill cut and rebase onto the project's base branch, not a hardcoded `main` · PR #178 · Cost: pending
+- 2026-09-30 · the goal template and the foreman skill cut and rebase onto the project's base branch, not a hardcoded `main` · PR #178 · Cost: $3.86 · 13100k in (98% cached) · 49k out · 0h 13m
