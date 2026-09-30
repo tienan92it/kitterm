@@ -1,0 +1,1 @@
+- 2026-09-30 · AGENTS.md and README.md name `kitterm archive cost`, the draft PR that opens first, and one file per chore · PR #177 · Cost: $1.12 · 2416k in (94% cached) · 9k out · 0h 03m

@@ -82,7 +82,10 @@ Every figure follows the USAGE range. A running session shows `~$` until billed.
 
 - A goal folder holds `goal.md`, `plan.md`, `STATE.md`, `corpus/`, `rounds/`.
 - One foreman per daemon reads every `STATE.md` and spawns a crew session.
+- Each goal or chore opens a draft PR before its crew starts; the dashboard
+  shows the running round's task and PR link.
 - Each round writes one record under `rounds/`, naming its cost and PR.
+- `kitterm archive cost <id> --line` prints an archived session's cost line.
 - `kitterm goal new <path> <slug>` writes a goal folder from the template.
 - `kitterm project init --refresh <path>` rewrites an unedited `LOOP.md` from the template.
 
