@@ -174,13 +174,15 @@ case: it spends the budget and it gets a record.
    when the budget is spent.
 
 2. **Open the pull request, then verify the world.** The pull request
-   opens before the crew starts (`LOOP.md`, "The pull request"). On the
-   goal's first round, cut the branch `<slug>/rounds` from `origin/main`
-   in a worktree of your own (`git worktree add`), commit the queue line
-   in `STATE.md`, push the branch, and open a draft pull request:
+   opens before the crew starts (`LOOP.md`, "The pull request"). Every
+   pull request merges into the base branch (`LOOP.md`, "The pull
+   request", names it). On the goal's first round, cut the branch
+   `<slug>/rounds` from `origin/<base>` in a worktree of your own
+   (`git worktree add`), commit the queue line in `STATE.md`, push the
+   branch, and open a draft pull request:
 
    ```
-   gh pr create --draft --title "<goal title>" --body "<the goal's objective>"
+   gh pr create --draft --base <base> --title "<goal title>" --body "<the goal's objective>"
    ```
 
    Write `, PR #N.` at the end of the queue item's first line in
@@ -194,12 +196,13 @@ case: it spends the budget and it gets a record.
    ```
 
    The shell sits at its prompt. Check whether the world already proved the
-   base sha before you run the floor (`LOOP.md`, "The floor"): a green
-   continuous-integration run on the base sha, or a green run on the goal's
-   pull request at the base (`gh run list`, `gh pr checks <N>`). Either
-   green skips the floor; write which run you relied on in the round
-   record's `Floor` "before" line. Neither green: run the floor from
-   `plan.md` in that shell, one check per call:
+   base sha before you run the floor (`LOOP.md`, "The floor"): a green run
+   on the base branch's own checks (`gh run list --workflow ci.yml
+   --branch <base>`; a project whose workflow file has another name uses
+   that one), or a green run on the goal's pull request at the base
+   (`gh pr checks <N>`). Either green skips the floor; write which run you
+   relied on in the round record's `Floor` "before" line. Neither green:
+   run the floor from `plan.md` in that shell, one check per call:
 
    ```
    send_input session=<id> text="<floor command>"
@@ -241,8 +244,8 @@ case: it spends the budget and it gets a record.
      and the rule to add one deterministic check for the behaviour the item
      closes;
    - commit on the branch and push it after each commit, so the human
-     watches the diff on the pull request; never push to `main`, never
-     force-push, never merge; do not commit under `docs/goals/`;
+     watches the diff on the pull request; never push to the base branch,
+     never force-push, never merge; do not commit under `docs/goals/`;
    - the report: the prompt asks for the three notes of "The crew's notes":
      the plan first, a blocker if one comes, the done note last; a session
      that dies at its last step still leaves its evidence. Each `post_note`
@@ -389,12 +392,13 @@ Act on each event, then run "Scan":
 - `agent.status` with `completed`: run step 4 of "One round" for that goal.
 - `session.exited` with a non-zero code: the crew failed. Report it. A
   second non-zero exit in the same goal is a stop rule.
-- A merge to `main`, which only the human makes: rebase every open goal
-  or chore branch onto `main` and push each one with `--force-with-lease`.
-  Only you force-push, and only for this. Two green pull requests made
-  `main` red on 2026-09-28, because one added a CI check and the other
-  added a file the check rejects; the rebase makes each pull request's CI
-  meet every new check before the pull request merges.
+- A merge to the base branch, which only the human makes: rebase every
+  open goal or chore branch onto `origin/<base>` and push each one with
+  `--force-with-lease`. Only you force-push, and only for this. Two green
+  pull requests made the base branch red on 2026-09-28, because one added
+  a CI check and the other added a file the check rejects; the rebase
+  makes each pull request's CI meet every new check before the pull
+  request merges.
 - `session.lingered`, and on every scan: compare `heldSince` with now.
   Archive a crew session that sits at an empty prompt one hour past
   `completed`. The linger clock holds a session with `claude` in the

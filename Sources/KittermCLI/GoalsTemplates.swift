@@ -34,11 +34,14 @@ enum GoalsTemplates {
     /// `LOOP.md` that is still a template and refuses one a human edited.
     /// When `loop` changes, append the hash it had before the change;
     /// `GoalsTemplatesTests` pins that the current one is listed. Seeded
-    /// from `git log -- examples/goals/LOOP.md`: `foreman-flow` round 3
-    /// (current, "The floor"), round 1 (e78e93d, "The pull request"),
+    /// from `git log -- examples/goals/LOOP.md`: chore `base-branch`
+    /// (current, "The pull request" and "The floor" name the base branch,
+    /// not `main`), `foreman-flow` round 3 (8df2ab6, "The floor"),
+    /// round 1 (e78e93d, "The pull request"),
     /// `human-file-edits` (#166), `loop-and-skill` round 2 (092652221ab1),
     /// round 1 (a5592bd), 7f30556 (#139), 41b6a76 (#113) and ac20d04 (#111).
     static let loopHistory: [String] = [
+        "a7aae8079cf2840429ff900add915e7cdd90ce10aef3e649886a0c195ef76127",
         "8df2ab62963ad262c015a9d98d6d00d89979710f862bd1156ce3807b2f9fcdcd",
         "9c7ae1a8428eea730235feec0a19c1f2589693a4e7ff125dac41ba48cdd22cb1",
         "e78e93da9c9eabc4918f4f8eb1fd2e88afe3bbb6e10cd01622ed17494b3b97f5",
@@ -138,10 +141,16 @@ enum GoalsTemplates {
         before its crew starts. The human watches the diff while the work runs,
         and the fleet view shows the round and its pull request.
 
+        Every pull request merges into the base branch: the branch `plan.md`
+        names, or, when `plan.md` names none, the one
+        `git symbolic-ref --short refs/remotes/origin/HEAD` prints
+        (`origin/develop`, for example).
+
         - A goal's branch is `<slug>/rounds`. A chore's branch is `chore/<slug>`.
-          The foreman cuts the branch from `origin/main` in a worktree of its own.
+          The foreman cuts the branch from `origin/<base>` in a worktree of its own.
         - Before it spawns the crew, the foreman commits the queue line, pushes
-          the branch, and opens a draft pull request with `gh pr create --draft`.
+          the branch, and opens a draft pull request with
+          `gh pr create --draft --base <base>`.
         - The pull request's number goes in three places: on the queue line in
           `STATE.md`, as `, PR #N.` at the end of the item's first line; on the
           crew session, as the label `pr:<N>`; and in the round record's
@@ -152,13 +161,13 @@ enum GoalsTemplates {
           When the goal is done, the foreman runs `gh pr ready <N>`, and the
           human merges.
         - A crew pushes to its branch after each commit. A crew never pushes to
-          `main`, never force-pushes, and never merges.
-        - After any merge to `main`, the foreman rebases every open goal or chore
-          branch onto `main` and pushes each one with `--force-with-lease`. Only
-          the foreman force-pushes. Two green pull requests made `main` red on
-          2026-09-28: one added a CI check, the other added a file the check
-          rejects. The rebase makes each pull request's CI meet every new check
-          before the pull request merges.
+          the base branch, never force-pushes, and never merges.
+        - After any merge to the base branch, the foreman rebases every open goal
+          or chore branch onto `origin/<base>` and pushes each one with
+          `--force-with-lease`. Only the foreman force-pushes. Two green pull
+          requests made the base branch red on 2026-09-28: one added a CI check,
+          the other added a file the check rejects. The rebase makes each pull
+          request's CI meet every new check before the pull request merges.
         - The foreman cannot merge: the auto-mode classifier refuses
           `gh pr merge`. The human merges, once per goal, after the foreman has
           committed the package and marked the pull request ready.
@@ -169,11 +178,13 @@ enum GoalsTemplates {
         its CI run is part of the floor: a green run already proves the base sha.
 
         - Before a round, the foreman checks whether the world already proved the
-          base sha: a green continuous-integration run on the base sha, or a
-          green run on the goal's pull request at the base (`gh run list`,
-          `gh pr checks <N>`). Either green skips the floor, and the foreman
-          writes which run it relied on in the round record's `Floor` "before"
-          line. Neither green: the foreman runs the floor as before the round.
+          base sha: a green run on the base branch's own checks
+          (`gh run list --workflow ci.yml --branch <base>`; a project whose
+          workflow file has another name uses that one), or a green run on the
+          goal's pull request at the base (`gh pr checks <N>`). Either green
+          skips the floor, and the foreman writes which run it relied on in the
+          round record's `Floor` "before" line. Neither green: the foreman runs
+          the floor as before the round.
         - The crew runs `<the checks plan.md marks as its own>` once, after its
           change, then pushes. A check `plan.md` marks as proved by the pull
           request's continuous integration is not the crew's to run again;

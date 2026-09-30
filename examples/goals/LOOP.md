@@ -85,10 +85,16 @@ Every goal and every chore has one branch and one pull request, open
 before its crew starts. The human watches the diff while the work runs,
 and the fleet view shows the round and its pull request.
 
+Every pull request merges into the base branch: the branch `plan.md`
+names, or, when `plan.md` names none, the one
+`git symbolic-ref --short refs/remotes/origin/HEAD` prints
+(`origin/develop`, for example).
+
 - A goal's branch is `<slug>/rounds`. A chore's branch is `chore/<slug>`.
-  The foreman cuts the branch from `origin/main` in a worktree of its own.
+  The foreman cuts the branch from `origin/<base>` in a worktree of its own.
 - Before it spawns the crew, the foreman commits the queue line, pushes
-  the branch, and opens a draft pull request with `gh pr create --draft`.
+  the branch, and opens a draft pull request with
+  `gh pr create --draft --base <base>`.
 - The pull request's number goes in three places: on the queue line in
   `STATE.md`, as `, PR #N.` at the end of the item's first line; on the
   crew session, as the label `pr:<N>`; and in the round record's
@@ -99,13 +105,13 @@ and the fleet view shows the round and its pull request.
   When the goal is done, the foreman runs `gh pr ready <N>`, and the
   human merges.
 - A crew pushes to its branch after each commit. A crew never pushes to
-  `main`, never force-pushes, and never merges.
-- After any merge to `main`, the foreman rebases every open goal or chore
-  branch onto `main` and pushes each one with `--force-with-lease`. Only
-  the foreman force-pushes. Two green pull requests made `main` red on
-  2026-09-28: one added a CI check, the other added a file the check
-  rejects. The rebase makes each pull request's CI meet every new check
-  before the pull request merges.
+  the base branch, never force-pushes, and never merges.
+- After any merge to the base branch, the foreman rebases every open goal
+  or chore branch onto `origin/<base>` and pushes each one with
+  `--force-with-lease`. Only the foreman force-pushes. Two green pull
+  requests made the base branch red on 2026-09-28: one added a CI check,
+  the other added a file the check rejects. The rebase makes each pull
+  request's CI meet every new check before the pull request merges.
 - The foreman cannot merge: the auto-mode classifier refuses
   `gh pr merge`. The human merges, once per goal, after the foreman has
   committed the package and marked the pull request ready.
@@ -116,11 +122,13 @@ and the fleet view shows the round and its pull request.
 its CI run is part of the floor: a green run already proves the base sha.
 
 - Before a round, the foreman checks whether the world already proved the
-  base sha: a green continuous-integration run on the base sha, or a
-  green run on the goal's pull request at the base (`gh run list`,
-  `gh pr checks <N>`). Either green skips the floor, and the foreman
-  writes which run it relied on in the round record's `Floor` "before"
-  line. Neither green: the foreman runs the floor as before the round.
+  base sha: a green run on the base branch's own checks
+  (`gh run list --workflow ci.yml --branch <base>`; a project whose
+  workflow file has another name uses that one), or a green run on the
+  goal's pull request at the base (`gh pr checks <N>`). Either green
+  skips the floor, and the foreman writes which run it relied on in the
+  round record's `Floor` "before" line. Neither green: the foreman runs
+  the floor as before the round.
 - The crew runs `<the checks plan.md marks as its own>` once, after its
   change, then pushes. A check `plan.md` marks as proved by the pull
   request's continuous integration is not the crew's to run again;
