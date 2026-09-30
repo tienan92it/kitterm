@@ -1,10 +1,10 @@
 # STATE: foreman-flow
 
-- Status: waiting
-- Round: 3 of 3 in this budget (first budget)
+- Status: active
+- Round: 0 of 3 in this budget (second budget)
 - Rounds total: 3
 - Last floor: green (2026-09-29, round 3 after: swift test 944, PR #176 CI green)
-- Updated: 2026-09-29, round 3 closed; the first budget is spent
+- Updated: 2026-09-30, the human said continue
 
 ## Queue
 
@@ -16,9 +16,8 @@ None.
 
 ## Proposals waiting on the human
 
-- `facts.md`, Toolchain: "Run the Linux build as soon as a `Sources/`
-  change compiles" is replaced by "The floor" in `LOOP.md` (round 3);
-  prune it at this direction check.
+None. 2026-09-30, the human pruned the `facts.md` line the new floor
+replaces ("Run the Linux build as soon as a `Sources/` change compiles").
 
 ## Done
 
@@ -34,6 +33,8 @@ None.
 
 ## Direction
 
+2026-09-30: continue, a second budget, for capability 4.
+
 2026-09-29: the human chose "fewer interruptions" and "faster rounds", and
 set a rule: every goal and chore opens its PR at the start, and the
 dashboard shows it while the work runs. The foreman measured the rounds of
@@ -43,7 +44,4 @@ goal stays `waiting` until the human approves the package by merging it.
 
 ## Next action
 
-The first budget is spent, so the goal waits for the human's direction.
-On "continue": round 4, `the-bookkeeping-is-a-command` (one file per
-chore, the human's answer, and `kitterm archive cost <id> --line`), on
-PR #176.
+Round 4: `the-bookkeeping-is-a-command`.
