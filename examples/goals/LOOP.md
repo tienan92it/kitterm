@@ -53,12 +53,17 @@ A change is a **goal** when any of these holds:
 Everything else is a **chore**: a fix, a wording change, a document, a
 dependency bump, a one-file enhancement, a number that drifted. A chore
 has no folder. It runs on the branch `chore/<slug>` as one crew session
-with one prompt, one pull request, and one line in
-`<knowledge directory>/CHORES.md`:
+with one prompt, one pull request, and one file of one line,
+`<knowledge directory>/chores/<ISO date>-<slug>.md`:
 
 ```
 - <ISO date> · <what, one sentence> · PR #N · <cost line>
 ```
+
+One file per chore, so two chore pull requests opened on the same day
+merge in either order with no conflict; a shared list that every chore
+appends to makes every second chore a conflict. The `chores/` folder
+holds no `STATE.md`, so the daemon and `kitterm goal list` skip it.
 
 Two rules keep the two apart:
 
@@ -269,9 +274,12 @@ When `GET /api/archives/<id>/cost` answers `hasBill: false` or 404, the
 line reads `- Cost: none recorded (<reason>)` with the reason the route
 gave.
 
-Archive the session, then read `GET /api/archives/<id>/cost` for every
-session the record's `Sessions:` line names and write one `- Cost:` line
-per session, in that order, under the record's header.
+Archive the session, then run `kitterm archive cost <id> --line` for
+every session the record's `Sessions:` line names and paste its output as
+one `- Cost:` line per session, in that order, under the record's header.
+The command reads the archive's transcript under `~/.kitterm` with no
+daemon and prints the line above, or `- Cost: none recorded (<reason>)`;
+`--json` prints the bill as `GET /api/archives/<id>/cost` answers it.
 
 Two parsers read the record:
 

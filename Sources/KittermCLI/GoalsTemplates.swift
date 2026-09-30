@@ -39,6 +39,7 @@ enum GoalsTemplates {
     /// `human-file-edits` (#166), `loop-and-skill` round 2 (092652221ab1),
     /// round 1 (a5592bd), 7f30556 (#139), 41b6a76 (#113) and ac20d04 (#111).
     static let loopHistory: [String] = [
+        "8df2ab62963ad262c015a9d98d6d00d89979710f862bd1156ce3807b2f9fcdcd",
         "9c7ae1a8428eea730235feec0a19c1f2589693a4e7ff125dac41ba48cdd22cb1",
         "e78e93da9c9eabc4918f4f8eb1fd2e88afe3bbb6e10cd01622ed17494b3b97f5",
         "27900ae25babc94f383cc3769d77951b9d24413e1c09ffe509403eac6801c909",
@@ -105,12 +106,17 @@ enum GoalsTemplates {
         Everything else is a **chore**: a fix, a wording change, a document, a
         dependency bump, a one-file enhancement, a number that drifted. A chore
         has no folder. It runs on the branch `chore/<slug>` as one crew session
-        with one prompt, one pull request, and one line in
-        `<knowledge directory>/CHORES.md`:
+        with one prompt, one pull request, and one file of one line,
+        `<knowledge directory>/chores/<ISO date>-<slug>.md`:
 
         ```
         - <ISO date> · <what, one sentence> · PR #N · <cost line>
         ```
+
+        One file per chore, so two chore pull requests opened on the same day
+        merge in either order with no conflict; a shared list that every chore
+        appends to makes every second chore a conflict. The `chores/` folder
+        holds no `STATE.md`, so the daemon and `kitterm goal list` skip it.
 
         Two rules keep the two apart:
 
@@ -321,9 +327,12 @@ enum GoalsTemplates {
         line reads `- Cost: none recorded (<reason>)` with the reason the route
         gave.
 
-        Archive the session, then read `GET /api/archives/<id>/cost` for every
-        session the record's `Sessions:` line names and write one `- Cost:` line
-        per session, in that order, under the record's header.
+        Archive the session, then run `kitterm archive cost <id> --line` for
+        every session the record's `Sessions:` line names and paste its output as
+        one `- Cost:` line per session, in that order, under the record's header.
+        The command reads the archive's transcript under `~/.kitterm` with no
+        daemon and prints the line above, or `- Cost: none recorded (<reason>)`;
+        `--json` prints the bill as `GET /api/archives/<id>/cost` answers it.
 
         Two parsers read the record:
 

@@ -69,6 +69,8 @@ enum KittermMain {
                 try ProjectCommand.run(args.dropFirst())
             case "goal":
                 try GoalCommand.run(args.dropFirst())
+            case "archive":
+                try ArchiveCommand.run(args.dropFirst())
             case "skills":
                 try SkillsCommand.run(args.dropFirst())
             case "statusline":
@@ -197,6 +199,10 @@ enum KittermMain {
                                       # one line per goal folder: slug and status
               kitterm goal cost <path> [<slug>] [--knowledge DIR] [--json]
                                       # the ledger: dollars, tokens, wall-clock per round
+              kitterm archive cost <id> [--line | --json]
+                                      # an archived session's bill, no daemon needed:
+                                      # the round record's `- Cost:` line, or the
+                                      # bill as GET /api/archives/<id>/cost gives it
               kitterm skills install [--dir DIR] | list
                                       # write the foreman skills into ~/.claude/skills
               kitterm statusline install [--dir DIR] | print

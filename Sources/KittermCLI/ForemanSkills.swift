@@ -93,10 +93,13 @@ enum ForemanSkills {
 
         `LOOP.md`, "Goal or chore", is the test of what is a goal. A chore has no
         folder. Run it as one crew session with one prompt, one pull request, and
-        one line in `docs/goals/CHORES.md` in the shape `LOOP.md` gives. Cut its
-        branch `chore/<slug>` and open its draft pull request before the crew
-        starts, as step 2 of "One round" does for a goal; the crew session carries
-        `pr:<N>` beside `crew:<slug>`.
+        one file of one line, `docs/goals/chores/<ISO date>-<slug>.md`, in the
+        shape `LOOP.md` gives; write the file's cost with `kitterm archive cost
+        <id> --line` once the crew session is archived. One file per chore, so
+        two chore pull requests merge in either order; never append to a shared
+        list. Cut its branch `chore/<slug>` and open its draft pull request before
+        the crew starts, as step 2 of "One round" does for a goal; the crew
+        session carries `pr:<N>` beside `crew:<slug>`.
 
         A chore that belongs to a done goal's surface **resumes that goal** for
         one round: set `Status: active`, queue the item, run "One round", write
@@ -317,9 +320,12 @@ enum ForemanSkills {
            round's decision stays `done`.
 
            Collect the visible proof the crew posted: a screenshot path, a test
-           name, a URL. Archive the session, then read `GET /api/archives/<id>/cost`
-           for every session the record's `Sessions:` line names and write one
-           `- Cost:` line per session, in that order, under the record's header.
+           name, a URL. Archive the session, then run
+           `kitterm archive cost <id> --line` for every session the record's
+           `Sessions:` line names and paste its output as one `- Cost:` line per
+           session, in that order, under the record's header; the command prints
+           `LOOP.md`'s line from the archive's transcript with no daemon, or
+           `- Cost: none recorded (<reason>)`.
            The bill exists only once `claude` exits, and archiving is what ends it;
            a session the round still needs for a correction is archived at step 6
            and its line written then.

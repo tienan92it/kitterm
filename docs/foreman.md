@@ -255,7 +255,11 @@ every project", in one sentence each:
    writes `docs/goals/<slug>/rounds/NNN.md` with `PR #N` in its `Result:`
    and updates the goal's `STATE.md` while that check runs, commits the
    package on the goal's branch, and pushes it once the check is green,
-   before it reports. A goal keeps one branch and one pull request for
+   before it reports; the record's `- Cost:` line is what
+   `kitterm archive cost <id> --line` prints for the archived crew
+   session, and a chore's one line goes in its own file,
+   `docs/goals/chores/<ISO date>-<slug>.md`, so two chore pull requests
+   merge in either order. A goal keeps one branch and one pull request for
    all its rounds; the foreman runs `gh pr ready` when the goal is done,
    rebases every open branch onto `main` after any merge
    (`--force-with-lease`, the foreman's one force-push), and never merges:
