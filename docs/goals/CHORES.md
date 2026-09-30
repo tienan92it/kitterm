@@ -1,5 +1,10 @@
 # Chores
 
+Since 2026-09-30 a chore's line is its own file,
+`docs/goals/chores/<ISO date>-<slug>.md` (`LOOP.md`, "Goal or chore"), so
+two chore pull requests never touch one file; the lines below are the
+history from before that and gain no new entry.
+
 One line per chore: a change too small for a goal (`LOOP.md`, "Goal or
 chore"). Newest first.
 

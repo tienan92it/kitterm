@@ -52,12 +52,19 @@ A change is a **goal** when any of these holds:
 
 Everything else is a **chore**: a fix, a wording change, a document, a
 dependency bump, a one-file enhancement, a number that drifted. A chore
-has no folder. It runs as one crew session with one prompt, one PR, and
-one line in `docs/goals/CHORES.md`:
+has no folder. It runs on the branch `chore/<slug>` as one crew session
+with one prompt, one pull request, and one file of one line,
+`docs/goals/chores/<ISO date>-<slug>.md`:
 
 ```
 - <ISO date> · <what, one sentence> · PR #N · <cost line>
 ```
+
+One file per chore, so two chore pull requests opened on the same day
+merge in either order with no conflict; the shared tail of `CHORES.md`
+made every second chore a conflict. `CHORES.md` keeps the lines written
+before 2026-09-30 as history and gains no new line. The `chores/` folder
+holds no `STATE.md`, so the daemon and `kitterm goal list` skip it.
 
 Two rules keep the two apart:
 
@@ -72,6 +79,63 @@ Two rules keep the two apart:
 
 The human names goals. The foreman may run a chore on the human's word
 without a folder, and says so in the digest.
+
+## The pull request
+
+Every goal and every chore has one branch and one pull request, open
+before its crew starts. The human watches the diff while the work runs,
+and the fleet view shows the round and its pull request.
+
+- A goal's branch is `<slug>/rounds`. A chore's branch is `chore/<slug>`.
+  The foreman cuts the branch from `origin/main` in a worktree of its own.
+- Before it spawns the crew, the foreman commits the queue line, pushes
+  the branch, and opens a draft pull request with `gh pr create --draft`.
+- The pull request's number goes in three places: on the queue line in
+  `STATE.md`, as `, PR #N.` at the end of the item's first line; on the
+  crew session, as the label `pr:<N>`; and in the round record's
+  `Result:`, when the foreman writes the record. No record needs a later
+  commit to name its pull request.
+- A goal keeps its one branch and its one pull request for all its
+  rounds. Each round's record and `STATE.md` commit land on that branch.
+  When the goal is done, the foreman runs `gh pr ready <N>`, and the
+  human merges.
+- A crew pushes to its branch after each commit. A crew never pushes to
+  `main`, never force-pushes, and never merges.
+- After any merge to `main`, the foreman rebases every open goal or chore
+  branch onto `main` and pushes each one with `--force-with-lease`. Only
+  the foreman force-pushes. Two green pull requests made `main` red on
+  2026-09-28: one added a CI check, the other added a file the check
+  rejects. The rebase makes each pull request's CI meet every new check
+  before the pull request merges.
+- The foreman cannot merge: the auto-mode classifier refuses
+  `gh pr merge`. The human merges, once per goal, after the foreman has
+  committed the package and marked the pull request ready.
+
+## The floor
+
+`plan.md` names the floor's checks. From the round the pull request opens,
+its CI run is part of the floor: a green run already proves the base sha.
+
+- Before a round, the foreman checks whether the world already proved the
+  base sha: `gh run list --workflow ci.yml --branch main` for a green run
+  on the base sha, or `gh pr checks <N>` for a green run on the goal's
+  pull request at the base. Either green skips the floor, and the foreman
+  writes which run it relied on in the round record's `Floor` "before"
+  line. Neither green: the foreman runs the floor as before the round.
+- The crew runs `swift test` once, after its change, and the web floor
+  when its change touches `Web/`, then pushes. The crew does not run the
+  Linux docker pipe: the pull request's `ci.yml` runs `linux-build`, which
+  compiles `Sources/` and `Tests/` on Linux, so that check is not the
+  crew's to run again. The bench stays local, on a scratch daemon, and
+  runs only when the round touches the output path, as `plan.md`'s floor
+  says.
+- After the crew, the foreman does not rerun a check the crew already ran
+  or a check the pull request's CI already proves. It reads the diff and
+  sorts the paths into the Authority table below, then waits on
+  `gh pr checks <N>` for the crew's head sha; it writes the round record
+  and `STATE.md` while that check runs, and pushes them once the check is
+  green. A red check is the round's gap, and the one correction goes to
+  the crew, like any other gap.
 
 ## Authority
 
@@ -157,15 +221,20 @@ and the five sections in this order. What each parser takes:
   continuation. Its slugs are the backticked kebab words on its first line
   before the first comma, so ``- `a` (1) and `b` (2), round 1, `9784fd2`.``
   yields `a` and `b` and not the sha; `round N` and `PR #N` come from the
-  whole first line. Prose under a heading (`None.`) names no task. A slug
-  in two sections keeps the state a reader needs most, `failed` over
-  `pending` over `done`, at its first position. The fleet view lists every
-  task that is not done and the first two done ones under the goal.
+  whole first line. The foreman writes `, PR #N.` at the end of the
+  item's first line when the pull request opens ("The pull request"), so
+  a running item already names it. Prose under a heading (`None.`) names
+  no task. A slug in two sections keeps the state a reader needs most,
+  `failed` over `pending` over `done`, at its first position. The fleet
+  view lists every task that is not done and the first two done ones
+  under the goal.
 
 ### The round record
 
 Write `<slug>/rounds/NNN.md` with this shape. Three-digit number, one file per
-round, never rewritten after the round ends.
+round, never rewritten after the round ends. `Result:` names the pull
+request the foreman opened before the round, `PR #N`, from the queue line
+("The pull request"), so the record names it when it is written.
 
 ```markdown
 # Round NNN: <queue item>
@@ -208,9 +277,12 @@ When `GET /api/archives/<id>/cost` answers `hasBill: false` or 404, the
 line reads `- Cost: none recorded (<reason>)` with the reason the route
 gave.
 
-Archive the session, then read `GET /api/archives/<id>/cost` for every
-session the record's `Sessions:` line names and write one `- Cost:` line
-per session, in that order, under the record's header.
+Archive the session, then run `kitterm archive cost <id> --line` for
+every session the record's `Sessions:` line names and paste its output as
+one `- Cost:` line per session, in that order, under the record's header.
+The command reads the archive's transcript under `~/.kitterm` with no
+daemon and prints the line above, or `- Cost: none recorded (<reason>)`;
+`--json` prints the bill as `GET /api/archives/<id>/cost` answers it.
 
 Two parsers read the record:
 
@@ -243,6 +315,7 @@ Two parsers read the record:
 | `goal` | goal slug | foreman |
 | `round` | round number | foreman |
 | `task` | queue item slug | foreman |
+| `pr` | pull request number, the one the queue line names | foreman |
 | `resumed-from` | archive id, or the id the pane held before an epoch change | foreman, on a respawn |
 
 Filter the fleet by any label: `list_sessions label="goal:<slug>"`.
@@ -267,7 +340,8 @@ the crew ends it.
   `HTTPAPIHandler.swift`.
 - Commit after every round. The record, the state, and any fact go into
   one commit on the goal's branch before the foreman reports the digest. A
-  record that sits uncommitted is not written.
+  record that sits uncommitted is not written. The foreman pushes the
+  branch after the commit, so the pull request carries the record.
 
 ## One foreman for every project
 
@@ -292,8 +366,9 @@ plane; the foreman rebuilds its view from them and from the daemon.
    toward the cap of three. Start the runnable goal with the oldest
    `Updated` date first.
 3. **Delegate.** Run "One round" of the foreman's own procedure, in its
-   skill, for that goal. The crew session does the work. The foreman
-   reads, routes, verifies, and records.
+   skill, for that goal. The branch and the draft pull request exist
+   before the crew is spawned ("The pull request"). The crew session does
+   the work. The foreman reads, routes, verifies, and records.
 4. **Monitor.** Hold one `wait_for_events` for the whole daemon. On each
    scan compare `heldSince` with now: archive a crew session that sits at an
    empty prompt one hour past `completed`. Respawn a crew once after an

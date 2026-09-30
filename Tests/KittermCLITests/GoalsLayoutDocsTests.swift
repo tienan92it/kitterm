@@ -133,11 +133,18 @@ final class GoalsLayoutDocsTests: XCTestCase {
             "- Cost: $D · Nk in (C% cached) · Nk out · Hh Mm"
         ),
         (
-            "the foreman archives the session, then reads the archive's cost route and writes one `- Cost:` line per session",
+            // Chartered by `foreman-flow` `goal.md` condition 4 (round 4): the
+            // sentence read the route, `Archive the session, then read
+            // `GET /api/archives/<id>/cost` for every session the record's
+            // `Sessions:` line names and write one `- Cost:` line per session,
+            // in that order, under the record's header.`; now the command
+            // writes the line, and the intent (archive first, one line per
+            // session, in `Sessions:` order, under the header) is kept.
+            "the foreman archives the session, then runs `kitterm archive cost <id> --line` and pastes one `- Cost:` line per session",
             """
-            Archive the session, then read `GET /api/archives/<id>/cost` for every
-            session the record's `Sessions:` line names and write one `- Cost:`
-            line per session, in that order, under the record's header.
+            Archive the session, then run `kitterm archive cost <id> --line` for
+            every session the record's `Sessions:` line names and paste its output as
+            one `- Cost:` line per session, in that order, under the record's header.
             """
         ),
         (

@@ -543,6 +543,13 @@ export function roundOf(row: ModelRow): number | null {
   return wholeNumber(row.labels?.round);
 }
 
+/** The `pr:` label as a whole number, the pull request the foreman opened
+ * before the round (`LOOP.md`, "The pull request"); null when absent or
+ * not one. */
+export function prOf(row: ModelRow): number | null {
+  return wholeNumber(row.labels?.pr);
+}
+
 function statusWord(status: string | undefined): string {
   return (status ?? "").trim().toLowerCase();
 }
@@ -1571,28 +1578,66 @@ export function taskFacts(task: TaskSummary): string[] {
  * `STATE.md` says: the session is what the reader can open, and a task
  * that runs again is being retried. The listed rows with that label nest
  * under the task; `rest` is every other listed row, which stays under the
- * goal's line as before. A row whose `task:` names no listed slug stays in
- * `rest` too, because a line the reader cannot find in `STATE.md` would
- * be a fifth kind of state. A summary with no `tasks` prints no task and
+ * goal's line as before. A summary with no `tasks` prints no task and
  * changes nothing: eleven of the thirteen goals on the machine this was
  * built on have an empty queue, and their lines must read as they did.
+ *
+ * A running round's queue line lives on its branch, and the daemon reads
+ * `STATE.md` from the main checkout, so the task can be absent from
+ * `tasks` while its crew runs (`foreman-flow`, capability 2). A session
+ * in `owned` that carries `goal:<the goal's slug>`, `task:<slug>` and
+ * `pr:<N>` for a slug `STATE.md` does not list is then a task line of its
+ * own, first, `working`, with the label's pull request and the `round:`
+ * label on its tooltip; its cost is the dash, because no record exists
+ * yet. A listed task whose line names no pull request takes the label's;
+ * one with its own keeps it. A session with `task:` and no `pr:`, or
+ * `pr:` and no `task:`, adds no line and stays in `rest` as before.
  */
 export function taskLines<R extends ModelRow>(summary: KnowledgeSummary, listed: R[], owned: R[]): TaskLines<R> {
   const goal = summary.slug;
   const tasks: TaskLine<R>[] = [];
   const claimed = new Set<string>();
+  const inGoal = (row: R): boolean => goal !== undefined && goalOf(row) === goal;
   for (const task of summary.tasks ?? []) {
-    const under = (row: R): boolean => goalOf(row) === goal && taskOf(row) === task.slug;
-    const live = goal !== undefined && owned.some(under);
-    const rows = goal === undefined ? [] : sortInGroup(listed.filter(under));
+    const under = (row: R): boolean => inGoal(row) && taskOf(row) === task.slug;
+    const live = owned.some(under);
+    const rows = sortInGroup(listed.filter(under));
     for (const row of rows) claimed.add(row.id);
     const state: TaskState = live ? "working" : task.state;
-    const line: TaskLine<R> = { slug: task.slug, state, tag: taskTag(state), facts: taskFacts(task), rows };
+    // The label's pull request fills in for a line that names none.
+    const pr = typeof task.pr === "number" ? task.pr : labelledPr(owned.filter(under));
+    const line: TaskLine<R> = { slug: task.slug, state, tag: taskTag(state), facts: taskFacts(pr === null ? task : { ...task, pr }), rows };
     if (typeof task.round === "number") line.round = task.round;
-    if (typeof task.pr === "number") line.pr = task.pr;
+    if (pr !== null) line.pr = pr;
     tasks.push(line);
   }
-  return { tasks, rest: listed.filter((row) => !claimed.has(row.id)) };
+  const listedSlugs = new Set(tasks.map((t) => t.slug));
+  const labelled: TaskLine<R>[] = [];
+  for (const row of owned) {
+    const slug = taskOf(row);
+    const pr = prOf(row);
+    if (!inGoal(row) || slug === null || pr === null || listedSlugs.has(slug)) continue;
+    listedSlugs.add(slug);
+    const under = (r: R): boolean => inGoal(r) && taskOf(r) === slug;
+    const rows = sortInGroup(listed.filter(under));
+    for (const r of rows) claimed.add(r.id);
+    const task: TaskSummary = { slug, state: "pending", pr };
+    const round = roundOf(row);
+    if (round !== null) task.round = round;
+    const line: TaskLine<R> = { slug, state: "working", tag: taskTag("working"), facts: taskFacts(task), rows, pr };
+    if (round !== null) line.round = round;
+    labelled.push(line);
+  }
+  return { tasks: [...labelled, ...tasks], rest: listed.filter((row) => !claimed.has(row.id)) };
+}
+
+/** The first `pr:` label among `rows`, or null when none carries one. */
+function labelledPr(rows: readonly ModelRow[]): number | null {
+  for (const row of rows) {
+    const pr = prOf(row);
+    if (pr !== null) return pr;
+  }
+  return null;
 }
 
 /**
