@@ -214,6 +214,23 @@ crashes after the exec.
   `AGENTS.md`, `docs/foreman.md`, `docs/architecture.md`, `examples/`, and the embedded
   strings for a path of the old flat layout (a goal file or `rounds/` directly under
   `docs/goals/`, or a `done/` folder) and fails on any
+- `kitterm archive cost <id> [--line | --json]` (`ArchiveCommand.swift`) reads an
+  archived session's bill with no daemon: it opens the archive's join under
+  `~/.kitterm/archive` (`KITTERM_STATE_DIR` moves it) and reads the transcript with
+  the same readers `GoalLedger` uses, so the two never disagree on a number.
+  `--line` (the default) prints the round record's `- Cost:` line in `LOOP.md`'s
+  shape, or `- Cost: none recorded (<reason>)` when the transcript holds no bill;
+  `--json` prints the bill as `GET /api/archives/<id>/cost` answers it. The line
+  still prints on stdout either way; the exit code is 0 for a bill or a transcript
+  with no bill, and 1, with the id and the path on stderr, for an id that is not a
+  UUID, a missing archive, a missing transcript join, or a transcript that does not
+  open. The foreman archives the session, then runs this command for every session
+  the round record's `Sessions:` line names and pastes one `- Cost:` line per
+  session, in that order, under the record's header
+- A chore's line lives in its own file, `docs/goals/chores/<ISO date>-<slug>.md`,
+  one file per chore so two chore pull requests opened the same day merge in
+  either order with no conflict; `CHORES.md` keeps the lines written before
+  2026-09-30 as history and gains no new line
 
 ## Coding standards
 
