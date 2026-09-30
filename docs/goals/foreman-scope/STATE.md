@@ -1,15 +1,16 @@
 # STATE: foreman-scope
 
-- Status: active
+- Status: waiting
 - Round: 0 of 3 in this budget (first budget)
 - Rounds total: 0
-- Last floor: green | red (<check>) (<ISO date>, round <n>)
-- Updated: <ISO date>
+- Last floor: green (2026-09-30, main at 6f9f395: swift test 963, ci.yml green)
+- Updated: 2026-09-30, written by the foreman on the human's word
 
 ## Queue
 
-1. `<item>` (capability 1)
-2. `<item>` (capability 2)
+1. `the-check` (capability 1).
+2. `the-catch-up` (capability 2).
+3. `scope-and-upkeep-in-the-texts` (capability 3).
 
 ## Failures
 
@@ -23,9 +24,16 @@ None.
 
 None.
 
+## Direction
+
+2026-09-30: the human asked that a foreman manage the projects in its
+scope, and that a new foreman sync up with the work of the one before it.
+The foreman wrote the two handovers of 2026-09-25 down first
+(`corpus/01-two-handovers.md`). This package's draft PR, #179, opened
+before it was written. The goal stays `waiting` until the human merges it.
+
 ## Next action
 
-Round 1: `<item>` from `plan.md` row 1; proof: `<test or screenshot>`.
-Spawn one crew session in the repository root with labels
-`crew:foreman-scope`, `goal:foreman-scope`, `round:1`, `task:<item>`, and no
-input. Run the floor in the shell, start `claude`, and send the row.
+Waits on the human: review and merge PR #179. Then round 1: `the-check`,
+on the branch `foreman-scope/rounds` with its own draft PR, which carries
+all the goal's rounds.
