@@ -46,6 +46,7 @@ enum GoalsTemplates {
     /// `human-file-edits` (#166), `loop-and-skill` round 2 (092652221ab1),
     /// round 1 (a5592bd), 7f30556 (#139), 41b6a76 (#113) and ac20d04 (#111).
     static let loopHistory: [String] = [
+        "d9f708a5b8b7e3548fc2f694a6009e4da0ac786af1dcd9be5d63d8f57fc909a7",
         "2caccfb9969d69be4447ee18488230bdfba02cee2c82da4d4278d614a7ce2b82",
         "a7aae8079cf2840429ff900add915e7cdd90ce10aef3e649886a0c195ef76127",
         "8df2ab62963ad262c015a9d98d6d00d89979710f862bd1156ce3807b2f9fcdcd",
@@ -172,7 +173,7 @@ enum GoalsTemplates {
         `git symbolic-ref --short refs/remotes/origin/HEAD` prints
         (`origin/develop`, for example).
 
-        - A goal's branch is `<slug>/rounds`. A chore's branch is `chore/<slug>`.
+        - A goal's branch is `goal/<slug>`. A chore's branch is `chore/<slug>`.
           The foreman cuts the branch from `origin/<base>` in a worktree of its own.
         - Before it spawns the crew, the foreman commits the queue line, pushes
           the branch, and opens a draft pull request with
@@ -194,6 +195,10 @@ enum GoalsTemplates {
           requests made the base branch red on 2026-09-28: one added a CI check,
           the other added a file the check rejects. The rebase makes each pull
           request's CI meet every new check before the pull request merges.
+        - When the human merges a pull request, the foreman deletes its branch
+          with `git push origin --delete <branch>`, then removes the worktree with
+          `git worktree remove` and the local branch with `git branch -D`. A
+          merged branch left on the remote reads as open work.
         - The foreman cannot merge: the auto-mode classifier refuses
           `gh pr merge`. The human merges, once per goal, after the foreman has
           committed the package and marked the pull request ready.

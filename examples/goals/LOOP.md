@@ -91,7 +91,7 @@ names, or, when `plan.md` names none, the one
 `git symbolic-ref --short refs/remotes/origin/HEAD` prints
 (`origin/develop`, for example).
 
-- A goal's branch is `<slug>/rounds`. A chore's branch is `chore/<slug>`.
+- A goal's branch is `goal/<slug>`. A chore's branch is `chore/<slug>`.
   The foreman cuts the branch from `origin/<base>` in a worktree of its own.
 - Before it spawns the crew, the foreman commits the queue line, pushes
   the branch, and opens a draft pull request with
@@ -113,6 +113,10 @@ names, or, when `plan.md` names none, the one
   requests made the base branch red on 2026-09-28: one added a CI check,
   the other added a file the check rejects. The rebase makes each pull
   request's CI meet every new check before the pull request merges.
+- When the human merges a pull request, the foreman deletes its branch
+  with `git push origin --delete <branch>`, then removes the worktree with
+  `git worktree remove` and the local branch with `git branch -D`. A
+  merged branch left on the remote reads as open work.
 - The foreman cannot merge: the auto-mode classifier refuses
   `gh pr merge`. The human merges, once per goal, after the foreman has
   committed the package and marked the pull request ready.

@@ -217,7 +217,7 @@ case: it spends the budget and it gets a record.
    opens before the crew starts (`LOOP.md`, "The pull request"). Every
    pull request merges into the base branch (`LOOP.md`, "The pull
    request", names it). On the goal's first round, cut the branch
-   `<slug>/rounds` from `origin/<base>` in a worktree of your own
+   `goal/<slug>` from `origin/<base>` in a worktree of your own
    (`git worktree add`), commit the queue line in `STATE.md`, push the
    branch, and open a draft pull request:
 
@@ -439,6 +439,10 @@ Act on each event, then run "Scan":
   a CI check and the other added a file the check rejects; the rebase
   makes each pull request's CI meet every new check before the pull
   request merges.
+- A merge of a goal's or a chore's pull request: delete its branch with
+  `git push origin --delete <branch>`, then remove the worktree with
+  `git worktree remove` and the local branch with `git branch -D`. A
+  merged branch left on the remote reads as open work.
 - `session.lingered`, and on every scan: compare `heldSince` with now.
   Archive a crew session that sits at an empty prompt one hour past
   `completed`. The linger clock holds a session with `claude` in the

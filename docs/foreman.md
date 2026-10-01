@@ -263,7 +263,7 @@ every scope", in one sentence each:
    no blocking proposal runs, at most one round per goal and three crew
    sessions across all projects, the oldest `Updated` date first.
 5. **Delegate.** Before the crew starts, the foreman cuts the goal's branch
-   `<slug>/rounds` (a chore's is `chore/<slug>`) in a worktree, commits the
+   `goal/<slug>` (a chore's is `chore/<slug>`) in a worktree, commits the
    queue line, pushes, and opens a draft pull request; the number goes on
    the queue line as `, PR #N.` and on the crew session as `pr:<N>`. It
    then runs `LOOP.md`'s "One round" in one crew session with the labels
@@ -284,7 +284,8 @@ every scope", in one sentence each:
    all its rounds; the foreman runs `gh pr ready` when the goal is done,
    rebases every open branch onto `main` after any merge
    (`--force-with-lease`, the foreman's one force-push), and never merges:
-   the human merges, once per goal.
+   the human merges, once per goal. After the merge, the foreman deletes
+   the branch on the remote, its worktree, and the local branch.
 6. **Monitor.** One `wait_for_events` watches the whole daemon; an idle crew
    session is archived one hour past `completed`, and a crew lost to an
    `epoch` change is respawned once.
