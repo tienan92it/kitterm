@@ -56,6 +56,12 @@ final class RespawnResyncTests: XCTestCase {
     /// The reported case: `kitterm restart` with a pane open. The pane's
     /// count is small, the new shell prints its `Last login:` line and its
     /// prompt, and the count names a byte in the middle of them.
+    ///
+    /// Before the fix this test failed only when the new shell printed at
+    /// least the counted bytes before the handler wired the session; with
+    /// fewer, the offset was past the head and the daemon sent a resync.
+    /// `testAGoneSessionAtOffsetZeroGetsAResync` is the test that failed
+    /// before the fix on every run.
     func testARestartRespawnReplaysTheNewShellFromItsStart() async throws {
         let before = PaneClient(port: port)
         before.connect(session: nil, since: nil)

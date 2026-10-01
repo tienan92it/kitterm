@@ -87,7 +87,7 @@ reconnect, it names the offset, and the daemon replays exactly the gap.
 
 ![Reconnect and exact-gap replay](diagrams/reconnect-sequence.svg)
 
-The flow has three parts.
+The flow has four parts.
 
 1. **Live.** `PtySession` appends every output byte to the ring at an absolute offset.
    The daemon batches the bytes to the client (about 2 ms or 64 KB). The client counts

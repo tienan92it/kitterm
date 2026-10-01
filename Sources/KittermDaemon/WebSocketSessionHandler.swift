@@ -182,7 +182,7 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         sendSessionId(id, context: context)
         sendRole(.controller, context: context)
         sendMeta(context: context, session: session)
-        wire(session: session, context: context)
+        wire(session: session, context: context, freshShell: false)
         registerAsController(context: context)
     }
 
@@ -332,11 +332,12 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
     }
 
     /// `freshShell` is true when `spawnNew` made the session for this
-    /// connection, false when the connection adopted a live one.
+    /// connection, false when the connection adopted a live one. It has no
+    /// default, so every spawn path must choose.
     private func wire(
         session: PtySession,
         context: ChannelHandlerContext,
-        freshShell: Bool = false
+        freshShell: Bool
     ) {
         applyWriteWatermarks(context: context, role: .controller)
         let batcher = OutputBatcher(eventLoop: context.eventLoop) { [weak self, weak context] buffer in

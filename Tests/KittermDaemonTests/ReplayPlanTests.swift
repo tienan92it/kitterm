@@ -50,6 +50,19 @@ final class ReplayPlanTests: XCTestCase {
         XCTAssertFalse(plan.forceResync)
     }
 
+    func testNewTabWithASinceOffsetIgnoresIt() {
+        // A fresh spawn with no session in the request and an offset: the
+        // offset counts no stream of this shell, and the screen is empty.
+        let plan = WebSocketSessionHandler.resolveReplay(
+            freshShell: true,
+            reattaching: false,
+            sinceOffset: 4096,
+            freshClient: false
+        )
+        XCTAssertEqual(plan.request, .fromDetachPoint)
+        XCTAssertFalse(plan.forceResync)
+    }
+
     func testLiveReattachHonoursSinceOffset() {
         // Transient disconnect (sleep/wake, reload): the session is alive,
         // so the client's offset drives an exact gap replay.
