@@ -8,9 +8,9 @@
 
 ## Queue
 
-1. `the-check` (capability 1).
-2. `the-catch-up` (capability 2).
-3. `scope-and-upkeep-in-the-texts` (capability 3).
+1. `the-check` (capability 1), PR #180.
+2. `the-catch-up` (capability 2), PR #180.
+3. `scope-and-upkeep-in-the-texts` (capability 3), PR #180.
 
 ## Failures
 
