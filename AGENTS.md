@@ -182,7 +182,11 @@ crashes after the exec.
   template when the file is byte for byte one of the template's shipped versions
   (`GoalsTemplates.loopHistory`, the SHA-256 of each; a change to the template appends
   the old hash, and `GoalsTemplatesTests` pins the current one) and refuses a file edited
-  by hand, a current file, and a symlink, with nothing written; `kitterm goal new <path> <slug>` writes `docs/goals/<slug>/` from the goal
+  by hand, a current file, and a symlink, with nothing written; `kitterm project init
+  --refresh --check <path>` writes nothing and prints `<path>: current|behind|edited`
+  instead (`GoalsTemplates.loopState`, the one comparison both share, so the two can
+  never disagree), exiting 0 for all three and 1 for a missing `LOOP.md`, a symlink, or
+  a root that is not a directory; `--check` needs `--refresh`; `kitterm goal new <path> <slug>` writes `docs/goals/<slug>/` from the goal
   template with the slug in `STATE.md` and refuses an existing folder; `kitterm goal
   list <path>` prints each goal folder's slug and status; `kitterm goal cost <path>
   [<slug>] [--json]` prints the ledger (`GoalLedger.swift`): per goal and per round,

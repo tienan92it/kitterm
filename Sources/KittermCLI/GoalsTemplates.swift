@@ -1,3 +1,6 @@
+import Foundation
+import KittermDaemon
+
 /// The templates `kitterm project init` and `kitterm goal new` write. Each
 /// constant is byte for byte the file of the same path under
 /// `examples/goals/`; `GoalsTemplatesTests` pins that, so the installed
@@ -52,6 +55,25 @@ enum GoalsTemplates {
         "34d7ceab34de1916f645df4f4ab28128cd3f4fc0bfa9644428482b78f09fb6b9",
         "d428fec3d6b8f8aca9b92e685e067943824b30039e96c8c0433bb15fec430292",
     ]
+
+    /// Where a project's `LOOP.md` stands against the template: `current`
+    /// (the template's own bytes), `behind` (an older shipped version —
+    /// `kitterm project init --refresh` would rewrite it), or `edited`
+    /// (neither — a refresh refuses it).
+    enum LoopState: String {
+        case current, behind, edited
+    }
+
+    /// Compare a `LOOP.md`'s bytes against the template and `loopHistory`.
+    /// `ProjectCommand.refreshLoop` and `ProjectCommand.checkLoop` both call
+    /// this, so the rewrite and the check can never disagree. Returns the
+    /// state and the SHA-256 of `data`, which a caller that rewrites the
+    /// file reports as the version it replaced.
+    static func loopState(of data: Data, history: [String] = loopHistory) -> (state: LoopState, hash: String) {
+        let hash = TokenStore.hash(String(decoding: data, as: UTF8.self))
+        guard data != Data(loop.utf8) else { return (.current, hash) }
+        return (history.contains(hash) ? .behind : .edited, hash)
+    }
 
     static let loop = #"""
         # LOOP
