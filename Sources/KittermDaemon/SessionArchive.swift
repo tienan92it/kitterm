@@ -153,9 +153,10 @@ public enum SessionArchive {
         }
     }
 
-    /// Every `archive.json` without its command and mark arrays. Archive
-    /// queue only.
-    private static func readRecords() -> [[String: Any]] {
+    /// Every `archive.json` without its command and mark arrays, in no
+    /// order. A synchronous read: the daemon calls it on the archive queue
+    /// only, and `kitterm foreman catch-up` on the CLI's own thread.
+    public static func readRecords() -> [[String: Any]] {
         let base = DaemonPaths.archiveDirectory
         let dirs = (try? FileManager.default.contentsOfDirectory(
             at: base, includingPropertiesForKeys: nil

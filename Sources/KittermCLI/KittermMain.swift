@@ -71,6 +71,8 @@ enum KittermMain {
                 try GoalCommand.run(args.dropFirst())
             case "archive":
                 try ArchiveCommand.run(args.dropFirst())
+            case "foreman":
+                try ForemanCommand.run(args.dropFirst())
             case "skills":
                 try SkillsCommand.run(args.dropFirst())
             case "statusline":
@@ -203,6 +205,9 @@ enum KittermMain {
                                       # an archived session's bill, no daemon needed:
                                       # the round record's `- Cost:` line, or the
                                       # bill as GET /api/archives/<id>/cost gives it
+              kitterm foreman catch-up [--scope PATH] [--json]
+                                      # what a new foreman reads first, for one
+                                      # scope (default: the working directory)
               kitterm skills install [--dir DIR] | list
                                       # write the foreman skills into ~/.claude/skills
               kitterm statusline install [--dir DIR] | print
@@ -280,6 +285,17 @@ enum KittermMain {
             added, files changed from git, the decision and the PR, with
             totals per goal; --json prints the same numbers unrounded. None
             needs the project registered.
+
+            foreman catch-up prints the work of the foreman before this one,
+            for the projects whose root is the scope directory or under it:
+            the predecessor (the newest live or archived session labelled
+            crew:foreman whose scope: label, else whose cwd, is in the scope)
+            with its note and the last assistant message of its transcript;
+            each project's goals that are not done; the live sessions with a
+            goal: label; and the worktrees under .claude/worktrees/. It
+            prints nothing from outside the scope and writes nothing. The
+            files need no daemon; when the daemon does not answer, one line
+            says so and the live sessions are left out.
 
             skills install writes the reference foreman skills under
             examples/foreman/ (foreman-loop, review-crew, triage) to
@@ -1622,7 +1638,7 @@ enum KittermMain {
         return nil
     }
 
-    private static func readPort() -> Int? {
+    static func readPort() -> Int? {
         guard let text = try? String(contentsOf: DaemonPaths.portFile, encoding: .utf8) else {
             return nil
         }

@@ -263,7 +263,7 @@ public struct TranscriptBill: Codable, Equatable, Sendable {
         }
     }
 
-    private static func contains(_ line: ArraySlice<UInt8>, _ needle: [UInt8]) -> Bool {
+    static func contains(_ line: ArraySlice<UInt8>, _ needle: [UInt8]) -> Bool {
         guard line.count >= needle.count else { return false }
         return line.withUnsafeBufferPointer { haystack in
             needle.withUnsafeBufferPointer { pattern in

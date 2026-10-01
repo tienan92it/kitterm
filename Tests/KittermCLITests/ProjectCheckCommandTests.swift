@@ -115,11 +115,27 @@ final class ProjectCheckCommandTests: XCTestCase {
 
     func testCheckExitsOneForAMissingLOOPFile() throws {
         let empty = try dir("empty")
+        let root = ProjectStore.canonicalRoot(empty)
         XCTAssertThrowsError(try run(["init", empty, "--refresh", "--check"])) { error in
-            XCTAssertEqual(message(error), "no docs/goals/LOOP.md to check (nothing written)")
+            XCTAssertEqual(message(error), "no \(root)/docs/goals/LOOP.md to check (nothing written)")
         }
         XCTAssertFalse(FileManager.default.fileExists(atPath: empty + "/docs"), "nothing written")
         XCTAssertEqual(ProjectStore.load(), [])
+    }
+
+    /// The message names the absolute path of the file the check looked
+    /// for, under the registered project's own knowledge directory, so a
+    /// foreman that checks several projects reads which file is missing.
+    func testCheckNamesTheAbsolutePathOfAMissingLOOPFile() throws {
+        let project = try dir("repo")
+        try run(["add", project, "--knowledge", "goals-pkg"])
+        let root = ProjectStore.canonicalRoot(project)
+
+        XCTAssertThrowsError(try run(["init", project, "--refresh", "--check"])) { error in
+            XCTAssertEqual(message(error), "no \(root)/goals-pkg/LOOP.md to check (nothing written)")
+            XCTAssertTrue(message(error).hasPrefix("no /"), "an absolute path: \(message(error))")
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: project + "/goals-pkg"), "nothing written")
     }
 
     func testCheckExitsOneForASymlinkedLOOPFile() throws {

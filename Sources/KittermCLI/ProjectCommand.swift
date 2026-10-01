@@ -207,7 +207,7 @@ enum ProjectCommand {
         try refuseSymlinks(on: [path], under: directory, root: root)
         let file = root + "/" + directory + "/" + path
         guard let existing = try? Data(contentsOf: URL(fileURLWithPath: file)) else {
-            throw CLIError.usage("no \(directory)/\(path) to check (nothing written)")
+            throw CLIError.usage("no \(file) to check (nothing written)")
         }
         out("\(root): \(GoalsTemplates.loopState(of: existing, history: history).state.rawValue)")
     }

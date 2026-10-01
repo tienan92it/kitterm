@@ -317,7 +317,7 @@ public final class ProjectStore: @unchecked Sendable {
     }
 
     /// Is `root` the cwd itself or one of its ancestors?
-    static func isPrefix(_ root: String, of cwd: String) -> Bool {
+    public static func isPrefix(_ root: String, of cwd: String) -> Bool {
         if root == cwd { return true }
         if root == "/" { return cwd.hasPrefix("/") }
         return cwd.hasPrefix(root + "/")
