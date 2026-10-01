@@ -1,0 +1,1 @@
+- 2026-10-02 · A shell that replaces a gone session on reconnect ignores the pane's stale `since` offset, replays from its start and forces a resync (commit 3955dc2 of the stale branch `claude/kitterm-shell-resume-restart-jvcwt9`, rebased)
