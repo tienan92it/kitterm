@@ -184,6 +184,12 @@ A foreman runs one loop.
      Read `/commands/<index>/output` (`read_output`). Report it at once when
      it is the crew's floor or a command the round depends on; otherwise let
      the crew handle it. Never act for the crew.
+   - `agent.join-mismatch` — a hook named a session that holds another
+     agent's join, from a `cwd` outside that session's project. The daemon
+     kept the join and the status. The data names the stranger (`sessionId`,
+     `cwd`, `transcript`): a process that inherited the pane's
+     `KITTERM_SESSION_ID`. Report it once; the stranger's own state is on no
+     row.
    - `completed` — verify the work, then move the session to review or end it.
      A correction goes in the same way: read first, then `send_input`.
 

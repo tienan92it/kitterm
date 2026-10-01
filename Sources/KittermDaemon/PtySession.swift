@@ -117,6 +117,15 @@ public final class PtySession: @unchecked Sendable {
     /// The Claude Code session id and transcript path the hooks carry
     /// (`AgentJoin`); nil for a session that never ran `claude`.
     private var agentJoinStorage: AgentJoin?
+    /// The Claude Code sessions whose hooks this pane refused
+    /// (`admitAgentJoin`), so the feed hears each one once. Past
+    /// `maxRefusedJoins` the set starts over. Not carried through a live
+    /// upgrade: the successor's first refusal of a stranger is one more event.
+    private var refusedJoinIDs: Set<String> = []
+    static let maxRefusedJoins = 32
+    /// The last verdict of `ownsHook(fromCwd:)`, with the two paths and the
+    /// store generation it was judged under.
+    private var hookOwnerCache: (hookCwd: String, paneCwd: String, generation: Int, owned: Bool)?
     /// Pushes a rename to the attached controller so an open tab follows a
     /// foreman's rename without a reload. Set at attach, cleared at detach.
     private var onTitle: ((String) -> Void)?
@@ -1621,6 +1630,71 @@ public final class PtySession: @unchecked Sendable {
         stateLock.withLock {
             if agentJoinStorage != join { agentJoinStorage = join }
         }
+    }
+
+    /// Record the join a hook carried, unless the hook is a stranger's.
+    ///
+    /// The daemon exports `KITTERM_SESSION_ID` into every shell, and a
+    /// process that inherits it can later host a conversation that belongs
+    /// to another pane (a Claude Code background process, issue #181). Its
+    /// hooks name this pane. A hook is a stranger's when this pane already
+    /// holds a join with another `session_id` and the payload's `cwd` is
+    /// outside the pane's project (`ownsHook`). The pane then keeps its
+    /// join, and the caller records no status and holds no approval.
+    ///
+    /// Every other hook is accepted as before: the first join (the pane has
+    /// no owner yet, so there is nothing to protect), the same `session_id`
+    /// again, a second `claude` whose `cwd` is in the pane's project, and a
+    /// payload with no usable `cwd`, which cannot be judged. The same or the
+    /// first `session_id` costs one lock and one compare. Called off the
+    /// event loop, because `ownsHook` can resolve a project.
+    public func admitAgentJoin(_ join: AgentJoin, cwd: String?) -> AgentJoinAdmission {
+        guard let held = agentJoin, held.sessionID != join.sessionID,
+              let cwd, !ownsHook(fromCwd: cwd)
+        else {
+            recordAgentJoin(join)
+            return .accepted
+        }
+        let first = stateLock.withLock {
+            if refusedJoinIDs.count >= Self.maxRefusedJoins { refusedJoinIDs = [] }
+            return refusedJoinIDs.insert(join.sessionID).inserted
+        }
+        return .refused(first: first)
+    }
+
+    /// Does a hook sent from `hookCwd` belong to this pane? Yes when the
+    /// path resolves to the project the pane's own cwd resolves to (the
+    /// same root, so a worktree counts); for a pane outside every project,
+    /// yes when the path is the pane's cwd or under it. Both sides use the
+    /// cwd resolution alone, with no `project:` label override. The hook's
+    /// path is made real first, because the kernel reports the pane's cwd as
+    /// a real path.
+    ///
+    /// The last verdict is kept with what it was judged under. A stranger's
+    /// hooks repeat one cwd, so after the first each costs a `proc_pidinfo`,
+    /// a `stat` of the projects file and three compares; the `realpath` and
+    /// the `.git` walk run again only when a path or the file moved.
+    func ownsHook(fromCwd hookCwd: String) -> Bool {
+        let paneCwd = liveCwd
+        let generation = ProjectStore.shared.generation
+        let cached: Bool? = stateLock.withLock {
+            guard let last = hookOwnerCache, last.hookCwd == hookCwd, last.paneCwd == paneCwd,
+                  last.generation == generation
+            else { return nil }
+            return last.owned
+        }
+        if let cached { return cached }
+        let realCwd = ProjectStore.canonicalRoot(hookCwd)
+        let owned: Bool
+        if let own = project(forCwd: paneCwd) {
+            owned = ProjectStore.shared.resolve(cwd: realCwd)?.root == own.root
+        } else {
+            owned = ProjectStore.isPrefix(ProjectStore.normalize(paneCwd), of: realCwd)
+        }
+        stateLock.withLock {
+            hookOwnerCache = (hookCwd: hookCwd, paneCwd: paneCwd, generation: generation, owned: owned)
+        }
+        return owned
     }
 
     /// Rename the session, pushing the new name to the attached controller and
