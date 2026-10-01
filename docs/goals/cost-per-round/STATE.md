@@ -8,7 +8,7 @@
 
 ## Queue
 
-1. `the-join-checks-its-pane` (issue #181). A hook whose payload `cwd`
+1. `the-join-checks-its-pane` (issue #181), PR #182. A hook whose payload `cwd`
    lies outside the project of the pane it names, while that pane holds
    another live join, no longer replaces the join or the agent status;
    the feed records the refusal as `agent.join-mismatch`. A process that
