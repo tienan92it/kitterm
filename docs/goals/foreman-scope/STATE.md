@@ -1,14 +1,14 @@
 # STATE: foreman-scope
 
-- Status: active
-- Round: 2 of 3 in this budget (first budget)
-- Rounds total: 2
-- Last floor: green (2026-10-01, round 2 after: swift test 997, PR #180 CI green)
-- Updated: 2026-10-01, round 2 closed
+- Status: done
+- Round: 3 of 3 in this budget (first budget)
+- Rounds total: 3
+- Last floor: green (2026-10-01, round 3 after: swift test 1005, PR #180 CI green)
+- Updated: 2026-10-01, round 3 closed, done; PR #180 ready
 
 ## Queue
 
-1. `scope-and-upkeep-in-the-texts` (capability 3), PR #180.
+Empty. All three capabilities in `plan.md` are done.
 
 ## Failures
 
@@ -20,6 +20,9 @@ None.
 
 ## Done
 
+- `scope-and-upkeep-in-the-texts` (capability 3), round 3, PR #180. See
+  `rounds/003.md`. One foreman per scope, the start step and the upkeep
+  step are in the skill and `LOOP.md`; `scope` is a reserved label.
 - `the-catch-up` (capability 2), round 2, PR #180. See `rounds/002.md`.
   `kitterm foreman catch-up` prints one scope's handover and nothing
   from another scope.
@@ -38,5 +41,8 @@ PR #179 on 2026-10-01.
 
 ## Next action
 
-Round 3: `scope-and-upkeep-in-the-texts`, with the label scheme from
-round 2's gap: every foreman takes `crew:foreman` and `scope:<path>`.
+None. The five completion conditions hold on PR #180. After the human
+merges it: release, `kitterm skills install`, and relabel each foreman's
+pane `crew:foreman` with `scope:<its workspace>`. The NgheNhanTrading
+foreman then runs the start and upkeep steps in its own scope. To
+reopen, set `Status: active` with a new queue.
