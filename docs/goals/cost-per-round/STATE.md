@@ -1,14 +1,18 @@
 # STATE: cost-per-round
 
-- Status: done
+- Status: active
 - Round: 1 of 3 in this budget (second budget)
 - Rounds total: 5
 - Last floor: green (2026-09-25, round 5 after: swift test 895, KittermCLITests 133, Linux build)
-- Updated: 2026-09-25, round 5 closed, done
+- Updated: 2026-10-01, resumed for one round on the human's word (issue #181)
 
 ## Queue
 
-Empty. All four capabilities in `plan.md` are done.
+1. `the-join-checks-its-pane` (issue #181). A hook whose payload `cwd`
+   lies outside the project of the pane it names, while that pane holds
+   another live join, no longer replaces the join or the agent status;
+   the feed records the refusal as `agent.join-mismatch`. A process that
+   inherited another pane's `KITTERM_SESSION_ID` stops overwriting it.
 
 ## Failures
 
@@ -57,5 +61,4 @@ price table is added.
 
 ## Next action
 
-None. Merge the round's PR. To reopen, set `Status: active` with a new
-budget and queue.
+Round 6: `the-join-checks-its-pane`.
