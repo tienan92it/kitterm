@@ -1,10 +1,10 @@
 # STATE: foreman-scope
 
-- Status: waiting
+- Status: active
 - Round: 0 of 3 in this budget (first budget)
 - Rounds total: 0
 - Last floor: green (2026-09-30, main at 6f9f395: swift test 963, ci.yml green)
-- Updated: 2026-09-30, written by the foreman on the human's word
+- Updated: 2026-10-01, the human approved the package (PR #179)
 
 ## Queue
 
@@ -30,10 +30,9 @@ None.
 scope, and that a new foreman sync up with the work of the one before it.
 The foreman wrote the two handovers of 2026-09-25 down first
 (`corpus/01-two-handovers.md`). This package's draft PR, #179, opened
-before it was written. The goal stays `waiting` until the human merges it.
+before it was written. The goal stays `waiting` until the human merges it. The human merged
+PR #179 on 2026-10-01.
 
 ## Next action
 
-Waits on the human: review and merge PR #179. Then round 1: `the-check`,
-on the branch `foreman-scope/rounds` with its own draft PR, which carries
-all the goal's rounds.
+Round 1: `the-check`.
