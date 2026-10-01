@@ -1,16 +1,14 @@
 # STATE: foreman-scope
 
-- Status: waiting
-- Round: 0 of 3 in this budget (first budget)
-- Rounds total: 0
-- Last floor: green (2026-09-30, main at 6f9f395: swift test 963, ci.yml green)
-- Updated: 2026-09-30, written by the foreman on the human's word
+- Status: done
+- Round: 3 of 3 in this budget (first budget)
+- Rounds total: 3
+- Last floor: green (2026-10-01, round 3 after: swift test 1005, PR #180 CI green)
+- Updated: 2026-10-01, round 3 closed, done; PR #180 ready
 
 ## Queue
 
-1. `the-check` (capability 1).
-2. `the-catch-up` (capability 2).
-3. `scope-and-upkeep-in-the-texts` (capability 3).
+Empty. All three capabilities in `plan.md` are done.
 
 ## Failures
 
@@ -22,7 +20,15 @@ None.
 
 ## Done
 
-None.
+- `scope-and-upkeep-in-the-texts` (capability 3), round 3, PR #180. See
+  `rounds/003.md`. One foreman per scope, the start step and the upkeep
+  step are in the skill and `LOOP.md`; `scope` is a reserved label.
+- `the-catch-up` (capability 2), round 2, PR #180. See `rounds/002.md`.
+  `kitterm foreman catch-up` prints one scope's handover and nothing
+  from another scope.
+- `the-check` (capability 1), round 1, PR #180. See `rounds/001.md`.
+  `kitterm project init --refresh --check <root>` prints `current`,
+  `behind` or `edited` and writes nothing.
 
 ## Direction
 
@@ -30,10 +36,13 @@ None.
 scope, and that a new foreman sync up with the work of the one before it.
 The foreman wrote the two handovers of 2026-09-25 down first
 (`corpus/01-two-handovers.md`). This package's draft PR, #179, opened
-before it was written. The goal stays `waiting` until the human merges it.
+before it was written. The goal stays `waiting` until the human merges it. The human merged
+PR #179 on 2026-10-01.
 
 ## Next action
 
-Waits on the human: review and merge PR #179. Then round 1: `the-check`,
-on the branch `foreman-scope/rounds` with its own draft PR, which carries
-all the goal's rounds.
+None. The five completion conditions hold on PR #180. After the human
+merges it: release, `kitterm skills install`, and relabel each foreman's
+pane `crew:foreman` with `scope:<its workspace>`. The NgheNhanTrading
+foreman then runs the start and upkeep steps in its own scope. To
+reopen, set `Status: active` with a new queue.

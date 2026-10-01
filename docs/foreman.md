@@ -213,14 +213,20 @@ A foreman runs one loop.
    `kill_session` it, or `archive_session` it when its output is worth
    keeping. The 64 session ceiling is the only bound the daemon applies.
 
-## One foreman for every project
+## One foreman for every scope
 
-One foreman runs per daemon and serves every registered project. It keeps no
-state of its own: each project's `docs/goals/` package is the control plane,
-and the foreman rebuilds its view from the packages and from the daemon on
-every scan. `docs/goals/LOOP.md` in this repository is the source of the
-procedure; `examples/foreman/foreman-loop.md` is the same procedure as a
-skill, and `kitterm skills install` puts it in `~/.claude/skills/`.
+One foreman runs per scope and serves every project under it. A scope is a
+directory: the value of the foreman's own `scope:<path>` label, else its
+pane's cwd. The foreman acts only on a project whose root is the scope or
+lies under it, and never on a session outside the scope; another live
+foreman in a different scope is not a conflict, and one in the same scope,
+or in a scope that holds or sits inside this one, is the conflict a new
+foreman stops and tells the human about. It keeps no state of its own: each
+project's `docs/goals/` package is the control plane, and the foreman
+rebuilds its view from the packages and from the daemon on every scan.
+`docs/goals/LOOP.md` in this repository is the source of the procedure;
+`examples/foreman/foreman-loop.md` is the same procedure as a skill, and
+`kitterm skills install` puts it in `~/.claude/skills/`.
 
 The package has two files for the project and one folder per goal. `LOOP.md`
 holds the procedure and the authority tiers; `facts.md` holds repository
@@ -233,15 +239,24 @@ the failures, the proposals, the done items, and the next action, and
 nothing else. `kitterm goal new <path> <slug>` writes a goal folder from the
 template and refuses an existing one; `kitterm goal list <path>` prints every
 goal folder with its status. The steps are `LOOP.md`'s "One foreman for
-every project", in one sentence each:
+every scope", in one sentence each:
 
-1. **Scan.** The foreman lists the projects with `list_projects` and reads
-   every `docs/goals/<slug>/STATE.md`; a live session belongs to a goal by
-   its `goal:` and `round:` labels, never by its id.
-2. **Schedule.** Only an `active` goal with rounds left, no open round, and
+1. **Start.** The foreman runs `kitterm foreman catch-up` before anything
+   else, with `--scope` when its pane carries a `scope:` label; it reads
+   the predecessor's note and last message, then stops and tells the human
+   when a second live foreman already holds this scope.
+2. **Upkeep.** At start, and after a skills update, the foreman runs
+   `kitterm project init --refresh --check <root>` for every project in its
+   scope: a chore pull request for a `behind` one, a draft proposal pull
+   request for an `edited` one, and nothing for a `current` one.
+3. **Scan.** The foreman lists the projects with `list_projects`, keeps the
+   ones under its scope, and reads every `docs/goals/<slug>/STATE.md`; a
+   live session belongs to a goal by its `goal:` and `round:` labels, never
+   by its id.
+4. **Schedule.** Only an `active` goal with rounds left, no open round, and
    no blocking proposal runs, at most one round per goal and three crew
    sessions across all projects, the oldest `Updated` date first.
-3. **Delegate.** Before the crew starts, the foreman cuts the goal's branch
+5. **Delegate.** Before the crew starts, the foreman cuts the goal's branch
    `<slug>/rounds` (a chore's is `chore/<slug>`) in a worktree, commits the
    queue line, pushes, and opens a draft pull request; the number goes on
    the queue line as `, PR #N.` and on the crew session as `pr:<N>`. It
@@ -264,14 +279,14 @@ every project", in one sentence each:
    rebases every open branch onto `main` after any merge
    (`--force-with-lease`, the foreman's one force-push), and never merges:
    the human merges, once per goal.
-4. **Monitor.** One `wait_for_events` watches the whole daemon; an idle crew
+6. **Monitor.** One `wait_for_events` watches the whole daemon; an idle crew
    session is archived one hour past `completed`, and a crew lost to an
    `epoch` change is respawned once.
-5. **Report.** The foreman reports at once for `needs-input`,
+7. **Report.** The foreman reports at once for `needs-input`,
    `needs-approval`, a `propose` decision, a stop rule, or a failed round,
    and posts one digest with `post_note` after every round and on "status",
    in the shape `LOOP.md` gives under "Reports".
-6. **Direction.** After a goal spends its budget the foreman sets it to
+8. **Direction.** After a goal spends its budget the foreman sets it to
    `waiting` and takes the human's answer per goal: continue, redirect,
    stop, done, or new goal, as `LOOP.md` gives under "Direction".
 

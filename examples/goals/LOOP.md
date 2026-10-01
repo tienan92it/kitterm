@@ -26,9 +26,10 @@ so their shape is an interface.
 - **The human** owns rounds. The human writes `goal.md`, `plan.md`, this
   file, and `corpus/`. After each budget the human picks continue,
   redirect, or stop.
-- **The foreman** owns turns inside a round, for every project at once. One
-  foreman runs per daemon, in a kitterm pane named `foreman` with the label
-  `crew:foreman`, on the `foreman-loop` skill and the kitterm MCP tools. It
+- **The foreman** owns turns inside a round, for every project in its scope.
+  One foreman runs per scope, in a kitterm pane named `foreman` with the
+  labels `crew:foreman` and `scope:<path>`, on the `foreman-loop` skill and
+  the kitterm MCP tools. It
   delegates every round to a crew session, monitors all of them, and reports
   to the human. It writes `STATE.md`, `rounds/`, and appends to `facts.md`.
   It never edits product code and never answers a permission dialog for a
@@ -213,7 +214,7 @@ and the five sections in this order. What each parser takes:
 - `- Last floor:`: the value, whole (`KnowledgeSummary.lastFloor`).
 - `- Rounds total:` and `- Updated:`: no parser reads them. The template
   writes them, `GoalsLayoutDocsTests` pins the five bullets and the five
-  sections, and "One foreman for every project" orders the schedule by
+  sections, and "One foreman for every scope" orders the schedule by
   `Updated`.
 - `## Next action`: the first paragraph, capped at 512 bytes
   (`KnowledgeSummary.nextAction`).
@@ -317,6 +318,7 @@ Two parsers read the record:
 | Key | Value | Set by |
 |---|---|---|
 | `crew` | goal slug; `foreman` for the foreman's own pane; `helper` for a session a crew spawns inside a round | foreman, or the crew for a helper |
+| `scope` | the scope directory, an absolute path | foreman, on its own pane |
 | `goal` | goal slug | foreman |
 | `round` | round number | foreman |
 | `task` | queue item slug | foreman |
@@ -347,38 +349,63 @@ the crew ends it.
   record that sits uncommitted is not written. The foreman pushes the
   branch after the commit, so the pull request carries the record.
 
-## One foreman for every project
+## One foreman for every scope
 
 The foreman keeps no state of its own. The repositories are the control
 plane; the foreman rebuilds its view from them and from the daemon.
 
-1. **Scan.** On start, and after every event batch, list the projects with
-   `list_projects`. For each project read every
-   `<knowledge directory>/<slug>/STATE.md`. A project with no goal folder
-   is reported once as "no goal" and skipped.
-   The folder name is the goal's slug; the `goal:` label carries it. Match
-   a live session to its goal by the `goal:` and `round:` labels, never by
-   id. The round's own session is the one with `crew:<slug>`; a
+A foreman's scope is a directory: the value of its own pane's `scope:<path>`
+label, else its pane's cwd. Its projects are the registered projects whose
+root is the scope or lies under it, plus a project a live session under the
+scope discovers. The foreman reads, schedules, types into, archives, and
+relabels a session only inside its scope; it never acts on a session outside
+it. One foreman runs per scope, not per daemon: another live foreman in a
+different scope is not a conflict. Another live foreman in the same scope,
+or in a scope that holds or sits inside this one, is the conflict: the
+foreman stops and tells the human.
+
+1. **Start.** Before anything else, run `kitterm foreman catch-up`, with
+   `--scope <path>` when the pane carries a `scope:` label. Read the
+   predecessor's note and the last message of its transcript for what the
+   human told it. Adopt its open pull requests and its live crews by their
+   labels. A second live foreman already in this scope is the conflict
+   above: stop and tell the human. Archive a predecessor's pane only on the
+   human's word, and only inside this scope.
+2. **Upkeep.** At start, and again after `kitterm skills install` changes
+   this skill, run `kitterm project init --refresh --check <root>` for
+   every project in the scope: `current` leaves it. `behind` runs it as a
+   chore on the branch `chore/refresh-loop`, with
+   `kitterm project init --refresh <root>`. `edited` opens a draft pull
+   request on the project's base branch that brings the new template
+   sections into its `LOOP.md`, keeping the project's own lines; the
+   human's merge is the Propose-tier approval.
+3. **Scan.** On start, and after every event batch, list the projects with
+   `list_projects` and keep the ones whose root is the scope or lies under
+   it. For each project read every `<knowledge directory>/<slug>/STATE.md`.
+   A project with no goal folder is reported once as "no goal" and
+   skipped. The folder name is the goal's slug; the `goal:` label carries
+   it. Match a live session to its goal by the `goal:` and `round:` labels,
+   never by id. The round's own session is the one with `crew:<slug>`; a
    `crew:helper` session beside it is a fixture the crew made. A round is
    open while a live session carries `crew:<slug>`; a `crew:helper` session
    does not hold the round open.
-2. **Schedule.** A goal is runnable when its `Status` is `active`, its
+4. **Schedule.** A goal is runnable when its `Status` is `active`, its
    budget has rounds left, no round is open, and no proposal blocks the next
    action. `Status` is one of `active`, `waiting`, `stopped`, `done`; only
    `active` runs. Run at most one round per goal and at most three crew
    sessions across all projects. A review session and a crew's helper count
    toward the cap of three. Start the runnable goal with the oldest
    `Updated` date first.
-3. **Delegate.** Run "One round" of the foreman's own procedure, in its
+5. **Delegate.** Run "One round" of the foreman's own procedure, in its
    skill, for that goal. The branch and the draft pull request exist
    before the crew is spawned ("The pull request"). The crew session does
    the work. The foreman reads, routes, verifies, and records.
-4. **Monitor.** Hold one `wait_for_events` for the whole daemon. On each
+6. **Monitor.** Hold one `wait_for_events` for the whole daemon. On each
    scan compare `heldSince` with now: archive a crew session that sits at an
    empty prompt one hour past `completed`. Respawn a crew once after an
    `epoch` change; when the respawn does not restore the round, record a
    killed attempt (see "Budget") and stop the goal.
-5. **Report.** See "Reports" of the foreman's own procedure, in its skill.
+7. **Report.** See "Reports" of the foreman's own procedure, in its skill.
 
 ## Direction
 

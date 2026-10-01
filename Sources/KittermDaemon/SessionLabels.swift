@@ -33,6 +33,13 @@ public struct SessionLabels: Sendable, Equatable {
     /// the crew started (`LOOP.md`, "The pull request"); the fleet view
     /// links a running round to it before anything merges.
     public static let prKey = "pr"
+    /// `scope:<path>` names the directory a foreman claims for its own: an
+    /// absolute path, set by the foreman on its own pane. A foreman's
+    /// projects are the ones whose root is the scope or lies under it
+    /// (`LOOP.md`, "One foreman for every scope"); `kitterm foreman
+    /// catch-up` reads the label back to find a predecessor (`foreman-scope`
+    /// round 3).
+    public static let scopeKey = "scope"
 
     public let values: [String: String]
 

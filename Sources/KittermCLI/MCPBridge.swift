@@ -160,11 +160,15 @@ struct MCPHTTPClient {
         case failure(String)
     }
 
-    func send(_ call: MCPTools.Call) -> Result {
+    /// `timeout` defaults to just past the daemon's own long-poll ceiling
+    /// (300s), so a wait_for_command / wait_for_events that runs to its
+    /// deadline still gets its answer rather than a client-side
+    /// cancellation. A command that only reads a list passes a short one.
+    func send(_ call: MCPTools.Call, timeout: TimeInterval = 320) -> Result {
         guard let url = URL(string: "http://127.0.0.1:\(port)\(call.path)") else {
             return .failure("bad path")
         }
-        var request = URLRequest(url: url, timeoutInterval: 320)
+        var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = call.method
         request.setValue("127.0.0.1:\(port)", forHTTPHeaderField: "Host")
         if let raw = call.rawBody {
@@ -194,10 +198,7 @@ struct MCPHTTPClient {
             outcome = .success(status: http.statusCode, headers: headers, data: data ?? Data())
         }
         task.resume()
-        // Just past the daemon's own long-poll ceiling (300s), so a
-        // wait_for_command / wait_for_events that runs to its deadline still
-        // gets its answer rather than a client-side cancellation.
-        if sem.wait(timeout: .now() + 330) == .timedOut {
+        if sem.wait(timeout: .now() + timeout + 10) == .timedOut {
             task.cancel()
             return .failure("request timed out")
         }

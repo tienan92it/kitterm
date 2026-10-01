@@ -7,7 +7,7 @@ import KittermDaemon
 enum ProjectCommand {
     static let usage = """
         usage: kitterm project add <path> [--name <name>] [--knowledge <dir>] \
-        | init <path> [--name <name>] [--knowledge <dir>] [--refresh] | list | remove <id>
+        | init <path> [--name <name>] [--knowledge <dir>] [--refresh [--check]] | list | remove <id>
         """
 
     /// Run one subcommand. `out` takes every line meant for stdout, so a
@@ -33,29 +33,34 @@ enum ProjectCommand {
     }
 
     /// A validated `add` or `init` request: the canonical root, the name,
-    /// the knowledge directory relative to the root, and whether `init`
-    /// refreshes `LOOP.md` instead of writing the package.
+    /// the knowledge directory relative to the root, whether `init`
+    /// refreshes `LOOP.md` instead of writing the package, and whether it
+    /// only reports the file's state instead of rewriting it.
     private struct Target {
         let root: String
         let folder: String
         let name: String
         let knowledge: String
         let refresh: Bool
+        let check: Bool
     }
 
-    /// Parse `<path> [--name <name>] [--knowledge <dir>] [--refresh]` and
-    /// validate every value the same way for `add` and `init`.
+    /// Parse `<path> [--name <name>] [--knowledge <dir>] [--refresh [--check]]`
+    /// and validate every value the same way for `add` and `init`.
     private static func target(_ args: [String]) throws -> Target {
         var path: String?
         var nameOption: String?
         var knowledgeOption: String?
         var refresh = false
+        var check = false
         var index = 0
         while index < args.count {
             let arg = args[index]
             switch arg {
             case "--refresh":
                 refresh = true
+            case "--check":
+                check = true
             case "--name", "--knowledge":
                 guard index + 1 < args.count else { throw CLIError.usage("\(arg) needs a value") }
                 if arg == "--name" { nameOption = args[index + 1] } else { knowledgeOption = args[index + 1] }
@@ -84,8 +89,12 @@ enum ProjectCommand {
         if refresh, nameOption != nil {
             throw CLIError.usage("--refresh rewrites LOOP.md only; --name has no effect with it")
         }
+        if check, !refresh {
+            throw CLIError.usage("--check needs --refresh\n\(usage)")
+        }
         return Target(
-            root: root, folder: folder, name: name, knowledge: try knowledge(knowledgeOption), refresh: refresh
+            root: root, folder: folder, name: name, knowledge: try knowledge(knowledgeOption), refresh: refresh,
+            check: check
         )
     }
 
@@ -137,7 +146,11 @@ enum ProjectCommand {
     private static func initialize(_ args: [String], out: (String) -> Void) throws {
         let target = try target(args)
         if target.refresh {
-            try refreshLoop(under: target.knowledge, root: target.root, out: out)
+            if target.check {
+                try checkLoop(root: target.root, under: registeredKnowledge(for: target.root), out: out)
+            } else {
+                try refreshLoop(under: target.knowledge, root: target.root, out: out)
+            }
             return
         }
         try refuseExisting(GoalsTemplates.project.map(\.path), under: target.knowledge, root: target.root)
@@ -164,17 +177,47 @@ enum ProjectCommand {
         guard let existing = try? Data(contentsOf: URL(fileURLWithPath: file)) else {
             throw CLIError.usage("no \(directory)/\(path) to refresh (nothing written)")
         }
-        let template = Data(GoalsTemplates.loop.utf8)
-        guard existing != template else {
+        let (state, was) = GoalsTemplates.loopState(of: existing, history: history)
+        switch state {
+        case .current:
             throw CLIError.usage("\(path) is current (nothing written)")
-        }
-        let was = TokenStore.hash(String(decoding: existing, as: UTF8.self))
-        guard history.contains(was) else {
+        case .edited:
             throw CLIError.usage("\(path) was edited by hand (nothing written)")
+        case .behind:
+            break
         }
+        let template = Data(GoalsTemplates.loop.utf8)
         try template.write(to: URL(fileURLWithPath: file), options: .atomic)
         let now = TokenStore.hash(GoalsTemplates.loop)
         out("rewrote \(file) from template \(now.prefix(7)) (was \(was.prefix(7)))")
+    }
+
+    /// `init --refresh --check`: report `<root>: current|behind|edited` for
+    /// the project's `LOOP.md` and write nothing, using `GoalsTemplates.loopState`
+    /// so the answer can never disagree with `refreshLoop`. `directory` is
+    /// the knowledge directory the project uses — `registeredKnowledge(for:)`
+    /// resolves it — never the `--knowledge` option, which `--check` does
+    /// not read. A missing file or a symlink on the path exits 1 with the
+    /// path, like `refreshLoop`.
+    static func checkLoop(
+        root: String, under directory: String, history: [String] = GoalsTemplates.loopHistory,
+        out: (String) -> Void
+    ) throws {
+        let path = "LOOP.md"
+        try refuseSymlinks(on: [path], under: directory, root: root)
+        let file = root + "/" + directory + "/" + path
+        guard let existing = try? Data(contentsOf: URL(fileURLWithPath: file)) else {
+            throw CLIError.usage("no \(file) to check (nothing written)")
+        }
+        out("\(root): \(GoalsTemplates.loopState(of: existing, history: history).state.rawValue)")
+    }
+
+    /// The knowledge directory `root` uses: the registered project's own
+    /// `knowledge` when `root` is registered, else the default
+    /// `docs/goals`. `checkLoop` reads this because a registered project's
+    /// `LOOP.md` may live somewhere other than `docs/goals`.
+    static func registeredKnowledge(for root: String) -> String {
+        ProjectStore.load().first(where: { $0.root == root })?.knowledge ?? ProjectStore.defaultKnowledge
     }
 
     /// Refuse when any of `paths` exists under `<root>/<directory>`, and

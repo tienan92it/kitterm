@@ -182,7 +182,11 @@ crashes after the exec.
   template when the file is byte for byte one of the template's shipped versions
   (`GoalsTemplates.loopHistory`, the SHA-256 of each; a change to the template appends
   the old hash, and `GoalsTemplatesTests` pins the current one) and refuses a file edited
-  by hand, a current file, and a symlink, with nothing written; `kitterm goal new <path> <slug>` writes `docs/goals/<slug>/` from the goal
+  by hand, a current file, and a symlink, with nothing written; `kitterm project init
+  --refresh --check <path>` writes nothing and prints `<path>: current|behind|edited`
+  instead (`GoalsTemplates.loopState`, the one comparison both share, so the two can
+  never disagree), exiting 0 for all three and 1 for a missing `LOOP.md`, a symlink, or
+  a root that is not a directory; `--check` needs `--refresh`; `kitterm goal new <path> <slug>` writes `docs/goals/<slug>/` from the goal
   template with the slug in `STATE.md` and refuses an existing folder; `kitterm goal
   list <path>` prints each goal folder's slug and status; `kitterm goal cost <path>
   [<slug>] [--json]` prints the ledger (`GoalLedger.swift`): per goal and per round,
@@ -227,6 +231,20 @@ crashes after the exec.
   open. The foreman archives the session, then runs this command for every session
   the round record's `Sessions:` line names and pastes one `- Cost:` line per
   session, in that order, under the record's header
+- `kitterm foreman catch-up [--scope <path>] [--json]` (`ForemanCommand.swift`)
+  prints what a new foreman reads first, for the scope directory (`--scope`,
+  else the cwd, as a real path) and nothing outside it: the predecessor (the
+  newest live or archived session labelled `crew:foreman`, or
+  `crew:foreman-<anything>` with no `goal:` label, whose `scope:` label, else
+  whose cwd, is the scope or under it; every live one is listed, the caller's
+  own `KITTERM_SESSION_ID` left out) with its note and the last assistant text
+  of its transcript (`TranscriptLastMessage`, one 256 KiB tail read, a
+  `continued-in` record followed), the goals not done of each project whose
+  root is under the scope, the live sessions with a `goal:` label, and the
+  worktrees under each project's `.claude/worktrees/`. It reads the archives,
+  `projects.json` and the goal folders with no daemon, asks `GET /api/sessions`
+  for the live rows, says so in one line when the daemon does not answer, and
+  writes nothing
 - A chore's line lives in its own file, `docs/goals/chores/<ISO date>-<slug>.md`,
   one file per chore so two chore pull requests opened the same day merge in
   either order with no conflict; `CHORES.md` keeps the lines written before
