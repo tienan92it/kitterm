@@ -283,12 +283,61 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
             self.sendSessionId(id, context: context)
             self.sendRole(.controller, context: context)
             self.sendMeta(context: context, session: session)
-            self.wire(session: session, context: context)
+            self.wire(session: session, context: context, freshShell: true)
             self.registerAsController(context: context)
         }
     }
 
-    private func wire(session: PtySession, context: ChannelHandlerContext) {
+    /// How a newly wired controller's screen is rebuilt: which bytes to
+    /// replay, and whether the client must reset its screen first.
+    struct ReplayPlan: Equatable {
+        let request: PtySession.ReplayRequest
+        let forceResync: Bool
+    }
+
+    /// Choose the replay for a controller attach.
+    ///
+    /// A fresh shell never takes the client's `since` offset. When the
+    /// request named a session and the daemon spawned a shell in its place
+    /// (the id is gone: a daemon restart, or the reaper), the offset names
+    /// the dead stream. An offset at or below the new shell's byte count is
+    /// not pruned for `SessionLog.snapshot(from:)`, so honouring it replayed
+    /// a slice from the middle of the new shell's startup onto the old
+    /// screen, with no resync, and input was garbled from then on. Such a
+    /// spawn replays the new shell from its first byte and forces a resync.
+    ///
+    /// A fresh shell with no session in the request (a new tab) replays from
+    /// its first byte too, with no forced resync: its screen is empty.
+    static func resolveReplay(
+        freshShell: Bool,
+        reattaching: Bool,
+        sinceOffset: UInt64?,
+        freshClient: Bool
+    ) -> ReplayPlan {
+        if freshShell {
+            return ReplayPlan(request: .fromDetachPoint, forceResync: reattaching)
+        }
+        // Replay preference: an exact client offset beats the fresh-tail
+        // heuristic beats the detach-point gap (old clients, startup).
+        if let sinceOffset {
+            return ReplayPlan(request: .sinceOffset(sinceOffset), forceResync: false)
+        }
+        if freshClient && reattaching {
+            return ReplayPlan(
+                request: .tail(maxBytes: KittermConstants.sessionObserverReplayMaxBytes),
+                forceResync: false
+            )
+        }
+        return ReplayPlan(request: .fromDetachPoint, forceResync: false)
+    }
+
+    /// `freshShell` is true when `spawnNew` made the session for this
+    /// connection, false when the connection adopted a live one.
+    private func wire(
+        session: PtySession,
+        context: ChannelHandlerContext,
+        freshShell: Bool = false
+    ) {
         applyWriteWatermarks(context: context, role: .controller)
         let batcher = OutputBatcher(eventLoop: context.eventLoop) { [weak self, weak context] buffer in
             guard let self, let context else { return }
@@ -296,17 +345,13 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         }
         self.batcher = batcher
 
-        // Replay preference: an exact client offset beats the fresh-tail
-        // heuristic beats the detach-point gap (old clients, startup).
-        let replay: PtySession.ReplayRequest
-        if let sinceOffset {
-            replay = .sinceOffset(sinceOffset)
-        } else if freshClient && reattachID != nil {
-            replay = .tail(maxBytes: KittermConstants.sessionObserverReplayMaxBytes)
-        } else {
-            replay = .fromDetachPoint
-        }
-        let isTail = if case .tail = replay { true } else { false }
+        let plan = Self.resolveReplay(
+            freshShell: freshShell,
+            reattaching: reattachID != nil,
+            sinceOffset: sinceOffset,
+            freshClient: freshClient
+        )
+        let isTail = if case .tail = plan.request { true } else { false }
         let snapshot = session.attach(
             onOutput: { [weak self] data in
                 self?.batcher?.append(data)
@@ -325,11 +370,16 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
                 guard let self, let context else { return }
                 self.sendTitle(title, context: context)
             },
-            replay: replay
+            replay: plan.request
         )
         // A tail replay lands on a screen that never saw the earlier bytes,
-        // so it needs the same reset a pruned offset does.
-        sendLogState(resync: snapshot.pruned || isTail, snapshot: snapshot, context: context)
+        // and a shell that replaced a gone session lands on the old shell's
+        // screen; both need the same reset a pruned offset does.
+        sendLogState(
+            resync: snapshot.pruned || isTail || plan.forceResync,
+            snapshot: snapshot,
+            context: context
+        )
         if !snapshot.data.isEmpty {
             batcher.append(snapshot.data)
         }

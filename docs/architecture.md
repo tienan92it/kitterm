@@ -101,6 +101,10 @@ The flow has three parts.
    `S->C 8 logState` frame, then the exact gap bytes. When the offset is still in the
    ring, the resync bit is 0. When the offset rotated out, the daemon replays the full
    ring and sets the resync bit.
+4. **Respawn.** The session the client names is gone: the daemon restarted, or the
+   reaper ended the session. The handler spawns a new shell. The offset names the dead
+   stream, so the handler ignores it. The handler replays the new shell from its first
+   byte and sets the resync bit (`WebSocketSessionHandler.resolveReplay`).
 
 This property is what makes a reload or a sleep and wake lossless without any read-side
 draining. A live upgrade extends the same idea across a binary swap; see
