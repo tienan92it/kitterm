@@ -1,0 +1,1 @@
+- 2026-10-02 · A goal's branch is `goal/<slug>` in place of `<slug>/rounds`, and the foreman deletes a merged branch, its worktree and its local branch, on the human's word · PR #183 · Cost: none recorded (no crew session; the foreman made the edit)
