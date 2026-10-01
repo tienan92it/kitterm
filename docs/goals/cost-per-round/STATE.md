@@ -1,18 +1,14 @@
 # STATE: cost-per-round
 
-- Status: active
-- Round: 1 of 3 in this budget (second budget)
-- Rounds total: 5
-- Last floor: green (2026-09-25, round 5 after: swift test 895, KittermCLITests 133, Linux build)
-- Updated: 2026-10-01, resumed for one round on the human's word (issue #181)
+- Status: done
+- Round: 2 of 3 in this budget (second budget)
+- Rounds total: 6
+- Last floor: green (2026-10-01, round 6 after: swift test 1015, PR CI)
+- Updated: 2026-10-01, round 6 done (issue #181)
 
 ## Queue
 
-1. `the-join-checks-its-pane` (issue #181), PR #182. A hook whose payload `cwd`
-   lies outside the project of the pane it names, while that pane holds
-   another live join, no longer replaces the join or the agent status;
-   the feed records the refusal as `agent.join-mismatch`. A process that
-   inherited another pane's `KITTERM_SESSION_ID` stops overwriting it.
+None.
 
 ## Failures
 
@@ -29,6 +25,9 @@ the rule (PR #151).
 
 ## Done
 
+- `the-join-checks-its-pane`, round 6, PR #182. See `rounds/006.md`.
+  A pane refuses a hook from another project while it holds another
+  join, and the feed records `agent.join-mismatch` (issue #181).
 - `the-ledger-prints-api-time`, round 5, PR #160. See `rounds/005.md`.
   The text ledger prints `api` beside `wall`: 12m17 of API time in the
   16h17 overnight round.
@@ -61,4 +60,5 @@ price table is added.
 
 ## Next action
 
-Round 6: `the-join-checks-its-pane`.
+None. The goal is done. A later round can decide whether a join expires
+when its `claude` exits (`rounds/006.md`).
