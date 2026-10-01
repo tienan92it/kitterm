@@ -1,16 +1,15 @@
 # STATE: foreman-scope
 
 - Status: active
-- Round: 0 of 3 in this budget (first budget)
-- Rounds total: 0
-- Last floor: green (2026-09-30, main at 6f9f395: swift test 963, ci.yml green)
-- Updated: 2026-10-01, the human approved the package (PR #179)
+- Round: 1 of 3 in this budget (first budget)
+- Rounds total: 1
+- Last floor: green (2026-10-01, round 1 after: swift test 973, PR #180 CI green)
+- Updated: 2026-10-01, round 1 closed
 
 ## Queue
 
-1. `the-check` (capability 1), PR #180.
-2. `the-catch-up` (capability 2), PR #180.
-3. `scope-and-upkeep-in-the-texts` (capability 3), PR #180.
+1. `the-catch-up` (capability 2), PR #180.
+2. `scope-and-upkeep-in-the-texts` (capability 3), PR #180.
 
 ## Failures
 
@@ -22,7 +21,9 @@ None.
 
 ## Done
 
-None.
+- `the-check` (capability 1), round 1, PR #180. See `rounds/001.md`.
+  `kitterm project init --refresh --check <root>` prints `current`,
+  `behind` or `edited` and writes nothing.
 
 ## Direction
 
@@ -35,4 +36,4 @@ PR #179 on 2026-10-01.
 
 ## Next action
 
-Round 1: `the-check`.
+Round 2: `the-catch-up`.
