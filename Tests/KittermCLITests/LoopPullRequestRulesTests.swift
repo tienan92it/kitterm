@@ -19,7 +19,7 @@ final class LoopPullRequestRulesTests: XCTestCase {
     static let loopRules: [(rule: String, sentence: String)] = [
         (
             "a goal's branch and a chore's branch have one name each",
-            "A goal's branch is `<slug>/rounds`. A chore's branch is `chore/<slug>`."
+            "A goal's branch is `goal/<slug>`. A chore's branch is `chore/<slug>`."
         ),
         (
             "the number goes on the queue line, on the session and in the record at once",
@@ -216,7 +216,7 @@ final class LoopPullRequestRulesTests: XCTestCase {
     /// `docs/foreman.md` describes the same steps in one sentence each.
     func testTheManualNamesTheBranchTheLabelAndTheMerge() throws {
         let manual = Self.oneLine(try Self.read("docs/foreman.md"))
-        for phrase in ["`<slug>/rounds`", "`chore/<slug>`", "`pr:<n>`", "opens a draft pull request", "the human merges, once per goal"] {
+        for phrase in ["`goal/<slug>`", "`chore/<slug>`", "`pr:<n>`", "opens a draft pull request", "the human merges, once per goal"] {
             XCTAssertTrue(manual.contains(Self.oneLine(phrase)), "docs/foreman.md names \(phrase)")
         }
     }

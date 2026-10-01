@@ -87,7 +87,7 @@ Every goal and every chore has one branch and one pull request, open
 before its crew starts. The human watches the diff while the work runs,
 and the fleet view shows the round and its pull request.
 
-- A goal's branch is `<slug>/rounds`. A chore's branch is `chore/<slug>`.
+- A goal's branch is `goal/<slug>`. A chore's branch is `chore/<slug>`.
   The foreman cuts the branch from `origin/main` in a worktree of its own.
 - Before it spawns the crew, the foreman commits the queue line, pushes
   the branch, and opens a draft pull request with `gh pr create --draft`.
@@ -108,6 +108,10 @@ and the fleet view shows the round and its pull request.
   2026-09-28: one added a CI check, the other added a file the check
   rejects. The rebase makes each pull request's CI meet every new check
   before the pull request merges.
+- When the human merges a pull request, the foreman deletes its branch
+  with `git push origin --delete <branch>`, then removes the worktree with
+  `git worktree remove` and the local branch with `git branch -D`. A
+  merged branch left on the remote reads as open work.
 - The foreman cannot merge: the auto-mode classifier refuses
   `gh pr merge`. The human merges, once per goal, after the foreman has
   committed the package and marked the pull request ready.
