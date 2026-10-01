@@ -45,7 +45,6 @@ enum ForemanCommand {
 
     static let crewKey = "crew"
     static let taskKey = "task"
-    static let scopeKey = "scope"
     static let foremanCrew = "foreman"
 
     /// Is a session with these labels a foreman's own pane? `crew:foreman`
@@ -62,7 +61,7 @@ enum ForemanCommand {
     /// The directory a foreman's session claims: its `scope:` label when
     /// that is an absolute path, else its cwd.
     static func claimedScope(labels: [String: String], cwd: String) -> String {
-        if let label = labels[scopeKey], label.hasPrefix("/") { return ProjectStore.canonicalRoot(label) }
+        if let label = labels[SessionLabels.scopeKey], label.hasPrefix("/") { return ProjectStore.canonicalRoot(label) }
         return ProjectStore.canonicalRoot(cwd)
     }
 
@@ -242,7 +241,7 @@ enum ForemanCommand {
             archivedAt: live ? nil : record["archivedAt"] as? Int,
             lastOutputAt: live ? record["lastOutputAt"] as? Int : nil,
             mergedState: live ? record["mergedState"] as? String : nil,
-            cwd: cwd, scopeLabel: labels[scopeKey], note: record["note"] as? String,
+            cwd: cwd, scopeLabel: labels[SessionLabels.scopeKey], note: record["note"] as? String,
             agentTranscript: record["agentTranscript"] as? String
         )
         guard let transcript = foreman.agentTranscript else {
