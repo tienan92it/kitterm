@@ -74,4 +74,27 @@ public struct AgentJoin: Sendable, Equatable {
         else { return nil }
         return AgentJoin(sessionID: sessionID, transcriptPath: path)
     }
+
+    /// The `cwd` a hook payload carries: where the Claude Code session that
+    /// sent it works. Nil when the field is missing, not absolute, or over
+    /// the path bound; a hook with no usable `cwd` cannot be judged a
+    /// stranger (`PtySession.admitAgentJoin`).
+    public static func hookCwd(_ event: [String: Any]?) -> String? {
+        guard let cwd = event?["cwd"] as? String,
+              cwd.hasPrefix("/"), cwd.count <= maxTranscriptPathLength
+        else { return nil }
+        return cwd
+    }
+}
+
+/// What a pane does with the join a hook carried (`PtySession.admitAgentJoin`).
+public enum AgentJoinAdmission: Sendable, Equatable {
+    /// The hook is the pane's own: the join is recorded and the hook counts.
+    case accepted
+    /// The hook is a stranger's: a process that inherited this pane's
+    /// `KITTERM_SESSION_ID` hosts a conversation from another project. The
+    /// pane keeps its join and its status. `first` is true the first time
+    /// the pane refuses that Claude Code session, so the feed hears one
+    /// `agent.join-mismatch` per stranger and not one per hook.
+    case refused(first: Bool)
 }

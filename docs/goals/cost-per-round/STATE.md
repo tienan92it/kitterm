@@ -1,14 +1,14 @@
 # STATE: cost-per-round
 
 - Status: done
-- Round: 1 of 3 in this budget (second budget)
-- Rounds total: 5
-- Last floor: green (2026-09-25, round 5 after: swift test 895, KittermCLITests 133, Linux build)
-- Updated: 2026-09-25, round 5 closed, done
+- Round: 2 of 3 in this budget (second budget)
+- Rounds total: 6
+- Last floor: green (2026-10-01, round 6 after: swift test 1015, PR CI)
+- Updated: 2026-10-01, round 6 done (issue #181)
 
 ## Queue
 
-Empty. All four capabilities in `plan.md` are done.
+None.
 
 ## Failures
 
@@ -25,6 +25,9 @@ the rule (PR #151).
 
 ## Done
 
+- `the-join-checks-its-pane`, round 6, PR #182. See `rounds/006.md`.
+  A pane refuses a hook from another project while it holds another
+  join, and the feed records `agent.join-mismatch` (issue #181).
 - `the-ledger-prints-api-time`, round 5, PR #160. See `rounds/005.md`.
   The text ledger prints `api` beside `wall`: 12m17 of API time in the
   16h17 overnight round.
@@ -57,5 +60,5 @@ price table is added.
 
 ## Next action
 
-None. Merge the round's PR. To reopen, set `Status: active` with a new
-budget and queue.
+None. The goal is done. A later round can decide whether a join expires
+when its `claude` exits (`rounds/006.md`).

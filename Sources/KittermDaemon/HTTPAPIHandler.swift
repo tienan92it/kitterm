@@ -3237,29 +3237,76 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         let sessionID = head.headers.first(name: "x-kitterm-session")
             .flatMap(UUID.init(uuidString:))
 
+        // Every hook, blocking or not, names the Claude Code session it came
+        // from, where its transcript is, and where that session works.
+        let join = AgentJoin.parse(event)
+        let hookCwd = AgentJoin.hookCwd(event)
+
         // The status a hook reports lives on the session (its lifetime is the
         // session's), so resolve it first; the rest runs back on this loop.
+        // The join is judged and recorded in the same task: telling a
+        // stranger's hook from the pane's own can resolve a project, which
+        // the loop never does. Stored, never opened.
         let lookupLoop = context.eventLoop
         let lookupContext = NIOLoopBound(context, eventLoop: lookupLoop)
-        let lookup = lookupLoop.makePromise(of: PtySession?.self)
+        let lookup = lookupLoop.makePromise(of: (PtySession?, AgentJoinAdmission).self)
         lookup.completeWithTask {
-            guard let sessionID else { return nil }
-            return await self.registry.session(sessionID)
+            guard let sessionID, let session = await self.registry.session(sessionID) else {
+                return (nil, .accepted)
+            }
+            return (session, join.map { session.admitAgentJoin($0, cwd: hookCwd) } ?? .accepted)
         }
         lookup.futureResult.whenComplete { result in
+            let (session, admission) = (try? result.get()) ?? (nil, .accepted)
+            if case .refused(let first) = admission {
+                self.refuseStrangerHook(
+                    sessionID: sessionID, join: join, cwd: hookCwd, first: first,
+                    head: head, context: lookupContext.value
+                )
+                return
+            }
             self.handleHookEvent(
                 name: name,
                 event: event,
                 sessionID: sessionID,
-                session: (try? result.get()) ?? nil,
+                session: session,
                 head: head,
                 context: lookupContext.value
             )
         }
     }
 
-    /// The hook, once its session is known. Non-blocking events record and
-    /// answer `{}`; `PermissionRequest` holds for a human.
+    /// Answer a hook the pane it names refused (`PtySession.admitAgentJoin`):
+    /// a process that inherited the pane's `KITTERM_SESSION_ID` hosts a
+    /// conversation from another project (issue #181). Nothing is recorded
+    /// on the pane and nothing is held, a `PermissionRequest` included: the
+    /// answer is the `{}` an unknown event gets, at once, so the agent shows
+    /// its own dialog. The feed hears `agent.join-mismatch` once per refused
+    /// Claude Code session per pane, with what the hook claimed.
+    private func refuseStrangerHook(
+        sessionID: UUID?,
+        join: AgentJoin?,
+        cwd: String?,
+        first: Bool,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        if first, let sessionID, let join, let cwd {
+            eventLog.append(
+                type: "agent.join-mismatch",
+                session: sessionID,
+                data: ["sessionId": join.sessionID, "cwd": cwd, "transcript": join.transcriptPath]
+            )
+        }
+        writeJSON(
+            status: .ok, body: "{}",
+            context: context, version: head.version, keepAlive: head.isKeepAlive
+        )
+    }
+
+    /// The hook, once its session is known and its join is on the session
+    /// (`serveHook`). Non-blocking events record and answer `{}`;
+    /// `PermissionRequest` holds for a human.
     private func handleHookEvent(
         name: String?,
         event: [String: Any]?,
@@ -3268,13 +3315,6 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         head: HTTPRequestHead,
         context: ChannelHandlerContext
     ) {
-        // Every hook, blocking or not, names the Claude Code session it came
-        // from and where its transcript is. Keep both on the session, so the
-        // shell that ran `claude` can be joined to the transcript's bill
-        // later. Stored, never opened: this is the event loop.
-        if let session, let join = AgentJoin.parse(event) {
-            session.recordAgentJoin(join)
-        }
         guard name == "PermissionRequest" else {
             // A non-blocking event: record what it says about the agent, then
             // answer `{}` at once because nothing waits on it. `PreToolUse`

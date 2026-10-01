@@ -117,6 +117,17 @@ public final class PtySession: @unchecked Sendable {
     /// The Claude Code session id and transcript path the hooks carry
     /// (`AgentJoin`); nil for a session that never ran `claude`.
     private var agentJoinStorage: AgentJoin?
+    /// The Claude Code sessions whose hooks this pane refused
+    /// (`admitAgentJoin`), so the feed hears each one once. Past
+    /// `maxRefusedJoins` the set starts over. Not carried through a live
+    /// upgrade: the successor's first refusal of a stranger is one more event.
+    private var refusedJoinIDs: Set<String> = []
+    static let maxRefusedJoins = 32
+    /// The last verdict of `ownsHook(fromCwd:)`, with the three paths and
+    /// the store generation it was judged under.
+    private var hookOwnerCache: (
+        hookCwd: String, paneCwd: String, leaderCwd: String?, generation: Int, owned: Bool
+    )?
     /// Pushes a rename to the attached controller so an open tab follows a
     /// foreman's rename without a reload. Set at attach, cleared at detach.
     private var onTitle: ((String) -> Void)?
@@ -1621,6 +1632,93 @@ public final class PtySession: @unchecked Sendable {
         stateLock.withLock {
             if agentJoinStorage != join { agentJoinStorage = join }
         }
+    }
+
+    /// Record the join a hook carried, unless the hook is a stranger's.
+    ///
+    /// The daemon exports `KITTERM_SESSION_ID` into every shell, and a
+    /// process that inherits it can later host a conversation that belongs
+    /// to another pane (a Claude Code background process, issue #181). Its
+    /// hooks name this pane. A hook is a stranger's when this pane already
+    /// holds a join with another `session_id` and the payload's `cwd` is
+    /// outside the pane's project (`ownsHook`). The pane then keeps its
+    /// join, and the caller records no status and holds no approval.
+    ///
+    /// Every other hook is accepted as before: the first join (the pane has
+    /// no owner yet, so there is nothing to protect), the same `session_id`
+    /// again, a second `claude` whose `cwd` is in the pane's project or in
+    /// the project of the pane's foreground program, and a payload with no
+    /// usable `cwd`, which cannot be judged. The same or the
+    /// first `session_id` costs one lock and one compare. Called off the
+    /// event loop, because `ownsHook` can resolve a project.
+    public func admitAgentJoin(_ join: AgentJoin, cwd: String?) -> AgentJoinAdmission {
+        guard let held = agentJoin, held.sessionID != join.sessionID,
+              let cwd, !ownsHook(fromCwd: cwd)
+        else {
+            recordAgentJoin(join)
+            return .accepted
+        }
+        let first = stateLock.withLock {
+            if refusedJoinIDs.count >= Self.maxRefusedJoins { refusedJoinIDs = [] }
+            return refusedJoinIDs.insert(join.sessionID).inserted
+        }
+        return .refused(first: first)
+    }
+
+    /// Does a hook sent from `hookCwd` belong to this pane? The pane has two
+    /// reference directories: the shell's cwd, and the cwd of the process
+    /// that leads the terminal's foreground group (`foregroundLeader`), so a
+    /// `(cd other && claude)` or a nested shell that changed directory still
+    /// counts. A background process that inherited the pane's environment
+    /// is not the foreground, so its cwd is no reference. The hook belongs
+    /// when it passes `hook(at:isIn:orUnder:)` against either reference.
+    /// Both sides use the cwd resolution alone, with no `project:` label
+    /// override. The hook's path is made real first, because the kernel
+    /// reports a process's cwd as a real path.
+    ///
+    /// The last verdict is kept with what it was judged under. A stranger's
+    /// hooks repeat one cwd, so after the first each costs the kernel reads
+    /// (two `proc_pidinfo`, one `tcgetpgrp`, the leader's argv), a `stat` of
+    /// the projects file and four compares; the `realpath` and the `.git`
+    /// walk run again only when a path or the file moved.
+    func ownsHook(fromCwd hookCwd: String) -> Bool {
+        let paneCwd = liveCwd
+        let leaderCwd = foregroundLeader.flatMap { Self.currentDirectory(ofPID: $0.group) }
+        let generation = ProjectStore.shared.generation
+        let cached: Bool? = stateLock.withLock {
+            guard let last = hookOwnerCache, last.hookCwd == hookCwd, last.paneCwd == paneCwd,
+                  last.leaderCwd == leaderCwd, last.generation == generation
+            else { return nil }
+            return last.owned
+        }
+        if let cached { return cached }
+        let realCwd = ProjectStore.canonicalRoot(hookCwd)
+        var owned = Self.hook(at: realCwd, isIn: project(forCwd: paneCwd), orUnder: paneCwd)
+        // The store resolves the leader's cwd: `project(forCwd:)` would
+        // replace the session's cached project with the leader's.
+        if !owned, let leaderCwd, leaderCwd != paneCwd {
+            owned = Self.hook(at: realCwd, isIn: ProjectStore.shared.resolve(cwd: leaderCwd), orUnder: leaderCwd)
+        }
+        stateLock.withLock {
+            hookOwnerCache = (
+                hookCwd: hookCwd, paneCwd: paneCwd, leaderCwd: leaderCwd, generation: generation, owned: owned
+            )
+        }
+        return owned
+    }
+
+    /// The test of one reference directory of the pane, with the project it
+    /// resolves to. Inside a project, the hook's path must resolve to the
+    /// same root, or to a root at or under it, or to a root that holds it:
+    /// a registered root inside a checkout then matches the checkout and its
+    /// worktrees, which resolve to the checkout's root. Outside every
+    /// project, the hook's path must be the reference directory or under it.
+    private static func hook(at realCwd: String, isIn project: ResolvedProject?, orUnder cwd: String) -> Bool {
+        guard let root = project?.root else {
+            return ProjectStore.isPrefix(ProjectStore.normalize(cwd), of: realCwd)
+        }
+        guard let other = ProjectStore.shared.resolve(cwd: realCwd)?.root else { return false }
+        return ProjectStore.isPrefix(root, of: other) || ProjectStore.isPrefix(other, of: root)
     }
 
     /// Rename the session, pushing the new name to the attached controller and
