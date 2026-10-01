@@ -181,6 +181,100 @@ final class AgentJoinMismatchRouteTests: XCTestCase {
         XCTAssertEqual(events(pane, "agent.join-mismatch"), [])
     }
 
+    /// A worktree of the pane's checkout is the pane's project: its `.git`
+    /// is a file that names the checkout's `.git/worktrees/<name>`, and the
+    /// resolution follows it to the checkout's root.
+    func testAHookFromAWorktreeOfThePanesCheckoutIsAccepted() async throws {
+        let worktree = try dir("worktree")
+        let gitdir = try dir("home/.git/worktrees/worktree")
+        try "gitdir: \(gitdir)\n".write(toFile: worktree + "/.git", atomically: true, encoding: .utf8)
+        let pane = try await spawn(cwd: home)
+        try await hook(pane, Self.payload("Notification", run: Self.owner, cwd: home, extra: Self.waiting))
+
+        try await hook(pane, Self.payload("PreToolUse", run: Self.second, cwd: worktree, extra: Self.bash))
+
+        let row = try await sessionRow(pane)
+        XCTAssertEqual(row["agentSessionId"] as? String, Self.second)
+        XCTAssertEqual((row["agent"] as? [String: Any])?["status"] as? String, "working")
+        XCTAssertEqual(events(pane, "agent.join-mismatch"), [])
+    }
+
+    /// A registered root inside the checkout resolves to its own project,
+    /// with another root than the checkout's. One root holds the other, so
+    /// the hook is still the pane's, in both directions.
+    func testAHookFromARegisteredRootInsideThePanesCheckoutIsAccepted() async throws {
+        let inner = try dir("home/inner")
+        try ProjectStore.save([Project(id: "inner", name: "Inner", root: inner)])
+        let outer = try await spawn(cwd: home)
+        try await hook(outer, Self.payload("Notification", run: Self.owner, cwd: home, extra: Self.waiting))
+
+        try await hook(outer, Self.payload("PreToolUse", run: Self.second, cwd: inner, extra: Self.bash))
+        var row = try await sessionRow(outer)
+        XCTAssertEqual((row["project"] as? [String: Any])?["root"] as? String, home)
+        XCTAssertEqual(row["agentSessionId"] as? String, Self.second)
+        XCTAssertEqual(events(outer, "agent.join-mismatch"), [])
+
+        // The other direction: the pane sits in the registered root and the
+        // hook comes from the checkout that holds it.
+        let nested = try await spawn(cwd: inner)
+        try await hook(nested, Self.payload("Notification", run: Self.owner, cwd: inner, extra: Self.waiting))
+        try await hook(nested, Self.payload("PreToolUse", run: Self.second, cwd: home, extra: Self.bash))
+        row = try await sessionRow(nested)
+        XCTAssertEqual((row["project"] as? [String: Any])?["root"] as? String, inner)
+        XCTAssertEqual(row["agentSessionId"] as? String, Self.second)
+        XCTAssertEqual(events(nested, "agent.join-mismatch"), [])
+    }
+
+    /// `(cd other && claude)` leaves the shell where it was and runs the
+    /// agent elsewhere. The program that holds the terminal is the pane's
+    /// own, so a hook from its cwd is accepted; a hook from a third
+    /// directory, which a background process would send, is still refused.
+    func testAHookFromTheForegroundProgramsCwdIsAccepted() async throws {
+        let body: [String: Any] = ["cwd": home, "input": "(cd '\(other!)' && exec sleep 30)\n"]
+        let spawned = try await request(
+            "POST", "/api/sessions",
+            body: String(decoding: try JSONSerialization.data(withJSONObject: body), as: UTF8.self)
+        )
+        XCTAssertEqual(spawned.status, 201, spawned.body)
+        let pane = try XCTUnwrap(UUID(uuidString: try XCTUnwrap(try json(spawned.body)["id"] as? String)))
+        let registered = await registry.session(pane)
+        let session = try XCTUnwrap(registered)
+        sessions.append(session)
+        let home = self.home!, other = self.other!
+        try await wait("sleep to hold the terminal in \(other)") {
+            guard let leader = session.foregroundLeader, leader.name == "sleep" else { return false }
+            return PtySession.currentDirectory(ofPID: leader.group) == other && session.liveCwd == home
+        }
+        try await hook(pane, Self.payload("Notification", run: Self.owner, cwd: home, extra: Self.waiting))
+
+        try await hook(pane, Self.payload("PreToolUse", run: Self.second, cwd: other, extra: Self.bash))
+        var row = try await sessionRow(pane)
+        XCTAssertEqual(row["agentSessionId"] as? String, Self.second, "the foreground program's cwd is the pane's")
+        XCTAssertEqual(events(pane, "agent.join-mismatch"), [])
+
+        try await hook(pane, Self.payload("Stop", run: Self.stranger, cwd: plain))
+        row = try await sessionRow(pane)
+        XCTAssertEqual(row["agentSessionId"] as? String, Self.second)
+        XCTAssertEqual(events(pane, "agent.join-mismatch").map { $0["sessionId"] }, [Self.stranger])
+    }
+
+    /// A payload with no `cwd` cannot be judged, so it is accepted as it
+    /// was before the check existed: the join is replaced.
+    func testAHookWithNoCwdIsAccepted() async throws {
+        let pane = try await spawn(cwd: home)
+        try await hook(pane, Self.payload("Notification", run: Self.owner, cwd: home, extra: Self.waiting))
+
+        try await hook(
+            pane,
+            #"{"hook_event_name":"Stop","session_id":"\#(Self.second)","transcript_path":"\#(Self.transcript(Self.second))"}"#
+        )
+
+        let row = try await sessionRow(pane)
+        XCTAssertEqual(row["agentSessionId"] as? String, Self.second)
+        XCTAssertEqual((row["agent"] as? [String: Any])?["status"] as? String, "completed")
+        XCTAssertEqual(events(pane, "agent.join-mismatch"), [])
+    }
+
     /// A pane with no join has no owner to protect, so its first hook is
     /// accepted wherever its cwd is: refusing it would leave a pane whose
     /// `claude` was started from another directory with no join at all.
