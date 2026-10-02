@@ -1,0 +1,1 @@
+- 2026-10-02 · A shell that replaces a gone session on reconnect ignores the pane's stale `since` offset, replays from its start and forces a resync (commit 3955dc2 of the stale branch `claude/kitterm-shell-resume-restart-jvcwt9`, rebased) · PR #184 · Cost: $7.07 · 6637k in (97% cached) · 37k out · 0h 16m; review $3.35 · 1600k in (93% cached) · 15k out · 0h 03m
