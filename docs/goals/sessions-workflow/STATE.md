@@ -8,7 +8,7 @@
 
 ## Queue
 
-1. `sessions-design` (capability 1)
+1. `sessions-design` (capability 1), PR #185.
 2. `pull-request-state` (capability 2)
 3. `merged-base-branch` (capability 3)
 4. `line-stage` (capability 4)
