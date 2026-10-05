@@ -58,7 +58,7 @@ export type ModelRow = {
    * Code wrote it; absent until the session has an assistant turn. */
   agentModel?: string;
   /** The name the daemon derives from `agentModel` by the naming rule of
-   * `design-foundation.md`: `Fable 5.1`, `Opus 5 · 1M`, or the id unchanged. */
+   * `design/foundation.md`: `Fable 5.1`, `Opus 5 · 1M`, or the id unchanged. */
   agentModelName?: string;
   /** The Claude Code transcript the session's hooks named, as the daemon
    * stored it; the page reads its bill from `GET /api/sessions/<id>/cost`
@@ -203,7 +203,7 @@ export type TaskSummary = {
   pr?: number;
 };
 
-/** The four states a task line prints (`design-foundation.md`, Hierarchy). */
+/** The four states a task line prints (`design/foundation.md`, Hierarchy). */
 export type TaskState = "working" | "pending" | "done" | "failed";
 
 /** One task under its goal, the fourth level: the slug, its state, the
@@ -586,7 +586,7 @@ export function roundLabel(summary: KnowledgeSummary): string | null {
 }
 
 /** The round counter as the tree prints it: `r2/3`, `r2` from a daemon
- * that sends no budget, null without a round (`design-foundation.md`'s
+ * that sends no budget, null without a round (`design/foundation.md`'s
  * frame draws `r2/3`; `roundLabel` is the long form). */
 export function roundCounter(summary: KnowledgeSummary): string | null {
   if (typeof summary.round !== "number") return null;
@@ -853,7 +853,7 @@ function exitSuffix(row: ModelRow): string {
   return typeof code === "number" && code !== 0 ? ` (${code})` : "";
 }
 
-/** The vocabulary word of a row's state (`design-foundation.md`,
+/** The vocabulary word of a row's state (`design/foundation.md`,
  * Hierarchy): `needs you` for an agent waiting on a person, whether its
  * hook report or a pending approval says so; `stateName` for the rest. */
 export function stateWord(state: MergedState): string {
@@ -925,7 +925,7 @@ export function rowLine(row: ModelRow, now: number, base: string | undefined = r
 
 /**
  * The model fact of a session row: the name the daemon derived, printed
- * beside the row's other facts before the time (`design-foundation.md`,
+ * beside the row's other facts before the time (`design/foundation.md`,
  * "The model"). The id unchanged when the daemon sent one with no name,
  * which is the rule's own last step. Null for a session with no assistant
  * turn yet and for one that never ran `claude`: nothing, never a guess.
@@ -937,7 +937,7 @@ export function rowModel(row: ModelRow): string | null {
 
 // --- the line ---------------------------------------------------------------
 //
-// Every level of the tree is one line (`design-foundation.md`, "The line, in
+// Every level of the tree is one line (`design/foundation.md`, "The line, in
 // detail"): a mark, the indent, a name, its facts, its time, its actions.
 // The name is the only cell that grows and the only one that truncates. A
 // fact that does not fit is dropped, not wrapped, and the facts drop in a
@@ -971,7 +971,7 @@ export function markFamily(state: MergedState): MarkFamily {
   }
 }
 
-/** The one character a mark prints (`design-foundation.md`, Hierarchy):
+/** The one character a mark prints (`design/foundation.md`, Hierarchy):
  * `?` for what waits on a person, `!` for what failed, `✓` for what is
  * done, `•` for what is pending, `–` for what is idle or unknown, and `◐`
  * for what is working: the quadrant the mark rests on, which the page
@@ -1550,7 +1550,7 @@ export function bucketLabel(state: GoalState, count: number): string {
 
 /** The state as the line prints it: a bracketed word, never a bare one,
  * so it is unmistakable in a column of names that are also lower-case
- * and hyphenated (`design-foundation.md`, Hierarchy). */
+ * and hyphenated (`design/foundation.md`, Hierarchy). */
 export function taskTag(state: TaskState): string {
   return `[${state}]`;
 }
@@ -1785,7 +1785,7 @@ export type UsageLimits = {
 };
 
 /** The share of a window at which its bar and its number turn caution
- * (`corpus/dashboard.pen`, the Components frame): 80 % and over. */
+ * (`design/dashboard.pen`, the Components frame): 80 % and over. */
 export const QUOTA_CAUTION_PERCENT = 80;
 
 /** The windows in the order the page lists them; any other key follows,
@@ -2401,7 +2401,7 @@ function plural(n: number, one: string, many: string): string {
 
 /**
  * The note under the chart: one line that names a fact
- * (`design-foundation.md`, "The panels"). In cost mode, the part of the
+ * (`design/foundation.md`, "The panels"). In cost mode, the part of the
  * total that is apportioned across midnight by token share rather than
  * measured, and the sessions that have turns and no bill yet, whose tokens
  * are in and whose dollars are not; in tokens mode only the unbilled
@@ -2480,7 +2480,7 @@ export function usageChartName(panel: UsagePanel): string {
 
 // --- the band ------------------------------------------------------------------
 
-/** The four cells, in the order they print (`design-foundation.md`, The
+/** The four cells, in the order they print (`design/foundation.md`, The
  * frame): agents working, items needing a person, spend over the range,
  * quota used. */
 export type BandCellKey = "working" | "needs" | "spend" | "quota";

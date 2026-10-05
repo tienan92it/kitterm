@@ -36,7 +36,6 @@ import {
   usagePanel,
   usageRange,
   type DayRange,
-  VOCABULARY,
   withProposed,
   dayLabel,
   goalTitle,
@@ -46,7 +45,6 @@ import {
   type BandCell,
   type DaemonStarted,
   type KnowledgeAnswer,
-  type KnowledgeSummary,
   type MarkFamily,
   type ModelRow,
   type ProjectRef,
@@ -82,7 +80,22 @@ import {
   type WherePanel,
   type YieldReport,
 } from "./sessions-value";
-import { isOpen, sessionFactColumns, tree, visibleLines, type TreeLine, type TreeSection } from "./sessions-tree";
+import { isOpen, joins, sessionFactColumns, tree, visibleLines, type Join, type TreeFact, type TreeLine, type TreeSection } from "./sessions-tree";
+import {
+  draftsLabel,
+  pullHref,
+  PULL_WORDS,
+  pullsNotice,
+  readPulls,
+  REVIEW_NONE,
+  reviewLine,
+  SESSION_LEGEND,
+  STAGE_LEGEND,
+  type LegendEntry,
+  type PullsAnswer,
+  type ReviewPull,
+  type StagedSummary,
+} from "./sessions-stage";
 import { FRAME_MS, frameAt, QUADRANT } from "./spinner";
 import { loadSettings } from "./settings-store";
 import { applyThemeTokens } from "./theme-tokens";
@@ -90,7 +103,7 @@ import { findThemeById } from "./themes";
 
 /**
  * The fleet view: the page the frames `Dashboard 1200` and `Dashboard
- * 390` of `corpus/dashboard.pen` draw (`agent-dashboard`, round 10). Polls
+ * 390` of `design/dashboard.pen` draw (`agent-dashboard`, round 10). Polls
  * `/api/projects`, `/api/sessions`, `/api/approvals`, `/api/archives` and
  * `/api/usage/limits`, plus `/api/projects/<id>/knowledge` for each
  * registered project and `/api/usage/daily` and `/api/yield` for the
@@ -109,8 +122,13 @@ import { findThemeById } from "./themes";
  * lines); **the tree**, under `SESSIONS` and the state vocabulary, as flat
  * lines with fixed fact columns (`sessions-tree.ts`): a workspace, its
  * projects, their goals, tasks and sessions, the most recent done goal
- * open and the rest behind `N done`, a project's and a goal's triangle
- * folding what sits under it; then **the folds** on one line: the
+ * open and the rest behind `N done`, a triangle folding what sits under
+ * its line. Since `sessions-workflow` capability 5 (the frames of
+ * `design/sessions.pen`) the header prints the stages and the session
+ * words, a `REVIEW` line under it lists the open pull requests of
+ * `GET /api/projects/<id>/pulls`, every goal and task line prints its
+ * stage in one status cell, a goal line its pull request's state, and
+ * hairlines join a child to its parent; then **the folds** on one line: the
  * archives, the idle shells, and the push switch. On a phone the gutters,
  * `WHERE`, `LEAKS` and the vocabulary go, the counts wrap to two rows of
  * two, the tiles to two by two, and every line keeps its state word and
@@ -161,12 +179,19 @@ type NeedsItem = AttentionItem<SessionRow> | ProposedItem;
  * polls, so a `kitterm project init` shows up without a reload. */
 type KnowledgeEntry = {
   etag: string | null;
-  goals: KnowledgeSummary[] | null;
+  goals: StagedSummary[] | null;
   missesLeft: number;
 };
 
+/** One project's pull requests as last fetched, with the ETag the daemon
+ * gave the answer and when the page asked. */
+type PullsEntry = { etag: string | null; answer: PullsAnswer | null; at: number };
+
 const POLL_MS = 2000;
 const KNOWLEDGE_RETRY_POLLS = 30;
+/** How often the page asks the pulls route for a project. The daemon reads
+ * `gh` once a minute per repository, so a faster poll shows nothing sooner. */
+const PULLS_REFRESH_MS = 10_000;
 /** The runs whose restart line the human dismissed, `restartDismissKey`s in
  * `localStorage`. A dismissal keys on the epoch, so it dies with the run it
  * answers. A proposal has no dismissal (round 11): the page holds no
@@ -203,6 +228,10 @@ let failedPolls = 0;
  * it). A watch client cannot subscribe to push, so the switch is hidden
  * rather than shown and refused. */
 let watchOnly = false;
+/** The profiles route has answered or failed, so `watchOnly` is what it
+ * will be. The event watcher can start a poll before that; a request a
+ * watch token must not make (the pulls route) waits for it. */
+let gradeKnown = false;
 /** The folds the user opened, by key; a rebuild keeps them. */
 const foldsOpen = new Set<string>();
 /** The projects and goals whose triangle the reader clicked, by the tree
@@ -213,6 +242,12 @@ const toggledRows = new Set<string>();
 /** The knowledge summary of each registered project, by id, with the ETag
  * the daemon gave it: an unchanged package answers 304 and repaints nothing. */
 const knowledge = new Map<string, KnowledgeEntry>();
+/** The pull requests of each project on GitHub, by id
+ * (`GET /api/projects/<id>/pulls`). Empty on a watch page: the route is
+ * full grade, and a watch page shows no pull request state. */
+const pulls = new Map<string, PullsEntry>();
+/** The pulls route refused this client (403). The page stops asking. */
+let pullsRefused = false;
 
 let restartDismissed: Set<string> = loadDismissed(RESTART_DISMISSED_KEY);
 /** The last `daemon.started` the event feed carried: the run's epoch and the
@@ -388,6 +423,8 @@ async function fetchProfiles(): Promise<void> {
     }
   } catch {
     // No answer is a fine state; the next poll paints what it can.
+  } finally {
+    gradeKnown = true;
   }
 }
 
@@ -438,7 +475,7 @@ async function poll(): Promise<void> {
   if (knowledgeInFlight) return;
   knowledgeInFlight = true;
   try {
-    await fetchKnowledge();
+    await Promise.all([fetchKnowledge(), fetchPulls(Date.now())]);
     render();
   } finally {
     knowledgeInFlight = false;
@@ -488,15 +525,64 @@ async function fetchKnowledge(): Promise<void> {
 }
 
 /** The goal summaries of one answer, each carrying the project's id, in
- * the daemon's order. */
-function knowledgeGoals(answer: KnowledgeAnswer): KnowledgeSummary[] {
+ * the daemon's order. A summary keeps the `source` and the `pullRequest`
+ * the route gives a goal read from its open branch. */
+function knowledgeGoals(answer: KnowledgeAnswer): StagedSummary[] {
   return (answer.goals ?? []).map((goal) => ({ ...goal, project: answer.project }));
 }
 
+/** One pulls request per project whose remote is on GitHub, every
+ * `PULLS_REFRESH_MS`, conditional on the ETag and aborted after `POLL_MS`.
+ * Never for a watch client, and never before the page knows whether it
+ * is one (`gradeKnown`): the route is full grade, and its 403 stops the
+ * asking. Any other failure — a 404 (an old daemon, an id the daemon does
+ * not know), a 5xx, a timeout, a network error — keeps the last answer
+ * (null with none, which the stage reads as missing data) and moves only
+ * the time, so the page asks again after `PULLS_REFRESH_MS`, not on the
+ * next 2 s poll. */
+async function fetchPulls(now: number): Promise<void> {
+  if (!gradeKnown) return;
+  const wanted = watchOnly || pullsRefused ? [] : projects.filter((p) => p.pullRequestBase);
+  const ids = new Set(wanted.map((p) => p.id));
+  for (const id of pulls.keys()) if (!ids.has(id)) pulls.delete(id);
+  await Promise.all(
+    wanted.map(async (project) => {
+      const entry = pulls.get(project.id);
+      if (entry && now - entry.at < PULLS_REFRESH_MS) return;
+      try {
+        const headers: Record<string, string> = { accept: "application/json" };
+        if (entry?.etag) headers["if-none-match"] = entry.etag;
+        const res = await fetch(`/api/projects/${encodeURIComponent(project.id)}/pulls`, { headers, signal: AbortSignal.timeout(POLL_MS) });
+        if (res.status === 304 && entry) {
+          entry.at = now;
+          return;
+        }
+        if (res.status === 403) {
+          pullsRefused = true;
+          pulls.clear();
+          return;
+        }
+        if (!res.ok) {
+          pulls.set(project.id, { etag: entry?.etag ?? null, answer: entry?.answer ?? null, at: now });
+          return;
+        }
+        pulls.set(project.id, { etag: res.headers.get("etag"), answer: (await res.json()) as PullsAnswer, at: now });
+      } catch {
+        pulls.set(project.id, { etag: entry?.etag ?? null, answer: entry?.answer ?? null, at: now });
+      }
+    }),
+  );
+}
+
+/** What the pulls route last answered for a project, for the tree. A
+ * watch page hands the tree no reader at all (`pullsReader`). */
+const pullsOf = (id: string): PullsAnswer | null | undefined => pulls.get(id)?.answer;
+const pullsReader = (): typeof pullsOf | undefined => (watchOnly || pullsRefused ? undefined : pullsOf);
+
 /** Every goal of every project with a package, one entry each in the
  * projects' then the route's order, for the proposed items. */
-function knowledgeEntries(): { project: ProjectRef; summary: KnowledgeSummary }[] {
-  const entries: { project: ProjectRef; summary: KnowledgeSummary }[] = [];
+function knowledgeEntries(): { project: ProjectRef; summary: StagedSummary }[] {
+  const entries: { project: ProjectRef; summary: StagedSummary }[] = [];
   for (const project of projects) {
     for (const summary of knowledge.get(project.id)?.goals ?? []) entries.push({ project, summary });
   }
@@ -540,7 +626,7 @@ pushLine.className = "push";
 pushLine.hidden = true;
 /** The toggle on the line right now, so an unchanged one is left alone. */
 let pushPainted = "";
-/** The panels between the band and the tree (`design-foundation.md`, "The
+/** The panels between the band and the tree (`design/foundation.md`, "The
  * panels"): each a label in an 84 px gutter and its content. Built once;
  * each `paint*` replaces its content when its model changes. */
 function panelBlock(name: string, label: string): HTMLElement {
@@ -565,23 +651,38 @@ let valuePainted = "";
 let wherePainted = "";
 let modelsPainted = "";
 let leaksPainted = "";
-/** The tree's header: `SESSIONS` in the gutter, then the whole state
- * vocabulary, each mark beside the bracketed word it always appears with,
- * so a reader never has to infer a mark (`design-foundation.md`,
- * Hierarchy). The working mark here stands still; only a line whose agent
- * holds the tty turns. */
+/** The tree's header: `SESSIONS` in the gutter, then the legend — the
+ * five stages of a goal line and a task line, then the words a session
+ * keeps, each mark beside the bracketed word it always appears with, so a
+ * reader never has to infer a mark (the frame `Sessions 1200`). The
+ * working mark here stands still; only a line whose agent holds the tty
+ * turns. Under it, in the same gutter, the `REVIEW` line (`paintReview`). */
 const treeHead = document.createElement("div");
 treeHead.className = "tree-head";
+const reviewLabel = document.createElement("span");
+reviewLabel.className = "review-label";
+reviewLabel.textContent = "REVIEW";
+const reviewBody = document.createElement("p");
+reviewBody.className = "review";
+let reviewPainted = "";
+function legendKeys(title: string, entries: readonly LegendEntry[]): Node[] {
+  return [
+    span("tree-group", title),
+    ...entries.map((entry) => {
+      const key = document.createElement("span");
+      key.className = "tree-key";
+      key.append(...entry.families.map((family) => mark(family, true)), span(`tag-state ${entry.families[0]}`, entry.tag));
+      return key;
+    }),
+  ];
+}
 function treeLegend(): Node[] {
   const keys = document.createElement("div");
   keys.className = "tree-keys";
-  for (const entry of VOCABULARY) {
-    const key = document.createElement("span");
-    key.className = "tree-key";
-    key.append(mark(entry.family, true), span(`tag-state ${entry.family}`, entry.tag));
-    keys.append(key);
-  }
-  return [span("tree-label", "SESSIONS"), keys];
+  const rule = span("tree-rule", "|");
+  rule.setAttribute("aria-hidden", "true");
+  keys.append(...legendKeys("stage", STAGE_LEGEND), rule, ...legendKeys("session", SESSION_LEGEND));
+  return [span("tree-label", "SESSIONS"), keys, reviewLabel, reviewBody];
 }
 /** The tree itself: one section per workspace or lone project, each a
  * list of lines. */
@@ -614,8 +715,9 @@ function render(): void {
   const now = Date.now();
   // The span a line prints moves once a minute at most, so it is in; so
   // is the tree's order.
-  const built = tree({ rows: sessions, projects, goalsOf: (id) => knowledge.get(id)?.goals, approvals, proposed: [], usage, billOf, now });
-  const shape = built.sections.map((s) => s.lines.map((l) => [l.key, l.facts.map((f) => f.text)]));
+  const built = tree({ rows: sessions, projects, goalsOf: (id) => knowledge.get(id)?.goals, approvals, proposed: [], usage, billOf, pullsOf: pullsReader(), now });
+  // A line's grey text holds an age (`read 14m ago`), so it is in too.
+  const shape = built.sections.map((s) => s.lines.map((l) => [l.key, l.detail, l.facts.map((f) => f.text)]));
   // The quota's text moves once a minute at most, like a line's span; the
   // usage panel's numbers when the rollup refreshes.
   const quota = quotaPanel(limits, now);
@@ -627,6 +729,9 @@ function render(): void {
     approvals.map((a) => a.id),
     archives.map((a) => a.id),
     [...knowledge].map(([id, entry]) => [id, entry.etag, entry.goals === null]),
+    // `ageSeconds` moves every second; the ETag covers the rest.
+    [...pulls].map(([id, entry]) => [id, entry.etag, entry.answer?.reason, entry.answer?.readAt]),
+    pullsRefused,
     [...restartDismissed],
     [...toggledRows],
     started,
@@ -686,7 +791,8 @@ function paint(): void {
   paintModels(modelsPanel(usage), noTranscript ? MODELS_NO_TRANSCRIPT_LINE : null);
   paintLeaks(noTranscript ? [] : leakLines(usage, goals, range), noTranscript ? LEAKS_NO_TRANSCRIPT_LINE : null);
   // Every session is a line once: in the tree, or in the idle fold.
-  const built = tree({ rows: sessions, projects, goalsOf: (id) => knowledge.get(id)?.goals, approvals, proposed, usage, billOf, now });
+  const built = tree({ rows: sessions, projects, goalsOf: (id) => knowledge.get(id)?.goals, approvals, proposed, usage, billOf, pullsOf: pullsReader(), now });
+  paintReview();
   if (built.sections.length === 0) {
     const empty = document.createElement("p");
     empty.className = "empty";
@@ -1436,17 +1542,139 @@ function bandCell(cell: BandCell, target: string | null): HTMLElement {
 
 // --- the tree -----------------------------------------------------------------
 
+/** The state words of a pull request as nodes, joined by ` · `: `draft`,
+ * `ready`, `merged`, and the CI word, whose `✓` and `✗` are marks in the
+ * done and the failed colour (the frame `Sessions components`, "Pull
+ * request states"). The colour is on the glyph alone. */
+function stateWords(words: readonly string[]): (Node | string)[] {
+  const nodes: (Node | string)[] = [];
+  words.forEach((word, i) => {
+    if (i > 0) nodes.push(" · ");
+    if (word === PULL_WORDS.passing) nodes.push("CI ", span("mark done wide", "✓"));
+    else if (word === PULL_WORDS.failing) nodes.push("CI ", span("mark failed wide", "✗"));
+    else nodes.push(word);
+  });
+  return nodes;
+}
+
+/** `PR #124` as nodes: the `PR ` a phone drops (rule 7 of the frame),
+ * then the number. Any other text is one node. */
+function pullNumber(text: string): (Node | string)[] {
+  if (!text.startsWith("PR ")) return [text];
+  return [span("pr-prefix", "PR "), text.slice(3)];
+}
+
+/** The `REVIEW` line under the header: the open pull requests that are
+ * not drafts, counted and linked, then the drafts; the sentence that says
+ * there is none; or, when `gh` is absent or has no login, the sentence
+ * that says why no state is read (`reviewLine`, `pullsNotice`). Hidden
+ * until one project's pull requests are read, and on a watch page. A
+ * phone prints the count, each number and one state word. Rebuilt only
+ * when its content changes, so a link a keyboard user sits on survives
+ * the polls. */
+function paintReview(): void {
+  const answers = [...pulls.values()].map((entry) => entry.answer);
+  const notice = pullsNotice(answers);
+  const read = answers.some((answer) => readPulls(answer) !== null);
+  const line = reviewLine(projects.map((project) => ({
+    project,
+    goals: knowledge.get(project.id)?.goals ?? [],
+    rows: sessions.filter((s) => s.project?.id === project.id),
+    pulls: pulls.get(project.id)?.answer,
+  })));
+  const model = notice !== null ? { notice } : read ? { line } : null;
+  // A link's `href` is built on the project's base, so the bases are in.
+  const signature = JSON.stringify([model, projects.map((p) => p.pullRequestBase ?? null)]);
+  if (signature === reviewPainted) return;
+  reviewPainted = signature;
+  reviewLabel.hidden = model === null;
+  reviewBody.hidden = model === null;
+  if (model === null) {
+    reviewBody.replaceChildren();
+    return;
+  }
+  if (notice !== null) {
+    reviewBody.replaceChildren(notice.text, ...(notice.command ? [" ", span("note-command", notice.command)] : []));
+    return;
+  }
+  const item = (pull: ReviewPull, draft: boolean): HTMLElement => {
+    const el = span("review-pull", "");
+    const href = pullHref(pull.href, projects.find((p) => p.id === pull.project.id)?.pullRequestBase, pull.number);
+    const text = `PR #${pull.number}`;
+    if (href) {
+      const link = pullRequestLink(text, href);
+      link.dataset.focus = focusKey("review", pull.project.id, String(pull.number));
+      el.append(link);
+    } else el.append(...pullNumber(text));
+    // A draft says so; its CI word goes on a phone, which prints one word.
+    if (draft) el.append(" draft");
+    if (pull.ci !== null) {
+      const ci = span(draft ? "review-ci review-long" : "review-ci", "");
+      ci.append(draft ? " · " : " ", ...stateWords([pull.ci]));
+      el.append(ci);
+    }
+    el.append(span("review-where review-long", ` ${pull.project.name} / ${pull.label}`));
+    return el;
+  };
+  const nodes: (Node | string)[] = [];
+  const separate = (items: HTMLElement[]): void => {
+    items.forEach((el, i) => {
+      nodes.push(i === 0 ? " " : " · ", el);
+    });
+  };
+  if (line.ready.length === 0) {
+    nodes.push(span("review-long", REVIEW_NONE), span("review-short", "none ready"));
+  } else {
+    // The count is a mark: the amber of what waits on the reader.
+    nodes.push(span("mark attention wide", String(line.ready.length)), span("review-long", " ready for review"), span("review-short", " ready"));
+    separate(line.ready.map((pull) => item(pull, false)));
+  }
+  const drafts = draftsLabel(line);
+  if (drafts !== null) {
+    if (line.ready.length > 0) nodes.push(span("tree-rule review-long", " | "));
+    nodes.push(span("review-short", " ·"), span("review-drafts", ` ${drafts}`));
+    separate(line.drafts.map((pull) => item(pull, true)));
+  }
+  reviewBody.replaceChildren(...nodes);
+}
+
 /** One section: a workspace with its projects, or a lone project. */
 function sectionElement(section: TreeSection<SessionRow>): HTMLElement {
   const el = document.createElement("section");
   el.className = "tree-section";
   el.setAttribute("aria-label", section.label);
-  el.append(...visibleLines(section.lines, toggledRows).map(lineElement));
+  const visible = visibleLines(section.lines, toggledRows);
+  const rails = joins(visible);
+  el.append(...visible.map((line, i) => lineElement(line, rails[i]!)));
   return el;
 }
 
-/** The `.main` cell of a line: the name, the state word, then the facts in
- * their columns (`data-col`), the phone's one fact marked `data-narrow`. */
+/** The cell of a fact: its text, or for a pull request the number (a link
+ * when the project is on GitHub), then on a goal's line the state words —
+ * all of them at 768 px and up, one on a phone. */
+function factCell(fact: TreeFact): HTMLElement {
+  const cell = span(fact.kind, fact.text);
+  cell.dataset.col = String(fact.column);
+  if (fact.narrow) cell.dataset.narrow = "";
+  if (fact.title) cell.title = fact.title;
+  if (fact.kind !== "pr") return cell;
+  // A pull request whose project is on GitHub opens there (round 15).
+  cell.replaceChildren(...(fact.href ? [pullRequestLink(fact.text, fact.href)] : pullNumber(fact.text)));
+  if (fact.words) {
+    const words = span("pr-words", "");
+    words.append(" ", ...stateWords(fact.words));
+    cell.append(words);
+  }
+  if (fact.word) {
+    const word = span("pr-word", "");
+    word.append(" ", ...stateWords([fact.word]));
+    cell.append(word);
+  }
+  return cell;
+}
+
+/** The `.main` cell of a line: the name, the grey text after it, the
+ * state word, then the facts in their columns (`data-col`). */
 function lineMain(line: TreeLine<SessionRow>, name: HTMLElement): HTMLElement {
   const main = document.createElement("div");
   main.className = "main";
@@ -1456,16 +1684,13 @@ function lineMain(line: TreeLine<SessionRow>, name: HTMLElement): HTMLElement {
   // own tooltip fills in for every other name.
   if (line.title && !name.title) name.title = line.title;
   main.append(name);
-  if (line.state) main.append(span(`state ${line.state.family}`, line.state.tag));
-  for (const fact of line.facts) {
-    const cell = span(fact.kind, fact.text);
-    cell.dataset.col = String(fact.column);
-    if (fact.narrow) cell.dataset.narrow = "";
-    if (fact.title) cell.title = fact.title;
-    // A pull request whose project is on GitHub opens there (round 15).
-    if (fact.href) cell.replaceChildren(pullRequestLink(fact.text, fact.href));
-    main.append(cell);
+  if (line.detail) {
+    const detail = span("line-detail", line.detail);
+    detail.title = line.detail;
+    main.append(detail);
   }
+  if (line.state) main.append(span(`state ${line.state.family}`, line.state.tag));
+  for (const fact of line.facts) main.append(factCell(fact));
   return main;
 }
 
@@ -1478,18 +1703,37 @@ function pullRequestLink(text: string, href: string): HTMLAnchorElement {
   a.href = href;
   a.target = "_blank";
   a.rel = "noopener";
-  a.append(span("mark link wide", text));
+  const number = span("mark link wide", "");
+  number.append(...pullNumber(text));
+  a.append(number);
   return a;
 }
 
-/** The shell of a line: the mark and the body, with the depth on the
- * element for the indent. Five cells and no actions cell (the anatomy
- * frame, round 11). */
-function lineShell(line: TreeLine<SessionRow>, className: string, markEl: HTMLElement, body: HTMLElement): HTMLElement {
+/** The hairlines at a line's left, one cell per level above it (`joins`;
+ * rule 4 of the `Sessions components` frame). `long` draws the last
+ * cell's tick through to the name, on a line with no triangle. */
+function joinsElement(rails: readonly Join[], long: boolean): HTMLElement {
+  const el = document.createElement("span");
+  el.className = long ? "joins long" : "joins";
+  el.setAttribute("aria-hidden", "true");
+  for (const rail of rails) el.append(span(`join ${rail}`, ""));
+  return el;
+}
+
+/** The shell of a line: its marks, its joins and the body, with the depth
+ * on the element for the indent. `lead` is the triangle or the blank cell
+ * in the left column, which holds no state mark; `status` is the state
+ * mark, which the sheet draws beside the state word in one status cell.
+ * A task's and a session's status mark comes first in the line, a
+ * scope's and a goal's triangle does; the sheet places each by its class. */
+function lineShell(line: TreeLine<SessionRow>, className: string, lead: HTMLElement | null, status: HTMLElement | null, body: HTMLElement, rails: readonly Join[], statusFirst = false): HTMLElement {
   const el = document.createElement("div");
   el.className = `line ${className}`;
   el.style.setProperty("--depth", String(line.depth));
-  el.append(markEl, body);
+  const marks = statusFirst ? [status, lead] : [lead, status];
+  el.append(...marks.filter((m): m is HTMLElement => m !== null));
+  if (rails.length > 0) el.append(joinsElement(rails, lead === null));
+  el.append(body);
   return el;
 }
 
@@ -1516,10 +1760,11 @@ function disclosure(open: boolean): HTMLElement {
   return el;
 }
 
-/** A project's or a goal's triangle: a button that folds what sits under
- * the line (`visibleLines`) and opens it again, kept in `toggledRows`
- * across repaints. Not an action: it moves nothing but the page. */
-function disclosureButton(line: Extract<TreeLine<SessionRow>, { kind: "project" | "goal" }>): HTMLElement {
+/** The triangle of a workspace, a project, a goal or a task: a button
+ * that folds what sits under the line (`visibleLines`) and opens it
+ * again, kept in `toggledRows` across repaints. Not an action: it moves
+ * nothing but the page. */
+function disclosureButton(line: Extract<TreeLine<SessionRow>, { kind: "workspace" | "project" | "goal" | "task" }>): HTMLElement {
   const { key, name } = line;
   const open = isOpen(line, toggledRows);
   const b = document.createElement("button");
@@ -1540,13 +1785,13 @@ function disclosureButton(line: Extract<TreeLine<SessionRow>, { kind: "project" 
   return b;
 }
 
-function lineElement(line: TreeLine<SessionRow>): HTMLElement {
+function lineElement(line: TreeLine<SessionRow>, rails: readonly Join[]): HTMLElement {
   switch (line.kind) {
     case "workspace": {
-      // A workspace is always open and wears no mark.
+      // A workspace wears the triangle alone, like every scope line.
       const name = document.createElement("h2");
       name.textContent = line.name;
-      return lineShell(line, "line-workspace", blankMark(), lineMain(line, name));
+      return lineShell(line, "line-workspace", line.children ? disclosureButton(line) : blankMark(), null, lineMain(line, name), rails);
     }
     case "project": {
       // A heading level per depth, so a reader who moves by heading gets
@@ -1555,7 +1800,7 @@ function lineElement(line: TreeLine<SessionRow>): HTMLElement {
       // is its `1 agent` fact, not a spinner.
       const name = document.createElement(line.depth === 0 ? "h2" : "h3");
       name.textContent = line.name;
-      return lineShell(line, "line-project", line.children ? disclosureButton(line) : blankMark(), lineMain(line, name));
+      return lineShell(line, "line-project", line.children ? disclosureButton(line) : blankMark(), null, lineMain(line, name), rails);
     }
     case "goal": {
       const name = document.createElement("a");
@@ -1571,17 +1816,19 @@ function lineElement(line: TreeLine<SessionRow>): HTMLElement {
         name.setAttribute("aria-label", line.proposed.record ? recordName(line.proposed.record, line.project.name, goal) : proposalsName(line.proposed.count, line.project.name, goal));
         name.title = [proposedLabel(line.proposed.count), line.proposed.decision].filter((t): t is string => t !== null).join(": ");
       }
-      const el = lineShell(line, "goal-line", line.children ? disclosureButton(line) : blankMark(), lineMain(line, name));
+      // The triangle in the left column, the stage's mark in the status cell.
+      const el = lineShell(line, "goal-line", line.children ? disclosureButton(line) : blankMark(), line.state ? mark(line.state.family) : null, lineMain(line, name), rails);
       if (line.proposed) el.dataset.needs = "proposed";
       return el;
     }
     case "task": {
       const name = document.createElement("span");
       name.textContent = line.name;
-      return lineShell(line, "line-task", mark(line.mark), lineMain(line, name));
+      // A task with a session under it folds it; any other has no triangle.
+      return lineShell(line, "line-task", line.children ? disclosureButton(line) : null, mark(line.mark), lineMain(line, name), rails, true);
     }
     case "session":
-      return row(line);
+      return row(line, false, rails);
     case "approval": {
       const wrap = document.createElement("div");
       wrap.className = "row";
@@ -1590,14 +1837,19 @@ function lineElement(line: TreeLine<SessionRow>): HTMLElement {
     }
     case "fold":
       // The done goals inside, each closed until its triangle is clicked.
-      return foldElement(line.key, line.name, line.depth, () => visibleLines(line.lines, toggledRows).map(lineElement));
+      // The lines inside keep the fold's own hairlines above their level.
+      return foldElement(line.key, line.name, line.depth, () => {
+        const inside = visibleLines(line.lines, toggledRows);
+        const inner = joins(inside, rails);
+        return inside.map((l, i) => lineElement(l, inner[i]!));
+      }, rails);
   }
 }
 
 /** A closed group with a count: `▶ 9 done`, `▶ Archived (61)`, `▶ 3 idle
  * shells`. Its summary is a line at `depth`; `foldsOpen` keeps it open
  * across repaints. */
-function foldElement(key: string, label: string, depth: number, content: () => Node[]): HTMLElement {
+function foldElement(key: string, label: string, depth: number, content: () => Node[], rails: readonly Join[] = []): HTMLElement {
   const details = document.createElement("details");
   details.className = "fold";
   details.open = foldsOpen.has(key);
@@ -1610,7 +1862,9 @@ function foldElement(key: string, label: string, depth: number, content: () => N
   const name = span("line-name", label);
   name.dataset.name = "";
   main.append(name);
-  summary.append(glyph, main);
+  summary.append(glyph);
+  if (rails.length > 0) summary.append(joinsElement(rails, false));
+  summary.append(main);
   summary.dataset.focus = `fold:${key}`;
   details.addEventListener("toggle", () => {
     if (details.open) foldsOpen.add(key);
@@ -1637,7 +1891,7 @@ function paintFolds(idle: SessionRow[]): void {
     nodes.push(foldElement("idle", idleShellsLabel(idle.length), 0, () => idle.map((s) => {
       const family = markFamily(stateOf(s));
       return row({
-        kind: "session", key: `session:${s.id}`, depth: 0, name: rowName(s), title: s.cwd,
+        kind: "session", key: `session:${s.id}`, depth: 0, name: rowName(s), title: s.cwd, detail: null,
         state: { family, tag: stateTag(s) }, facts: sessionFactColumns(range ? sessionCost(billOf(s.id), range) : undefined, rowModel(s), s.agentModel, rowLine(s, now).since, sessionCostTitle(billOf(s.id), now)),
         row: s, mark: family, needs: false, approvals: [],
       }, true);
@@ -1702,7 +1956,7 @@ function approvalLine(approval: Approval, depth: number): HTMLElement {
  * line is the link; a pending tool call is a line of its own under it, in
  * the same row. `folded` is a row in the idle fold, which lists no
  * approval. */
-function row(line: Extract<TreeLine<SessionRow>, { kind: "session" }>, folded = false): HTMLElement {
+function row(line: Extract<TreeLine<SessionRow>, { kind: "session" }>, folded = false, rails: readonly Join[] = []): HTMLElement {
   const s = line.row;
   const wrap = document.createElement("div");
   wrap.className = "row";
@@ -1714,7 +1968,7 @@ function row(line: Extract<TreeLine<SessionRow>, { kind: "session" }>, folded = 
   name.className = "folder";
   name.textContent = line.name;
   link.append(lineMain(line, name));
-  const lineEl = lineShell(line, "row-line", mark(line.mark), link);
+  const lineEl = lineShell(line, "row-line", null, mark(line.mark), link, rails, true);
   wrap.append(lineEl);
   // A waiting or failed row is a marked line the band's cell can land on;
   // a pending tool call is a line of its own under the row.
@@ -1761,7 +2015,7 @@ function mark(family: MarkFamily, rest = false): HTMLElement {
 
 // --- the working mark turns ---------------------------------------------------
 //
-// The one thing on the page that moves (`design-foundation.md`, principle
+// The one thing on the page that moves (`design/foundation.md`, principle
 // 4): a character cycle at `FRAME_MS`, not a CSS transition. The cycle is
 // the quadrants the design draws (`QUADRANT`), and the mark rests on `◐`
 // under `prefers-reduced-motion`, where the ticker does not run.

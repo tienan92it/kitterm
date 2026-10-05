@@ -4,7 +4,7 @@ Approved by the human on 2026-09-17, after five palette rounds and a
 deeper ground. Frozen. A round that needs a different token proposes the
 change in its record rather than making it.
 
-The design is `corpus/dashboard.pen`, beside this file. It is the single
+The design is `design/dashboard.pen`, beside this file. It is the single
 source of truth for the page: what the page looks like at 1200 px and
 at 390 px is what its two `Dashboard` frames draw, and a round that
 finds this prose and a frame in disagreement follows the frame and says
@@ -221,9 +221,9 @@ theme, so the page sits in its world and a light terminal still works.
 The four colours that carry meaning are the page's own constants,
 chosen for hue separation rather than inherited by accident.
 
-`corpus/palette.md` holds the measurements. The human chose the Coolors
+`design/palette.md` holds the measurements. The human chose the Coolors
 palette on 2026-09-17 and amended it on 2026-09-19; the values are the
-`dashboard.pen` variables and this table repeats them:
+`design/dashboard.pen` variables and this table repeats them:
 
 | Role | Dark | Light | Where |
 |---|---|---|---|
@@ -238,7 +238,7 @@ text that carries a state. They never paint a background or a border.
 
 ## The frame
 
-The two `Dashboard` frames in `dashboard.pen` are the layout: the band,
+The two `Dashboard` frames in `design/dashboard.pen` are the layout: the band,
 the panels with their label gutter, the tree, the folds, and what each
 keeps and drops at 390 px. This file does not describe the layout a
 second time. Three rules the frames cannot carry:

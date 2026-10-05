@@ -64,7 +64,7 @@ running estimate (PR #153) and the landing accent (PR #135).
   replaced under charter, the ratchet untouched.
 - Corpus cleanup, 2026-09-18, at the human's direction: `dashboard.pen`
   is the single source of truth. Every rendering of the design left the
-  corpus (`01-*`, `02-*`, `03-*`, `04-*`); `design-foundation.md` points
+  corpus (`01-*`, `02-*`, `03-*`, `04-*`); `design/foundation.md` points
   at the file and no longer describes the layout twice; its working
   mark and its transcript-read sentence carry the measured values; and
   `valuemaxxing.md` carries round 6's four corrections as an amendment.

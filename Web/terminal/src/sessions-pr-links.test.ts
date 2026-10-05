@@ -89,7 +89,16 @@ const linkIn = (cell: FakeElement | undefined) => {
 };
 
 describe("the painted links", () => {
-  it("make a task line's PR a link under its project's base, and plain text where the project has none", () => {
+  it("make a task line's PR a link under its project's base, and plain text where the project has none", async () => {
+    // Chartered in round 6 of `sessions-workflow` (approved rule 3: a goal with no open
+    // task and a project with every goal done start closed): the lines
+    // are painted once their triangles are opened.
+    for (;;) {
+      const closed = page.root.querySelectorAll("button").find((b) => b.getAttribute("aria-expanded") === "false");
+      if (!closed) break;
+      closed.click();
+      await page.settle();
+    }
     const tasks = page.root.querySelectorAll(".line-task");
     const byName = (name: string) => tasks.find((t) => t.querySelector(".line-name")?.textContent === name)!;
     expect(byName("ship").querySelector(".pr")?.textContent).toBe("PR #201");

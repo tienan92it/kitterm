@@ -241,9 +241,16 @@ describe("a line follows the foundation", () => {
 
   it("exists, is one line tall, and indents the name by one level per depth", () => {
     expect(RULES.filter((rule) => rule.selector === ".line").map((rule) => rule.decls.get("min-height")), "a line is one --line-h").toEqual(["var(--line-h)"]);
-    expect(nameRules.map((rule) => [rule.conditions.join(" "), rule.decls.get("padding-left")])).toEqual([
-      ["", "calc(var(--depth, 0) * var(--space-4))"],
-      ["@media (max-width: 767px)", "calc(var(--depth, 0) * var(--space-3))"],
+    // Chartered in round 6 of `sessions-workflow` (rule 4 of the `Sessions
+    // components` frame: the left column holds the joins and the
+    // triangle): the indent left the name's padding for the line's first
+    // column, one `--join-w` per level, a level being `--space-4` and
+    // `--space-3` on a phone as before.
+    expect(nameRules.map((rule) => [rule.conditions.join(" "), rule.decls.get("padding-left")])).toEqual([["", undefined]]);
+    expect(RULES.find((rule) => rule.selector === ".line")?.decls.get("grid-template-columns")).toBe("[lead] calc((var(--depth, 0) + 1) * var(--join-w)) var(--line-cols)");
+    expect(RULES.filter((rule) => rule.selector === ".tree" && rule.decls.has("--join-w")).map((rule) => [rule.conditions.join(" "), rule.decls.get("--join-w")])).toEqual([
+      ["", "var(--space-4)"],
+      ["@media (max-width: 767px)", "var(--space-3)"],
     ]);
     // No nested list carries the indent: the tree is flat lines.
     expect(RULES.filter((rule) => /\.(tree-tasks|tree-task|nested|card)\b/.test(rule.selector)).map(at)).toEqual([]);
@@ -415,7 +422,11 @@ describe("every line is one line", () => {
   it("makes every line one --line-h tall, on one line, and never wraps it", () => {
     const line = treeRule(".line")!;
     expect(line.decls.get("min-height")).toBe("var(--line-h)");
-    expect(line.decls.get("display")).toBe("flex");
+    // Chartered in round 6 of `sessions-workflow` (rule 1 of the `Sessions
+    // components` frame: one status cell at one x on every level): the
+    // line is one grid, so the mark, which is the line's own child, sits
+    // in the same columns as the cells of `.main`.
+    expect(line.decls.get("display")).toBe("grid");
     expect(line.decls.get("white-space")).toBe("nowrap");
     const wrapping = RULES.filter((rule) => /\.(line|main|row|open|line-approval)\b/.test(rule.selector))
       .filter((rule) => rule.decls.has("flex-wrap"))
@@ -432,20 +443,34 @@ describe("every line is one line", () => {
 
   it("holds the facts in four fixed columns at 768 px and up, and one fact beside the state word on a phone", () => {
     const main = treeRule(".main")!;
+    // Chartered in round 6 of `sessions-workflow` (the frames `Sessions
+    // 1200` and `Sessions 390`, rules 1 and 7 of `Sessions components`):
+    // `.main` is a subgrid of the line; the columns are the status cell
+    // (the mark, then the word), the pull request or the model, the cost,
+    // the trailing fact, in that order; the pull request and the model
+    // start on one x; a phone keeps the status cell and the pull request.
     expect(main.decls.get("display")).toBe("grid");
-    expect(main.decls.get("grid-template-columns")).toBe("minmax(0, 1fr) 17ch 14ch 12ch 10ch");
-    expect(treeRule(".main > .state")?.decls.get("grid-column")).toBe("2");
-    expect(["2", "3", "4"].map((n) => treeRule(`.main > [data-col="${n}"]`)?.decls.get("grid-column"))).toEqual(["3", "4", "5"]);
-    const facts = RULES.filter((rule) => /^\.main > \.(cost|counter|round|pr|model|since|agents)$/.test(rule.selector));
-    expect(facts.map((rule) => rule.decls.get("text-align"))).toEqual(facts.map(() => "right"));
+    expect(main.decls.get("grid-template-columns")).toBe("subgrid");
+    const columns = (conditions: number) => RULES.find((rule) => rule.selector === ".tree" && rule.decls.has("--line-cols") && rule.conditions.length === conditions)?.decls.get("--line-cols");
+    expect(columns(0)).toBe("[name] minmax(0, auto) [detail] minmax(0, 1fr) [smark] 16px [word] 13ch [pr] 28ch [cost] 12ch [last] 10ch [end]");
+    expect(treeRule(".main > .state")?.decls.get("grid-column")).toBe("word");
+    expect(treeRule(".line > .mark")?.decls.get("grid-column")).toBe("smark");
+    expect(["2", "3", "4"].map((n) => treeRule(`.main > [data-col="${n}"]`)?.decls.get("grid-column"))).toEqual(["cost", "pr", "last"]);
+    const facts = RULES.filter((rule) => /^\.main > \.(cost|counter|round|pr|model|since|agents|wait)$/.test(rule.selector));
+    const align = (name: string) => facts.filter((rule) => rule.selector === `.main > .${name}`).map((rule) => rule.decls.get("text-align")).at(-1);
+    expect(["cost", "counter", "round", "since", "agents", "wait"].map(align)).toEqual(["right", "right", "right", "right", "right", "right"]);
+    expect(["pr", "model"].map(align)).toEqual(["left", "left"]);
     expect(facts.map((rule) => rule.decls.has("text-overflow")), "a fact is never cut with an ellipsis").toEqual(facts.map(() => false));
     const phone = RULES.filter((rule) => rule.conditions.includes("@media (max-width: 767px)"));
-    expect(phone.find((rule) => rule.selector === ".main")?.decls.get("display")).toBe("flex");
-    expect(phone.find((rule) => rule.selector === ".main > [data-col]:not([data-narrow])")?.decls.get("display")).toBe("none");
+    expect(columns(1)).toBe("[name] minmax(0, 1fr) [smark] 16px [word] 12ch [pr] 12ch [end]");
+    expect(phone.find((rule) => rule.selector === ".main > [data-col]:not(.pr)")?.decls.get("display")).toBe("none");
   });
 
   it("truncates the name and nothing else in the tree", () => {
-    const NAMES = [".line-name", ".archived-name"];
+    // Chartered in round 6 of `sessions-workflow` (the frame `Sessions
+    // 1200` cuts a goal's purpose with an ellipsis): the grey text after
+    // the name truncates too, and before the name does.
+    const NAMES = [".line-name", ".line-detail", ".archived-name"];
     const inTree = RULES.filter((rule) => /\.(line|row|open|main|line-|goal-|archived|tree-|folder|state|since|cost|counter|round|pr|model|agents)\b/.test(rule.selector));
     const truncating = inTree.filter((rule) => rule.decls.get("text-overflow") === "ellipsis").map((rule) => rule.selector);
     expect(truncating.sort()).toEqual([...NAMES].sort());
@@ -550,7 +575,11 @@ describe("every line is one line", () => {
     expect(head.decls.get("display")).toBe("grid");
     expect(head.decls.get("grid-template-columns")).toBe("84px minmax(0, 1fr)");
     expect(head.decls.get("border-top")).toBe("1px solid var(--ui-border)");
-    expect(RULES.find((rule) => rule.selector === ".tree-head" && rule.conditions.length > 0)?.decls.get("display")).toBe("none");
+    // Chartered in round 6 of `sessions-workflow` (the frame `Sessions
+    // 390` prints `SESSIONS` and the `REVIEW` line): a phone keeps the
+    // header and drops the legend alone.
+    expect(RULES.find((rule) => rule.selector === ".tree-head" && rule.conditions.length > 0)?.decls.has("display")).toBe(false);
+    expect(RULES.find((rule) => rule.selector === ".tree-keys" && rule.conditions.length > 0)?.decls.get("display")).toBe("none");
     expect(treeRule(".tree-key")?.decls.get("white-space")).toBe("nowrap");
     expect(RULES.filter((rule) => /\.(done-tasks|bucket)\b/.test(rule.selector)).map(at), "no task fold, no label over a bucket").toEqual([]);
     expect(treeRule(".folds")?.decls.get("border-top")).toBe("1px solid var(--ui-border)");

@@ -8,9 +8,8 @@
    no border-radius above 2 px, no box-shadow other than a hairline, no
    color-mix tint behind text, and no transition. Structure carries the
    information: a section is a hairline rule and a line; a row is one line;
-   a state is a one-character mark at the far left of the page, drawn as a
-   shape so it can wear the state's colour, with the state's word beside it
-   in the muted grey (an ANSI red at 12 px sits under 3:1 on half the
+   a state is a one-character mark, drawn as a shape so it can wear the
+   state's colour, with the state's word beside it in the muted grey (an ANSI red at 12 px sits under 3:1 on half the
    themes). A toggle prints a checkbox, a disclosure is a triangle, and a
    link is underlined on hover, so a reader tells "folds something" from
    "goes somewhere" without colour. The page holds no action: nothing on
@@ -18,11 +17,12 @@
    the pane` is the way to act on an agent.
 
    The layout is the two frames `Dashboard 1200` and `Dashboard 390` of
-   `docs/goals/agent-dashboard/corpus/dashboard.pen` (rounds 10 and 11),
-   with the Components frame for the quota bar, WHERE and the marks. */
+   `design/dashboard.pen` (rounds 10 and 11),
+   with the Components frame for the quota bar, WHERE and the marks; the
+   SESSIONS section is the three frames of `design/sessions.pen`. */
 
 /* --- the foundation ---------------------------------------------------------
-   `docs/goals/agent-dashboard/corpus/design-foundation.md`, frozen. One space
+   `design/foundation.md`, frozen. One space
    scale, three type sizes and the two mark sizes, one line height chosen by
    width, and the five colours that carry meaning. `sessions-css.test.ts`
    pins each.
@@ -33,7 +33,7 @@
    `--ui-surface`, `--ui-border`) and the three text greys from the terminal's
    theme, and none of those six is re-declared here; it owns the five colours
    that mark a state, so a mark reads the same on every terminal theme. The
-   owned five are hues chosen for separation (`corpus/palette.md`, amended
+   owned five are hues chosen for separation (`design/palette.md`, amended
    2026-09-19): they paint a mark's `background` and nothing else, never
    `color`, a background behind text or a border. A mark is a one-character
    glyph at the start of a line, a bar, the 2 px rule at a tile's edge, or a
@@ -70,7 +70,7 @@
   --line-h: 44px;
 
   /* The five owned colours, light then dark, as `light-dark()` takes them
-     (`corpus/palette.md`, amended 2026-09-19). */
+     (`design/palette.md`, amended 2026-09-19). */
   --ui-accent: light-dark(#1d7268, #2a9d8f);   /* working, the bars, the quota fill under 80 % */
   --ui-success: light-dark(#2d6a4f, #52b788);  /* done: the ✓ mark alone */
   --ui-warning: light-dark(#8a6415, #e9c46a);  /* needs you */
@@ -112,7 +112,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 
 /* --- the mark ---------------------------------------------------------------
    One character at the far left of a line, in the state's colour
-   (`design-foundation.md`, Hierarchy; the Components frame, "Row marks"):
+   (`design/foundation.md`, Hierarchy; the Components frame, "Row marks"):
    the turning spinner for what is working, `?` for what waits on a person
    (input, an approval, a proposal), `!` for what failed, `✓` for what is
    done, `•` for what is pending, `–` for what is quiet. The glyph carries
@@ -179,7 +179,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .pr-link:hover .mark.link { text-decoration-thickness: 2px; }
 
 /* --- the band ---------------------------------------------------------------
-   One row, one height, always (`design-foundation.md`, principle 2): the
+   One row, one height, always (`design/foundation.md`, principle 2): the
    brand at the left, four cells at the right, each a headline-size count
    and its body-size noun, whatever the fleet is doing. The height is set,
    not a minimum, and the box clips, so no count and no noun can move the
@@ -229,7 +229,7 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
 
 /* --- the panels: USAGE, QUOTA, MODELS | VALUE, WHERE, LEAKS -------------------
    Every measure sits in one stack of panels between the band and the tree
-   (`design-foundation.md`, "The panels"; `corpus/valuemaxxing.md`), in the
+   (`design/foundation.md`, "The panels"; `corpus/valuemaxxing.md`), in the
    frame's order: USAGE, QUOTA, MODELS, one hairline divider, VALUE, WHERE,
    LEAKS. Each panel is one row: its label in an 84 px gutter on the left,
    in the label style (12/600, letter-spaced, muted), its content filling
@@ -299,7 +299,7 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
   color: var(--ui-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .usage-peak { flex: 1 1 auto; text-align: center; overflow: hidden; text-overflow: ellipsis; }
-/* One line that names the number (`design-foundation.md`, "The panels");
+/* One line that names the number (`design/foundation.md`, "The panels");
    the long form is the note's title. */
 .usage-note { margin: var(--space-2) 0 0; color: var(--ui-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* The no-transcript sentence wraps (round 21). */
@@ -395,74 +395,131 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
 }
 
 /* --- the tree's header -----------------------------------------------------
-   `SESSIONS` in the gutter, then the whole state vocabulary: each mark
+   `SESSIONS` in the gutter, then the legend: the five stages a goal line
+   and a task line take, a rule, the words a session keeps, each mark
    beside the bracketed word it always appears with, so a reader never has
-   to infer a mark. Under a hairline; the marks here stand still. Not on a
-   phone. */
+   to infer a mark (`[blocked]` has two, by its cause). Under it, in the
+   same gutter, `REVIEW`: the open pull requests, or the sentence that says
+   why none is listed. A hairline above and one below; the marks here stand
+   still (the frames `Sessions 1200` and `Sessions 390` of
+   `design/sessions.pen`). A phone prints the two labels and the short
+   REVIEW line, and no legend. */
 .tree-head {
   display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: var(--space-4); align-items: center;
-  margin: var(--space-2) 0 var(--space-4); padding: var(--space-3) 0 0; border-top: 1px solid var(--ui-border);
+  grid-auto-rows: minmax(var(--line-h), auto);
+  margin: var(--space-2) 0 var(--space-2); border-top: 1px solid var(--ui-border); border-bottom: 1px solid var(--ui-border);
   color: var(--ui-text-muted);
 }
-.tree-label { color: var(--ui-text); }
-.tree-keys { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); }
-.tree-key { display: inline-flex; align-items: baseline; gap: var(--space-1); white-space: nowrap; }
+.tree-label, .review-label { font-weight: 600; letter-spacing: 0.08em; color: var(--ui-text-muted); }
+.tree-keys { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-4); }
+.tree-key { display: inline-flex; align-items: baseline; gap: var(--space-1); white-space: nowrap; color: var(--ui-text); }
+.tree-group, .tree-rule { color: var(--ui-text-muted); }
+.review-label[hidden], .review[hidden] { display: none; }
+.review { margin: 0; color: var(--ui-text); overflow-wrap: anywhere; }
+.review-drafts, .review-where { color: var(--ui-text-muted); }
+.review-short { display: none; }
 
 /* --- the tree ---------------------------------------------------------------
    Flat lines. One section per workspace or lone project, a hairline between
-   sections; no card, no surface fill, no rule per line. */
+   sections; no card, no surface fill, no rule per line. The two tokens of
+   a line's columns live here, so a phone changes them in one place:
+   `--join-w` is one level of the left column, and `--line-cols` is every
+   column after it. */
 .tree { display: flex; flex-direction: column; }
-.tree-section + .tree-section { margin-top: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--ui-border); }
+.tree, .folds {
+  --join-w: var(--space-4);
+  --line-cols: [name] minmax(0, auto) [detail] minmax(0, 1fr) [smark] 16px [word] 13ch [pr] 28ch [cost] 12ch [last] 10ch [end];
+}
+.tree-section + .tree-section { border-top: 1px solid var(--ui-border); }
 
 /* --- every line is one line -----------------------------------------------
-   Every level of the tree is one `line` (`design-foundation.md`, "The line,
-   in detail"; the anatomy frame, five cells): the mark at the far left,
-   the indent, the name, then the four fact columns of fixed width
-   right-aligned — the state word, a number, a pull request, a time. There
-   is no actions cell (round 11). The name is the only cell that grows and
-   the only one that truncates. `--depth` is set on the line by the page:
-   one `--space-4` per level. */
+   Every level of the tree is one `line` on one grid (the frames of
+   `design/sessions.pen`, rules 1 and 4 of `Sessions components`): the left
+   column, one `--join-w` per level, holds the hairline joins and the
+   disclosure triangle and no state mark; then the name, the only cell
+   that grows, with the grey text after it (a scope's path and counts, a
+   goal's purpose, the reason a line is blocked); then one status cell at
+   one x on every level, the state's mark and its bracketed word; then the
+   pull request or the model, the cost, and the trailing fact. `.main`,
+   and a session's link around it, are subgrids of the line, so the mark,
+   which is the line's own child, sits in the same columns as the cells.
+   `--depth` is set on the line by the page. */
 .line {
-  display: flex; align-items: center; gap: var(--space-3);
+  display: grid; align-items: center; column-gap: var(--space-2);
+  grid-template-columns: [lead] calc((var(--depth, 0) + 1) * var(--join-w)) var(--line-cols);
   min-height: var(--line-h); min-width: 0; white-space: nowrap;
 }
-.line > .mark { margin-right: var(--space-2); }
-.line > .open { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; min-height: var(--line-h); color: inherit; text-decoration: none; }
+.line > .mark { grid-row: 1; grid-column: smark; }
+/* The triangle, or the blank cell of a line with nothing under it, at the
+   end of the left column, under the level's own indent. */
+.line > .mark.disclosure, .line > .mark.blank { grid-column: lead; justify-self: end; width: var(--join-w); justify-content: center; }
+.line > .open {
+  grid-row: 1; grid-column: name / end; min-width: 0;
+  display: grid; grid-template-columns: subgrid; align-items: center;
+  min-height: var(--line-h); color: inherit; text-decoration: none;
+}
 .main {
-  flex: 1 1 auto; min-width: 0;
-  display: grid; grid-template-columns: minmax(0, 1fr) 17ch 14ch 12ch 10ch; column-gap: var(--space-3); align-items: baseline;
+  grid-row: 1; grid-column: name / end; min-width: 0;
+  display: grid; grid-template-columns: subgrid; align-items: baseline;
 }
 .line-name {
-  grid-column: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
-  padding-left: calc(var(--depth, 0) * var(--space-4)); margin: 0; font: inherit; color: var(--ui-text);
+  grid-row: 1; grid-column: name; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  margin: 0; font: inherit; color: var(--ui-text);
 }
 .line-workspace .line-name, .line-project .line-name { font: var(--type-heading); }
 a.line-name { text-decoration: none; }
 a.line-name:hover { text-decoration: underline; text-underline-offset: 2px; }
 .open:hover .line-name { text-decoration: underline; text-underline-offset: 2px; }
+/* The grey text after the name gives way before the name does. */
+.line-detail { grid-row: 1; grid-column: detail; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ui-text-muted); }
 /* The family colour is on the mark; the word prints in the muted grey,
    because an ANSI red at 12 px sits under 3:1 on half the themes. */
-.main > .state { grid-column: 2; color: var(--ui-text-muted); }
+.main > .state { grid-row: 1; grid-column: word; color: var(--ui-text-muted); }
 /* A fact is shown whole or clipped at its column's edge, never with an
-   ellipsis: the name is the only cell that truncates. */
-.main > .cost, .main > .counter, .main > .round, .main > .pr, .main > .model, .main > .since, .main > .agents {
+   ellipsis. */
+.main > .cost, .main > .counter, .main > .round, .main > .pr, .main > .model, .main > .since, .main > .agents, .main > .wait {
   text-align: right; color: var(--ui-text-muted); font-variant-numeric: tabular-nums; overflow: hidden; min-width: 0;
 }
-.main > [data-col="2"] { grid-column: 3; }
-.main > [data-col="3"] { grid-column: 4; }
-.main > [data-col="4"] { grid-column: 5; }
-/* A fold's summary is a `.line` like every other row: the `.line` rule
-   lays it out (the mark cell, the indent on the name, `--line-h` tall,
-   centred), and nothing here sets a display, a height or an alignment of
-   its own. It has no columns. */
-.line-fold .main { display: flex; }
+/* The pull request and the model start on one x, as the frame draws them. */
+.main > .pr, .main > .model { text-align: left; }
+/* The frame's order: the pull request or the model, the cost, the
+   trailing fact. `data-col` keeps the model's numbers (2 the cost), so a
+   cell names its row too: the cost comes first in the line and sits
+   after the pull request. */
+.main > [data-col] { grid-row: 1; }
+.main > [data-col="2"] { grid-column: cost; }
+.main > [data-col="3"] { grid-column: pr; }
+.main > [data-col="4"] { grid-column: last; }
+/* A pull request's state words, in the text colour: all of them at
+   768 px and up, one on a phone, where `PR ` goes too. */
+.pr-words, .pr-word { color: var(--ui-text); }
+.pr-word { display: none; }
 .line-fold .line-name { color: var(--ui-text-muted); }
+
+/* The hairline joins (rule 4): one cell per level above the line, in the
+   left column. `pass` is a parent's line running by; `tee` and `end` turn
+   to the line, and `end` stops there, on a last child. On a line with no
+   triangle the tick runs on to the name. A hairline is a 1 px border in
+   the border colour, like the rule between two sections. Every offset
+   comes from `--join-w`: the rail stands in the middle of its cell, where
+   the triangle of the line above is centred, at both widths. */
+.joins { grid-row: 1; grid-column: lead; justify-self: start; align-self: stretch; display: flex; }
+.join { position: relative; flex: none; width: var(--join-w); }
+.join.pass::before, .join.tee::before, .join.end::before {
+  content: ""; position: absolute; left: calc(var(--join-w) / 2); top: 0; bottom: 0; border-left: 1px solid var(--ui-border);
+}
+.join.end::before { bottom: 50%; }
+.join.tee::after, .join.end::after {
+  content: ""; position: absolute; left: calc(var(--join-w) / 2); right: 0; top: 50%; border-top: 1px solid var(--ui-border);
+}
+.joins.long > .join:last-child::after { right: calc(var(--join-w) / -2); }
 
 /* An approval on its line: the amber mark, `approve <tool>`, the arguments
    cut at the line's end (the title holds them whole), how long it has
    waited, then the pane link at the line's end, which is the one way to
    act on it. One line at every width: the arguments are the fact that
    drops, and `approve <tool>` is the name that truncates. */
+.line-approval { display: flex; gap: var(--space-3); padding-left: calc(var(--depth, 0) * var(--join-w)); }
 .line-approval-what { font-weight: 600; flex: 0 1 auto; min-width: 12ch; }
 .line-approval-input { flex: none; color: var(--ui-text-muted); }
 .line-waited { color: var(--ui-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -483,13 +540,21 @@ a.line-name:hover { text-decoration: underline; text-underline-offset: 2px; }
 .line.measure, .line.measure * { flex: 0 0 auto !important; }
 
 @media (max-width: 767px) {
-  .tree-head { display: none; }
-  .tree-section + .tree-section { margin-top: 0; padding-top: 0; border-top: none; }
-  /* The columns give way to the state word and one fact, right-aligned. */
-  .main { display: flex; align-items: baseline; gap: var(--space-2); }
-  .line-name { flex: 1 1 auto; padding-left: calc(var(--depth, 0) * var(--space-3)); }
-  .main > .state, .main > [data-col] { flex: none; }
-  .main > [data-col]:not([data-narrow]) { display: none; }
+  /* Rule 7 of the frame: the joins, the name, the status cell, `#N` and
+     one state word. The legend, the grey text, the cost and the time go. */
+  .tree-head { grid-template-columns: auto minmax(0, 1fr); column-gap: var(--space-3); }
+  .tree-label { grid-column: 1 / -1; }
+  .tree-keys { display: none; }
+  .review-long { display: none; }
+  .review-short { display: inline; }
+  .tree, .folds {
+    --join-w: var(--space-3);
+    /* The word column fits `[failed (1)]`, 12 characters. */
+    --line-cols: [name] minmax(0, 1fr) [smark] 16px [word] 12ch [pr] 12ch [end];
+  }
+  .line-detail, .main > [data-col]:not(.pr) { display: none; }
+  .pr-prefix, .pr-words { display: none; }
+  .pr-word { display: inline; }
   /* An approval's line keeps its name and its pane link; the arguments
      are what drops. */
   .line-approval-what { min-width: 0; }
@@ -505,7 +570,7 @@ a.line-name:hover { text-decoration: underline; text-underline-offset: 2px; }
 .fold > summary:hover .line-name { color: var(--ui-text); }
 .folds {
   display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-5);
-  margin: var(--space-4) 0 0; padding: var(--space-2) 0 0; border-top: 1px solid var(--ui-border);
+  margin: var(--space-2) 0 0; padding: 0; border-top: 1px solid var(--ui-border);
 }
 .folds > .fold[open] { flex: 1 0 100%; }
 .archived-list { list-style: none; margin: 0; padding: 0 0 var(--space-2); display: flex; flex-direction: column; color: var(--ui-text-muted); }

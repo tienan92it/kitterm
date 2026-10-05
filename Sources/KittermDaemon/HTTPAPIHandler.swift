@@ -62,6 +62,14 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// `GET /api/projects`; nil in a handler built without one, where no
     /// project carries the field.
     private let remoteOrigins: RemoteOrigins?
+    /// Each GitHub repository's pull requests behind
+    /// `GET /api/projects/<id>/pulls`; nil in a handler built without one,
+    /// where the route answers 503.
+    private let pullRequestStatus: PullRequestStatus?
+    /// Each registered project's knowledge package on its merged base
+    /// branch, behind the two knowledge routes; nil in a handler built
+    /// without one, where both routes read the working tree.
+    private let knowledgeBase: KnowledgeBase?
     /// The newest quota reading behind `POST` and `GET /api/usage/limits`;
     /// nil in a handler built without one, where the routes answer 503.
     private let usageLimits: UsageLimitsStore?
@@ -104,6 +112,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         usageRollup: UsageRollup? = nil,
         repositoryYields: RepositoryYields? = nil,
         remoteOrigins: RemoteOrigins? = nil,
+        pullRequestStatus: PullRequestStatus? = nil,
+        knowledgeBase: KnowledgeBase? = nil,
         usageLimits: UsageLimitsStore? = nil,
         transcriptModels: TranscriptModelCache? = nil,
         transcriptEstimates: TranscriptEstimateCache? = nil
@@ -127,6 +137,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.usageRollup = usageRollup
         self.repositoryYields = repositoryYields
         self.remoteOrigins = remoteOrigins
+        self.pullRequestStatus = pullRequestStatus
+        self.knowledgeBase = knowledgeBase
         self.usageLimits = usageLimits
         self.transcriptModels = transcriptModels
         self.transcriptEstimates = transcriptEstimates
@@ -504,6 +516,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             serveFileStat(grade: grade, head: head, context: context)
         case (.GET, "/api/files/content"):
             serveFileContent(grade: grade, head: head, context: context)
+        case (.GET, _) where Self.pullsProjectID(path: path) != nil:
+            servePulls(id: Self.pullsProjectID(path: path) ?? "", grade: grade, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/projects/"):
             serveKnowledge(path: path, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/"):
@@ -2003,6 +2017,109 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             ?? #"{"ok":false,"error":"encoding failed"}"#
     }
 
+    /// The project id of `/api/projects/<id>/pulls`, nil for any other path.
+    static func pullsProjectID(path: String) -> String? {
+        // ["", "api", "projects", "<id>", "pulls"]
+        let components = path.split(separator: "/", omittingEmptySubsequences: false)
+        guard components.count == 5, components[1] == "api", components[2] == "projects",
+              components[4] == "pulls", ProjectStore.isValidID(String(components[3]))
+        else { return nil }
+        return String(components[3])
+    }
+
+    /// `GET /api/projects/<id>/pulls` — the pull requests of the project's
+    /// GitHub repository, `{ok, project, readAt?, ageSeconds?, reason?,
+    /// pulls}`, from the cache `PullRequestStatus` keeps (`sessions-workflow`
+    /// round 2). The request never waits for `gh`: it answers what the
+    /// cache holds and starts a read on `PullRequestStatus.queue` when the
+    /// last one ended a minute ago or more. A project with no GitHub
+    /// remote answers an empty list and the reason. The project is a
+    /// registered id or one the store discovered from a session's cwd in
+    /// this run (`ProjectStore.discoveredRoot`); any other id is 404, an id
+    /// only a `project:` label names included. The `ETag` covers the body
+    /// less `ageSeconds`, which changes every second; `If-None-Match`
+    /// answers 304. Full grade only: the titles and the branch names of a
+    /// repository are not what a watch link shows today.
+    private func servePulls(id: String, grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let status = pullRequestStatus, let origins = remoteOrigins else {
+            writeJSON(
+                status: .serviceUnavailable,
+                body: #"{"ok":false,"error":"pull request status unavailable"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let loop = context.eventLoop
+        let bound = NIOLoopBound(context, eventLoop: loop)
+        let projects = self.projects
+        // nil for a project the store does not know. The store lookup runs
+        // in the task and the remote on its own queue, as `serveProjects`
+        // reads them; the snapshot is a lock take, and the `gh` read it
+        // schedules runs on `PullRequestStatus.queue`.
+        let promise = loop.makePromise(of: PullRequestStatus.Snapshot?.self)
+        promise.completeWithTask {
+            // A registered id, else the id the store gave a root a
+            // session's cwd discovered: two lookups in the store, no
+            // session listing on a route the page polls.
+            guard let root = projects.registered(id: id)?.root ?? projects.discoveredRoot(id: id) else { return nil }
+            let base: String? = await withCheckedContinuation { continuation in
+                RemoteOrigins.queue.async {
+                    continuation.resume(returning: origins.pullRequestBase(root: root))
+                }
+            }
+            guard let repository = base.flatMap(PullRequestStatus.repository(pullRequestBase:)) else {
+                return PullRequestStatus.Snapshot(reason: PullRequestStatus.noRemoteReason)
+            }
+            status.refreshIfDue(repository: repository)
+            return status.snapshot(repository: repository)
+        }
+        promise.futureResult.whenComplete { result in
+            let context = bound.value
+            guard let snapshot = (try? result.get()) ?? nil else {
+                self.writeJSON(
+                    status: .notFound, body: #"{"ok":false,"error":"no such project"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+                return
+            }
+            let (data, etag) = Self.pullsBody(project: id, snapshot: snapshot, now: Date())
+            var headers = HTTPHeaders()
+            headers.add(name: "ETag", value: etag)
+            headers.add(name: "Cache-Control", value: "no-cache")
+            if head.headers["if-none-match"].contains(etag) {
+                self.writeBytes(status: .notModified, headers: headers, data: Data(),
+                                context: context, version: head.version, keepAlive: head.isKeepAlive)
+                return
+            }
+            headers.add(name: "Content-Type", value: "application/json")
+            headers.add(name: "X-Content-Type-Options", value: "nosniff")
+            self.writeBytes(status: .ok, headers: headers, data: data,
+                            context: context, version: head.version, keepAlive: head.isKeepAlive)
+        }
+    }
+
+    /// The body of the pulls route and its `ETag`. `readAt` is epoch
+    /// milliseconds, like `receivedAt` on the quota; the tag is taken
+    /// before `ageSeconds` goes in.
+    static func pullsBody(project: String, snapshot: PullRequestStatus.Snapshot, now: Date) -> (Data, String) {
+        var item: [String: Any] = ["ok": true, "project": project, "pulls": snapshot.pulls.map(\.json)]
+        if let reason = snapshot.reason { item["reason"] = reason }
+        if let readAt = snapshot.readAt { item["readAt"] = Int64(readAt.timeIntervalSince1970 * 1000) }
+        let options: JSONSerialization.WritingOptions = [.sortedKeys, .withoutEscapingSlashes]
+        let stable = (try? JSONSerialization.data(withJSONObject: item, options: options)) ?? Data()
+        if let readAt = snapshot.readAt { item["ageSeconds"] = max(0, Int(now.timeIntervalSince(readAt))) }
+        let data = (try? JSONSerialization.data(withJSONObject: item, options: options)) ?? stable
+        return (data, "\"\(fnv1a(stable))\"")
+    }
+
     /// What the knowledge routes answer, decided off the loop and carried
     /// back as bytes.
     private enum KnowledgeAnswer: Sendable {
@@ -2016,13 +2133,24 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// (slug, goal, status, round, budget, next action, proposals, last
     /// round and its record as `<slug>/rounds/NNN.md`), `active` first
     /// (`KnowledgeSummary.isOrderedBefore`), an empty list for a package
-    /// with no goal folder. The `ETag` covers the whole body, so the fleet
-    /// view can skip a repaint; `If-None-Match` answers 304.
+    /// with no goal folder. `source` says where the summaries came from:
+    /// `origin/<base>`, the tree of the merged base branch that
+    /// `KnowledgeBase` fetched, or `working tree` with `sourceReason` when
+    /// the cache holds no such tree; `origin/<base>` carries `sourceReason`
+    /// too when the latest fetch failed and the local ref was read. Every
+    /// goal carries its own `source`: a goal an open pull request's branch
+    /// holds is `origin/goal/<slug>` with `pullRequest`, and replaces the
+    /// base's goal of that slug; a goal folder only the working tree holds
+    /// is `working tree` (`KnowledgeBase.Snapshot.merged`). The request never waits for `git`: it
+    /// answers what the cache holds and schedules a read. The `ETag` covers
+    /// the whole body, so the fleet view can skip a repaint;
+    /// `If-None-Match` answers 304.
     /// `GET /api/projects/<id>/knowledge/<path>` — one file under the
     /// knowledge directory, read-only, jailed (`KnowledgeFile`): a `..`,
     /// `.`, empty segment or absolute path is 400, a symlink anywhere in the
     /// chain or a path that resolves outside is 404, a file over 256 KiB is
-    /// 413. Every file is `text/plain`, so a link opens as a page.
+    /// 413. Every file is `text/plain`, so a link opens as a page. The file
+    /// comes from the commit the summaries came from, else the working tree.
     ///
     /// Any grade: the package is the same information class as a session's
     /// cwd and as `GET /api/projects`, and the daemon never writes it. The
@@ -2051,15 +2179,38 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         let loop = context.eventLoop
         let bound = NIOLoopBound(context, eventLoop: loop)
         let projects = self.projects
+        let base = self.knowledgeBase
+        let status = self.pullRequestStatus
+        let origins = self.remoteOrigins
         let promise = loop.makePromise(of: KnowledgeAnswer.self)
         promise.completeWithTask {
             guard let (root, knowledge) = self.knowledgeLocation(id: id, projects: projects) else {
                 return .failed(.notFound, "no such project")
             }
+            // The open goal branches, from what the pulls cache holds now:
+            // the remote on its own queue as `servePulls` reads it, then a
+            // lock take. The `gh` read this schedules runs on
+            // `PullRequestStatus.queue`, so a page that never asks the
+            // pulls route still feeds the cache.
+            var branches: [KnowledgeBase.GoalBranch] = []
+            if base != nil, let status, let origins {
+                let pullBase: String? = await withCheckedContinuation { continuation in
+                    RemoteOrigins.queue.async {
+                        continuation.resume(returning: origins.pullRequestBase(root: root))
+                    }
+                }
+                if let repository = pullBase.flatMap(PullRequestStatus.repository(pullRequestBase:)) {
+                    status.refreshIfDue(repository: repository)
+                    branches = KnowledgeBase.goalBranches(pulls: status.snapshot(repository: repository).pulls)
+                }
+            }
+            // The fetch this schedules runs on `KnowledgeBase.queue`; the
+            // answer below reads what the cache holds now.
+            base?.refreshIfDue(root: root, knowledge: knowledge, branches: branches)
             return await withCheckedContinuation { continuation in
                 KnowledgeFile.queue.async {
                     continuation.resume(returning: Self.knowledgeAnswer(
-                        id: id, root: root, knowledge: knowledge, path: relative
+                        id: id, root: root, knowledge: knowledge, path: relative, base: base
                     ))
                 }
             }
@@ -2113,18 +2264,34 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
 
     /// The knowledge queue's part: the summary or the file, with the
     /// failure mapped to its status.
-    private static func knowledgeAnswer(id: String, root: String, knowledge: String, path: String?) -> KnowledgeAnswer {
+    private static func knowledgeAnswer(
+        id: String, root: String, knowledge: String, path: String?, base: KnowledgeBase?
+    ) -> KnowledgeAnswer {
         guard let path else {
-            guard let goals = KnowledgeFile.summaries(root: root, knowledge: knowledge) else {
+            let merged = base?.snapshot(root: root, knowledge: knowledge)
+            var item: [String: Any] = ["ok": true, "project": id]
+            // The working tree is read for every answer: it holds the goal
+            // folders that no base and no open branch has yet.
+            let disk = KnowledgeFile.summaries(root: root, knowledge: knowledge)
+            guard let goals = (merged ?? KnowledgeBase.Snapshot()).merged(disk: disk) else {
                 return .failed(.notFound, "no knowledge directory")
             }
-            let item: [String: Any] = ["ok": true, "project": id, "goals": goals.map(\.json)]
+            item["goals"] = goals.map(\.json)
+            if let merged, merged.goals != nil, let source = merged.source {
+                item["source"] = source
+                // Set when the latest fetch failed and the local ref was read.
+                if let reason = merged.reason { item["sourceReason"] = reason }
+            } else {
+                item["source"] = KnowledgeBase.workingTree
+                item["sourceReason"] = merged?.reason ?? "no base branch reader"
+            }
             guard let data = try? JSONSerialization.data(withJSONObject: item, options: [.sortedKeys]) else {
                 return .failed(.internalServerError, "encoding failed")
             }
             return .summary(data)
         }
         do {
+            if let payload = try base?.file(root: root, knowledge: knowledge, path: path) { return .file(payload) }
             return .file(try KnowledgeFile.read(root: root, knowledge: knowledge, path: path))
         } catch KnowledgeFile.Failure.badPath {
             return .failed(.badRequest, "path must be relative, without `..`")

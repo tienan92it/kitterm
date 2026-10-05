@@ -223,6 +223,13 @@ public final class DaemonServer: @unchecked Sendable {
         // Each project's `origin` remote, for the pull request links, read
         // with `git` on its own queue and kept five minutes per root.
         let remoteOrigins = RemoteOrigins()
+        // Each GitHub repository's pull requests, read with `gh` on its own
+        // queue, at most once a minute per repository.
+        let pullRequestStatus = PullRequestStatus()
+        // Each registered project's knowledge package on its merged base
+        // branch, fetched with `git` on its own queue, at most once a
+        // minute per root.
+        let knowledgeBase = KnowledgeBase()
         // The model per live session's transcript, one cache for every
         // connection, so a session list reads a transcript only when it grew.
         let transcriptModels = TranscriptModelCache()
@@ -381,6 +388,8 @@ public final class DaemonServer: @unchecked Sendable {
                         usageRollup: usageRollup,
                         repositoryYields: repositoryYields,
                         remoteOrigins: remoteOrigins,
+                        pullRequestStatus: pullRequestStatus,
+                        knowledgeBase: knowledgeBase,
                         usageLimits: usageLimits,
                         transcriptModels: transcriptModels,
                         transcriptEstimates: transcriptEstimates

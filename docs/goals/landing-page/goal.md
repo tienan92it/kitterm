@@ -10,7 +10,7 @@ feature pages — the terminal, what the spend bought, where it went,
 which model spent it — and the crew tree, each drawn as a specimen of
 the real product. The design is the human's, approved on 2026-09-20:
 the frames `Landing 1200`, `Landing 390` and `Landing notes` in
-`../agent-dashboard/corpus/dashboard.pen`, which also holds the tokens.
+`../../../design/dashboard.pen`, which also holds the tokens.
 
 ## Exclusions
 

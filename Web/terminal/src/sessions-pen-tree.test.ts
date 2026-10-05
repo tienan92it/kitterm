@@ -23,6 +23,14 @@ import { goalFactColumns, goalTooltip, headingFactColumns, isOpen, NO_FACT, sess
  * links to the pull request where the project's remote is on GitHub.
  * Chartered in round 16: the bill cell's tooltip, which said a running
  * session has no cost; it has an estimate now (`sessions-estimate.test.ts`).
+ * Chartered in round 6 of `sessions-workflow` (`goal.md` conditions 2 and
+ * 3, the frames of `design/sessions.pen`, the three rules of
+ * `corpus/01-approved-design.md`): a goal's and a task's word is its stage;
+ * a goal line prints its slug, its pull request and its counter; a session
+ * that waits on a person prints `waits 1m`; a scope line prints its path
+ * and its counts; a workspace wears the triangle; a line carries its
+ * hairline joins; a project with every goal done and no live session
+ * starts closed.
  */
 
 /** The page reads the clock, so the fixture's moments sit against it. */
@@ -177,15 +185,15 @@ describe("the tree over a fleet shaped like the frame", () => {
     const [section] = built.sections;
     expect(section.lines.map(shape)).toEqual([
       [0, "kitterm", null, ["$926.21@2!", "1 agent@4"]],
-      [1, "review", "[needs you]", ["$12.85@2!", "1m@4"]],
+      [1, "review", "[needs you]", ["$12.85@2!", "waits 1m@4"]],
       [1, "kitterm", "[working]", ["–@2!", "4m@4"]],
-      [1, "agent-dashboard", "[waiting]", ["–@2!"]],
-      [2, "no-input-on-the-page", "[pending]", ["–@2!"]],
-      [2, "the-foundation-in-the-stylesheet", "[pending]", ["–@2!"]],
-      [2, "a-task-is-the-fourth-level", "[pending]", ["–@2!"]],
+      [1, "agent-dashboard", "[blocked]", ["–@2!", "PR #133@3", "r0/3@4"]],
+      [2, "no-input-on-the-page", "[plan]", ["–@2!"]],
+      [2, "the-foundation-in-the-stylesheet", "[plan]", ["–@2!"]],
+      [2, "a-task-is-the-fourth-level", "[plan]", ["–@2!"]],
       [2, "others-not-a-count", "[done]", ["–@2!", "PR #133@3"]],
       [2, "models-top-three", "[done]", ["–@2!", "PR #132@3"]],
-      [1, "workspace-ledger", "[done]", ["$75.11@2!"]],
+      [1, "workspace-ledger", "[done]", ["$75.11@2!", "PR #124@3"]],
       [2, "the-strip-holds-only-what-needs-you", "[done]", ["$75.11@2!", "PR #124@3"]],
       [2, "the-numbers-on-the-page", "[done]", ["–@2!", "PR #123@3"]],
       [1, "▸ 2 done", null, []],
@@ -198,7 +206,7 @@ describe("the tree over a fleet shaped like the frame", () => {
       "r6/3", "round 6 · PR #124", "round 5 · PR #123",
     ]);
     expect(section.lines.slice(7, 12).map((l) => l.facts.find((f) => f.kind === "pr")?.href)).toEqual([
-      `${PR_BASE}133`, `${PR_BASE}132`, undefined, `${PR_BASE}124`, `${PR_BASE}123`,
+      `${PR_BASE}133`, `${PR_BASE}132`, `${PR_BASE}124`, `${PR_BASE}124`, `${PR_BASE}123`,
     ]);
     const fold = section.lines[section.lines.length - 1];
     expect(fold.kind === "fold" && fold.lines.map(shape)).toEqual([
@@ -241,7 +249,7 @@ describe("the tree over a fleet shaped like the frame", () => {
     expect(section.lines.map(shape)).toEqual([
       [0, "NgheNhanTrading", null, ["$1,249.23@2!", "1 agent@4"]],
       [1, "market-data-pipeline", null, ["$30.91@2!", "1 agent@4"]],
-      [2, "one command onboards a symbol", "[done]", ["$41.02@2!"]],
+      [2, "symbol-onboarding", "[done]", ["$41.02@2!", "PR #40@3"]],
       [3, "path-mapping", "[done]", ["$41.02@2!", "PR #40@3"]],
       [3, "path-mapping-real-terminal", "[working]", ["–@2!", "Fable 5.1@3", "4m@4"]],
       [1, "nghenhan-mt5", null, ["$2.29@2!"]],
@@ -320,14 +328,14 @@ describe("the painted tree", () => {
     expect(lines[0].querySelector(".mark")?.getAttribute("aria-expanded")).toBe("true");
     expect(lines[0].querySelector(".mark")?.getAttribute("aria-label")).toBe("Fold kitterm");
     expect(lines[3].querySelector(".mark")?.getAttribute("data-focus")).toBe("fold:goal:kitterm:agent-dashboard");
-    expect(cellsOf(lines[0])).toEqual(["line-name=kitterm", "cost=$926.21@2!", "agents=1 agent@4"]);
+    expect(cellsOf(lines[0])).toEqual(["line-name=kitterm", "line-detail=/w/kitterm · 1 blocked · 3 done", "cost=$926.21@2!", "agents=1 agent@4"]);
     expect(lines[0].querySelector(".line-name")?.tagName).toBe("H2");
     // Round 15: the cost at every level, the counter and the round on the
     // name's tooltip, the PR a link under the project's base.
-    expect(cellsOf(lines[1])).toEqual(["folder line-name=review", "state attention=[needs you]", "cost=$12.85@2!", "since=1m@4"]);
-    expect(cellsOf(lines[3])).toEqual(["line-name=agent-dashboard", "state attention=[waiting]", "cost=–@2!"]);
+    expect(cellsOf(lines[1])).toEqual(["folder line-name=review", "state attention=[needs you]", "cost=$12.85@2!", "since=waits 1m@4"]);
+    expect(cellsOf(lines[3])).toEqual(["line-name=agent-dashboard", "line-detail=its status is waiting", "state attention=[blocked]", "cost=–@2!", "pr=PR #133@3", "counter=r0/3@4"]);
     expect(lines[3].querySelector(".line-name")?.title).toBe("r0/3 · next: Round 10, `the-page-is-the-pen-design`.");
-    expect(cellsOf(lines[9])).toEqual(["line-name=workspace-ledger", "state idle=[done]", "cost=$75.11@2!"]);
+    expect(cellsOf(lines[9])).toEqual(["line-name=workspace-ledger", "state done=[done]", "cost=$75.11@2!", "pr=PR #124@3"]);
     expect(lines[9].querySelector(".line-name")?.title).toBe("r6/3");
     expect(cellsOf(lines[10])).toEqual(["line-name=the-strip-holds-only-what-needs-you", "state done=[done]", "cost=$75.11@2!", "pr=PR #124@3"]);
     expect(lines[10].querySelector(".line-name")?.title).toBe("round 6 · PR #124");
@@ -345,7 +353,7 @@ describe("the painted tree", () => {
     // none either.
     const heads = workspace.querySelectorAll(".line-name").filter((n) => n.tagName === "H2" || n.tagName === "H3");
     expect(heads.map((h) => [h.tagName, h.textContent])).toEqual([["H2", "NgheNhanTrading"], ["H3", "market-data-pipeline"], ["H3", "nghenhan-mt5"]]);
-    expect(workspace.querySelectorAll(".line-workspace").map((l) => l.querySelector(".mark")?.className)).toEqual(["mark blank"]);
+    expect(workspace.querySelectorAll(".line-workspace").map((l) => l.querySelector(".mark")?.className)).toEqual(["mark disclosure"]);
     expect(workspace.querySelectorAll(".line-project").map((l) => l.querySelector(".mark")?.className)).toEqual(["mark disclosure", "mark blank"]);
     const crew = workspace.querySelectorAll(".row-line")[0];
     expect(cellsOf(crew)).toEqual(["folder line-name=path-mapping-real-terminal", "state running=[working]", "cost=–@2!", "model=Fable 5.1@3", "since=4m@4"]);
@@ -374,7 +382,7 @@ describe("the painted tree", () => {
     expect(project.querySelectorAll("button").map((b) => b.className)).toEqual(["mark disclosure"]);
     const row = page.root.querySelectorAll(".row-line")[0];
     expect(row.querySelectorAll("button")).toEqual([]);
-    expect(row.children.filter((c): c is FakeElement => typeof c !== "string").map((c) => c.className)).toEqual(["mark attention", "open"]);
+    expect(row.children.filter((c): c is FakeElement => typeof c !== "string").map((c) => c.className)).toEqual(["mark attention", "joins long", "open"]);
     const approvalLine = page.root.querySelector(".line-approval")!;
     expect(approvalLine.querySelectorAll("a").map((a) => [a.className, a.textContent])).toEqual([["line-link", "Open the pane"]]);
     expect(approvalLine.querySelectorAll("button")).toEqual([]);
@@ -439,14 +447,14 @@ describe("a done goal inside the N done fold", () => {
     // tooltip (round 15), and the PR keeps column 3.
     expect(section.lines.map(shape)).toEqual([
       [0, "nghenhan-mt5", null, []],
-      [1, "latest", "[done]", []],
+      [1, "latest", "[done]", ["PR #9@3"]],
       [2, "l-a", "[done]", ["PR #9@3"]],
       [2, "l-b", "[done]", ["PR #8@3"]],
       [1, "▸ 2 done", null, []],
     ]);
     expect(section.lines.slice(1, 4).map((l) => l.title)).toEqual(["r3/3", "round 3 · PR #9", "round 2 · PR #8"]);
     expect(fold.kind === "fold" && fold.lines.map(shape)).toEqual([
-      [1, "bars", "[done]", []],
+      [1, "bars", "[done]", ["PR #5@3"]],
       [2, "b-a", "[done]", ["PR #5@3"]],
       [2, "b-b", "[done]", ["PR #4@3"]],
       [2, "b-c", "[done]", []],
@@ -467,13 +475,19 @@ describe("a done goal inside the N done fold", () => {
     expect(names([])).toEqual(["1:bars", "1:bare"]);
     expect(names(["goal:mt5:bars"])).toEqual(["1:bars", "2:b-a", "2:b-b", "2:b-c", "1:bare"]);
     // The same key on the goal outside the fold closes it.
-    expect(visibleLines(section.lines, new Set(["goal:mt5:latest"])).map((l) => `${l.depth}:${l.name}`)).toEqual(["0:nghenhan-mt5", "1:latest", "1:2 done"]);
+    // The project's goals are all done and no session is live, so the
+    // project starts closed (approved rule 3); its key opens it.
+    expect(visibleLines(section.lines, new Set()).map((l) => `${l.depth}:${l.name}`)).toEqual(["0:nghenhan-mt5"]);
+    expect(visibleLines(section.lines, new Set(["project:mt5", "goal:mt5:latest"])).map((l) => `${l.depth}:${l.name}`)).toEqual(["0:nghenhan-mt5", "1:latest", "1:2 done"]);
   });
 
   it("paints the goal with tasks as a closed triangle that opens to them, and the goal without as a blank mark", async () => {
     const was = routes["/api/projects/mt5/knowledge"];
     routes["/api/projects/mt5/knowledge"] = { ok: true, project: "mt5", goals: mt5Goals };
     await page.poll();
+    // The project starts closed (approved rule 3): open it first.
+    page.root.querySelectorAll("button").find((b) => b.getAttribute("aria-label") === "Open nghenhan-mt5")!.click();
+    await page.settle();
     const workspace = page.root.querySelector(".tree")!.querySelectorAll(".tree-section")[1];
     const fold = workspace.querySelectorAll(".fold").find((f) => f.querySelector("summary")?.querySelector(".line-name")?.textContent === "2 done")!;
     expect(fold.querySelector("summary")?.className).toBe("line line-fold");

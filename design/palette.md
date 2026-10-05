@@ -289,7 +289,7 @@ would read as the same palette on a slightly different ground. Carbon's
 cyan on a true-black ground is the visible change the human asked for,
 and 46° is the same separation Signal would have given.
 
-Every frame in `dashboard.pen` is re-tinted: the document variables hold
+Every frame in `design/dashboard.pen` is re-tinted: the document variables hold
 Carbon and each frame draws from them, so the re-tint was one edit
 rather than six.
 
@@ -332,7 +332,7 @@ terminal theme is set.
 
 ## The spinner glyph
 
-`design-foundation.md` names a braille spinner because that is what
+`design/foundation.md` names a braille spinner because that is what
 Claude Code turns in the pane. Braille is not in every monospace face,
 and a missing glyph renders as a box, which is worse than no animation.
 

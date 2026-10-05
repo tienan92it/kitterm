@@ -135,7 +135,9 @@ describe("the band replaces the strip", () => {
     // There is no `[Dismiss]` and no actions cell: the page holds no
     // action. Chartered: round 10's amber disclosure and its Dismiss.
     expect(goal.querySelector(".mark")?.className).toBe("mark disclosure");
-    expect(goal.querySelector(".state")?.textContent).toBe("[needs you]");
+    // Chartered in round 6 of `sessions-workflow` (`goal.md` condition 2):
+    // a goal whose proposals wait is `[blocked]`, on a person.
+    expect(goal.querySelector(".state")?.textContent).toBe("[blocked]");
     // The name opens the record the proposals wait in; the count is its tooltip.
     expect(goal.querySelector(".line-name")?.href).toBe("/api/projects/kitterm/knowledge/agent-dashboard/rounds/003.md");
     expect(goal.querySelector(".line-name")?.title, "the decision line joins it when it proposes").toBe("2 proposals");

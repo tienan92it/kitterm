@@ -1,5 +1,5 @@
 /**
- * The working mark turns (`design-foundation.md`, principle 4): a character
+ * The working mark turns (`design/foundation.md`, principle 4): a character
  * cycle at 90 ms a frame, not a CSS transition, so it costs no layout and
  * reads at a glance from across a room. This module is the pure part: the
  * one cycle and the frame for a tick. `sessions.ts` owns the timer and the

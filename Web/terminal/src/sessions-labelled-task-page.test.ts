@@ -65,16 +65,22 @@ const linkIn = (cell: FakeElement | undefined) => {
   const el = a as unknown as { className: string; href: string; target: string; rel: string; textContent: string };
   return [el.className, el.href, el.target, el.rel, a.querySelector(".mark")?.className, el.textContent];
 };
+const goalNamed = (name: string) => page.root.querySelectorAll(".goal-line").find((g) => g.querySelector(".line-name")?.textContent === name)!;
 const taskNamed = (name: string) => page.root.querySelectorAll(".line-task").find((t) => t.querySelector(".line-name")?.textContent === name)!;
 
 describe("the painted labelled task", () => {
   it("is a task line under its goal with the working mark, [working], the dash and PR #N as a link, the crew under it", () => {
     const task = taskNamed("the-dashboard-shows-the-open-pr");
     expect(task).toBeDefined();
-    expect(cellsOf(task)).toEqual(["line-name=the-dashboard-shows-the-open-pr", "state running=[working]", "cost=–@2!", "pr=PR #176@3"]);
+    // Chartered in round 6 of `sessions-workflow` (`goal.md` condition 2; the frame
+    // `Sessions components`, "Task line": a task prints a pull request
+    // number only when the number is not its goal's): the word is
+    // `[build]`, and the label's `PR #176` is the goal's, so the link is
+    // on the goal's line.
+    expect(cellsOf(task)).toEqual(["line-name=the-dashboard-shows-the-open-pr", "state running=[build]", "cost=–@2!"]);
     expect(task.querySelector(".mark")?.className).toBe("mark running");
     expect(task.querySelector(".line-name")?.title).toBe("round 2 · PR #176");
-    expect(linkIn(task.querySelector(".pr") ?? undefined)).toEqual(["pr-link", `${BASE}176`, "_blank", "noopener", "mark link wide", "PR #176"]);
+    expect(linkIn(goalNamed("foreman-flow").querySelector(".pr") ?? undefined)).toEqual(["pr-link", `${BASE}176`, "_blank", "noopener", "mark link wide", "PR #176"]);
     // The lines of the goal, in order: the labelled task first, its crew
     // under it, then the listed tasks as the package lists them.
     const goalLines = page.root.querySelectorAll(".line").filter((l) => l.classList.contains("line-task") || l.classList.contains("row-line"));
@@ -90,7 +96,10 @@ describe("the painted labelled task", () => {
 
   it("prints the PR as plain text for a project with no pullRequestBase", () => {
     const task = taskNamed("map-the-path");
-    expect(cellsOf(task)).toEqual(["line-name=map-the-path", "state running=[working]", "cost=–@2!", "pr=PR #41@3"]);
-    expect(linkIn(task.querySelector(".pr") ?? undefined)).toBeNull();
+    // Chartered in round 6 of `sessions-workflow`: the number is on the goal's line,
+    // as plain text.
+    expect(cellsOf(task)).toEqual(["line-name=map-the-path", "state running=[build]", "cost=–@2!"]);
+    expect(goalNamed("symbol-onboarding").querySelector(".pr")?.textContent).toBe("PR #41");
+    expect(linkIn(goalNamed("symbol-onboarding").querySelector(".pr") ?? undefined)).toBeNull();
   });
 });

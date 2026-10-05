@@ -138,7 +138,9 @@ describe("the fleet view takes no typed work", () => {
 describe("the fleet view holds no action", () => {
   it("rendered every line that once carried one: the project, the goal that needs the human, the sessions, the approval", () => {
     expect(root.querySelectorAll(".line-project").map((l) => l.querySelector(".line-name")?.textContent)).toEqual(["kitterm"]);
-    expect(root.querySelectorAll('[data-needs="proposed"]').map((l) => l.querySelector(".state")?.textContent)).toEqual(["[needs you]"]);
+    // Chartered in round 6 of `sessions-workflow` (`goal.md` condition 2):
+    // a goal whose proposals wait is `[blocked]`.
+    expect(root.querySelectorAll('[data-needs="proposed"]').map((l) => l.querySelector(".state")?.textContent)).toEqual(["[blocked]"]);
     expect(root.querySelectorAll(".row-line").length).toBeGreaterThanOrEqual(4);
     expect(root.querySelectorAll(".line-approval").map((l) => l.querySelector("[data-name]")?.textContent)).toEqual(["approve Bash"]);
   });
