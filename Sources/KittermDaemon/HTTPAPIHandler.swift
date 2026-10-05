@@ -2137,7 +2137,11 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// `origin/<base>`, the tree of the merged base branch that
     /// `KnowledgeBase` fetched, or `working tree` with `sourceReason` when
     /// the cache holds no such tree; `origin/<base>` carries `sourceReason`
-    /// too when the latest fetch failed and the local ref was read. The request never waits for `git`: it
+    /// too when the latest fetch failed and the local ref was read. Every
+    /// goal carries its own `source`: a goal an open pull request's branch
+    /// holds is `origin/goal/<slug>` with `pullRequest`, and replaces the
+    /// base's goal of that slug; a goal folder only the working tree holds
+    /// is `working tree` (`KnowledgeBase.Snapshot.merged`). The request never waits for `git`: it
     /// answers what the cache holds and schedules a read. The `ETag` covers
     /// the whole body, so the fleet view can skip a repaint;
     /// `If-None-Match` answers 304.
@@ -2176,14 +2180,33 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         let bound = NIOLoopBound(context, eventLoop: loop)
         let projects = self.projects
         let base = self.knowledgeBase
+        let status = self.pullRequestStatus
+        let origins = self.remoteOrigins
         let promise = loop.makePromise(of: KnowledgeAnswer.self)
         promise.completeWithTask {
             guard let (root, knowledge) = self.knowledgeLocation(id: id, projects: projects) else {
                 return .failed(.notFound, "no such project")
             }
+            // The open goal branches, from what the pulls cache holds now:
+            // the remote on its own queue as `servePulls` reads it, then a
+            // lock take. The `gh` read this schedules runs on
+            // `PullRequestStatus.queue`, so a page that never asks the
+            // pulls route still feeds the cache.
+            var branches: [KnowledgeBase.GoalBranch] = []
+            if base != nil, let status, let origins {
+                let pullBase: String? = await withCheckedContinuation { continuation in
+                    RemoteOrigins.queue.async {
+                        continuation.resume(returning: origins.pullRequestBase(root: root))
+                    }
+                }
+                if let repository = pullBase.flatMap(PullRequestStatus.repository(pullRequestBase:)) {
+                    status.refreshIfDue(repository: repository)
+                    branches = KnowledgeBase.goalBranches(pulls: status.snapshot(repository: repository).pulls)
+                }
+            }
             // The fetch this schedules runs on `KnowledgeBase.queue`; the
             // answer below reads what the cache holds now.
-            base?.refreshIfDue(root: root, knowledge: knowledge)
+            base?.refreshIfDue(root: root, knowledge: knowledge, branches: branches)
             return await withCheckedContinuation { continuation in
                 KnowledgeFile.queue.async {
                     continuation.resume(returning: Self.knowledgeAnswer(
@@ -2247,16 +2270,18 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         guard let path else {
             let merged = base?.snapshot(root: root, knowledge: knowledge)
             var item: [String: Any] = ["ok": true, "project": id]
-            if let merged, let goals = merged.goals, let source = merged.source {
-                item["goals"] = goals.map(\.json)
+            // The working tree is read for every answer: it holds the goal
+            // folders that no base and no open branch has yet.
+            let disk = KnowledgeFile.summaries(root: root, knowledge: knowledge)
+            guard let goals = (merged ?? KnowledgeBase.Snapshot()).merged(disk: disk) else {
+                return .failed(.notFound, "no knowledge directory")
+            }
+            item["goals"] = goals.map(\.json)
+            if let merged, merged.goals != nil, let source = merged.source {
                 item["source"] = source
                 // Set when the latest fetch failed and the local ref was read.
                 if let reason = merged.reason { item["sourceReason"] = reason }
             } else {
-                guard let goals = KnowledgeFile.summaries(root: root, knowledge: knowledge) else {
-                    return .failed(.notFound, "no knowledge directory")
-                }
-                item["goals"] = goals.map(\.json)
                 item["source"] = KnowledgeBase.workingTree
                 item["sourceReason"] = merged?.reason ?? "no base branch reader"
             }

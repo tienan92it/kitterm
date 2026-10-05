@@ -31,6 +31,15 @@ import NIOConcurrencyHelpers
 /// with `-` or fails `git check-ref-format --branch` is refused before any
 /// fetch, and the fetch names the branch only inside a full refspec after
 /// `--`, never as a bare argument.
+///
+/// A goal lives on its branch, `goal/<slug>`, until its pull request merges
+/// (round 4). For each open pull request whose head is such a branch
+/// (`goalBranches`, from the cache of `PullRequestStatus`), the same read
+/// fetches the branch beside the base and builds the summary of
+/// `<knowledge>/<slug>/` alone from `origin/goal/<slug>`, with the same
+/// tree reader, caps and modes. A branch name passes the base's rule before
+/// any fetch. The summary route lays a branch's summary over the base's of
+/// the same slug (`Snapshot.merged`).
 public final class KnowledgeBase: @unchecked Sendable {
     public static let refreshSeconds: TimeInterval = 60
     public static let timeoutSeconds: TimeInterval = 20
@@ -51,6 +60,13 @@ public final class KnowledgeBase: @unchecked Sendable {
     private static let queueMark = QueueMark()
     /// True on `queue`, so a test can tell where a fetch ran.
     static var isOnQueue: Bool { DispatchQueue.getSpecific(key: queueMark.key) == true }
+
+    /// The goal branches one read fetches and lists per root. Each one adds
+    /// a refspec to the fetch and three local `git` commands to the read on
+    /// the one serial queue, and one round of a goal runs at a time, so more
+    /// than 8 open goal pull requests is not a state a human reviews.
+    public static let maxGoalBranches = 8
+    static let branchPrefix = "goal/"
 
     public static let workingTree = "working tree"
     public static let notReadReason = "not read yet"
@@ -78,6 +94,67 @@ public final class KnowledgeBase: @unchecked Sendable {
         var children: [String: [String]] = [:]
     }
 
+    /// An open pull request whose head branch is `goal/<slug>`.
+    public struct GoalBranch: Equatable, Sendable {
+        public var slug: String
+        public var pull: Int
+        var name: String { KnowledgeBase.branchPrefix + slug }
+
+        public init(slug: String, pull: Int) {
+            self.slug = slug
+            self.pull = pull
+        }
+    }
+
+    /// The goal branches of a pull request list: the open pulls whose head
+    /// is `goal/<slug>` with a valid goal slug, one per slug, the first
+    /// `maxGoalBranches` in the order `gh` printed them. A merged or closed
+    /// pull request names no branch, and neither does `chore/<slug>`: a
+    /// chore has no goal folder.
+    public static func goalBranches(pulls: [PullRequestStatus.Pull]) -> [GoalBranch] {
+        var branches: [GoalBranch] = []
+        for pull in pulls where pull.state == "open" && pull.headRefName.hasPrefix(branchPrefix) {
+            let slug = String(pull.headRefName.dropFirst(branchPrefix.count))
+            guard ProjectStore.isValidID(slug), !branches.contains(where: { $0.slug == slug }) else { continue }
+            branches.append(GoalBranch(slug: slug, pull: pull.number))
+            if branches.count == maxGoalBranches { break }
+        }
+        return branches
+    }
+
+    /// One goal as its open branch holds it.
+    public struct BranchGoal: Equatable, Sendable {
+        public var slug: String
+        public var pull: Int
+        /// `origin/goal/<slug>`.
+        public var source: String
+        public var commit: String
+        public var summary: KnowledgeSummary
+        /// Set when the latest fetch of the branch failed and the local ref
+        /// was read.
+        public var reason: String?
+        /// The entries of `<knowledge>/<slug>` alone, by their path relative
+        /// to the knowledge directory.
+        var tree: Tree
+        var listing: Data
+    }
+
+    /// One goal of the summary route, with where it came from.
+    public struct SourcedGoal: Equatable, Sendable {
+        public var summary: KnowledgeSummary
+        public var source: String
+        public var pull: Int?
+        public var reason: String?
+
+        public var json: [String: Any] {
+            var item = summary.json
+            item["source"] = source
+            if let pull { item["pullRequest"] = pull }
+            if let reason { item["sourceReason"] = reason }
+            return item
+        }
+    }
+
     /// What the cache holds for one root: the summaries of `source`
     /// (`origin/main`), or none and why. With summaries, `reason` is set
     /// only when the latest fetch failed and the local ref was read.
@@ -88,6 +165,38 @@ public final class KnowledgeBase: @unchecked Sendable {
         /// The commit the summaries came from.
         public var commit: String?
         var tree: Tree?
+        /// The goals read from open goal branches, whatever the base gave.
+        public var branches: [BranchGoal] = []
+
+        /// The goals the summary route prints. The base's goals, else the
+        /// working tree's (`disk`); a branch's summary replaces the one of
+        /// the same slug; a goal folder that only the working tree holds is
+        /// kept. Nil when no source holds a knowledge directory.
+        public func merged(disk: [KnowledgeSummary]?) -> [SourcedGoal]? {
+            var bySlug: [String: SourcedGoal] = [:]
+            var unnamed: [SourcedGoal] = []
+            func keep(_ goals: [KnowledgeSummary], _ source: String) {
+                for summary in goals {
+                    let goal = SourcedGoal(summary: summary, source: source)
+                    guard let slug = summary.slug else {
+                        unnamed.append(goal)
+                        continue
+                    }
+                    bySlug[slug] = goal
+                }
+            }
+            keep(disk ?? [], KnowledgeBase.workingTree)
+            if let goals, let source { keep(goals, source) }
+            for branch in branches {
+                bySlug[branch.slug] = SourcedGoal(
+                    summary: branch.summary, source: branch.source, pull: branch.pull, reason: branch.reason
+                )
+            }
+            guard disk != nil || goals != nil || !branches.isEmpty else { return nil }
+            return (Array(bySlug.values) + unnamed).sorted {
+                KnowledgeSummary.isOrderedBefore($0.summary, $1.summary)
+            }
+        }
     }
 
     /// Runs `git` at `executable`; nil when it cannot start. `input` is its
@@ -102,6 +211,8 @@ public final class KnowledgeBase: @unchecked Sendable {
         var fetchedAt: Date?
         var endedAt: Date?
         var reading = false
+        /// The goal branches the running read fetches.
+        var wanted: [GoalBranch] = []
     }
 
     private let searchPath: String
@@ -157,8 +268,9 @@ public final class KnowledgeBase: @unchecked Sendable {
 
     /// Start one read of `root` on `queue` when none runs and the last one
     /// ended `refreshSeconds` ago or more. True when a read started.
+    /// `branches` are the goal branches that read fetches beside the base.
     @discardableResult
-    public func refreshIfDue(root: String, knowledge: String) -> Bool {
+    public func refreshIfDue(root: String, knowledge: String, branches: [GoalBranch] = []) -> Bool {
         let now = clock()
         let key = Self.key(root, knowledge)
         let due: Bool = lock.withLock {
@@ -166,6 +278,7 @@ public final class KnowledgeBase: @unchecked Sendable {
             if record.reading { return false }
             if let last = record.endedAt, now.timeIntervalSince(last) < Self.refreshSeconds { return false }
             record.reading = true
+            record.wanted = Array(branches.prefix(Self.maxGoalBranches))
             cache[key] = record
             return true
         }
@@ -179,7 +292,10 @@ public final class KnowledgeBase: @unchecked Sendable {
         let key = Self.key(root, knowledge)
         let before = lock.withLock { cache[key] }
         let known = before.flatMap { $0.snapshot.goals == nil ? nil : (listing: $0.listing, snapshot: $0.snapshot) }
-        let outcome = read(root: root, knowledge: knowledge, known: known, fetchedAt: before?.fetchedAt)
+        let outcome = read(
+            root: root, knowledge: knowledge, known: known, fetchedAt: before?.fetchedAt,
+            branches: before?.wanted ?? [], knownBranches: before?.snapshot.branches ?? []
+        )
         let ended = clock()
         lock.withLock {
             var record = cache[key] ?? Record()
@@ -210,11 +326,16 @@ public final class KnowledgeBase: @unchecked Sendable {
     /// clone too. No `FETCH_HEAD` is written, so the human's own stays; no
     /// tag, no submodule, no gc and no maintenance run.
     static func fetchArguments(root: String, base: String) -> [String] {
+        fetchArguments(root: root, branches: [base])
+    }
+
+    /// The same fetch for several branches, one full refspec each.
+    static func fetchArguments(root: String, branches: [String]) -> [String] {
         [
             "-C", root, "-c", "gc.auto=0", "-c", "maintenance.auto=false",
             "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--no-recurse-submodules",
-            "--", "origin", "+refs/heads/\(base):refs/remotes/origin/\(base)",
-        ]
+            "--", "origin",
+        ] + branches.map { "+refs/heads/\($0):refs/remotes/origin/\($0)" }
     }
 
     /// A time as `2026-10-05T09:20:00Z`. A formatter per call: it is not
@@ -225,13 +346,15 @@ public final class KnowledgeBase: @unchecked Sendable {
         return formatter.string(from: date)
     }
 
-    /// Fetch the base branch of `root` and build the summaries of its
-    /// knowledge directory from `origin/<base>`. A fetch that fails reads
-    /// the `origin/<base>` already here and says so. `known` is the last
-    /// good read: a listing equal to its listing keeps its summaries, so an
+    /// Fetch the base branch of `root` and the goal branches, build the
+    /// summaries of the knowledge directory from `origin/<base>` and one
+    /// summary per branch from `origin/goal/<slug>`. A fetch that fails
+    /// reads the ref already here and says so. `known` is the last good
+    /// read: a listing equal to its listing keeps its summaries, so an
     /// unchanged package costs no object read. Synchronous.
     private func read(
-        root: String, knowledge: String, known: (listing: Data?, snapshot: Snapshot)?, fetchedAt: Date?
+        root: String, knowledge: String, known: (listing: Data?, snapshot: Snapshot)?, fetchedAt: Date?,
+        branches: [GoalBranch], knownBranches: [BranchGoal]
     ) -> Outcome {
         guard let executable = PullRequestStatus.locate("git", in: searchPath) else {
             return .none(Self.absentReason)
@@ -259,86 +382,162 @@ public final class KnowledgeBase: @unchecked Sendable {
                   word(run(["rev-parse", "--verify", "--quiet", "refs/remotes/origin/master"])) != nil {
             base = "master"
         }
-        // The remote chose this name. A name git would read as an option,
+        // The remote chose these names. A name git would read as an option,
         // or would not take as a branch, reaches no other command.
-        guard !base.hasPrefix("-"), word(run(["check-ref-format", "--branch", base])) == base else {
-            return .none("the base branch name is refused: " + String(base.prefix(100)))
+        func accepted(_ name: String) -> Bool {
+            !name.hasPrefix("-") && word(run(["check-ref-format", "--branch", name])) == name
         }
-        let source = "origin/" + base
+        let baseAccepted = accepted(base)
+        let wanted = branches.prefix(Self.maxGoalBranches).filter {
+            ProjectStore.isValidID($0.slug) && $0.name != base && accepted($0.name)
+        }
 
         // The exit code alone: the stderr of a fetch can hold the remote's
         // URL with a credential in it, and the route answers at watch grade.
-        var failed: String?
-        if let fetch = git(executable, Self.fetchArguments(root: root, base: base), nil, 0) {
-            if fetch.timedOut {
-                failed = "git fetch timed out after \(Int(Self.timeoutSeconds)) s"
-            } else if fetch.status != 0 {
-                failed = "git fetch exited \(fetch.status)"
+        func fetch(_ names: [String]) -> (failure: String, exited: Bool)? {
+            guard let fetch = git(executable, Self.fetchArguments(root: root, branches: names), nil, 0) else {
+                return ("git did not start", false)
             }
-        } else {
-            failed = "git did not start"
+            if fetch.timedOut { return ("git fetch timed out after \(Int(Self.timeoutSeconds)) s", false) }
+            return fetch.status == 0 ? nil : ("git fetch exited \(fetch.status)", true)
         }
-        let fetched = failed == nil
-        guard let commit = word(run(["rev-parse", "--verify", "--quiet", "refs/remotes/\(source)^{commit}"])),
-              Self.isObjectID(commit)
-        else {
-            return .none(failed.map { "\($0); no local \(source)" } ?? "\(source) is missing", fetched: fetched)
-        }
-        // The local ref is read after a failed fetch, with what failed and
-        // how old the ref is.
-        let note = failed.map { failure in
-            failure + (fetchedAt.map { "; last good fetch " + Self.stamp($0) } ?? "; no good fetch yet")
-        }
-        guard let listed = run(["ls-tree", "-r", "-t", "-l", "-z", commit, "--", path], maxOutput: Self.maxListingBytes),
-              !listed.timedOut, listed.status == 0, listed.output.count < Self.maxListingBytes
-        else {
-            return .none("git ls-tree of \(source) failed", fetched: fetched)
-        }
-        if let known, known.listing == listed.output, known.snapshot.source == source {
-            var snapshot = known.snapshot
-            snapshot.commit = commit
-            snapshot.reason = note
-            return Outcome(snapshot: snapshot, listing: listed.output, fetched: fetched)
-        }
-        guard let tree = Self.tree(listing: listed.output, knowledge: path) else {
-            return .none("no \(path) directory on \(source)", fetched: fetched)
+        // One fetch for the base and every goal branch. A fetch that names
+        // a branch the remote does not hold fetches nothing, so after such
+        // an exit each ref is fetched alone and only the missing one fails.
+        var failures: [String: String] = [:]
+        let names = (baseAccepted ? [base] : []) + wanted.map(\.name)
+        if !names.isEmpty, let whole = fetch(names) {
+            if names.count > 1, whole.exited {
+                // A fetch that does not exit (a timeout) ends the retries:
+                // the refs left keep its failure and read what is here.
+                var stopped: String?
+                for name in names {
+                    if let stopped {
+                        failures[name] = stopped
+                        continue
+                    }
+                    let alone = fetch([name])
+                    failures[name] = alone?.failure
+                    if let alone, !alone.exited { stopped = alone.failure }
+                }
+            } else {
+                for name in names { failures[name] = whole.failure }
+            }
         }
 
-        let plan = Self.goalFolders(tree)
-        let wanted = Set(plan.flatMap(\.blobs))
-        var total = 0
-        for file in wanted { total += tree.entries[file]?.size ?? 0 }
-        guard total <= Self.maxPackageBytes else {
-            return .none("\(path) on \(source) is over \(Self.maxPackageBytes >> 20) MiB", fetched: fetched)
-        }
-        var texts: [String: String] = [:]
-        if !wanted.isEmpty {
-            let oids = Set(wanted.compactMap { tree.entries[$0]?.oid })
+        /// The texts of `files`, by path, through one `cat-file --batch` of
+        /// the object ids `tree` names; nil when the batch fails.
+        func texts(_ tree: Tree, _ files: Set<String>, total: Int) -> [String: String]? {
+            var texts: [String: String] = [:]
+            guard !files.isEmpty else { return texts }
+            let oids = Set(files.compactMap { tree.entries[$0]?.oid })
             let input = Data(oids.sorted().joined(separator: "\n").utf8 + [0x0a])
             guard let batch = run(["cat-file", "--batch"], input: input, maxOutput: total + oids.count * 128 + 1024),
                   !batch.timedOut, batch.status == 0
-            else {
-                return .none("git cat-file of \(source) failed", fetched: fetched)
-            }
+            else { return nil }
             let blobs = Self.blobs(batch: batch.output)
-            for file in wanted {
+            for file in files {
                 guard let oid = tree.entries[file]?.oid, let data = blobs[oid] else { continue }
                 texts[file] = String(data: data, encoding: .utf8)
             }
+            return texts
         }
-        var goals: [KnowledgeSummary] = []
-        for folder in plan {
+        func summary(_ folder: GoalFolder, _ texts: [String: String]) -> KnowledgeSummary {
             var summary = KnowledgeFile.assemble(
                 state: texts[folder.name + "/STATE.md"], goal: texts[folder.name + "/goal.md"],
                 roundNames: folder.roundNames
             ) { texts[folder.name + "/rounds/" + $0] }
             summary.slug = folder.name
             summary.lastRecord = summary.lastRecord.map { folder.name + "/" + $0 }
-            goals.append(summary)
+            return summary
         }
-        goals.sort(by: KnowledgeSummary.isOrderedBefore)
-        let snapshot = Snapshot(source: source, goals: goals, reason: note, commit: commit, tree: tree)
-        return Outcome(snapshot: snapshot, listing: listed.output, fetched: fetched)
+
+        func readBase() -> Outcome {
+            guard baseAccepted else {
+                return .none("the base branch name is refused: " + String(base.prefix(100)))
+            }
+            let source = "origin/" + base
+            let failed = failures[base]
+            let fetched = failed == nil
+            guard let commit = word(run(["rev-parse", "--verify", "--quiet", "refs/remotes/\(source)^{commit}"])),
+                  Self.isObjectID(commit)
+            else {
+                return .none(failed.map { "\($0); no local \(source)" } ?? "\(source) is missing", fetched: fetched)
+            }
+            // The local ref is read after a failed fetch, with what failed and
+            // how old the ref is.
+            let note = failed.map { failure in
+                failure + (fetchedAt.map { "; last good fetch " + Self.stamp($0) } ?? "; no good fetch yet")
+            }
+            guard let listed = run(["ls-tree", "-r", "-t", "-l", "-z", commit, "--", path], maxOutput: Self.maxListingBytes),
+                  !listed.timedOut, listed.status == 0, listed.output.count < Self.maxListingBytes
+            else {
+                return .none("git ls-tree of \(source) failed", fetched: fetched)
+            }
+            if let known, known.listing == listed.output, known.snapshot.source == source {
+                var snapshot = known.snapshot
+                snapshot.commit = commit
+                snapshot.reason = note
+                return Outcome(snapshot: snapshot, listing: listed.output, fetched: fetched)
+            }
+            guard let tree = Self.tree(listing: listed.output, knowledge: path) else {
+                return .none("no \(path) directory on \(source)", fetched: fetched)
+            }
+
+            let plan = Self.goalFolders(tree)
+            let wanted = Set(plan.flatMap(\.blobs))
+            var total = 0
+            for file in wanted { total += tree.entries[file]?.size ?? 0 }
+            guard total <= Self.maxPackageBytes else {
+                return .none("\(path) on \(source) is over \(Self.maxPackageBytes >> 20) MiB", fetched: fetched)
+            }
+            guard let texts = texts(tree, wanted, total: total) else {
+                return .none("git cat-file of \(source) failed", fetched: fetched)
+            }
+            var goals = plan.map { summary($0, texts) }
+            goals.sort(by: KnowledgeSummary.isOrderedBefore)
+            let snapshot = Snapshot(source: source, goals: goals, reason: note, commit: commit, tree: tree)
+            return Outcome(snapshot: snapshot, listing: listed.output, fetched: fetched)
+        }
+
+        /// One goal from its branch, or nil: no local ref, no goal folder
+        /// of that slug on the branch, or a folder over the cap. The base's
+        /// summary, or the working tree's, then answers for the slug. Only
+        /// `<knowledge>/<slug>` is listed, so nothing else on the branch is
+        /// reachable.
+        func readBranch(_ branch: GoalBranch) -> BranchGoal? {
+            let source = "origin/" + branch.name
+            guard let commit = word(run(["rev-parse", "--verify", "--quiet", "refs/remotes/\(source)^{commit}"])),
+                  Self.isObjectID(commit),
+                  let listed = run(
+                      ["ls-tree", "-r", "-t", "-l", "-z", commit, "--", path + "/" + branch.slug],
+                      maxOutput: Self.maxListingBytes
+                  ),
+                  !listed.timedOut, listed.status == 0, listed.output.count < Self.maxListingBytes
+            else { return nil }
+            let reason = failures[branch.name]
+            if var kept = knownBranches.first(where: { $0.slug == branch.slug }), kept.listing == listed.output {
+                kept.pull = branch.pull
+                kept.commit = commit
+                kept.reason = reason
+                return kept
+            }
+            guard let tree = Self.tree(listing: listed.output, knowledge: path),
+                  let folder = Self.goalFolders(tree).first(where: { $0.name == branch.slug })
+            else { return nil }
+            let files = Set(folder.blobs)
+            var total = 0
+            for file in files { total += tree.entries[file]?.size ?? 0 }
+            guard total <= Self.maxPackageBytes, let texts = texts(tree, files, total: total) else { return nil }
+            return BranchGoal(
+                slug: branch.slug, pull: branch.pull, source: source, commit: commit,
+                summary: summary(folder, texts), reason: reason, tree: tree, listing: listed.output
+            )
+        }
+
+        var outcome = readBase()
+        outcome.snapshot.branches = wanted.compactMap(readBranch)
+        return outcome
     }
 
     // MARK: - the tree
@@ -444,10 +643,29 @@ public final class KnowledgeBase: @unchecked Sendable {
     /// `tooLarge`. The blob is read by the object id the cached listing
     /// names, so nothing outside the knowledge directory is reachable. One
     /// local `git cat-file`, no fetch; synchronous, off the loop.
+    ///
+    /// A path under a goal that an open branch holds is walked in that
+    /// branch's listing, which names `<slug>/` alone. A path under a goal
+    /// folder the base does not hold answers nil, so the working tree
+    /// serves the goals it alone holds.
     func file(root: String, knowledge: String, path: String) throws -> KnowledgeFile.Payload? {
-        guard let tree = snapshot(root: root, knowledge: knowledge).tree else { return nil }
-        guard KnowledgeFile.isValidRelative(path) else { throw KnowledgeFile.Failure.badPath }
+        let snapshot = snapshot(root: root, knowledge: knowledge)
         let segments = path.split(separator: "/").map(String.init)
+        let tree: Tree
+        if let branch = snapshot.branches.first(where: { $0.slug == segments.first }) {
+            // A goal an open branch holds is served from that branch alone.
+            tree = branch.tree
+        } else if let base = snapshot.tree {
+            // A goal folder the base does not hold is the working tree's,
+            // as the summary route lists it. A malformed path is refused
+            // here, before any source is chosen by its first segment.
+            guard KnowledgeFile.isValidRelative(path) else { throw KnowledgeFile.Failure.badPath }
+            if segments.count > 1, ProjectStore.isValidID(segments[0]), base.entries[segments[0]] == nil { return nil }
+            tree = base
+        } else {
+            return nil
+        }
+        guard KnowledgeFile.isValidRelative(path) else { throw KnowledgeFile.Failure.badPath }
         var walked = ""
         for (index, segment) in segments.enumerated() {
             walked = walked.isEmpty ? segment : walked + "/" + segment

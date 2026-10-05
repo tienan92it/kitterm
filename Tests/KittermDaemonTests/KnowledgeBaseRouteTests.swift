@@ -256,7 +256,11 @@ final class KnowledgeBaseRouteTests: XCTestCase {
         formatter.formatOptions = [.withInternetDateTime]
         XCTAssertEqual(
             answer.json["sourceReason"] as? String, "git fetch exited 128; last good fetch " + formatter.string(from: fetchedAt))
-        XCTAssertEqual(answer.slugs, ["alpha"], "the base, not the working tree")
+        // Chartered in round 4 (plan row 3b): a goal folder only the working
+        // tree holds is kept, and the base still answers for its own goal.
+        XCTAssertEqual(answer.slugs, ["alpha", "gamma"], "the base, and the goal only the working tree holds")
+        XCTAssertEqual(answer.goals.first?["source"] as? String, "origin/main", "the base, not the working tree")
+        XCTAssertEqual(answer.goals.last?["source"] as? String, "working tree")
         // The reason holds no clock reading that moves, so the tag holds.
         let tag = try XCTUnwrap(answer.headers["etag"])
         clock.advance(60)
