@@ -1,16 +1,15 @@
 # STATE: sessions-workflow
 
 - Status: active
-- Round: 0 of 3 in this budget (second budget)
-- Rounds total: 3
-- Last floor: green (2026-10-05, round 3 after: swift test 1100, PR CI on 2411fc0)
+- Round: 1 of 3 in this budget (second budget)
+- Rounds total: 4
+- Last floor: green (2026-10-05, round 4 after: swift test 1141, PR CI on 9d6b235)
 - Updated: 2026-10-05, direction check: the human added the branch reader, dropped `list_pulls`, and set a second budget of 3
 
 ## Queue
 
-1. `goal-branch-reader` (capability 3b), PR #185.
-2. `line-stage` (capability 4)
-3. `stage-tree` (capability 5)
+1. `line-stage` (capability 4), PR #185.
+2. `stage-tree` (capability 5)
 
 ## Failures
 
@@ -18,11 +17,15 @@ None.
 
 ## Proposals waiting on the human
 
-None. 2026-10-05: the human accepted the branch reader (`plan.md` row
-3b) and declined `list_pulls`.
+- `plan.md` row 2: add `isCrossRepository` to the `gh` field list.
+  Round 4 needed it to skip fork pull requests (Chartered by row 3b).
+  See `rounds/004.md`.
 
 ## Done
 
+- `goal-branch-reader`, round 4, PR #185. See `rounds/004.md`. A goal
+  shows from its open goal branch before it merges, and a goal folder
+  only the working tree holds is kept.
 - `merged-base-branch`, round 3, PR #185. See `rounds/003.md`. The
   knowledge routes read `origin/<base>` through git objects after a
   fetch each minute, so a merge shows with no `git pull`.
@@ -35,5 +38,5 @@ None. 2026-10-05: the human accepted the branch reader (`plan.md` row
 
 ## Next action
 
-Round 4: `goal-branch-reader` from `plan.md` row 3b; proof: new tests
-against a scratch bare repository.
+Round 5: `line-stage` from `plan.md` row 4; proof: a vitest with one
+case per row of the stage table and per level.
