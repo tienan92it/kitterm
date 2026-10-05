@@ -292,9 +292,9 @@ public final class PullRequestStatus: @unchecked Sendable {
     /// both pipes and reaps the process; once the process has ended, the
     /// pipes are read for `pipeGrace` at most and then closed, so a child
     /// that keeps one open holds nothing and what was read is judged.
-    /// `input` is the program's whole stdin, handed over as an unlinked
-    /// scratch file, so no write can block on a full pipe or take
-    /// `SIGPIPE`; `environment` is laid over the daemon's own; stdout is
+    /// `input` is the program's whole stdin, handed over as a scratch file
+    /// of mode 0600 that is removed when the run ends, so no write can
+    /// block on a full pipe or take `SIGPIPE`; `environment` is laid over the daemon's own; stdout is
     /// kept up to `maxOutput` bytes. `KnowledgeBase` runs `git` with it.
     public static func run(
         executable: String, args: [String], searchPath: String, timeout: TimeInterval,

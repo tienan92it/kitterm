@@ -249,7 +249,9 @@ final class KnowledgeBaseTests: XCTestCase {
         try seedAlpha()
         try fixture.makeClone()
         XCTAssertEqual(read(makeBase()).source, "origin/trunk")
-        XCTAssertTrue(calls.calls.contains { $0.args.suffix(2) == ["origin", "trunk"] && $0.args.contains("fetch") })
+        XCTAssertTrue(calls.calls.contains {
+            $0.args.suffix(3) == ["--", "origin", "+refs/heads/trunk:refs/remotes/origin/trunk"] && $0.args.contains("fetch")
+        })
     }
 
     func testTheBaseIsMasterWithNoOriginHEADAndNoMain() throws {
@@ -266,7 +268,11 @@ final class KnowledgeBaseTests: XCTestCase {
         try fixture.makeClone()
         _ = read(makeBase())
         let fetch = try XCTUnwrap(calls.calls.first { $0.args.contains("fetch") })
-        XCTAssertEqual(fetch.args, ["-C", fixture.clone, "-c", "gc.auto=0", "fetch", "--quiet", "--no-tags", "origin", "main"])
+        XCTAssertEqual(fetch.args, [
+            "-C", fixture.clone, "-c", "gc.auto=0", "-c", "maintenance.auto=false",
+            "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--no-recurse-submodules",
+            "--", "origin", "+refs/heads/main:refs/remotes/origin/main",
+        ])
         for call in calls.calls {
             for verb in ["checkout", "pull", "merge", "reset", "switch", "restore", "read-tree", "update-ref", "worktree"] {
                 XCTAssertFalse(call.args.contains(verb), "\(call.args)")
@@ -318,24 +324,45 @@ final class KnowledgeBaseTests: XCTestCase {
         XCTAssertEqual(snapshot.reason, "no origin remote")
     }
 
-    func testAFailedFetchDropsTheSummariesAndNamesTheExitCode() throws {
+    func testAFailedFetchKeepsReadingTheLocalBaseAndSaysSo() throws {
         try seedAlpha()
         try fixture.makeClone()
         let base = makeBase()
-        XCTAssertNotNil(read(base).goals)
+        let good = read(base)
+        XCTAssertNotNil(good.goals)
+        XCTAssertNil(good.reason)
+        let fetchedAt = clock.now
 
         try fixture.git(["-C", fixture.clone, "remote", "set-url", "origin", fixture.directory.path + "/gone.git"])
         clock.advance(61)
         let snapshot = read(base)
-        XCTAssertNil(snapshot.goals, "the routes read the working tree")
-        XCTAssertNil(snapshot.source)
-        XCTAssertEqual(snapshot.reason, "git fetch exited 128")
-        XCTAssertNil(try base.file(root: fixture.clone, knowledge: knowledge, path: "alpha/STATE.md"))
+        XCTAssertEqual(snapshot.source, "origin/main", "the local ref is still read")
+        XCTAssertEqual(snapshot.goals, good.goals)
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        XCTAssertEqual(snapshot.reason, "git fetch exited 128; last good fetch " + formatter.string(from: fetchedAt))
+        XCTAssertNotNil(try base.file(root: fixture.clone, knowledge: knowledge, path: "alpha/STATE.md"))
 
-        // The remote is back: the next read answers the base again.
+        // A second failure names the same last good fetch.
+        clock.advance(61)
+        XCTAssertEqual(read(base).reason, snapshot.reason)
+
+        // The remote is back: the reason goes.
         try fixture.git(["-C", fixture.clone, "remote", "set-url", "origin", fixture.bare])
         clock.advance(61)
-        XCTAssertEqual(read(base).source, "origin/main")
+        let back = read(base)
+        XCTAssertEqual(back.source, "origin/main")
+        XCTAssertNil(back.reason)
+    }
+
+    func testAFailedFirstFetchReadsTheLocalBaseWithNoGoodFetchYet() throws {
+        try seedAlpha()
+        try fixture.makeClone()
+        try fixture.git(["-C", fixture.clone, "remote", "set-url", "origin", fixture.directory.path + "/gone.git"])
+        let snapshot = read(makeBase())
+        XCTAssertEqual(snapshot.source, "origin/main")
+        XCTAssertEqual(snapshot.goals?.map(\.slug), ["alpha"])
+        XCTAssertEqual(snapshot.reason, "git fetch exited 128; no good fetch yet")
     }
 
     func testAFetchThatTimesOut() throws {
@@ -345,8 +372,8 @@ final class KnowledgeBaseTests: XCTestCase {
             args.contains("fetch") ? PullRequestStatus.RunResult(status: 143, timedOut: true) : nil
         })
         let snapshot = read(base)
-        XCTAssertNil(snapshot.goals)
-        XCTAssertEqual(snapshot.reason, "git fetch timed out after 20 s")
+        XCTAssertEqual(snapshot.source, "origin/main")
+        XCTAssertEqual(snapshot.reason, "git fetch timed out after 20 s; no good fetch yet")
     }
 
     func testAHungGitIsEndedAtTheTimeout() throws {
@@ -358,17 +385,139 @@ final class KnowledgeBaseTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(started), 2.5)
     }
 
-    func testAMissingBase() throws {
+    func testAFailedFetchWithNoLocalBaseReadsTheWorkingTree() throws {
+        fixture.remove()
+        fixture = try GitFixture(branch: "trunk")
         try seedAlpha()
         try fixture.makeClone()
-        // A clone that tracks another branch alone: the fetch of `main`
-        // succeeds and writes no `origin/main`.
+        // No `origin/HEAD`, no `origin/main`, no `origin/master`: the base
+        // is `main`, which the remote does not have.
+        try fixture.git(["-C", fixture.clone, "remote", "set-head", "origin", "-d"])
+        let snapshot = read(makeBase())
+        XCTAssertNil(snapshot.goals)
+        XCTAssertNil(snapshot.source)
+        XCTAssertEqual(snapshot.reason, "git fetch exited 128; no local origin/main")
+    }
+
+    func testASingleBranchCloneOfAnotherBranchStillGetsTheBase() throws {
+        try seedAlpha()
+        try fixture.makeClone()
+        // A clone that tracks another branch alone: its configured refspec
+        // never writes `origin/main`. The fetch names its own refspec.
         try fixture.git(["-C", fixture.clone, "config", "remote.origin.fetch", "+refs/heads/other:refs/remotes/origin/other"])
         try fixture.git(["-C", fixture.clone, "remote", "set-head", "origin", "-d"])
         try fixture.git(["-C", fixture.clone, "update-ref", "-d", "refs/remotes/origin/main"])
+        try fixture.write("docs/goals/alpha/STATE.md", GitFixture.state("alpha", status: "done"))
+        try fixture.push()
+        let snapshot = read(makeBase())
+        XCTAssertEqual(snapshot.source, "origin/main")
+        XCTAssertNil(snapshot.reason)
+        XCTAssertEqual(snapshot.goals?.first?.status, "done")
+    }
+
+    // MARK: - a base name is data
+
+    /// Point the clone's `origin/HEAD` at a branch named `name`, as a
+    /// remote whose default branch has that name leaves it.
+    private func setRemoteDefault(_ name: String) throws {
+        let head = try fixture.git(["-C", fixture.clone, "rev-parse", "origin/main"])
+        try fixture.git(["-C", fixture.bare, "update-ref", "refs/heads/" + name, head])
+        try fixture.git(["-C", fixture.bare, "symbolic-ref", "HEAD", "refs/heads/" + name])
+        try fixture.git(["-C", fixture.clone, "update-ref", "refs/remotes/origin/" + name, head])
+        try fixture.git(["-C", fixture.clone, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/" + name])
+    }
+
+    private func filesUnder(_ root: String) -> [String] {
+        (FileManager.default.subpaths(atPath: root) ?? []).sorted()
+    }
+
+    func testADefaultBranchNamedLikeAnOptionIsRefused() throws {
+        try seedAlpha()
+        try fixture.write("docs/goals/alpha/STATE.md", GitFixture.state("alpha", round: 2))
+        try fixture.push("a second commit, so a depth of 1 would cut history")
+        try fixture.makeClone()
+        try setRemoteDefault("--depth=1")
+        XCTAssertEqual(
+            try fixture.git(["-C", fixture.clone, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"]), "origin/--depth=1")
+        let before = filesUnder(fixture.clone)
+
         let snapshot = read(makeBase())
         XCTAssertNil(snapshot.goals)
-        XCTAssertEqual(snapshot.reason, "origin/main is missing")
+        XCTAssertNil(snapshot.source)
+        XCTAssertEqual(snapshot.reason, "the base branch name is refused: --depth=1")
+        XCTAssertEqual(calls.count("fetch"), 0, "no fetch ran")
+        XCTAssertFalse(calls.calls.contains { $0.args.contains("--depth=1") }, "the name reached no git")
+        XCTAssertEqual(try fixture.git(["-C", fixture.clone, "rev-parse", "--is-shallow-repository"]), "false")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.clone + "/.git/shallow"))
+        XCTAssertEqual(try fixture.git(["-C", fixture.clone, "rev-list", "--count", "HEAD"]), "2")
+        XCTAssertEqual(filesUnder(fixture.clone), before, "no file written")
+    }
+
+    func testADefaultBranchNamedLikeUploadPackRunsNoProgram() throws {
+        try seedAlpha()
+        try fixture.makeClone()
+        let marker = fixture.directory.appendingPathComponent("ran").path
+        let script = fixture.directory.appendingPathComponent("pack").path
+        try Data("#!/bin/sh\n/usr/bin/touch '\(marker)'\n".utf8).write(to: URL(fileURLWithPath: script))
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script)
+        try setRemoteDefault("--upload-pack=" + script)
+        let before = filesUnder(fixture.clone)
+
+        let snapshot = read(makeBase())
+        XCTAssertNil(snapshot.goals)
+        XCTAssertEqual(snapshot.reason, "the base branch name is refused: " + String(("--upload-pack=" + script).prefix(100)))
+        XCTAssertEqual(calls.count("fetch"), 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker), "the program did not run")
+        XCTAssertEqual(filesUnder(fixture.clone), before)
+    }
+
+    func testABaseNameGitWouldNotTakeAsABranchIsRefused() throws {
+        try seedAlpha()
+        try fixture.makeClone()
+        let base = makeBase(before: { args in
+            args.contains("symbolic-ref") ? PullRequestStatus.RunResult(status: 0, output: Data("origin/a..b\n".utf8)) : nil
+        })
+        let snapshot = read(base)
+        XCTAssertNil(snapshot.goals)
+        XCTAssertEqual(snapshot.reason, "the base branch name is refused: a..b")
+        XCTAssertEqual(calls.count("fetch"), 0)
+    }
+
+    func testTheHumansFETCHHEADIsNeverReplaced() throws {
+        try seedAlpha()
+        try fixture.makeClone()
+        try fixture.git(["-C", fixture.clone, "fetch", "-q", "origin", "main"])
+        let path = fixture.clone + "/.git/FETCH_HEAD"
+        let before = try Data(contentsOf: URL(fileURLWithPath: path))
+        XCTAssertFalse(before.isEmpty)
+        try fixture.write("docs/goals/alpha/STATE.md", GitFixture.state("alpha", status: "done"))
+        try fixture.push()
+
+        XCTAssertEqual(read(makeBase()).goals?.first?.status, "done", "the fetch brought the new commit")
+        XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: path)), before)
+    }
+
+    func testAFreshCloneGetsNoFETCHHEAD() throws {
+        try seedAlpha()
+        try fixture.makeClone()
+        XCTAssertNotNil(read(makeBase()).goals)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.clone + "/.git/FETCH_HEAD"))
+    }
+
+    func testNoGitOfTheBaseCanAskAHuman() throws {
+        XCTAssertEqual(KnowledgeBase.environment["GIT_TERMINAL_PROMPT"], "0")
+        XCTAssertEqual(KnowledgeBase.environment["GIT_ASKPASS"], "true")
+        XCTAssertEqual(KnowledgeBase.environment["GIT_SSH_COMMAND"], "ssh -oBatchMode=yes")
+        XCTAssertEqual(KnowledgeBase.environment["GIT_NO_REPLACE_OBJECTS"], "1")
+        // The runner replaces a `GIT_SSH_COMMAND` the daemon inherited.
+        setenv("GIT_SSH_COMMAND", "ssh -i /nowhere/key", 1)
+        defer { unsetenv("GIT_SSH_COMMAND") }
+        let result = try XCTUnwrap(KnowledgeBase.run(
+            executable: "/bin/sh",
+            args: ["-c", "printf '%s|%s|%s|%s' \"$GIT_SSH_COMMAND\" \"$GIT_ASKPASS\" \"$GIT_TERMINAL_PROMPT\" \"$GIT_NO_REPLACE_OBJECTS\""],
+            input: nil, maxOutput: 1024, searchPath: "/usr/bin:/bin"
+        ))
+        XCTAssertEqual(String(decoding: result.output, as: UTF8.self), "ssh -oBatchMode=yes|true|0|1")
     }
 
     func testNoKnowledgeDirectoryOnTheBase() throws {

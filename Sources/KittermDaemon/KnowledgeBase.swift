@@ -20,9 +20,17 @@ import NIOConcurrencyHelpers
 /// symlink on disk. Only the knowledge directory is listed, and only an
 /// object that listing names is read.
 ///
-/// With no `origin`, a failed fetch, a missing base or no knowledge
-/// directory on the base, the snapshot holds no summaries and the reason;
-/// the routes then read the working tree as before.
+/// A fetch that fails keeps reading the `origin/<base>` the checkout
+/// already holds, and the snapshot's reason names the failure and the last
+/// good fetch. With no `origin`, a refused base name, no local
+/// `origin/<base>` or no knowledge directory on the base, the snapshot
+/// holds no summaries and the reason; the routes then read the working
+/// tree as before.
+///
+/// The base name comes from the remote, so it is data: a name that starts
+/// with `-` or fails `git check-ref-format --branch` is refused before any
+/// fetch, and the fetch names the branch only inside a full refspec after
+/// `--`, never as a bare argument.
 public final class KnowledgeBase: @unchecked Sendable {
     public static let refreshSeconds: TimeInterval = 60
     public static let timeoutSeconds: TimeInterval = 20
@@ -71,7 +79,8 @@ public final class KnowledgeBase: @unchecked Sendable {
     }
 
     /// What the cache holds for one root: the summaries of `source`
-    /// (`origin/main`), or none and why.
+    /// (`origin/main`), or none and why. With summaries, `reason` is set
+    /// only when the latest fetch failed and the local ref was read.
     public struct Snapshot: Equatable, Sendable {
         public var source: String?
         public var goals: [KnowledgeSummary]?
@@ -89,6 +98,8 @@ public final class KnowledgeBase: @unchecked Sendable {
     private struct Record {
         var snapshot = Snapshot(reason: KnowledgeBase.notReadReason)
         var listing: Data?
+        /// The end of the last fetch that succeeded.
+        var fetchedAt: Date?
         var endedAt: Date?
         var reading = false
     }
@@ -112,17 +123,28 @@ public final class KnowledgeBase: @unchecked Sendable {
         }
     }
 
+    /// What every `git` here runs under, laid over the daemon's own
+    /// environment. Nothing may ask a human: no terminal prompt, an askpass
+    /// that answers nothing, and `ssh` in batch mode. `GIT_SSH_COMMAND` is
+    /// replaced, not kept: the daemon's fetch must never wait on a
+    /// passphrase, and a fetch that needs the human's own ssh command fails
+    /// with its exit code and reads the local ref. Replace refs are off, so
+    /// an object id reads the object it names. A pathspec is literal, so a
+    /// knowledge directory named with `*` matches itself alone.
+    static let environment = [
+        "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "true", "GIT_SSH_COMMAND": "ssh -oBatchMode=yes",
+        "GIT_NO_REPLACE_OBJECTS": "1", "GIT_LITERAL_PATHSPECS": "1",
+    ]
+
     /// One `git` through the runner of `PullRequestStatus`: its own process
-    /// group, a timeout, no prompt. A pathspec is literal, so a knowledge
-    /// directory named with `*` matches itself alone.
+    /// group, a timeout, `environment`.
     public static func run(
         executable: String, args: [String], input: Data?, maxOutput: Int, searchPath: String,
         timeout: TimeInterval = KnowledgeBase.timeoutSeconds
     ) -> PullRequestStatus.RunResult? {
         PullRequestStatus.run(
             executable: executable, args: args, searchPath: searchPath, timeout: timeout,
-            input: input, environment: ["GIT_TERMINAL_PROMPT": "0", "GIT_LITERAL_PATHSPECS": "1"],
-            maxOutput: maxOutput
+            input: input, environment: environment, maxOutput: maxOutput
         )
     }
 
@@ -155,42 +177,64 @@ public final class KnowledgeBase: @unchecked Sendable {
     /// One read, on `queue`. The minute counts from its end.
     private func refresh(root: String, knowledge: String) {
         let key = Self.key(root, knowledge)
-        let known = lock.withLock { cache[key].flatMap { $0.snapshot.goals == nil ? nil : $0 } }
-        let outcome = read(root: root, knowledge: knowledge, known: known.map { ($0.listing, $0.snapshot) })
+        let before = lock.withLock { cache[key] }
+        let known = before.flatMap { $0.snapshot.goals == nil ? nil : (listing: $0.listing, snapshot: $0.snapshot) }
+        let outcome = read(root: root, knowledge: knowledge, known: known, fetchedAt: before?.fetchedAt)
         let ended = clock()
         lock.withLock {
             var record = cache[key] ?? Record()
             record.reading = false
             record.endedAt = ended
-            switch outcome {
-            case .success(let read):
-                record.snapshot = read.snapshot
-                record.listing = read.listing
-            case .failure(let failure):
-                record.snapshot = Snapshot(reason: failure.reason)
-                record.listing = nil
-            }
+            record.snapshot = outcome.snapshot
+            record.listing = outcome.snapshot.goals == nil ? nil : outcome.listing
+            if outcome.fetched { record.fetchedAt = ended }
             cache[key] = record
         }
     }
 
-    struct Failure: Error, Equatable {
-        var reason: String
+    /// The end of one read: the snapshot, the listing its summaries came
+    /// from, and whether the fetch succeeded.
+    private struct Outcome {
+        var snapshot: Snapshot
+        var listing: Data?
+        var fetched = false
+
+        static func none(_ reason: String, fetched: Bool = false) -> Outcome {
+            Outcome(snapshot: Snapshot(reason: reason), fetched: fetched)
+        }
     }
 
+    /// The options of the fetch come first and the branch comes last,
+    /// inside a full refspec after `--`, so no name from the remote is read
+    /// as an option. The refspec writes `origin/<base>` in a single-branch
+    /// clone too. No `FETCH_HEAD` is written, so the human's own stays; no
+    /// tag, no submodule, no gc and no maintenance run.
     static func fetchArguments(root: String, base: String) -> [String] {
-        ["-C", root, "-c", "gc.auto=0", "fetch", "--quiet", "--no-tags", "origin", base]
+        [
+            "-C", root, "-c", "gc.auto=0", "-c", "maintenance.auto=false",
+            "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--no-recurse-submodules",
+            "--", "origin", "+refs/heads/\(base):refs/remotes/origin/\(base)",
+        ]
+    }
+
+    /// A time as `2026-10-05T09:20:00Z`. A formatter per call: it is not
+    /// `Sendable`, and only a failed fetch asks.
+    private static func stamp(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.string(from: date)
     }
 
     /// Fetch the base branch of `root` and build the summaries of its
-    /// knowledge directory from the fetched commit. `known` is the last
+    /// knowledge directory from `origin/<base>`. A fetch that fails reads
+    /// the `origin/<base>` already here and says so. `known` is the last
     /// good read: a listing equal to its listing keeps its summaries, so an
     /// unchanged package costs no object read. Synchronous.
     private func read(
-        root: String, knowledge: String, known: (listing: Data?, snapshot: Snapshot)?
-    ) -> Result<(snapshot: Snapshot, listing: Data), Failure> {
+        root: String, knowledge: String, known: (listing: Data?, snapshot: Snapshot)?, fetchedAt: Date?
+    ) -> Outcome {
         guard let executable = PullRequestStatus.locate("git", in: searchPath) else {
-            return .failure(Failure(reason: Self.absentReason))
+            return .none(Self.absentReason)
         }
         func run(_ args: [String], input: Data? = nil, maxOutput: Int = 64 << 10) -> PullRequestStatus.RunResult? {
             git(executable, ["-C", root] + args, input, maxOutput)
@@ -202,10 +246,10 @@ public final class KnowledgeBase: @unchecked Sendable {
         }
         let path = knowledge.split(separator: "/").filter { $0 != "." }.joined(separator: "/")
         guard !path.isEmpty else {
-            return .failure(Failure(reason: "the knowledge directory is the project root"))
+            return .none("the knowledge directory is the project root")
         }
         guard word(run(["remote", "get-url", "origin"])) != nil else {
-            return .failure(Failure(reason: Self.noRemoteReason))
+            return .none(Self.noRemoteReason)
         }
         // What `origin/HEAD` names, else `main`, else `master`.
         var base = "main"
@@ -215,36 +259,49 @@ public final class KnowledgeBase: @unchecked Sendable {
                   word(run(["rev-parse", "--verify", "--quiet", "refs/remotes/origin/master"])) != nil {
             base = "master"
         }
+        // The remote chose this name. A name git would read as an option,
+        // or would not take as a branch, reaches no other command.
+        guard !base.hasPrefix("-"), word(run(["check-ref-format", "--branch", base])) == base else {
+            return .none("the base branch name is refused: " + String(base.prefix(100)))
+        }
         let source = "origin/" + base
 
-        guard let fetch = git(executable, Self.fetchArguments(root: root, base: base), nil, 0) else {
-            return .failure(Failure(reason: "git did not start"))
-        }
-        if fetch.timedOut {
-            return .failure(Failure(reason: "git fetch timed out after \(Int(Self.timeoutSeconds)) s"))
-        }
         // The exit code alone: the stderr of a fetch can hold the remote's
         // URL with a credential in it, and the route answers at watch grade.
-        guard fetch.status == 0 else {
-            return .failure(Failure(reason: "git fetch exited \(fetch.status)"))
+        var failed: String?
+        if let fetch = git(executable, Self.fetchArguments(root: root, base: base), nil, 0) {
+            if fetch.timedOut {
+                failed = "git fetch timed out after \(Int(Self.timeoutSeconds)) s"
+            } else if fetch.status != 0 {
+                failed = "git fetch exited \(fetch.status)"
+            }
+        } else {
+            failed = "git did not start"
         }
+        let fetched = failed == nil
         guard let commit = word(run(["rev-parse", "--verify", "--quiet", "refs/remotes/\(source)^{commit}"])),
               Self.isObjectID(commit)
         else {
-            return .failure(Failure(reason: "\(source) is missing"))
+            return .none(failed.map { "\($0); no local \(source)" } ?? "\(source) is missing", fetched: fetched)
+        }
+        // The local ref is read after a failed fetch, with what failed and
+        // how old the ref is.
+        let note = failed.map { failure in
+            failure + (fetchedAt.map { "; last good fetch " + Self.stamp($0) } ?? "; no good fetch yet")
         }
         guard let listed = run(["ls-tree", "-r", "-t", "-l", "-z", commit, "--", path], maxOutput: Self.maxListingBytes),
               !listed.timedOut, listed.status == 0, listed.output.count < Self.maxListingBytes
         else {
-            return .failure(Failure(reason: "git ls-tree of \(source) failed"))
+            return .none("git ls-tree of \(source) failed", fetched: fetched)
         }
         if let known, known.listing == listed.output, known.snapshot.source == source {
             var snapshot = known.snapshot
             snapshot.commit = commit
-            return .success((snapshot, listed.output))
+            snapshot.reason = note
+            return Outcome(snapshot: snapshot, listing: listed.output, fetched: fetched)
         }
         guard let tree = Self.tree(listing: listed.output, knowledge: path) else {
-            return .failure(Failure(reason: "no \(path) directory on \(source)"))
+            return .none("no \(path) directory on \(source)", fetched: fetched)
         }
 
         let plan = Self.goalFolders(tree)
@@ -252,7 +309,7 @@ public final class KnowledgeBase: @unchecked Sendable {
         var total = 0
         for file in wanted { total += tree.entries[file]?.size ?? 0 }
         guard total <= Self.maxPackageBytes else {
-            return .failure(Failure(reason: "\(path) on \(source) is over \(Self.maxPackageBytes >> 20) MiB"))
+            return .none("\(path) on \(source) is over \(Self.maxPackageBytes >> 20) MiB", fetched: fetched)
         }
         var texts: [String: String] = [:]
         if !wanted.isEmpty {
@@ -261,7 +318,7 @@ public final class KnowledgeBase: @unchecked Sendable {
             guard let batch = run(["cat-file", "--batch"], input: input, maxOutput: total + oids.count * 128 + 1024),
                   !batch.timedOut, batch.status == 0
             else {
-                return .failure(Failure(reason: "git cat-file of \(source) failed"))
+                return .none("git cat-file of \(source) failed", fetched: fetched)
             }
             let blobs = Self.blobs(batch: batch.output)
             for file in wanted {
@@ -280,7 +337,8 @@ public final class KnowledgeBase: @unchecked Sendable {
             goals.append(summary)
         }
         goals.sort(by: KnowledgeSummary.isOrderedBefore)
-        return .success((Snapshot(source: source, goals: goals, reason: nil, commit: commit, tree: tree), listed.output))
+        let snapshot = Snapshot(source: source, goals: goals, reason: note, commit: commit, tree: tree)
+        return Outcome(snapshot: snapshot, listing: listed.output, fetched: fetched)
     }
 
     // MARK: - the tree

@@ -244,15 +244,34 @@ final class KnowledgeBaseRouteTests: XCTestCase {
         XCTAssertEqual(runs.counts.fetches, 0)
     }
 
-    func testAFailedFetchReadsTheWorkingTreeAndSaysWhy() throws {
-        XCTAssertEqual(try primed().json["source"] as? String, "origin/main")
+    func testAFailedFetchKeepsTheLocalBaseAndSaysWhy() throws {
+        XCTAssertNil(try primed().json["sourceReason"])
+        let fetchedAt = clock.now
         try fixture.git(["-C", fixture.clone, "remote", "set-url", "origin", fixture.directory.path + "/gone.git"])
         try fixture.write("docs/goals/gamma/STATE.md", GitFixture.state("gamma"), in: fixture.clone)
         clock.advance(60)
         let answer = try primed()
+        XCTAssertEqual(answer.json["source"] as? String, "origin/main")
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        XCTAssertEqual(
+            answer.json["sourceReason"] as? String, "git fetch exited 128; last good fetch " + formatter.string(from: fetchedAt))
+        XCTAssertEqual(answer.slugs, ["alpha"], "the base, not the working tree")
+        // The reason holds no clock reading that moves, so the tag holds.
+        let tag = try XCTUnwrap(answer.headers["etag"])
+        clock.advance(60)
+        _ = try primed()
+        XCTAssertEqual(try get("/api/projects/hub/knowledge", extra: ["If-None-Match: \(tag)"]).status, 304)
+    }
+
+    func testAFailedFetchWithNoLocalBaseReadsTheWorkingTreeAndSaysWhy() throws {
+        try fixture.git(["-C", fixture.clone, "remote", "set-url", "origin", fixture.directory.path + "/gone.git"])
+        try fixture.git(["-C", fixture.clone, "remote", "set-head", "origin", "-d"])
+        try fixture.git(["-C", fixture.clone, "update-ref", "-d", "refs/remotes/origin/main"])
+        let answer = try primed()
         XCTAssertEqual(answer.json["source"] as? String, "working tree")
-        XCTAssertEqual(answer.json["sourceReason"] as? String, "git fetch exited 128")
-        XCTAssertEqual(answer.slugs, ["alpha", "gamma"])
+        XCTAssertEqual(answer.json["sourceReason"] as? String, "git fetch exited 128; no local origin/main")
+        XCTAssertEqual(answer.slugs, ["alpha"])
     }
 
     func testAHandlerWithNoBaseReaderReadsTheWorkingTree() throws {

@@ -2136,7 +2136,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// with no goal folder. `source` says where the summaries came from:
     /// `origin/<base>`, the tree of the merged base branch that
     /// `KnowledgeBase` fetched, or `working tree` with `sourceReason` when
-    /// the cache holds no such tree. The request never waits for `git`: it
+    /// the cache holds no such tree; `origin/<base>` carries `sourceReason`
+    /// too when the latest fetch failed and the local ref was read. The request never waits for `git`: it
     /// answers what the cache holds and schedules a read. The `ETag` covers
     /// the whole body, so the fleet view can skip a repaint;
     /// `If-None-Match` answers 304.
@@ -2249,6 +2250,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             if let merged, let goals = merged.goals, let source = merged.source {
                 item["goals"] = goals.map(\.json)
                 item["source"] = source
+                // Set when the latest fetch failed and the local ref was read.
+                if let reason = merged.reason { item["sourceReason"] = reason }
             } else {
                 guard let goals = KnowledgeFile.summaries(root: root, knowledge: knowledge) else {
                     return .failed(.notFound, "no knowledge directory")
