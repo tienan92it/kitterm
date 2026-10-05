@@ -62,6 +62,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// `GET /api/projects`; nil in a handler built without one, where no
     /// project carries the field.
     private let remoteOrigins: RemoteOrigins?
+    /// Each GitHub repository's pull requests behind
+    /// `GET /api/projects/<id>/pulls`; nil in a handler built without one,
+    /// where the route answers 503.
+    private let pullRequestStatus: PullRequestStatus?
     /// The newest quota reading behind `POST` and `GET /api/usage/limits`;
     /// nil in a handler built without one, where the routes answer 503.
     private let usageLimits: UsageLimitsStore?
@@ -104,6 +108,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         usageRollup: UsageRollup? = nil,
         repositoryYields: RepositoryYields? = nil,
         remoteOrigins: RemoteOrigins? = nil,
+        pullRequestStatus: PullRequestStatus? = nil,
         usageLimits: UsageLimitsStore? = nil,
         transcriptModels: TranscriptModelCache? = nil,
         transcriptEstimates: TranscriptEstimateCache? = nil
@@ -127,6 +132,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.usageRollup = usageRollup
         self.repositoryYields = repositoryYields
         self.remoteOrigins = remoteOrigins
+        self.pullRequestStatus = pullRequestStatus
         self.usageLimits = usageLimits
         self.transcriptModels = transcriptModels
         self.transcriptEstimates = transcriptEstimates
@@ -504,6 +510,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             serveFileStat(grade: grade, head: head, context: context)
         case (.GET, "/api/files/content"):
             serveFileContent(grade: grade, head: head, context: context)
+        case (.GET, _) where Self.pullsProjectID(path: path) != nil:
+            servePulls(id: Self.pullsProjectID(path: path) ?? "", grade: grade, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/projects/"):
             serveKnowledge(path: path, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/"):
@@ -2001,6 +2009,112 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         return (try? JSONSerialization.data(withJSONObject: ["ok": true, "projects": items]))
             .flatMap { String(data: $0, encoding: .utf8) }
             ?? #"{"ok":false,"error":"encoding failed"}"#
+    }
+
+    /// The project id of `/api/projects/<id>/pulls`, nil for any other path.
+    static func pullsProjectID(path: String) -> String? {
+        // ["", "api", "projects", "<id>", "pulls"]
+        let components = path.split(separator: "/", omittingEmptySubsequences: false)
+        guard components.count == 5, components[1] == "api", components[2] == "projects",
+              components[4] == "pulls", ProjectStore.isValidID(String(components[3]))
+        else { return nil }
+        return String(components[3])
+    }
+
+    /// `GET /api/projects/<id>/pulls` — the pull requests of the project's
+    /// GitHub repository, `{ok, project, readAt?, ageSeconds?, reason?,
+    /// pulls}`, from the cache `PullRequestStatus` keeps (`sessions-workflow`
+    /// round 2). The request never waits for `gh`: it answers what the
+    /// cache holds and starts a read on `PullRequestStatus.queue` when the
+    /// last one started a minute ago or more. A project with no GitHub
+    /// remote answers an empty list and the reason; a project
+    /// `GET /api/projects` does not list is 404. The `ETag` covers the body
+    /// less `ageSeconds`, which changes every second; `If-None-Match`
+    /// answers 304. Full grade only: the titles and the branch names of a
+    /// repository are not what a watch link shows today.
+    private func servePulls(id: String, grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let status = pullRequestStatus, let origins = remoteOrigins else {
+            writeJSON(
+                status: .serviceUnavailable,
+                body: #"{"ok":false,"error":"pull request status unavailable"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let loop = context.eventLoop
+        let bound = NIOLoopBound(context, eventLoop: loop)
+        let projects = self.projects
+        // nil for a project the daemon does not list. The store lookup runs
+        // in the task and the remote on its own queue, as `serveProjects`
+        // reads them; the snapshot is a lock take, and the `gh` read it
+        // schedules runs on `PullRequestStatus.queue`.
+        let promise = loop.makePromise(of: PullRequestStatus.Snapshot?.self)
+        promise.completeWithTask {
+            var root: String?
+            if let project = projects.registered(id: id) {
+                root = project.root
+            } else if let seen = await self.registry.summaries().compactMap(\.project).first(where: { $0.id == id }) {
+                root = seen.root
+            } else {
+                return nil
+            }
+            guard let root else { return PullRequestStatus.Snapshot(reason: PullRequestStatus.noRemoteReason) }
+            let base: String? = await withCheckedContinuation { continuation in
+                RemoteOrigins.queue.async {
+                    continuation.resume(returning: origins.pullRequestBase(root: root))
+                }
+            }
+            guard let repository = base.flatMap(PullRequestStatus.repository(pullRequestBase:)) else {
+                return PullRequestStatus.Snapshot(reason: PullRequestStatus.noRemoteReason)
+            }
+            status.refreshIfDue(repository: repository)
+            return status.snapshot(repository: repository)
+        }
+        promise.futureResult.whenComplete { result in
+            let context = bound.value
+            guard let snapshot = (try? result.get()) ?? nil else {
+                self.writeJSON(
+                    status: .notFound, body: #"{"ok":false,"error":"no such project"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+                return
+            }
+            let (data, etag) = Self.pullsBody(project: id, snapshot: snapshot, now: Date())
+            var headers = HTTPHeaders()
+            headers.add(name: "ETag", value: etag)
+            headers.add(name: "Cache-Control", value: "no-cache")
+            if head.headers["if-none-match"].contains(etag) {
+                self.writeBytes(status: .notModified, headers: headers, data: Data(),
+                                context: context, version: head.version, keepAlive: head.isKeepAlive)
+                return
+            }
+            headers.add(name: "Content-Type", value: "application/json")
+            headers.add(name: "X-Content-Type-Options", value: "nosniff")
+            self.writeBytes(status: .ok, headers: headers, data: data,
+                            context: context, version: head.version, keepAlive: head.isKeepAlive)
+        }
+    }
+
+    /// The body of the pulls route and its `ETag`. `readAt` is epoch
+    /// milliseconds, like `receivedAt` on the quota; the tag is taken
+    /// before `ageSeconds` goes in.
+    static func pullsBody(project: String, snapshot: PullRequestStatus.Snapshot, now: Date) -> (Data, String) {
+        var item: [String: Any] = ["ok": true, "project": project, "pulls": snapshot.pulls.map(\.json)]
+        if let reason = snapshot.reason { item["reason"] = reason }
+        if let readAt = snapshot.readAt { item["readAt"] = Int64(readAt.timeIntervalSince1970 * 1000) }
+        let options: JSONSerialization.WritingOptions = [.sortedKeys, .withoutEscapingSlashes]
+        let stable = (try? JSONSerialization.data(withJSONObject: item, options: options)) ?? Data()
+        if let readAt = snapshot.readAt { item["ageSeconds"] = max(0, Int(now.timeIntervalSince(readAt))) }
+        let data = (try? JSONSerialization.data(withJSONObject: item, options: options)) ?? stable
+        return (data, "\"\(fnv1a(stable))\"")
     }
 
     /// What the knowledge routes answer, decided off the loop and carried
