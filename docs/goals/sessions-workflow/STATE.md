@@ -1,14 +1,14 @@
 # STATE: sessions-workflow
 
-- Status: active
-- Round: 2 of 3 in this budget (second budget)
-- Rounds total: 5
-- Last floor: green (2026-10-05, round 5 after: vitest 1548, PR CI on fd1fa64)
+- Status: done
+- Round: 3 of 3 in this budget (second budget)
+- Rounds total: 6
+- Last floor: green (2026-10-05, round 6 after: vitest 1608, PR CI on edd7ec0)
 - Updated: 2026-10-05, direction check: the human added the branch reader, dropped `list_pulls`, and set a second budget of 3
 
 ## Queue
 
-1. `stage-tree` (capability 5), PR #185.
+None.
 
 ## Failures
 
@@ -22,6 +22,9 @@ None.
 
 ## Done
 
+- `stage-tree`, round 6, PR #185. See `rounds/006.md`. The SESSIONS
+  tree prints each line's stage, the PR state and the `REVIEW` line, as
+  the approved frames show.
 - `line-stage`, round 5, PR #185. See `rounds/005.md`. A pure
   `sessions-stage.ts` decides each line's stage, the pull request words
   and the `REVIEW` line.
@@ -40,5 +43,6 @@ None.
 
 ## Next action
 
-Round 6: `stage-tree` from `plan.md` row 5; proof: the design
-foundation's proofs and completion conditions 1, 4, 6 and 7.
+The human reviews and merges PR #185. Then the foreman releases, runs
+`kitterm upgrade --live`, and proves condition 5 on the live page: a
+merge shows within two minutes with no `git pull`.
