@@ -8,9 +8,8 @@
    no border-radius above 2 px, no box-shadow other than a hairline, no
    color-mix tint behind text, and no transition. Structure carries the
    information: a section is a hairline rule and a line; a row is one line;
-   a state is a one-character mark at the far left of the page, drawn as a
-   shape so it can wear the state's colour, with the state's word beside it
-   in the muted grey (an ANSI red at 12 px sits under 3:1 on half the
+   a state is a one-character mark, drawn as a shape so it can wear the
+   state's colour, with the state's word beside it in the muted grey (an ANSI red at 12 px sits under 3:1 on half the
    themes). A toggle prints a checkbox, a disclosure is a triangle, and a
    link is underlined on hover, so a reader tells "folds something" from
    "goes somewhere" without colour. The page holds no action: nothing on
@@ -19,7 +18,8 @@
 
    The layout is the two frames `Dashboard 1200` and `Dashboard 390` of
    `design/dashboard.pen` (rounds 10 and 11),
-   with the Components frame for the quota bar, WHERE and the marks. */
+   with the Components frame for the quota bar, WHERE and the marks; the
+   SESSIONS section is the three frames of `design/sessions.pen`. */
 
 /* --- the foundation ---------------------------------------------------------
    `design/foundation.md`, frozen. One space
@@ -463,7 +463,7 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
   display: grid; grid-template-columns: subgrid; align-items: baseline;
 }
 .line-name {
-  grid-column: name; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  grid-row: 1; grid-column: name; min-width: 0; overflow: hidden; text-overflow: ellipsis;
   margin: 0; font: inherit; color: var(--ui-text);
 }
 .line-workspace .line-name, .line-project .line-name { font: var(--type-heading); }
@@ -471,10 +471,10 @@ a.line-name { text-decoration: none; }
 a.line-name:hover { text-decoration: underline; text-underline-offset: 2px; }
 .open:hover .line-name { text-decoration: underline; text-underline-offset: 2px; }
 /* The grey text after the name gives way before the name does. */
-.line-detail { grid-column: detail; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ui-text-muted); }
+.line-detail { grid-row: 1; grid-column: detail; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ui-text-muted); }
 /* The family colour is on the mark; the word prints in the muted grey,
    because an ANSI red at 12 px sits under 3:1 on half the themes. */
-.main > .state { grid-column: word; color: var(--ui-text-muted); }
+.main > .state { grid-row: 1; grid-column: word; color: var(--ui-text-muted); }
 /* A fact is shown whole or clipped at its column's edge, never with an
    ellipsis. */
 .main > .cost, .main > .counter, .main > .round, .main > .pr, .main > .model, .main > .since, .main > .agents, .main > .wait {
@@ -483,7 +483,10 @@ a.line-name:hover { text-decoration: underline; text-underline-offset: 2px; }
 /* The pull request and the model start on one x, as the frame draws them. */
 .main > .pr, .main > .model { text-align: left; }
 /* The frame's order: the pull request or the model, the cost, the
-   trailing fact. `data-col` keeps the model's numbers (2 the cost). */
+   trailing fact. `data-col` keeps the model's numbers (2 the cost), so a
+   cell names its row too: the cost comes first in the line and sits
+   after the pull request. */
+.main > [data-col] { grid-row: 1; }
 .main > [data-col="2"] { grid-column: cost; }
 .main > [data-col="3"] { grid-column: pr; }
 .main > [data-col="4"] { grid-column: last; }
