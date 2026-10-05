@@ -109,7 +109,9 @@ describe("the first run: no project, no session, no reading", () => {
 
   it("SESSIONS keeps the vocabulary header and says where a shell is opened, with / a link in the accent", () => {
     expect(page.root.querySelector(".tree-label")?.textContent).toBe("SESSIONS");
-    expect(page.root.querySelectorAll(".tree-key")).toHaveLength(6);
+    // Chartered in round 6 of `sessions-workflow` (the legend of the frame
+    // `Sessions 1200`): five stages and three session words.
+    expect(page.root.querySelectorAll(".tree-key")).toHaveLength(8);
     const empty = page.root.querySelector(".tree")!.querySelector(".empty")!;
     expect(empty.textContent).toBe("No live sessions. Open a shell at / to start one.");
     const link = empty.querySelector("a")!;

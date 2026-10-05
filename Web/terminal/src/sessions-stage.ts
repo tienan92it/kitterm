@@ -478,3 +478,79 @@ export function waitLabel(line: LineStage, now: number): string | null {
   if (line.since === undefined || line.since > now) return null;
   return now - line.since < 60_000 ? "waits <1m" : `waits ${spanLabel(now - line.since)}`;
 }
+
+// --- what the page prints around the stages (capability 5) --------------------
+
+/** One entry of the legend under `SESSIONS`: the marks and the bracketed
+ * word they stand beside. `[blocked]` has two marks, by its cause. */
+export type LegendEntry = { families: readonly MarkFamily[]; tag: string };
+
+/** The stage words of a goal line and a task line, in the frame's order. */
+export const STAGE_LEGEND: readonly LegendEntry[] = [
+  { families: ["pending"], tag: stageTag("plan") },
+  { families: ["running"], tag: stageTag("build") },
+  { families: ["attention"], tag: stageTag("review") },
+  { families: ["attention", "failed"], tag: stageTag("blocked") },
+  { families: ["done"], tag: stageTag("done") },
+];
+
+/** The words a session line keeps, as the legend prints them. */
+export const SESSION_LEGEND: readonly LegendEntry[] = [
+  { families: ["running"], tag: "[working]" },
+  { families: ["attention"], tag: "[needs you]" },
+  { families: ["idle"], tag: "[idle]" },
+];
+
+/** The goals of a scope counted by stage, in `STAGE_ORDER`: `2 blocked ·
+ * 1 build`, `10 done`; null for a scope with no goal. */
+export function stageCounts(stages: readonly Stage[]): string | null {
+  const parts = STAGE_ORDER.map((stage) => [stage, stages.filter((s) => s === stage).length] as const)
+    .filter(([, count]) => count > 0)
+    .map(([stage, count]) => `${count} ${stage}`);
+  return parts.length === 0 ? null : parts.join(" · ");
+}
+
+/** The two reasons of the pulls route that hold for the whole machine. */
+const NO_GH = "gh is not on PATH";
+const NO_LOGIN = "gh is not logged in";
+/** The reasons that are no failure of a read: the first request, and a
+ * project the daemon found no GitHub remote for. */
+const NOT_READ_YET = "not read yet";
+const NO_REMOTE = "no GitHub remote";
+
+/** A sentence in place of the REVIEW line's list, with the command that
+ * repairs it when there is one. */
+export type PullsNotice = { text: string; command?: string };
+
+/** What the REVIEW line says when no pull request state can be read on
+ * this machine: `gh` is absent, or it has no login. Null when neither
+ * holds for any project's latest read. */
+export function pullsNotice(answers: readonly (PullsAnswer | null | undefined)[]): PullsNotice | null {
+  const reasons = answers.map((answer) => answer?.reason);
+  if (reasons.includes(NO_GH)) return { text: "Pull request states are not read: gh is not installed." };
+  if (reasons.includes(NO_LOGIN)) return { text: "Pull request states are not read: gh is not logged in. Run", command: "gh auth login" };
+  return null;
+}
+
+/** How long ago a read ended, for a project line: `read 14m ago`. */
+function readAgo(readAt: number, now: number): string {
+  return now - readAt < 60_000 ? "read just now" : `read ${spanLabel(now - readAt)} ago`;
+}
+
+/**
+ * The one line that says why a project's pull requests carry no state, on
+ * the project's own line: no GitHub remote, or the failure of the latest
+ * `gh` read with the age of the last good one. Null when the states are
+ * read, before the first read, and for the two machine-wide reasons, which
+ * the REVIEW line says once (`pullsNotice`).
+ */
+export function projectPullsReason(project: { pullRequestBase?: string }, answer: PullsAnswer | null | undefined, now: number): string | null {
+  if (!project.pullRequestBase || answer?.reason === NO_REMOTE) return "no GitHub remote: pull request states are not read";
+  const reason = answer?.reason;
+  if (!answer || reason === undefined || reason === NOT_READ_YET || reason === NO_GH || reason === NO_LOGIN) return null;
+  // `gh pr list exited 1: HTTP 502` reads `gh failed: HTTP 502`.
+  const exited = /^gh pr list exited \d+: (.+)$/.exec(reason);
+  const short = exited ? exited[1]! : reason.replace(/^gh pr list /, "");
+  const failed = `gh failed: ${short}`;
+  return typeof answer.readAt === "number" ? `${failed} · ${readAgo(answer.readAt, now)}` : failed;
+}

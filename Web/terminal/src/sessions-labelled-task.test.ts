@@ -121,26 +121,33 @@ describe("the tree", () => {
     const all = lines([kitterm]);
     expect(all.map((l) => [l.kind, l.depth, l.name, l.state?.tag ?? null])).toEqual([
       ["project", 0, "kitterm", null],
-      ["goal", 1, "foreman-flow", "[working]"],
-      ["task", 2, "the-dashboard-shows-the-open-pr", "[working]"],
+      // Chartered in round 6 of `sessions-workflow` (`goal.md` condition 2): the
+      // word of a goal and of a task is its stage.
+      ["goal", 1, "foreman-flow", "[build]"],
+      ["task", 2, "the-dashboard-shows-the-open-pr", "[build]"],
       ["session", 3, "crew", "[working]"],
-      ["task", 2, "the-ci-is-the-second-floor", "[pending]"],
-      ["task", 2, "the-bookkeeping-is-a-command", "[pending]"],
+      ["task", 2, "the-ci-is-the-second-floor", "[plan]"],
+      ["task", 2, "the-bookkeeping-is-a-command", "[plan]"],
       ["task", 2, "the-pr-opens-first", "[done]"],
     ]);
     const task = all[2];
     expect(task.kind === "task" && task.mark).toBe("running");
     expect(task.title).toBe("round 2 · PR #176");
-    expect(task.facts.map((f) => [f.kind, f.text, f.column, f.href ?? null])).toEqual([
-      ["cost", NO_FACT, 2, null],
-      ["pr", "PR #176", 3, `${BASE}176`],
-    ]);
-    // The listed done task keeps its record's cost beside the same link.
-    expect(all[6].facts.map((f) => [f.kind, f.text, f.href ?? null])).toEqual([["cost", "$5.23", null], ["pr", "PR #176", `${BASE}176`]]);
+    // Chartered in round 6 of `sessions-workflow` (the frame `Sessions components`,
+    // "Task line": a task prints a pull request number only when the
+    // number is not its goal's): the label's `PR #176` is the goal's, so
+    // the goal line carries the link and the two task lines carry none.
+    expect(task.facts.map((f) => [f.kind, f.text, f.column, f.href ?? null])).toEqual([["cost", NO_FACT, 2, null]]);
+    expect(all[1].facts.filter((f) => f.kind === "pr").map((f) => [f.kind, f.text, f.column, f.href ?? null])).toEqual([["pr", "PR #176", 3, `${BASE}176`]]);
+    // The listed done task keeps its record's cost.
+    expect(all[6].facts.map((f) => [f.kind, f.text, f.href ?? null])).toEqual([["cost", "$5.23", null]]);
   });
 
   it("prints the PR as plain text when the project has no pullRequestBase", () => {
-    const task = lines([{ ...kitterm, pullRequestBase: undefined }])[2];
-    expect(task.facts.map((f) => [f.kind, f.text, f.href ?? null])).toEqual([["cost", NO_FACT, null], ["pr", "PR #176", null]]);
+    // Chartered in round 6 of `sessions-workflow`: the number is on the goal's line
+    // (see above), as plain text here.
+    const [, goal, task] = lines([{ ...kitterm, pullRequestBase: undefined }]);
+    expect(task.facts.map((f) => [f.kind, f.text, f.href ?? null])).toEqual([["cost", NO_FACT, null]]);
+    expect(goal.facts.filter((f) => f.kind === "pr").map((f) => [f.kind, f.text, f.href ?? null])).toEqual([["pr", "PR #176", null]]);
   });
 });

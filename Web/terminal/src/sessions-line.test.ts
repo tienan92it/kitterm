@@ -266,9 +266,15 @@ describe("the page's lines", () => {
     const goal = page.root.querySelector(".goal-line")!;
     expect(goal.querySelector(".mark")?.className).toBe("mark disclosure");
     expect(goal.querySelector(".mark")?.textContent).toBe("▼");
-    expect(goal.querySelector(".state")?.textContent).toBe("[working]");
+    // Chartered in round 6 of `sessions-workflow` (`goal.md` conditions 2 and 3; the
+    // goal line of the frame `Sessions 1200`): the word is the stage,
+    // `[build]`; the name is the slug with the purpose after it in grey;
+    // the pull request, here the one a done task names, and the counter
+    // sit in their columns.
+    expect(goal.querySelector(".state")?.textContent).toBe("[build]");
     expect(cellsOf(goal.querySelector(".main")!)).toEqual([
-      ["line-name", "/sessions is a dashboard for workspaces and agents", null], ["state running", "[working]", null],
+      ["line-name", "agent-dashboard", null], ["line-detail", "/sessions is a dashboard for workspaces and agents", null], ["state running", "[build]", null],
+      ["pr", "PR #130", "3"], ["counter", "r7/3", "4"],
     ]);
     expect(goal.querySelector(".line-name")?.title).toBe("r7/3 · next: Round 7, `every-line-is-one-line`, from `plan.md` row 5.");
     expect(goal.querySelector(".line-name")?.tagName).toBe("A");
@@ -280,7 +286,9 @@ describe("the page's lines", () => {
     // (none here: no rollup), for the name's tooltip, `round 6 · PR #130`.
     const tasks = page.root.querySelectorAll(".line-task");
     expect(tasks.map((t) => cellsOf(t.querySelector(".main")!))).toEqual([
-      [["line-name", "every-line-is-one-line", null], ["state running", "[working]", null]],
+      // Chartered in round 6 of `sessions-workflow` (`goal.md` condition 2): a task
+      // with a live session is `[build]`.
+      [["line-name", "every-line-is-one-line", null], ["state running", "[build]", null]],
       [["line-name", "the-page-says-what-the-spend-bought", null], ["state done", "[done]", null], ["pr", "PR #130", "3"]],
       [["line-name", "no-input-on-the-page", null], ["state done", "[done]", null], ["pr", "PR #125", "3"]],
     ]);
@@ -292,9 +300,13 @@ describe("the page's lines", () => {
   it("prints the vocabulary in the tree's header, each mark beside its word, the working one at rest", () => {
     const head = page.root.querySelector(".tree-head")!;
     expect(head.querySelector(".tree-label")?.textContent).toBe("SESSIONS");
-    expect(textOf(head.querySelectorAll(".tag-state"))).toEqual(["[working]", "[needs you]", "[pending]", "[done]", "[failed]", "[idle]"]);
+    // Chartered in round 6 of `sessions-workflow` (the legend of the frame `Sessions
+    // 1200`, approved rule 2): the five stages, `[blocked]` with its two
+    // marks, then the three words a session keeps.
+    expect(textOf(head.querySelectorAll(".tag-state"))).toEqual(["[plan]", "[build]", "[review]", "[blocked]", "[done]", "[working]", "[needs you]", "[idle]"]);
     expect(head.querySelectorAll(".mark").map((m) => m.className)).toEqual([
-      "mark running rest", "mark attention rest", "mark pending rest", "mark done rest", "mark failed rest", "mark idle rest",
+      "mark pending rest", "mark running rest", "mark attention rest", "mark attention rest", "mark failed rest", "mark done rest",
+      "mark running rest", "mark attention rest", "mark idle rest",
     ]);
     // Above the tree and under the panels, at the page's top level.
     const order = page.root.children.filter((c): c is FakeElement => typeof c !== "string").map((c) => c.className.split(" ")[0]);

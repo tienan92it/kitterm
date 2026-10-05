@@ -63,6 +63,11 @@ describe("one range for every figure", () => {
     // The page opens at 30d. A click on 7d asks both routes for the week
     // and repaints; a click on 90d asks for the quarter and repaints.
     expect(toggle("30d").getAttribute("aria-checked")).toBe("true");
+    // Chartered in round 6 of `sessions-workflow` (approved rule 3: a
+    // project with every goal done and no live session starts closed):
+    // the pipeline's goal line is painted once its project is opened.
+    page.root.querySelectorAll("button").find((b) => b.getAttribute("aria-label") === "Open market-data-pipeline")!.click();
+    await page.settle();
     const asked = (span: 7 | 90) => {
       const { from, to } = usageRange(span, NOW);
       return page.requests.filter((u) => u.endsWith(`from=${from}&to=${to}`)).map((u) => u.replace(/\?.*$/, "")).sort();
