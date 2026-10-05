@@ -1,15 +1,14 @@
 # STATE: sessions-workflow
 
 - Status: active
-- Round: 1 of 3 in this budget (second budget)
-- Rounds total: 4
-- Last floor: green (2026-10-05, round 4 after: swift test 1141, PR CI on 9d6b235)
+- Round: 2 of 3 in this budget (second budget)
+- Rounds total: 5
+- Last floor: green (2026-10-05, round 5 after: vitest 1548, PR CI on fd1fa64)
 - Updated: 2026-10-05, direction check: the human added the branch reader, dropped `list_pulls`, and set a second budget of 3
 
 ## Queue
 
-1. `line-stage` (capability 4), PR #185.
-2. `stage-tree` (capability 5)
+1. `stage-tree` (capability 5), PR #185.
 
 ## Failures
 
@@ -23,6 +22,9 @@ None.
 
 ## Done
 
+- `line-stage`, round 5, PR #185. See `rounds/005.md`. A pure
+  `sessions-stage.ts` decides each line's stage, the pull request words
+  and the `REVIEW` line.
 - `goal-branch-reader`, round 4, PR #185. See `rounds/004.md`. A goal
   shows from its open goal branch before it merges, and a goal folder
   only the working tree holds is kept.
@@ -38,5 +40,5 @@ None.
 
 ## Next action
 
-Round 5: `line-stage` from `plan.md` row 4; proof: a vitest with one
-case per row of the stage table and per level.
+Round 6: `stage-tree` from `plan.md` row 5; proof: the design
+foundation's proofs and completion conditions 1, 4, 6 and 7.
