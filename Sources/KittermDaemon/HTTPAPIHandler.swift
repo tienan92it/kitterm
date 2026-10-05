@@ -66,6 +66,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// `GET /api/projects/<id>/pulls`; nil in a handler built without one,
     /// where the route answers 503.
     private let pullRequestStatus: PullRequestStatus?
+    /// Each registered project's knowledge package on its merged base
+    /// branch, behind the two knowledge routes; nil in a handler built
+    /// without one, where both routes read the working tree.
+    private let knowledgeBase: KnowledgeBase?
     /// The newest quota reading behind `POST` and `GET /api/usage/limits`;
     /// nil in a handler built without one, where the routes answer 503.
     private let usageLimits: UsageLimitsStore?
@@ -109,6 +113,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         repositoryYields: RepositoryYields? = nil,
         remoteOrigins: RemoteOrigins? = nil,
         pullRequestStatus: PullRequestStatus? = nil,
+        knowledgeBase: KnowledgeBase? = nil,
         usageLimits: UsageLimitsStore? = nil,
         transcriptModels: TranscriptModelCache? = nil,
         transcriptEstimates: TranscriptEstimateCache? = nil
@@ -133,6 +138,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.repositoryYields = repositoryYields
         self.remoteOrigins = remoteOrigins
         self.pullRequestStatus = pullRequestStatus
+        self.knowledgeBase = knowledgeBase
         self.usageLimits = usageLimits
         self.transcriptModels = transcriptModels
         self.transcriptEstimates = transcriptEstimates
@@ -2127,13 +2133,19 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// (slug, goal, status, round, budget, next action, proposals, last
     /// round and its record as `<slug>/rounds/NNN.md`), `active` first
     /// (`KnowledgeSummary.isOrderedBefore`), an empty list for a package
-    /// with no goal folder. The `ETag` covers the whole body, so the fleet
-    /// view can skip a repaint; `If-None-Match` answers 304.
+    /// with no goal folder. `source` says where the summaries came from:
+    /// `origin/<base>`, the tree of the merged base branch that
+    /// `KnowledgeBase` fetched, or `working tree` with `sourceReason` when
+    /// the cache holds no such tree. The request never waits for `git`: it
+    /// answers what the cache holds and schedules a read. The `ETag` covers
+    /// the whole body, so the fleet view can skip a repaint;
+    /// `If-None-Match` answers 304.
     /// `GET /api/projects/<id>/knowledge/<path>` — one file under the
     /// knowledge directory, read-only, jailed (`KnowledgeFile`): a `..`,
     /// `.`, empty segment or absolute path is 400, a symlink anywhere in the
     /// chain or a path that resolves outside is 404, a file over 256 KiB is
-    /// 413. Every file is `text/plain`, so a link opens as a page.
+    /// 413. Every file is `text/plain`, so a link opens as a page. The file
+    /// comes from the commit the summaries came from, else the working tree.
     ///
     /// Any grade: the package is the same information class as a session's
     /// cwd and as `GET /api/projects`, and the daemon never writes it. The
@@ -2162,15 +2174,19 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         let loop = context.eventLoop
         let bound = NIOLoopBound(context, eventLoop: loop)
         let projects = self.projects
+        let base = self.knowledgeBase
         let promise = loop.makePromise(of: KnowledgeAnswer.self)
         promise.completeWithTask {
             guard let (root, knowledge) = self.knowledgeLocation(id: id, projects: projects) else {
                 return .failed(.notFound, "no such project")
             }
+            // The fetch this schedules runs on `KnowledgeBase.queue`; the
+            // answer below reads what the cache holds now.
+            base?.refreshIfDue(root: root, knowledge: knowledge)
             return await withCheckedContinuation { continuation in
                 KnowledgeFile.queue.async {
                     continuation.resume(returning: Self.knowledgeAnswer(
-                        id: id, root: root, knowledge: knowledge, path: relative
+                        id: id, root: root, knowledge: knowledge, path: relative, base: base
                     ))
                 }
             }
@@ -2224,18 +2240,30 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
 
     /// The knowledge queue's part: the summary or the file, with the
     /// failure mapped to its status.
-    private static func knowledgeAnswer(id: String, root: String, knowledge: String, path: String?) -> KnowledgeAnswer {
+    private static func knowledgeAnswer(
+        id: String, root: String, knowledge: String, path: String?, base: KnowledgeBase?
+    ) -> KnowledgeAnswer {
         guard let path else {
-            guard let goals = KnowledgeFile.summaries(root: root, knowledge: knowledge) else {
-                return .failed(.notFound, "no knowledge directory")
+            let merged = base?.snapshot(root: root, knowledge: knowledge)
+            var item: [String: Any] = ["ok": true, "project": id]
+            if let merged, let goals = merged.goals, let source = merged.source {
+                item["goals"] = goals.map(\.json)
+                item["source"] = source
+            } else {
+                guard let goals = KnowledgeFile.summaries(root: root, knowledge: knowledge) else {
+                    return .failed(.notFound, "no knowledge directory")
+                }
+                item["goals"] = goals.map(\.json)
+                item["source"] = KnowledgeBase.workingTree
+                item["sourceReason"] = merged?.reason ?? "no base branch reader"
             }
-            let item: [String: Any] = ["ok": true, "project": id, "goals": goals.map(\.json)]
             guard let data = try? JSONSerialization.data(withJSONObject: item, options: [.sortedKeys]) else {
                 return .failed(.internalServerError, "encoding failed")
             }
             return .summary(data)
         }
         do {
+            if let payload = try base?.file(root: root, knowledge: knowledge, path: path) { return .file(payload) }
             return .file(try KnowledgeFile.read(root: root, knowledge: knowledge, path: path))
         } catch KnowledgeFile.Failure.badPath {
             return .failed(.badRequest, "path must be relative, without `..`")

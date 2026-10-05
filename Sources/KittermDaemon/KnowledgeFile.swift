@@ -156,20 +156,35 @@ public enum KnowledgeFile {
         // component and reads as no records. The record is read by the name
         // the listing gave, so `rounds/7.md` is the file the summary
         // describes and the file the card links to.
-        var record: String?
+        var names: [String] = []
+        var rounds: Int32 = -1
+        if let opened = try? openComponent(at: folder, "rounds", directory: true) {
+            rounds = opened
+            names = entries(of: rounds)
+        }
+        defer { if rounds >= 0 { close(rounds) } }
+        return assemble(state: state, goal: goal, roundNames: names) { name in
+            (try? text(at: rounds, name)) ?? nil
+        }
+    }
+
+    /// The summary of one goal folder from its texts, whatever holds them:
+    /// the working tree here, the tree of `origin/<base>` in
+    /// `KnowledgeBase`. `roundNames` is every name under `rounds/`; `text`
+    /// answers a record's text, or nil for one that is not a regular file,
+    /// is over `maxBytes` or is not UTF-8. One function, so the two sources
+    /// can never build two different summaries from the same files.
+    static func assemble(
+        state: String?, goal: String?, roundNames: [String], text: (String) -> String?
+    ) -> KnowledgeSummary {
+        let names = roundNames.filter { KnowledgeSummary.roundNumber($0) != nil }.sorted()
+        let record = KnowledgeSummary.latestRecordName(names)
         var latestRound: String?
         var records: [(number: Int, text: String)] = []
-        if let rounds = try? openComponent(at: folder, "rounds", directory: true) {
-            defer { close(rounds) }
-            let names = entries(of: rounds).filter { KnowledgeSummary.roundNumber($0) != nil }.sorted()
-            record = KnowledgeSummary.latestRecordName(names)
-            for name in names {
-                guard let number = KnowledgeSummary.roundNumber(name),
-                      let text = (try? text(at: rounds, name)) ?? nil
-                else { continue }
-                records.append((number, text))
-                if name == record { latestRound = text }
-            }
+        for name in names {
+            guard let number = KnowledgeSummary.roundNumber(name), let text = text(name) else { continue }
+            records.append((number, text))
+            if name == record { latestRound = text }
         }
         var summary = KnowledgeSummary.parse(state: state, goal: goal, latestRecord: record, latestRound: latestRound)
         summary.sumCosts(records: records.map(\.text))

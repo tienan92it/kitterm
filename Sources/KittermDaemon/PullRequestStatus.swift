@@ -27,7 +27,7 @@ public final class PullRequestStatus: @unchecked Sendable {
     /// How long the pipes are read after `gh` ended, for a child of `gh`
     /// that keeps one open.
     public static let pipeGraceSeconds: TimeInterval = 0.5
-    static let maxOutputBytes = 8 << 20
+    public static let maxOutputBytes = 8 << 20
     static let maxErrorBytes = 64 << 10
     public static let limit = 50
     static let queue: DispatchQueue = {
@@ -292,12 +292,33 @@ public final class PullRequestStatus: @unchecked Sendable {
     /// both pipes and reaps the process; once the process has ended, the
     /// pipes are read for `pipeGrace` at most and then closed, so a child
     /// that keeps one open holds nothing and what was read is judged.
+    /// `input` is the program's whole stdin, handed over as an unlinked
+    /// scratch file, so no write can block on a full pipe or take
+    /// `SIGPIPE`; `environment` is laid over the daemon's own; stdout is
+    /// kept up to `maxOutput` bytes. `KnowledgeBase` runs `git` with it.
     public static func run(
         executable: String, args: [String], searchPath: String, timeout: TimeInterval,
         killGrace: TimeInterval = PullRequestStatus.killGraceSeconds,
         pipeGrace: TimeInterval = PullRequestStatus.pipeGraceSeconds,
-        keepOutput: Bool = true
+        keepOutput: Bool = true,
+        input: Data? = nil, environment extra: [String: String] = [:],
+        maxOutput: Int = PullRequestStatus.maxOutputBytes
     ) -> RunResult? {
+        var inputPath: String?
+        if let input {
+            var template = Array((NSTemporaryDirectory() + "/kitterm-stdin-XXXXXX").utf8CString)
+            let fd = mkstemp(&template)
+            guard fd >= 0 else { return nil }
+            let path = String(cString: template)
+            let written = input.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
+            _ = close(fd)
+            guard written == input.count else {
+                unlink(path)
+                return nil
+            }
+            inputPath = path
+        }
+        defer { if let inputPath { unlink(inputPath) } }
         var outPipe: [Int32] = [-1, -1], errPipe: [Int32] = [-1, -1]
         guard pipe(&errPipe) == 0 else { return nil }
         guard !keepOutput || pipe(&outPipe) == 0 else {
@@ -330,7 +351,7 @@ public final class PullRequestStatus: @unchecked Sendable {
         posix_spawnattr_setflags(&attrs, Int16(POSIX_SPAWN_SETPGROUP))
         #endif
         posix_spawnattr_setpgroup(&attrs, 0)
-        posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0)
+        posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, inputPath ?? "/dev/null", O_RDONLY, 0)
         if keepOutput {
             posix_spawn_file_actions_adddup2(&actions, outPipe[1], STDOUT_FILENO)
         } else {
@@ -343,6 +364,7 @@ public final class PullRequestStatus: @unchecked Sendable {
         environment["GH_PROMPT_DISABLED"] = "1"
         environment["GH_NO_UPDATE_NOTIFIER"] = "1"
         environment["NO_COLOR"] = "1"
+        environment.merge(extra) { _, new in new }
         var argv: [UnsafeMutablePointer<CChar>?] = ([executable] + args).map { strdup($0) }
         argv.append(nil)
         var envp: [UnsafeMutablePointer<CChar>?] = environment.map { strdup($0.key + "=" + $0.value) }
@@ -400,7 +422,7 @@ public final class PullRequestStatus: @unchecked Sendable {
                 if count > 0 {
                     let isOutput = readers.first { $0.fd == entry.fd }?.isOutput ?? false
                     if isOutput {
-                        output.append(contentsOf: buffer[0..<min(count, max(0, maxOutputBytes - output.count))])
+                        output.append(contentsOf: buffer[0..<min(count, max(0, maxOutput - output.count))])
                     } else {
                         error.append(contentsOf: buffer[0..<min(count, max(0, maxErrorBytes - error.count))])
                     }
