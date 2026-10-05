@@ -1,4 +1,5 @@
 import Foundation
+import NIOConcurrencyHelpers
 import XCTest
 
 @testable import KittermDaemon
@@ -7,6 +8,10 @@ import XCTest
 /// on the search path a test hands `PullRequestStatus`, so the real `gh`
 /// never runs. `mode` picks the answer; `calls.log` holds one line per run.
 struct FakeGH {
+    /// What the fake prints for `gh auth token`. No test may find it in a
+    /// result.
+    static let token = "gho_fakefakefake"
+
     let directory: URL
     var searchPath: String { directory.path }
 
@@ -17,9 +22,10 @@ struct FakeGH {
         mode="$(/bin/cat "$dir/mode" 2>/dev/null)"
         if [ "$1" = "auth" ]; then
           if [ "$mode" = "logged-out" ]; then
-            echo "You are not logged into any GitHub hosts." >&2
+            echo "no oauth token found for github.com" >&2
             exit 1
           fi
+          echo "gho_fakefakefake"
           exit 0
         fi
         case "$mode" in
@@ -28,6 +34,9 @@ struct FakeGH {
           fail) echo "GraphQL: Could not resolve to a Repository" >&2; echo "second line" >&2; exit 1 ;;
           garbage) echo "not json" ;;
           slow) exec /bin/sleep 2 ;;
+          big) /bin/cat "$dir/big.json" ;;
+          holder) /bin/sleep 3 & /bin/cat "$dir/pulls.json" ;;
+          stubborn) trap '' TERM; echo $$ > "$dir/pid"; /bin/sleep 5 ;;
         esac
 
         """
@@ -77,14 +86,38 @@ struct FakeGH {
     func remove() { try? FileManager.default.removeItem(at: directory) }
 }
 
+/// A clock a test moves by hand.
+final class TestClock: @unchecked Sendable {
+    private let lock = NIOLock()
+    private var time = Date()
+    var now: Date { lock.withLock { time } }
+    func advance(_ seconds: TimeInterval) { lock.withLock { time += seconds } }
+}
+
 /// `PullRequestStatus`: the parse of `gh pr list --json`, the CI word, each
 /// reason, and the one-minute bound, against a fake `gh`.
 final class PullRequestStatusTests: XCTestCase {
     private var gh: FakeGH!
+    private var clock: TestClock!
     private let repository = "o/r"
 
     override func setUpWithError() throws {
         gh = try FakeGH()
+        clock = TestClock()
+    }
+
+    /// A status on the fake `gh` and the test clock. `timeout` shortens the
+    /// run's timeout and its two graces.
+    private func makeStatus(searchPath: String? = nil, timeout: TimeInterval? = nil) -> PullRequestStatus {
+        let path = searchPath ?? gh.searchPath
+        let clock = self.clock!
+        guard let timeout else { return PullRequestStatus(searchPath: path, clock: { clock.now }) }
+        return PullRequestStatus(searchPath: path, run: { executable, args, keepOutput in
+            PullRequestStatus.run(
+                executable: executable, args: args, searchPath: path, timeout: timeout,
+                killGrace: 0.3, pipeGrace: 0.3, keepOutput: keepOutput
+            )
+        }, clock: { clock.now })
     }
 
     override func tearDown() {
@@ -94,8 +127,8 @@ final class PullRequestStatusTests: XCTestCase {
     }
 
     /// One read through the queue, as the route starts it.
-    private func read(_ status: PullRequestStatus, at now: Date = Date()) -> PullRequestStatus.Snapshot {
-        XCTAssertTrue(status.refreshIfDue(repository: repository, now: now))
+    private func read(_ status: PullRequestStatus) -> PullRequestStatus.Snapshot {
+        XCTAssertTrue(status.refreshIfDue(repository: repository))
         PullRequestStatus.queue.sync {}
         return status.snapshot(repository: repository)
     }
@@ -169,14 +202,13 @@ final class PullRequestStatusTests: XCTestCase {
     // MARK: - a good read
 
     func testAReadAsksGhForTheListAndKeepsIt() {
-        let status = PullRequestStatus(searchPath: gh.searchPath)
+        let status = makeStatus()
         XCTAssertEqual(status.snapshot(repository: repository),
                        PullRequestStatus.Snapshot(pulls: [], readAt: nil, reason: "not read yet"))
-        let before = Date()
         let snapshot = read(status)
         XCTAssertEqual(snapshot.pulls.map(\.number), [185, 184, 7])
         XCTAssertNil(snapshot.reason)
-        XCTAssertGreaterThanOrEqual(try XCTUnwrap(snapshot.readAt), before)
+        XCTAssertEqual(snapshot.readAt, clock.now)
         XCTAssertEqual(gh.calls, [
             "pr list --repo o/r --state all --limit 50 --json "
                 + "number,title,state,isDraft,headRefName,mergedAt,url,statusCheckRollup,additions,deletions",
@@ -188,20 +220,44 @@ final class PullRequestStatusTests: XCTestCase {
     func testGhAbsentFromThePath() throws {
         let empty = try FakeGH(withScript: false)
         defer { empty.remove() }
-        let snapshot = read(PullRequestStatus(searchPath: empty.searchPath))
+        let snapshot = read(makeStatus(searchPath: empty.searchPath))
         XCTAssertEqual(snapshot, PullRequestStatus.Snapshot(pulls: [], readAt: nil, reason: "gh is not on PATH"))
     }
 
     func testGhNotLoggedIn() throws {
         try gh.set(mode: "logged-out")
-        let snapshot = read(PullRequestStatus(searchPath: gh.searchPath))
+        let snapshot = read(makeStatus())
         XCTAssertEqual(snapshot, PullRequestStatus.Snapshot(pulls: [], readAt: nil, reason: "gh is not logged in"))
-        XCTAssertEqual(gh.calls.last, "auth status", "gh auth status decides it")
+        XCTAssertEqual(gh.calls.last, "auth token", "the local gh auth token decides it, not gh auth status")
+    }
+
+    func testTheTokenOfTheAuthCheckIsNeverKept() throws {
+        try gh.set(mode: "fail")
+        let snapshot = read(makeStatus())
+        XCTAssertEqual(gh.calls.last, "auth token")
+        XCTAssertEqual(snapshot.reason, "gh pr list exited 1: GraphQL: Could not resolve to a Repository")
+        let script = gh.directory.appendingPathComponent("gh").path
+        let kept = try XCTUnwrap(PullRequestStatus.run(
+            executable: script, args: ["auth", "token"], searchPath: gh.searchPath, timeout: 5))
+        XCTAssertTrue(String(decoding: kept.output, as: UTF8.self).contains(FakeGH.token), "the fake does print one")
+        let dropped = try XCTUnwrap(PullRequestStatus.run(
+            executable: script, args: ["auth", "token"], searchPath: gh.searchPath, timeout: 5, keepOutput: false))
+        XCTAssertEqual(dropped.status, 0)
+        XCTAssertEqual(dropped.output, Data(), "stdout went to /dev/null")
+        XCTAssertFalse(dropped.error.contains(FakeGH.token))
+    }
+
+    func testARelativePathEntryIsSkipped() {
+        XCTAssertEqual(PullRequestStatus.locate("sh", in: "bin:.::/bin"), "/bin/sh")
+        XCTAssertNil(PullRequestStatus.locate("sh", in: "bin:."))
+        let relative = "../../../../../../../../../../../.." + gh.searchPath
+        XCTAssertTrue(FileManager.default.isExecutableFile(atPath: relative + "/gh"), "the relative entry does reach the fake")
+        XCTAssertNil(PullRequestStatus.locate("gh", in: relative))
     }
 
     func testAFailedCallNamesTheExitCodeAndTheFirstStderrLine() throws {
         try gh.set(mode: "fail")
-        let snapshot = read(PullRequestStatus(searchPath: gh.searchPath))
+        let snapshot = read(makeStatus())
         XCTAssertEqual(snapshot.reason, "gh pr list exited 1: GraphQL: Could not resolve to a Repository")
         XCTAssertNil(snapshot.readAt)
         XCTAssertEqual(snapshot.pulls, [])
@@ -209,33 +265,74 @@ final class PullRequestStatusTests: XCTestCase {
 
     func testOutputThatIsNotJSON() throws {
         try gh.set(mode: "garbage")
-        XCTAssertEqual(read(PullRequestStatus(searchPath: gh.searchPath)).reason, "gh pr list printed no JSON list")
+        XCTAssertEqual(read(makeStatus()).reason, "gh pr list printed no JSON list")
     }
 
     func testAGhThatHangsIsEndedAtTheTimeout() throws {
         try gh.set(mode: "slow")
-        let path = gh.searchPath
-        let status = PullRequestStatus(searchPath: path) { executable, args in
-            PullRequestStatus.run(executable: executable, args: args, searchPath: path, timeout: 0.3)
-        }
         let started = Date()
-        let snapshot = read(status)
+        let snapshot = read(makeStatus(timeout: 0.3))
         XCTAssertLessThan(Date().timeIntervalSince(started), 1.9, "the 2 s sleep did not run to its end")
         XCTAssertEqual(snapshot.reason, "gh pr list timed out after 20 s")
         XCTAssertEqual(gh.calls.count, 1, "no auth check after a timeout")
     }
 
+    /// A `gh` that ignores `SIGTERM`, with a child that ignores it too: the
+    /// group gets `SIGKILL` after the grace, so the queue is not held.
+    func testAGhThatIgnoresSIGTERMIsKilledWithItsGroup() throws {
+        try gh.set(mode: "stubborn")
+        let started = Date()
+        let snapshot = read(makeStatus(timeout: 0.3))
+        XCTAssertLessThan(Date().timeIntervalSince(started), 3, "the 5 s sleep did not run to its end")
+        XCTAssertEqual(snapshot.reason, "gh pr list timed out after 20 s")
+        let text = try String(contentsOf: gh.directory.appendingPathComponent("pid"), encoding: .utf8)
+        let pid = try XCTUnwrap(pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines)))
+        XCTAssertEqual(kill(pid, 0), -1, "the script is gone")
+        XCTAssertEqual(kill(-pid, 0), -1, "and so is every process of its group, the sleep included")
+    }
+
+    /// A child of `gh` keeps the pipes open for 3 s after `gh` exits 0: the
+    /// read ends after the grace and the list it printed is the answer.
+    func testAChildThatHoldsThePipeDoesNotHoldTheRead() throws {
+        try gh.set(mode: "holder")
+        let started = Date()
+        let snapshot = read(makeStatus(timeout: 10))
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2, "the read did not wait for the 3 s child")
+        XCTAssertNil(snapshot.reason)
+        XCTAssertEqual(snapshot.pulls.map(\.number), [185, 184, 7])
+    }
+
+    /// 50 pulls in more than 64 KiB, the pipe's buffer and one read's size.
+    func testOutputOverThePipeBufferIsReadWhole() throws {
+        let pulls: [[String: Any]] = (1...50).map { number in
+            [
+                "number": number, "title": String(repeating: "t", count: 4096), "state": "OPEN", "isDraft": false,
+                "headRefName": "b\(number)", "mergedAt": NSNull(), "url": "https://github.com/o/r/pull/\(number)",
+                "statusCheckRollup": [[String: Any]](), "additions": 1, "deletions": 1,
+            ]
+        }
+        let data = try JSONSerialization.data(withJSONObject: pulls)
+        XCTAssertGreaterThan(data.count, 3 * 65536)
+        try data.write(to: gh.directory.appendingPathComponent("big.json"))
+        try gh.set(mode: "big")
+        let snapshot = read(makeStatus())
+        XCTAssertNil(snapshot.reason)
+        XCTAssertEqual(snapshot.pulls.map(\.number), Array(1...50))
+        XCTAssertEqual(snapshot.pulls.last?.title.count, 4096)
+    }
+
     func testAFailureKeepsTheLastGoodReadAndItsTime() throws {
-        let status = PullRequestStatus(searchPath: gh.searchPath)
-        let start = Date()
-        let good = read(status, at: start)
+        let status = makeStatus()
+        let good = read(status)
         try gh.set(mode: "fail")
-        let failed = read(status, at: start.addingTimeInterval(60))
+        clock.advance(60)
+        let failed = read(status)
         XCTAssertEqual(failed.pulls, good.pulls)
         XCTAssertEqual(failed.readAt, good.readAt, "the time of the last good read")
         XCTAssertEqual(failed.reason, "gh pr list exited 1: GraphQL: Could not resolve to a Repository")
         try gh.set(mode: "ok")
-        let again = read(status, at: start.addingTimeInterval(120))
+        clock.advance(60)
+        let again = read(status)
         XCTAssertNil(again.reason, "a good read clears the reason")
         XCTAssertGreaterThan(try XCTUnwrap(again.readAt), try XCTUnwrap(good.readAt))
     }
@@ -243,41 +340,54 @@ final class PullRequestStatusTests: XCTestCase {
     // MARK: - the one-minute bound
 
     func testOneReadAMinutePerRepository() {
-        let status = PullRequestStatus(searchPath: gh.searchPath)
-        let start = Date()
-        XCTAssertTrue(status.refreshIfDue(repository: repository, now: start))
-        for offset in [0.0, 1, 30, 59.9] {
-            XCTAssertFalse(status.refreshIfDue(repository: repository, now: start.addingTimeInterval(offset)), "\(offset)")
-        }
+        let status = makeStatus()
+        XCTAssertTrue(status.refreshIfDue(repository: repository))
         PullRequestStatus.queue.sync {}
+        for step in [0.0, 1, 29, 29.9] {
+            clock.advance(step)
+            XCTAssertFalse(status.refreshIfDue(repository: repository), "\(step)")
+        }
         XCTAssertEqual(gh.listCalls, 1)
-        XCTAssertFalse(status.refreshIfDue(repository: repository, now: start.addingTimeInterval(59.9)), "still under a minute once the read ended")
-        XCTAssertTrue(status.refreshIfDue(repository: repository, now: start.addingTimeInterval(60)))
+        clock.advance(0.1)
+        XCTAssertTrue(status.refreshIfDue(repository: repository), "60 s after the read ended")
         PullRequestStatus.queue.sync {}
         XCTAssertEqual(gh.listCalls, 2)
-        XCTAssertTrue(status.refreshIfDue(repository: "o/other", now: start), "the bound is per repository")
+        XCTAssertTrue(status.refreshIfDue(repository: "o/other"), "the bound is per repository")
         PullRequestStatus.queue.sync {}
         XCTAssertEqual(gh.listCalls, 3)
     }
 
     func testAFailedReadIsBoundedToo() throws {
         try gh.set(mode: "fail")
-        let status = PullRequestStatus(searchPath: gh.searchPath)
-        let start = Date()
-        _ = read(status, at: start)
-        XCTAssertFalse(status.refreshIfDue(repository: repository, now: start.addingTimeInterval(30)))
+        let status = makeStatus()
+        _ = read(status)
+        clock.advance(30)
+        XCTAssertFalse(status.refreshIfDue(repository: repository))
         XCTAssertEqual(gh.listCalls, 1)
+    }
+
+    /// The minute counts from the end of a read: a read that started 100 s
+    /// ago and ended now is not due.
+    func testTheMinuteCountsFromTheEndOfARead() throws {
+        try gh.set(mode: "slow")
+        let status = makeStatus(timeout: 0.3)
+        XCTAssertTrue(status.refreshIfDue(repository: repository))
+        clock.advance(100)
+        PullRequestStatus.queue.sync {}
+        XCTAssertEqual(status.snapshot(repository: repository).reason, "gh pr list timed out after 20 s")
+        XCTAssertFalse(status.refreshIfDue(repository: repository), "due at once under a bound from the start")
+        clock.advance(59)
+        XCTAssertFalse(status.refreshIfDue(repository: repository))
+        clock.advance(1)
+        XCTAssertTrue(status.refreshIfDue(repository: repository))
     }
 
     func testNoSecondReadWhileOneRuns() throws {
         try gh.set(mode: "slow")
-        let path = gh.searchPath
-        let status = PullRequestStatus(searchPath: path) { executable, args in
-            PullRequestStatus.run(executable: executable, args: args, searchPath: path, timeout: 0.3)
-        }
-        let start = Date()
-        XCTAssertTrue(status.refreshIfDue(repository: repository, now: start))
-        XCTAssertFalse(status.refreshIfDue(repository: repository, now: start.addingTimeInterval(3600)),
+        let status = makeStatus(timeout: 0.3)
+        XCTAssertTrue(status.refreshIfDue(repository: repository))
+        clock.advance(3600)
+        XCTAssertFalse(status.refreshIfDue(repository: repository),
                        "a read in flight holds the next one, whatever the clock says")
         PullRequestStatus.queue.sync {}
         XCTAssertEqual(gh.listCalls, 1)

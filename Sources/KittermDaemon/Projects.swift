@@ -167,6 +167,17 @@ public final class ProjectStore: @unchecked Sendable {
         registered().first { $0.id == id }
     }
 
+    /// The root of the discovered project that was given `id` in this run,
+    /// nil for any other id: one lock take and a scan of at most
+    /// `maxDiscovered` entries, so a route can name a discovered project
+    /// without a session listing.
+    public func discoveredRoot(id: String) -> String? {
+        withStore {
+            reloadIfChangedLocked()
+            return discovered.first { $0.value == id }?.key
+        }
+    }
+
     /// The project for a working directory. See the type comment for the
     /// order. A cwd resolved before under the same generation of the file
     /// answers from the cache under one lock take. Otherwise the `.git`

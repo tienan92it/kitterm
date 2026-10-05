@@ -2026,9 +2026,11 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// pulls}`, from the cache `PullRequestStatus` keeps (`sessions-workflow`
     /// round 2). The request never waits for `gh`: it answers what the
     /// cache holds and starts a read on `PullRequestStatus.queue` when the
-    /// last one started a minute ago or more. A project with no GitHub
-    /// remote answers an empty list and the reason; a project
-    /// `GET /api/projects` does not list is 404. The `ETag` covers the body
+    /// last one ended a minute ago or more. A project with no GitHub
+    /// remote answers an empty list and the reason. The project is a
+    /// registered id or one the store discovered from a session's cwd in
+    /// this run (`ProjectStore.discoveredRoot`); any other id is 404, an id
+    /// only a `project:` label names included. The `ETag` covers the body
     /// less `ageSeconds`, which changes every second; `If-None-Match`
     /// answers 304. Full grade only: the titles and the branch names of a
     /// repository are not what a watch link shows today.
@@ -2052,21 +2054,16 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         let loop = context.eventLoop
         let bound = NIOLoopBound(context, eventLoop: loop)
         let projects = self.projects
-        // nil for a project the daemon does not list. The store lookup runs
+        // nil for a project the store does not know. The store lookup runs
         // in the task and the remote on its own queue, as `serveProjects`
         // reads them; the snapshot is a lock take, and the `gh` read it
         // schedules runs on `PullRequestStatus.queue`.
         let promise = loop.makePromise(of: PullRequestStatus.Snapshot?.self)
         promise.completeWithTask {
-            var root: String?
-            if let project = projects.registered(id: id) {
-                root = project.root
-            } else if let seen = await self.registry.summaries().compactMap(\.project).first(where: { $0.id == id }) {
-                root = seen.root
-            } else {
-                return nil
-            }
-            guard let root else { return PullRequestStatus.Snapshot(reason: PullRequestStatus.noRemoteReason) }
+            // A registered id, else the id the store gave a root a
+            // session's cwd discovered: two lookups in the store, no
+            // session listing on a route the page polls.
+            guard let root = projects.registered(id: id)?.root ?? projects.discoveredRoot(id: id) else { return nil }
             let base: String? = await withCheckedContinuation { continuation in
                 RemoteOrigins.queue.async {
                     continuation.resume(returning: origins.pullRequestBase(root: root))

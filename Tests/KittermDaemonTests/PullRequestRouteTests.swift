@@ -23,6 +23,7 @@ final class PullRequestRouteTests: XCTestCase {
     private var stateDir: URL!
     private var gh: FakeGH!
     private var runs: Runs!
+    private var clock: TestClock!
 
     private static let watch = "ktw_" + String(repeating: "e", count: 32)
     private static let full = String(repeating: "f", count: 32)
@@ -49,6 +50,10 @@ final class PullRequestRouteTests: XCTestCase {
         stateDir = URL(fileURLWithPath: ProjectStore.canonicalRoot(scratch.path), isDirectory: true)
         setenv("KITTERM_STATE_DIR", stateDir.path, 1)
         // hub: origin on GitHub; lab: origin on another host; bare: no remote.
+        // found: a checkout no file registers, origin on GitHub.
+        let found = stateDir.appendingPathComponent("found/.git", isDirectory: true)
+        try FileManager.default.createDirectory(at: found, withIntermediateDirectories: true)
+        let foundRoot = found.deletingLastPathComponent().path
         var roots: [String: String] = [:]
         for name in ["hub", "lab", "bare"] {
             let url = stateDir.appendingPathComponent(name, isDirectory: true)
@@ -57,7 +62,10 @@ final class PullRequestRouteTests: XCTestCase {
         }
         try ProjectStore.save(roots.map { Project(id: $0.key, name: $0.key, root: $0.value) })
         _ = ProjectStore.shared.registered()
-        let remotes = [roots["hub"]!: "git@github.com:o/r.git\n", roots["lab"]!: "git@gitlab.com:o/r.git\n"]
+        let remotes = [
+            roots["hub"]!: "git@github.com:o/r.git\n", roots["lab"]!: "git@gitlab.com:o/r.git\n",
+            foundRoot: "https://github.com/o/found\n",
+        ]
         let origins = RemoteOrigins(git: { args in
             guard args.count > 1, let remote = remotes[args[1]] else { return (2, "") }
             return (0, remote)
@@ -69,13 +77,16 @@ final class PullRequestRouteTests: XCTestCase {
         let loop = group.next()
         let runs = self.runs!
         let path = gh.searchPath
-        let status = PullRequestStatus(searchPath: path) { executable, args in
+        clock = TestClock()
+        let clock = self.clock!
+        let status = PullRequestStatus(searchPath: path, run: { executable, args, keepOutput in
             runs.record(
                 onLoop: loop.inEventLoop,
-                onQueue: DispatchQueue.getSpecific(key: PullRequestStatus.queueKey) == true
+                onQueue: PullRequestStatus.isOnQueue
             )
-            return PullRequestStatus.run(executable: executable, args: args, searchPath: path, timeout: 10)
-        }
+            return PullRequestStatus.run(
+                executable: executable, args: args, searchPath: path, timeout: 10, keepOutput: keepOutput)
+        }, clock: { clock.now })
         let registry = SessionRegistry()
         channel = try ServerBootstrap(group: group)
             .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
@@ -176,15 +187,12 @@ final class PullRequestRouteTests: XCTestCase {
         XCTAssertNil(first.json["ageSeconds"])
 
         PullRequestStatus.queue.sync {}
-        let before = Int64(Date().timeIntervalSince1970 * 1000)
         let second = try get("/api/projects/hub/pulls")
         XCTAssertEqual(second.status, 200)
         XCTAssertEqual(second.headers["content-type"], "application/json")
         XCTAssertNil(second.json["reason"])
-        let readAt = try XCTUnwrap(second.json["readAt"] as? Int64)
-        XCTAssertLessThanOrEqual(readAt, before)
-        XCTAssertGreaterThan(readAt, before - 60_000)
-        XCTAssertEqual(second.json["ageSeconds"] as? Int, 0)
+        XCTAssertEqual(second.json["readAt"] as? Int64, Int64(clock.now.timeIntervalSince1970 * 1000))
+        XCTAssertNotNil(second.json["ageSeconds"] as? Int)
         XCTAssertEqual(second.pulls.map { $0["number"] as? Int }, [185, 184, 7])
         let open = second.pulls[0]
         XCTAssertEqual(Set(open.keys), ["number", "title", "state", "draft", "headRefName", "url", "ci", "additions", "deletions"])
@@ -247,6 +255,27 @@ final class PullRequestRouteTests: XCTestCase {
         XCTAssertNotEqual(try get("/api/projects/lab/pulls").headers["etag"], etag, "another body, another tag")
     }
 
+    /// A failed read changes the body, so the old tag gets the new body
+    /// once; the new tag then answers 304 while the failure stands.
+    func testA304AfterAFailedRead() throws {
+        let good = try primed()
+        let goodTag = try XCTUnwrap(good.headers["etag"])
+        try gh.set(mode: "fail")
+        clock.advance(60)
+        let failed = try primed()
+        XCTAssertEqual(failed.status, 200)
+        XCTAssertEqual(failed.json["reason"] as? String, "gh pr list exited 1: GraphQL: Could not resolve to a Repository")
+        XCTAssertEqual(failed.pulls.count, 3, "the last good list stays")
+        XCTAssertEqual(failed.json["readAt"] as? Int64, good.json["readAt"] as? Int64)
+        let failedTag = try XCTUnwrap(failed.headers["etag"])
+        XCTAssertNotEqual(failedTag, goodTag)
+        XCTAssertEqual(try get("/api/projects/hub/pulls", extra: ["If-None-Match: \(goodTag)"]).status, 200)
+        let again = try get("/api/projects/hub/pulls", extra: ["If-None-Match: \(failedTag)"])
+        XCTAssertEqual(again.status, 304)
+        XCTAssertEqual(again.body.count, 0)
+        XCTAssertEqual(gh.listCalls, 2)
+    }
+
     func testTheETagDoesNotChangeWithTheAge() {
         let pulls = PullRequestStatus.parse(Data(FakeGH.pulls.utf8)) ?? []
         let readAt = Date(timeIntervalSince1970: 1_800_000_000)
@@ -278,6 +307,19 @@ final class PullRequestRouteTests: XCTestCase {
         XCTAssertEqual(full.status, 200)
     }
 
+    /// A project a session's cwd discovered is served from the id the store
+    /// gave its root, with no session listing; before the store saw the
+    /// root, the id is unknown.
+    func testADiscoveredProjectIsServedFromTheStore() throws {
+        XCTAssertEqual(try get("/api/projects/found/pulls").status, 404)
+        let root = stateDir.appendingPathComponent("found").path
+        XCTAssertEqual(ProjectStore.shared.resolve(cwd: root)?.id, "found")
+        let answer = try primed("/api/projects/found/pulls")
+        XCTAssertEqual(answer.status, 200)
+        XCTAssertEqual(answer.pulls.count, 3)
+        XCTAssertEqual(gh.calls.first?.hasPrefix("pr list --repo o/found "), true)
+    }
+
     func testAnUnknownProjectIs404() throws {
         let answer = try get("/api/projects/nowhere/pulls")
         XCTAssertEqual(answer.status, 404)
@@ -292,7 +334,7 @@ final class PullRequestRouteTests: XCTestCase {
         try gh.set(mode: "logged-out")
         _ = try primed()
         let counts = runs.counts
-        XCTAssertEqual(counts.onQueue, 2, "gh pr list and gh auth status, both on kitterm.pulls")
+        XCTAssertEqual(counts.onQueue, 2, "gh pr list and gh auth token, both on kitterm.pulls")
         XCTAssertEqual(counts.onLoop, 0)
     }
 
