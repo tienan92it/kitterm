@@ -18,11 +18,11 @@
    the pane` is the way to act on an agent.
 
    The layout is the two frames `Dashboard 1200` and `Dashboard 390` of
-   `docs/goals/agent-dashboard/corpus/dashboard.pen` (rounds 10 and 11),
+   `design/dashboard.pen` (rounds 10 and 11),
    with the Components frame for the quota bar, WHERE and the marks. */
 
 /* --- the foundation ---------------------------------------------------------
-   `docs/goals/agent-dashboard/corpus/design-foundation.md`, frozen. One space
+   `design/foundation.md`, frozen. One space
    scale, three type sizes and the two mark sizes, one line height chosen by
    width, and the five colours that carry meaning. `sessions-css.test.ts`
    pins each.
@@ -33,7 +33,7 @@
    `--ui-surface`, `--ui-border`) and the three text greys from the terminal's
    theme, and none of those six is re-declared here; it owns the five colours
    that mark a state, so a mark reads the same on every terminal theme. The
-   owned five are hues chosen for separation (`corpus/palette.md`, amended
+   owned five are hues chosen for separation (`design/palette.md`, amended
    2026-09-19): they paint a mark's `background` and nothing else, never
    `color`, a background behind text or a border. A mark is a one-character
    glyph at the start of a line, a bar, the 2 px rule at a tile's edge, or a
@@ -70,7 +70,7 @@
   --line-h: 44px;
 
   /* The five owned colours, light then dark, as `light-dark()` takes them
-     (`corpus/palette.md`, amended 2026-09-19). */
+     (`design/palette.md`, amended 2026-09-19). */
   --ui-accent: light-dark(#1d7268, #2a9d8f);   /* working, the bars, the quota fill under 80 % */
   --ui-success: light-dark(#2d6a4f, #52b788);  /* done: the ✓ mark alone */
   --ui-warning: light-dark(#8a6415, #e9c46a);  /* needs you */
@@ -112,7 +112,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 
 /* --- the mark ---------------------------------------------------------------
    One character at the far left of a line, in the state's colour
-   (`design-foundation.md`, Hierarchy; the Components frame, "Row marks"):
+   (`design/foundation.md`, Hierarchy; the Components frame, "Row marks"):
    the turning spinner for what is working, `?` for what waits on a person
    (input, an approval, a proposal), `!` for what failed, `✓` for what is
    done, `•` for what is pending, `–` for what is quiet. The glyph carries
@@ -179,7 +179,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .pr-link:hover .mark.link { text-decoration-thickness: 2px; }
 
 /* --- the band ---------------------------------------------------------------
-   One row, one height, always (`design-foundation.md`, principle 2): the
+   One row, one height, always (`design/foundation.md`, principle 2): the
    brand at the left, four cells at the right, each a headline-size count
    and its body-size noun, whatever the fleet is doing. The height is set,
    not a minimum, and the box clips, so no count and no noun can move the
@@ -229,7 +229,7 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
 
 /* --- the panels: USAGE, QUOTA, MODELS | VALUE, WHERE, LEAKS -------------------
    Every measure sits in one stack of panels between the band and the tree
-   (`design-foundation.md`, "The panels"; `corpus/valuemaxxing.md`), in the
+   (`design/foundation.md`, "The panels"; `corpus/valuemaxxing.md`), in the
    frame's order: USAGE, QUOTA, MODELS, one hairline divider, VALUE, WHERE,
    LEAKS. Each panel is one row: its label in an 84 px gutter on the left,
    in the label style (12/600, letter-spaced, muted), its content filling
@@ -299,7 +299,7 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
   color: var(--ui-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .usage-peak { flex: 1 1 auto; text-align: center; overflow: hidden; text-overflow: ellipsis; }
-/* One line that names the number (`design-foundation.md`, "The panels");
+/* One line that names the number (`design/foundation.md`, "The panels");
    the long form is the note's title. */
 .usage-note { margin: var(--space-2) 0 0; color: var(--ui-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* The no-transcript sentence wraps (round 21). */
@@ -415,7 +415,7 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
 .tree-section + .tree-section { margin-top: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--ui-border); }
 
 /* --- every line is one line -----------------------------------------------
-   Every level of the tree is one `line` (`design-foundation.md`, "The line,
+   Every level of the tree is one `line` (`design/foundation.md`, "The line,
    in detail"; the anatomy frame, five cells): the mark at the far left,
    the indent, the name, then the four fact columns of fixed width
    right-aligned — the state word, a number, a pull request, a time. There

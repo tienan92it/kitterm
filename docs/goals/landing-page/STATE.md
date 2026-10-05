@@ -40,7 +40,7 @@ in Pen over five passes: page-per-section with snapping, a centred
 880 px column, more air, a shorter hero, no scroll hint, entrance
 animation, then ten taglines, of which the human chose "A terminal
 daemon with a ledger." Approved 2026-09-20. The frames live in
-`../agent-dashboard/corpus/dashboard.pen` so they share the tokens.
+`../../../design/dashboard.pen` so they share the tokens.
 
 ## Next action
 

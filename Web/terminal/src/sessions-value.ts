@@ -135,7 +135,7 @@ export function usageHead(report: UsageDaily | null | undefined, choice: UsageCh
 
 /** The one note under the chart: `$1,446.00 apportioned across midnight`,
  * the part of the total that was split by token share rather than
- * measured (`design-foundation.md`, "The panels"). Null when nothing was
+ * measured (`design/foundation.md`, "The panels"). Null when nothing was
  * apportioned, and in tokens mode, where every token is counted. */
 export function apportionedNote(totals: UsageBucket | null | undefined, mode: UsageMode): string | null {
   if (mode !== "cost" || !totals || totals.apportionedUSD <= 0) return null;
@@ -397,7 +397,7 @@ function order(rows: Raw[]): Raw[] {
 
 /**
  * The panel at `grouping`, or null when the page has no rollup. Each
- * grouping is a level the tree already has (`design-foundation.md`, "The
+ * grouping is a level the tree already has (`design/foundation.md`, "The
  * VALUE panel groups by the same levels as the tree"):
  *
  * - **project**: one row per project the daemon lists; its spend is the

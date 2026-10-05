@@ -11,7 +11,7 @@ so the reader can follow a workspace down to the task an agent is
 running right now, and read which model that agent is running on. The
 page presents and monitors. It accepts no typed work.
 
-The design language is the one in `corpus/design-foundation.md`:
+The design language is the one in `design/foundation.md`:
 minimal, monospace, hairline, three type sizes, one space scale, eight
 components, colour on the state mark alone.
 
@@ -33,7 +33,7 @@ components, colour on the state mark alone.
   source, and it is in.
 - **No change to the terminal pane.** `/` is not this goal's surface.
 - **No loss of an accessibility rule an earlier round paid for.** The
-  list is in `design-foundation.md` under "What the page keeps".
+  list is in `design/foundation.md` under "What the page keeps".
 - **No density control, no theme picker, no settings.** Density follows
   the width. The theme follows the terminal.
 - **One animation, and only one.** The working mark turns through the
@@ -58,7 +58,7 @@ All nine hold on a build from `main`:
 4. No element on the page accepts typed text. A vitest asserts that the
    rendered page contains no `input`, `textarea` or `contenteditable`.
 5. `sessions.css` uses the space scale and the three type sizes from
-   `design-foundation.md`, and a vitest reads the file and pins both.
+   `design/foundation.md`, and a vitest reads the file and pins both.
 6. The first screen at 390 px holds the band, the meters, and the first
    workspace; the page's height follows the tree.
 7. A session running an agent shows its model as a fact on its line, and

@@ -1,6 +1,6 @@
 /**
  * The tree as flat lines (`agent-dashboard`, round 10; the frames
- * `Dashboard 1200` and `Dashboard 390` in `corpus/dashboard.pen`). No DOM,
+ * `Dashboard 1200` and `Dashboard 390` in `design/dashboard.pen`). No DOM,
  * no clock beyond the `now` it is handed; `sessions.ts` paints what this
  * returns, one `.line` per entry.
  *

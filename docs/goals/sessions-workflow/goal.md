@@ -32,8 +32,8 @@ queue.
 All 7 hold on a build from `main`:
 
 1. The SESSIONS section at 1200 px and 390 px matches the frames of
-   `corpus/sessions.pen` that the human approved, on the real
-   `docs/goals/` tree.
+   `design/sessions.pen` at the commit `corpus/01-approved-design.md`
+   names, on the real `docs/goals/` tree.
 2. Every goal line and every task line shows exactly one stage word from
    `plan`, `build`, `review`, `blocked`, `done`, decided by the table in
    `corpus/00-request.md`; a vitest pins every row of that table.

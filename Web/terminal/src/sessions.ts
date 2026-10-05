@@ -90,7 +90,7 @@ import { findThemeById } from "./themes";
 
 /**
  * The fleet view: the page the frames `Dashboard 1200` and `Dashboard
- * 390` of `corpus/dashboard.pen` draw (`agent-dashboard`, round 10). Polls
+ * 390` of `design/dashboard.pen` draw (`agent-dashboard`, round 10). Polls
  * `/api/projects`, `/api/sessions`, `/api/approvals`, `/api/archives` and
  * `/api/usage/limits`, plus `/api/projects/<id>/knowledge` for each
  * registered project and `/api/usage/daily` and `/api/yield` for the
@@ -540,7 +540,7 @@ pushLine.className = "push";
 pushLine.hidden = true;
 /** The toggle on the line right now, so an unchanged one is left alone. */
 let pushPainted = "";
-/** The panels between the band and the tree (`design-foundation.md`, "The
+/** The panels between the band and the tree (`design/foundation.md`, "The
  * panels"): each a label in an 84 px gutter and its content. Built once;
  * each `paint*` replaces its content when its model changes. */
 function panelBlock(name: string, label: string): HTMLElement {
@@ -567,7 +567,7 @@ let modelsPainted = "";
 let leaksPainted = "";
 /** The tree's header: `SESSIONS` in the gutter, then the whole state
  * vocabulary, each mark beside the bracketed word it always appears with,
- * so a reader never has to infer a mark (`design-foundation.md`,
+ * so a reader never has to infer a mark (`design/foundation.md`,
  * Hierarchy). The working mark here stands still; only a line whose agent
  * holds the tty turns. */
 const treeHead = document.createElement("div");
@@ -1761,7 +1761,7 @@ function mark(family: MarkFamily, rest = false): HTMLElement {
 
 // --- the working mark turns ---------------------------------------------------
 //
-// The one thing on the page that moves (`design-foundation.md`, principle
+// The one thing on the page that moves (`design/foundation.md`, principle
 // 4): a character cycle at `FRAME_MS`, not a CSS transition. The cycle is
 // the quadrants the design draws (`QUADRANT`), and the mark rests on `◐`
 // under `prefers-reduced-motion`, where the ticker does not run.

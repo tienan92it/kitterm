@@ -322,11 +322,18 @@ decision moves to `docs/adr/`.
   (`~/.kitterm/web-root`), so a `vite build` with no `--outDir` swaps the
   live page for the branch's. A floor builds to a scratch directory
   (2026-09-19, round 11).
-- A `.pen` file under `corpus/` is the human's design. The foreman reads
+- A `.pen` file under `design/` is the human's design. The foreman reads
   it, exports its frames, and hands the crew the differences; it never
-  edits a frame. Round 10 of `agent-dashboard` replaced two frames with a
+  edits an approved frame. The designs moved from goal corpora to
+  `design/` on 2026-10-05 (`sessions-workflow` round 1). Round 10 of `agent-dashboard` replaced two frames with a
   tracing of the shipped page and the human closed Pen without saving
   (2026-09-18, round 10).
+- The Pencil MCP `execute` tool edits the active Pen editor, whatever
+  its `filePath` says, and the tools cannot open, create or save a file.
+  A crew that copied `dashboard.pen` with `cp` and passed the copy's path
+  drew into the open original's buffer. Have the human open or Save As
+  the target file in Pen first, then check `get_app_state` names it
+  (2026-10-03, `sessions-workflow` round 1).
 - A daemon started for a screenshot overwrites `~/.kitterm/port` and
   `pid`, and an MCP bridge binds its port once at start, so the
   session's `kitterm mcp` follows the wrong daemon until it reconnects.

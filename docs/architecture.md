@@ -219,7 +219,7 @@ read only of a file that grew. A grown file whose window holds no assistant line
 a long tool result makes, keeps the model the path last yielded; a path never seen, a
 session with no assistant turn, and a `<synthetic>` line yield nothing, so the row
 prints nothing rather than a guess. The name is derived once, in `ModelName`, by the
-rule in `docs/goals/agent-dashboard/corpus/design-foundation.md`; the page prints what
+rule in `design/foundation.md`; the page prints what
 the daemon sends.
 
 ### The rollup
@@ -370,7 +370,7 @@ or none, carries no field and the page prints the number as text.
 ### What the spend bought
 
 Four panels between the meters and the tree say what the range's dollars delivered
-(`sessions-value.ts`, pure and tested; `design-foundation.md`, "The panels"). The
+(`sessions-value.ts`, pure and tested; `design/foundation.md`, "The panels"). The
 counts are the repositories' own history, not the rollup: `RepositoryYield` runs
 `git log --first-parent` on the remote's branch in each project root, off the loop and
 cached five minutes, and counts a first-parent commit whose subject ends in `(#N)` or

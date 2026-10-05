@@ -1,7 +1,7 @@
 import Foundation
 
 /// The name the fleet view prints for a model id, by the naming rule in
-/// `docs/goals/agent-dashboard/corpus/design-foundation.md`.
+/// `design/foundation.md`.
 ///
 /// The rule, in order: drop the `claude-` prefix; move a `[1m]` suffix to
 /// ` · 1M` and keep that variant apart from its family; drop a trailing
