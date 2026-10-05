@@ -29,7 +29,7 @@ structure, not the foundation.
 
 ## Capability order
 
-5 capabilities. They ship on one branch, `goal/sessions-workflow`, and
+6 capabilities. They ship on one branch, `goal/sessions-workflow`, and
 one pull request. Each names the check that proves it.
 
 | # | Capability | Proof |
@@ -37,10 +37,11 @@ one pull request. Each names the check that proves it.
 | 1 | **The design.** Three frames in a new file, `design/sessions.pen` at the repository root: `Sessions 1200`, `Sessions 390`, and `Sessions components` (one line per stage at each level, each pull request state, the review line, the no-`gh` line), with their PNG exports in `design/exports/`. The frames draw the real tree of 2026-10-03, on the tokens and rules of `design/foundation.md`. The crew edits no other `.pen` file. | The human approves the frames in Pen. The foreman then writes `corpus/01-approved-design.md` with the commit sha of the approved `design/sessions.pen`. |
 | 2 | **Pull request state.** `PullRequestStatus` in `KittermDaemon`: for every project whose `origin` is on GitHub, `gh pr list --state all --limit 50 --json number,title,state,isDraft,headRefName,mergedAt,url,statusCheckRollup,additions,deletions` on its own queue, at most once a minute per project, cached, with a reason when `gh` is absent, logged out, or fails. A route, `GET /api/projects/<id>/pulls`, answers the cache, full grade, with an `ETag`. | New tests with a fake `gh` on `PATH`: the parse, each reason, the one-minute bound, and no call on the event loop. |
 | 3 | **The merged base branch.** The knowledge summary of a project reads `STATE.md`, `goal.md` and `rounds/` from `origin/<base>` after a `git fetch` on its own queue, at most once a minute, through `git` objects, not the working tree; with no remote, or a failed fetch, it reads the working tree as today and says which. | New tests against a scratch bare repository: a commit pushed to the bare repository shows in the summary with no change to the working tree; the fallback; no symlink or path outside the knowledge directory is read. |
+| 3b | **Open goal branches.** The knowledge summary also reads `docs/goals/<slug>/` from `origin/goal/<slug>` for every open pull request whose head is that branch (from capability 2's cache), fetched with the same rules as capability 3, and that goal's summary wins over the base's; a goal folder that only the working tree holds is kept, marked by its source. Added by the human at the direction check of 2026-10-05. | New tests against a scratch bare repository: a goal that exists only on an open goal branch shows with its branch's `STATE.md`; a merged or closed pull request's branch is no longer read; a working-tree-only goal is kept with its source; the base name rules of capability 3 hold for a branch name. |
 | 4 | **The stage.** A pure `sessions-stage.ts` decides the stage of each goal and task line from `STATE.md`, the session rows and the pull request state, by the table in `corpus/00-request.md`. | A vitest with one case per row of the table, and per level. |
 | 5 | **The tree.** `sessions-tree.ts` and `sessions.css` draw the SESSIONS section as the approved `design/sessions.pen` shows it: the stage word, the pull request state, the review line, the no-`gh` line. | The proofs of the design foundation, and the completion conditions 1, 4, 6 and 7. |
 
 Capabilities 2 and 3 do not depend on the design, so rounds 2 and 3 run
 while the human reviews the frames of round 1: the approval blocks only
-capability 5. Capability 4 depends on 2. Capability 5 depends on 1 and
-4. One round of this goal runs at a time (`LOOP.md`).
+capability 5. Capability 3b depends on 2 and 3. Capability 4 depends on 2. Capability 5
+depends on 1, 3b and 4. One round of this goal runs at a time (`LOOP.md`).

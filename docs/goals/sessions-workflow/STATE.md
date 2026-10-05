@@ -1,15 +1,16 @@
 # STATE: sessions-workflow
 
-- Status: waiting
-- Round: 3 of 3 in this budget (first budget)
+- Status: active
+- Round: 0 of 3 in this budget (second budget)
 - Rounds total: 3
 - Last floor: green (2026-10-05, round 3 after: swift test 1100, PR CI on 2411fc0)
-- Updated: 2026-10-05, the budget is spent: direction check
+- Updated: 2026-10-05, direction check: the human added the branch reader, dropped `list_pulls`, and set a second budget of 3
 
 ## Queue
 
-1. `line-stage` (capability 4)
-2. `stage-tree` (capability 5)
+1. `goal-branch-reader` (capability 3b), PR #185.
+2. `line-stage` (capability 4)
+3. `stage-tree` (capability 5)
 
 ## Failures
 
@@ -17,15 +18,8 @@ None.
 
 ## Proposals waiting on the human
 
-- An MCP tool `list_pulls {project}` for `GET /api/projects/<id>/pulls`.
-  It changes `MCPToolsTests`, which pins 16 tools and is frozen. See
-  `rounds/002.md`.
-- Read open goal branches: the knowledge summary also reads
-  `docs/goals/<slug>/` from `origin/goal/<slug>` for every open pull
-  request on that branch (and `origin/chore/<slug>` for its chore
-  file), and keeps a goal folder that only the working tree holds, so a
-  goal shows from its first round, not after its merge. A new row before
-  capability 4 in `plan.md`. See `rounds/003.md`.
+None. 2026-10-05: the human accepted the branch reader (`plan.md` row
+3b) and declined `list_pulls`.
 
 ## Done
 
@@ -41,6 +35,5 @@ None.
 
 ## Next action
 
-Direction check: the human decides the two proposals and a new budget.
-Then round 4: `line-stage`, or the goal-branch reader first if the human
-adds it.
+Round 4: `goal-branch-reader` from `plan.md` row 3b; proof: new tests
+against a scratch bare repository.
