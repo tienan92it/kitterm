@@ -8,6 +8,10 @@ import { type ProjectSummary } from "./sessions-model";
  * is full grade, so a watch page asks no pulls route, prints no pull
  * request state, no `REVIEW` line and no reason for either, as it hides
  * the costs. The stage still comes from `STATE.md` and the sessions.
+ *
+ * The page starts out of order here: the event feed answers and starts a
+ * poll while the profiles route, which says the token is watch-only, has
+ * not answered yet. No pulls request may leave before the page knows.
  */
 
 const BASE = "https://github.com/tienan92it/kitterm/pull/";
@@ -27,20 +31,49 @@ const routes: Record<string, unknown> = {
 };
 
 let page: FakePage;
+let releaseProfiles: () => void = () => {};
+/** What the page had done before the profiles route answered. */
+let early = { painted: 0, pulls: 0, knowledge: 0 };
 
 beforeAll(async () => {
   page = installFakePage(routes);
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener(): void {} }));
-  // The daemon answers 403 on the profiles route for a watch token.
   const answer = globalThis.fetch;
-  vi.stubGlobal("fetch", async (input: string | URL) => (String(input).startsWith("/api/profiles") ? new Response("forbidden", { status: 403 }) : answer(input)));
+  let feedAnswered = false;
+  vi.stubGlobal("fetch", async (input: string | URL) => {
+    const url = String(input);
+    // The daemon answers 403 on the profiles route for a watch token,
+    // here only once the test lets it.
+    if (url.startsWith("/api/profiles")) {
+      await new Promise<void>((resolve) => { releaseProfiles = resolve; });
+      return new Response("forbidden", { status: 403 });
+    }
+    // The feed answers one event at once, which starts a poll; the next
+    // request parks.
+    if (url.startsWith("/api/events")) {
+      if (feedAnswered) return new Promise<Response>(() => {});
+      feedAnswered = true;
+      return new Response(JSON.stringify({ ok: true, epoch: "e", next: 1, events: [{ type: "session.created" }] }), { status: 200 });
+    }
+    return answer(input);
+  });
   await import("./sessions");
+  await page.settle();
+  early = { painted: page.root.querySelectorAll(".goal-line").length, pulls: page.requests.filter((u) => u.includes("/pulls")).length, knowledge: page.requests.filter((u) => u.endsWith("/knowledge")).length };
+  releaseProfiles();
   await page.settle();
   await page.poll();
   await page.poll();
 });
 
 describe("a watch page", () => {
+  it("paints from the feed's poll before it knows its grade, and asks no pulls route meanwhile", () => {
+    // The poll ran: the goals are read and painted. The pulls are not asked.
+    expect(early.knowledge).toBeGreaterThan(0);
+    expect(early.painted).toBe(2);
+    expect(early.pulls).toBe(0);
+  });
+
   it("asks no pulls route", () => {
     expect(page.requests.filter((u) => u.includes("/pulls"))).toEqual([]);
   });

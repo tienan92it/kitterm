@@ -83,6 +83,7 @@ import {
 import { isOpen, joins, sessionFactColumns, tree, visibleLines, type Join, type TreeFact, type TreeLine, type TreeSection } from "./sessions-tree";
 import {
   draftsLabel,
+  pullHref,
   PULL_WORDS,
   pullsNotice,
   readPulls,
@@ -227,6 +228,10 @@ let failedPolls = 0;
  * it). A watch client cannot subscribe to push, so the switch is hidden
  * rather than shown and refused. */
 let watchOnly = false;
+/** The profiles route has answered or failed, so `watchOnly` is what it
+ * will be. The event watcher can start a poll before that; a request a
+ * watch token must not make (the pulls route) waits for it. */
+let gradeKnown = false;
 /** The folds the user opened, by key; a rebuild keeps them. */
 const foldsOpen = new Set<string>();
 /** The projects and goals whose triangle the reader clicked, by the tree
@@ -418,6 +423,8 @@ async function fetchProfiles(): Promise<void> {
     }
   } catch {
     // No answer is a fine state; the next poll paints what it can.
+  } finally {
+    gradeKnown = true;
   }
 }
 
@@ -526,11 +533,15 @@ function knowledgeGoals(answer: KnowledgeAnswer): StagedSummary[] {
 
 /** One pulls request per project whose remote is on GitHub, every
  * `PULLS_REFRESH_MS`, conditional on the ETag and aborted after `POLL_MS`.
- * Never for a watch client: the route is full grade, and its 403 stops
- * the asking. A 404 (an old daemon, an id the daemon does not know) keeps
- * null, which the stage reads as missing data. A failed or aborted
- * request keeps the last answer. */
+ * Never for a watch client, and never before the page knows whether it
+ * is one (`gradeKnown`): the route is full grade, and its 403 stops the
+ * asking. Any other failure — a 404 (an old daemon, an id the daemon does
+ * not know), a 5xx, a timeout, a network error — keeps the last answer
+ * (null with none, which the stage reads as missing data) and moves only
+ * the time, so the page asks again after `PULLS_REFRESH_MS`, not on the
+ * next 2 s poll. */
 async function fetchPulls(now: number): Promise<void> {
+  if (!gradeKnown) return;
   const wanted = watchOnly || pullsRefused ? [] : projects.filter((p) => p.pullRequestBase);
   const ids = new Set(wanted.map((p) => p.id));
   for (const id of pulls.keys()) if (!ids.has(id)) pulls.delete(id);
@@ -552,12 +563,12 @@ async function fetchPulls(now: number): Promise<void> {
           return;
         }
         if (!res.ok) {
-          pulls.set(project.id, { etag: null, answer: null, at: now });
+          pulls.set(project.id, { etag: entry?.etag ?? null, answer: entry?.answer ?? null, at: now });
           return;
         }
         pulls.set(project.id, { etag: res.headers.get("etag"), answer: (await res.json()) as PullsAnswer, at: now });
       } catch {
-        // Keep what the page shows; the next poll asks again.
+        pulls.set(project.id, { etag: entry?.etag ?? null, answer: entry?.answer ?? null, at: now });
       }
     }),
   );
@@ -1572,7 +1583,8 @@ function paintReview(): void {
     pulls: pulls.get(project.id)?.answer,
   })));
   const model = notice !== null ? { notice } : read ? { line } : null;
-  const signature = JSON.stringify(model);
+  // A link's `href` is built on the project's base, so the bases are in.
+  const signature = JSON.stringify([model, projects.map((p) => p.pullRequestBase ?? null)]);
   if (signature === reviewPainted) return;
   reviewPainted = signature;
   reviewLabel.hidden = model === null;
@@ -1587,7 +1599,7 @@ function paintReview(): void {
   }
   const item = (pull: ReviewPull, draft: boolean): HTMLElement => {
     const el = span("review-pull", "");
-    const href = pull.href ?? projects.find((p) => p.id === pull.project.id)?.pullRequestBase?.concat(String(pull.number)) ?? null;
+    const href = pullHref(pull.href, projects.find((p) => p.id === pull.project.id)?.pullRequestBase, pull.number);
     const text = `PR #${pull.number}`;
     if (href) {
       const link = pullRequestLink(text, href);

@@ -462,7 +462,7 @@ describe("every line is one line", () => {
     expect(["pr", "model"].map(align)).toEqual(["left", "left"]);
     expect(facts.map((rule) => rule.decls.has("text-overflow")), "a fact is never cut with an ellipsis").toEqual(facts.map(() => false));
     const phone = RULES.filter((rule) => rule.conditions.includes("@media (max-width: 767px)"));
-    expect(columns(1)).toBe("[name] minmax(0, 1fr) [smark] 16px [word] 11ch [pr] 12ch [end]");
+    expect(columns(1)).toBe("[name] minmax(0, 1fr) [smark] 16px [word] 12ch [pr] 12ch [end]");
     expect(phone.find((rule) => rule.selector === ".main > [data-col]:not(.pr)")?.decls.get("display")).toBe("none");
   });
 

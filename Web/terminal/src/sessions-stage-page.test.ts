@@ -47,8 +47,9 @@ const routes: Record<string, unknown> = {
     pulls: [
       pull(185, "goal/sessions-workflow", { draft: true, ci: "pending" }),
       pull(180, "goal/foreman-scope", { ci: "passing" }),
-      pull(177, "chore/readme"),
-      pull(156, "goal/green-ci-again", { ci: "failing" }),
+      // What `gh` printed is data: neither url may become an `href`.
+      pull(177, "chore/readme", { url: "javascript:alert(1)" }),
+      pull(156, "goal/green-ci-again", { ci: "failing", url: "https://evil.example/tienan92it/kitterm/pull/156" }),
       pull(150, "goal/old", { state: "merged" }),
     ],
   },
@@ -60,10 +61,20 @@ const routes: Record<string, unknown> = {
 };
 
 let page: FakePage;
+/** How the pulls route answers: as the fixture says, with a network
+ * error, or with a 500. */
+let pullsMode: "ok" | "throw" | "500" = "ok";
 
 beforeAll(async () => {
   page = installFakePage(routes);
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener(): void {} }));
+  const answer = globalThis.fetch;
+  vi.stubGlobal("fetch", async (input: string | URL) => {
+    if (!String(input).includes("/pulls") || pullsMode === "ok") return answer(input);
+    page.requests.push(String(input));
+    if (pullsMode === "throw") throw new TypeError("network error");
+    return new Response("boom", { status: 500 });
+  });
   await import("./sessions");
   await page.settle();
   await page.poll();
@@ -228,6 +239,55 @@ describe("the poll of the pulls route", () => {
     await page.poll();
     later.mockRestore();
     expect(count()).toBe(before + 1);
+  });
+
+  it("keeps the last answer and waits ten seconds after a request that fails, a network error or a 500", async () => {
+    const count = () => page.requests.filter((u) => u.includes("/pulls")).length;
+    const words = () => goalNamed("foreman-scope").querySelector(".pr-words")?.textContent;
+    const ready = () => page.root.querySelector(".review")!.querySelectorAll(".review-pull").length;
+    const later = vi.spyOn(Date, "now");
+    try {
+      for (const [mode, at] of [["throw", 1_000_000], ["500", 2_000_000]] as const) {
+        pullsMode = mode;
+        later.mockReturnValue(NOW + at);
+        const before = count();
+        await page.poll();
+        expect(count(), `${mode}: one request`).toBe(before + 1);
+        // The 2 s polls that follow ask nothing.
+        later.mockReturnValue(NOW + at + 4_000);
+        await page.poll();
+        await page.poll();
+        expect(count(), `${mode}: no request on the next polls`).toBe(before + 1);
+        // The state words and the REVIEW line stay.
+        expect(words(), mode).toBe(" ready · CI ✓");
+        expect(ready(), mode).toBe(4);
+        expect(page.root.querySelector(".review")?.hidden).toBe(false);
+        // Ten seconds later the page asks again.
+        later.mockReturnValue(NOW + at + 11_000);
+        await page.poll();
+        expect(count(), `${mode}: asks again after ten seconds`).toBe(before + 2);
+      }
+    } finally {
+      pullsMode = "ok";
+      later.mockReturnValue(NOW + 3_000_000);
+      await page.poll();
+      later.mockRestore();
+    }
+    expect(words()).toBe(" ready · CI ✓");
+  });
+
+  it("builds every link on the project's base, and builds them again when the base changes", async () => {
+    const hrefs = () => page.root.querySelector(".review")!.querySelectorAll("a").map((a) => a.href);
+    // The `javascript:` url and the foreign host of the fixture are not links.
+    expect(hrefs()).toEqual([`${BASE}180`, `${BASE}177`, `${BASE}156`, `${BASE}185`]);
+    expect(goalNamed("green-ci-again").querySelector(".pr")?.querySelector("a")?.href).toBe(`${BASE}156`);
+    const moved = "https://github.com/tienan92it/kitterm-next/pull/";
+    routes["/api/projects"] = { projects: [{ ...kitterm, pullRequestBase: moved }, local] };
+    await page.poll();
+    expect(hrefs()).toEqual([`${moved}180`, `${moved}177`, `${moved}156`, `${moved}185`]);
+    routes["/api/projects"] = { projects: [kitterm, local] };
+    await page.poll();
+    expect(hrefs()).toEqual([`${BASE}180`, `${BASE}177`, `${BASE}156`, `${BASE}185`]);
   });
 
   it("says on the line of a project with no GitHub remote why its numbers carry no state, and prints the number as plain text", () => {

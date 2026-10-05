@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { type KnowledgeSummary, type ModelRow, type ProjectSummary } from "./sessions-model";
-import { projectPullsReason, pullsNotice, SESSION_LEGEND, STAGE_LEGEND, stageCounts, type PullRequest, type PullsAnswer, type StagedSummary } from "./sessions-stage";
+import { projectPullsReason, pullHref, pullsNotice, SESSION_LEGEND, STAGE_LEGEND, stageCounts, type PullRequest, type PullsAnswer, type StagedSummary } from "./sessions-stage";
 import { homePath, isOpen, joins, tree, visibleLines, type TreeLine } from "./sessions-tree";
 
 /**
@@ -108,6 +108,27 @@ describe("a goal line", () => {
     ]);
     expect(pr("command-failed-event")).toBeUndefined();
     expect(pr("sessions-workflow")?.column).toBe(3);
+  });
+
+  it("takes the route's url as the link only under the project's base, and never a javascript: url or another host", () => {
+    const hrefOf = (url: string | undefined, project: ProjectSummary = kitterm) => {
+      const answerWith: PullsAnswer = { ...answer, pulls: pulls.map((p) => (p.number === 180 ? { ...p, url } : p)) };
+      const built = linesOf(build({ projects: [project], pullsOf: () => answerWith }));
+      return named(built, "foreman-scope").facts.find((f) => f.kind === "pr")?.href;
+    };
+    expect(hrefOf(`${BASE}180`)).toBe(`${BASE}180`);
+    expect(hrefOf("javascript:alert(1)")).toBe(`${BASE}180`);
+    expect(hrefOf("https://evil.example/tienan92it/kitterm/pull/180")).toBe(`${BASE}180`);
+    expect(hrefOf("https://github.com.evil.example/tienan92it/kitterm/pull/180")).toBe(`${BASE}180`);
+    expect(hrefOf(undefined)).toBe(`${BASE}180`);
+    // No base: plain text, whatever the route says.
+    const bare = { ...kitterm, pullRequestBase: undefined };
+    expect(hrefOf(`${BASE}180`, bare)).toBeUndefined();
+    expect(hrefOf("javascript:alert(1)", bare)).toBeUndefined();
+    expect(pullHref("javascript:alert(1)", BASE, 7)).toBe(`${BASE}7`);
+    expect(pullHref(`${BASE}7`, BASE, 7)).toBe(`${BASE}7`);
+    expect(pullHref(`${BASE}7`, undefined, 7)).toBeNull();
+    expect(pullHref(null, undefined, 7)).toBeNull();
   });
 
   it("prints how long a blocked or a review line waits in the last column, else the round counter, and nothing when it is done", () => {

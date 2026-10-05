@@ -384,6 +384,18 @@ export function pullStateWord(pull: PullRequest | null): PullWord | null {
   return words[0]!;
 }
 
+/**
+ * The link of pull request `number`: the `url` the pulls route gave, only
+ * when it sits under the project's `base` (`pullRequestBase`), else
+ * `base` and the number, else null. The route's `url` is `gh`'s output,
+ * so it is data: a `javascript:` url or another host never becomes an
+ * `href`.
+ */
+export function pullHref(url: string | null | undefined, base: string | undefined, number: number): string | null {
+  if (!base) return null;
+  return typeof url === "string" && url.startsWith(base) ? url : `${base}${number}`;
+}
+
 /** What the REVIEW line reads of one project. */
 export type ReviewProject = {
   project: { id: string; name: string };
@@ -395,7 +407,8 @@ export type ReviewProject = {
 /** One pull request on the REVIEW line. */
 export type ReviewPull = {
   number: number;
-  /** The pull request's page on GitHub, from the pulls route. */
+  /** The pull request's `url` as the pulls route gave it. Not an `href`
+   * until `pullHref` has checked it against the project's base. */
   href: string | null;
   /** `CI ✓`, `CI ✗`, `CI …`, or null with no checks. */
   ci: PullWord | null;

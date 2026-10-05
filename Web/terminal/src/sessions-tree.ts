@@ -102,6 +102,7 @@ import {
   goalPull,
   goalStage,
   projectPullsReason,
+  pullHref,
   pullStateWord,
   pullStateWords,
   readPulls,
@@ -301,11 +302,12 @@ function detailOf(parts: readonly (string | null | undefined)[]): string | null 
 }
 
 /** The pull request fact of a goal line: `PR #185` in column 3, a link to
- * the pull request's own page, else under the project's `base`, with the
- * state words when the pulls route gave the pull request. */
+ * the pull request's own page when that sits under the project's `base`,
+ * else to `base` and the number (`pullHref`), plain text with no base,
+ * with the state words when the pulls route gave the pull request. */
 export function pullFactColumn(found: GoalPull, base: string | undefined): TreeFact {
   const link = fact("pr", `PR #${found.number}`, 3);
-  const href = found.pull?.url ?? pullRequestHref(base, found.number);
+  const href = pullHref(found.pull?.url, base, found.number);
   if (href) link.href = href;
   const words = pullStateWords(found.pull);
   if (words.length > 0) {

@@ -452,7 +452,7 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
 .line > .mark { grid-row: 1; grid-column: smark; }
 /* The triangle, or the blank cell of a line with nothing under it, at the
    end of the left column, under the level's own indent. */
-.line > .mark.disclosure, .line > .mark.blank { grid-column: lead; justify-self: end; width: var(--join-w); }
+.line > .mark.disclosure, .line > .mark.blank { grid-column: lead; justify-self: end; width: var(--join-w); justify-content: center; }
 .line > .open {
   grid-row: 1; grid-column: name / end; min-width: 0;
   display: grid; grid-template-columns: subgrid; align-items: center;
@@ -500,17 +500,19 @@ a.line-name:hover { text-decoration: underline; text-underline-offset: 2px; }
    left column. `pass` is a parent's line running by; `tee` and `end` turn
    to the line, and `end` stops there, on a last child. On a line with no
    triangle the tick runs on to the name. A hairline is a 1 px border in
-   the border colour, like the rule between two sections. */
+   the border colour, like the rule between two sections. Every offset
+   comes from `--join-w`: the rail stands in the middle of its cell, where
+   the triangle of the line above is centred, at both widths. */
 .joins { grid-row: 1; grid-column: lead; justify-self: start; align-self: stretch; display: flex; }
 .join { position: relative; flex: none; width: var(--join-w); }
 .join.pass::before, .join.tee::before, .join.end::before {
-  content: ""; position: absolute; left: 7px; top: 0; bottom: 0; border-left: 1px solid var(--ui-border);
+  content: ""; position: absolute; left: calc(var(--join-w) / 2); top: 0; bottom: 0; border-left: 1px solid var(--ui-border);
 }
 .join.end::before { bottom: 50%; }
 .join.tee::after, .join.end::after {
-  content: ""; position: absolute; left: 7px; right: 0; top: 50%; border-top: 1px solid var(--ui-border);
+  content: ""; position: absolute; left: calc(var(--join-w) / 2); right: 0; top: 50%; border-top: 1px solid var(--ui-border);
 }
-.joins.long > .join:last-child::after { right: -9px; }
+.joins.long > .join:last-child::after { right: calc(var(--join-w) / -2); }
 
 /* An approval on its line: the amber mark, `approve <tool>`, the arguments
    cut at the line's end (the title holds them whole), how long it has
@@ -547,7 +549,8 @@ a.line-name:hover { text-decoration: underline; text-underline-offset: 2px; }
   .review-short { display: inline; }
   .tree, .folds {
     --join-w: var(--space-3);
-    --line-cols: [name] minmax(0, 1fr) [smark] 16px [word] 11ch [pr] 12ch [end];
+    /* The word column fits `[failed (1)]`, 12 characters. */
+    --line-cols: [name] minmax(0, 1fr) [smark] 16px [word] 12ch [pr] 12ch [end];
   }
   .line-detail, .main > [data-col]:not(.pr) { display: none; }
   .pr-prefix, .pr-words { display: none; }

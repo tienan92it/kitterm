@@ -63,6 +63,18 @@ describe("the hairline joins (rule 4)", () => {
     expect(RULES.filter((rule) => rule.selector === ".join.none::before" || rule.selector === ".join.none::after")).toEqual([]);
   });
 
+  it("derives every offset from --join-w, so the rail stands on the centre of the triangle above it at both widths", () => {
+    const offsets = RULES.filter((rule) => /\.joins?\b/.test(rule.selector)).flatMap((rule) => [...rule.decls].filter(([name]) => name === "left" || name === "right").map(([name, value]) => `${rule.selector} ${name}: ${value}`));
+    expect(offsets.length).toBeGreaterThan(0);
+    for (const offset of offsets) expect(/\d+px/.test(offset), offset).toBe(false);
+    expect(wide(".join.tee::before").get("left")).toBe("calc(var(--join-w) / 2)");
+    expect(wide(".join.end::after").get("left")).toBe("calc(var(--join-w) / 2)");
+    expect(wide(".joins.long > .join:last-child::after").get("right")).toBe("calc(var(--join-w) / -2)");
+    // The triangle is centred in a cell one level wide.
+    expect(wide(".line > .mark.disclosure").get("justify-content")).toBe("center");
+    expect(RULES.filter((rule) => /\.joins?\b/.test(rule.selector) && rule.conditions.length > 0)).toEqual([]);
+  });
+
   it("is one level wide per cell, in the left column, as tall as its line", () => {
     expect(wide(".join").get("width")).toBe("var(--join-w)");
     expect(wide(".joins").get("grid-column")).toBe("lead");
@@ -92,8 +104,12 @@ describe("the header and the REVIEW line", () => {
 
 describe("the phone (rule 7)", () => {
   it("keeps the joins, the name, the status cell, #N and one state word", () => {
-    expect(phone(".tree").get("--line-cols")).toBe("[name] minmax(0, 1fr) [smark] 16px [word] 11ch [pr] 12ch [end]");
+    expect(phone(".tree").get("--line-cols")).toBe("[name] minmax(0, 1fr) [smark] 16px [word] 12ch [pr] 12ch [end]");
     expect(phone(".tree").get("--join-w")).toBe("var(--space-3)");
+    // The word column fits the longest state words, `[failed (1)]` and `[needs you]`.
+    const word = Number(/\[word\] (\d+)ch/.exec(phone(".tree").get("--line-cols") ?? "")?.[1]);
+    expect(word).toBeGreaterThanOrEqual("[failed (1)]".length);
+    expect(word).toBeGreaterThanOrEqual("[needs you]".length);
     expect(phone(".main > [data-col]:not(.pr)").get("display")).toBe("none");
     expect(phone(".line-detail").get("display")).toBe("none");
     expect(phone(".pr-prefix").get("display")).toBe("none");
