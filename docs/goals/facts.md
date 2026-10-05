@@ -334,6 +334,10 @@ decision moves to `docs/adr/`.
   drew into the open original's buffer. Have the human open or Save As
   the target file in Pen first, then check `get_app_state` names it
   (2026-10-03, `sessions-workflow` round 1).
+- Pencil keeps every edit in the editor's buffer until the human saves
+  in Pen. A saved file kept the values of line heights bound to a
+  variable but lost the binding, and lost a text underline (2026-10-05,
+  `sessions-workflow` round 1).
 - A daemon started for a screenshot overwrites `~/.kitterm/port` and
   `pid`, and an MCP bridge binds its port once at start, so the
   session's `kitterm mcp` follows the wrong daemon until it reconnects.
