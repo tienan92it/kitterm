@@ -338,6 +338,13 @@ decision moves to `docs/adr/`.
   in Pen. A saved file kept the values of line heights bound to a
   variable but lost the binding, and lost a text underline (2026-10-05,
   `sessions-workflow` round 1).
+- The LaunchAgent sets no `PATH`, so the daemon runs with
+  `/usr/bin:/bin` and finds no Homebrew tool. `PullRequestStatus`
+  searches `/opt/homebrew/bin`, `/usr/local/bin` and `~/.local/bin`
+  after the daemon's `PATH` (2026-10-05, `sessions-workflow` round 2).
+- `DispatchSpecificKey` is not `Sendable` on Linux, so a static key
+  fails `linux-build` and passes on macOS; keep it in a `Sendable` box
+  (2026-10-05, `sessions-workflow` round 2).
 - A daemon started for a screenshot overwrites `~/.kitterm/port` and
   `pid`, and an MCP bridge binds its port once at start, so the
   session's `kitterm mcp` follows the wrong daemon until it reconnects.
