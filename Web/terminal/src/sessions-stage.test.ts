@@ -346,10 +346,10 @@ describe("reviewLine", () => {
       { project: backend, goals: [demo], rows: [], pulls: answer([pull({ number: 2899, draft: false, ci: "pending", headRefName: "goal/demo-backend", url: undefined })]) },
     ]);
     expect(line.ready).toEqual([
-      { number: 180, href: "https://github.com/tienan92it/kitterm/pull/180", ci: "CI ✓", project, goal: "foreman-scope" },
-      { number: 2899, href: null, ci: "CI …", project: backend, goal: "demo-backend" },
+      { number: 180, href: "https://github.com/tienan92it/kitterm/pull/180", ci: "CI ✓", project, goal: "foreman-scope", label: "foreman-scope" },
+      { number: 2899, href: null, ci: "CI …", project: backend, goal: "demo-backend", label: "demo-backend" },
     ]);
-    expect(line.drafts).toEqual([{ number: 185, href: "https://github.com/tienan92it/kitterm/pull/185", ci: null, project, goal: "sessions-workflow" }]);
+    expect(line.drafts).toEqual([{ number: 185, href: "https://github.com/tienan92it/kitterm/pull/185", ci: null, project, goal: "sessions-workflow", label: "sessions-workflow" }]);
     expect(reviewHead(line)).toBe("2 ready for review");
     expect(draftsLabel(line)).toBe("1 draft");
   });
@@ -376,14 +376,73 @@ describe("reviewLine", () => {
     expect(line.ready.map((p) => [p.number, p.ci])).toEqual([[616, "CI ✗"]]);
   });
 
-  it("skips a pull request of no goal, a number twice, and a project with missing data", () => {
+  it("lists a chore's pull request with its kind and slug", () => {
+    const chore = pull({ number: 184, draft: false, ci: "passing", headRefName: "chore/subagent-estimate", url: "https://github.com/tienan92it/kitterm/pull/184" });
+    const line = reviewLine([{ project, goals: [goal()], rows: [], pulls: answer([chore]) }]);
+    expect(line.ready).toEqual([{ number: 184, href: "https://github.com/tienan92it/kitterm/pull/184", ci: "CI ✓", project, goal: null, label: "chore subagent-estimate" }]);
+    expect(reviewHead(line)).toBe("1 ready for review");
+  });
+
+  it("lists a pull request with an unrelated head by its head branch name", () => {
+    const line = reviewLine([
+      {
+        project,
+        goals: [goal()],
+        rows: [],
+        pulls: answer([
+          pull({ number: 64, draft: false, headRefName: "fix/enter-test-flake" }),
+          pull({ number: 70, draft: false, headRefName: "dependabot/npm_and_yarn/vite-7" }),
+          pull({ number: 71, draft: false, headRefName: "patch-1" }),
+        ]),
+      },
+    ]);
+    expect(line.ready.map((p) => [p.number, p.goal, p.label])).toEqual([
+      [64, null, "fix enter-test-flake"],
+      [70, null, "dependabot/npm_and_yarn/vite-7"],
+      [71, null, "patch-1"],
+    ]);
+  });
+
+  it("a mix: goals, a chore and another head, ready first in the route's order, then the drafts", () => {
+    const line = reviewLine([
+      {
+        project,
+        goals: [goal(), scope],
+        rows: [crew({}, { pr: "616" })],
+        pulls: answer([
+          pull({ number: 190, draft: true, headRefName: "chore/readme" }),
+          pull({ number: 188, draft: false, ci: "failing", headRefName: "chore/ci-cache" }),
+          pull({ number: 187, state: "merged", draft: false, headRefName: "chore/old" }),
+          pull({ number: 186, state: "closed", draft: false, headRefName: "feat/dropped" }),
+          pull({ number: 185 }),
+          pull({ number: 180, draft: false, ci: "passing", headRefName: "goal/foreman-scope" }),
+          pull({ number: 64, draft: false, headRefName: "feat/live-upgrade" }),
+        ]),
+      },
+      { project: backend, goals: [demo], rows: [], pulls: answer([pull({ number: 2899, draft: false, headRefName: "goal/demo-backend" })]) },
+    ]);
+    expect(line.ready.map((p) => [p.project.id, p.number, p.goal, p.label, p.ci])).toEqual([
+      ["kitterm", 188, null, "chore ci-cache", "CI ✗"],
+      ["kitterm", 180, "foreman-scope", "foreman-scope", "CI ✓"],
+      ["kitterm", 64, null, "feat live-upgrade", null],
+      ["backend", 2899, "demo-backend", "demo-backend", null],
+    ]);
+    expect(line.drafts.map((p) => [p.number, p.goal, p.label])).toEqual([
+      [190, null, "chore readme"],
+      [185, "sessions-workflow", "sessions-workflow"],
+    ]);
+    expect(reviewHead(line)).toBe("4 ready for review");
+    expect(draftsLabel(line)).toBe("2 drafts");
+  });
+
+  it("a number two goals name goes to the first goal, once, and a project with missing data adds nothing", () => {
     const twice = { rounds: [{ number: 1, pr: 185, correction: false }] };
     const line = reviewLine([
-      { project, goals: [goal(), goal({ slug: "other", ...twice })], rows: [], pulls: answer([pull({ draft: false }), pull({ number: 190, draft: false, headRefName: "chore/readme" })]) },
+      { project, goals: [goal(), goal({ slug: "other", ...twice })], rows: [], pulls: answer([pull({ draft: false })]) },
       { project: backend, goals: [demo], rows: [], pulls: { ok: true, reason: "gh is not logged in", pulls: [] } },
       { project: backend, goals: [demo], rows: [], pulls: null },
     ]);
-    expect(line.ready.map((p) => p.number)).toEqual([185]);
+    expect(line.ready.map((p) => [p.number, p.goal])).toEqual([[185, "sessions-workflow"]]);
     expect(line.drafts).toEqual([]);
   });
 });

@@ -400,33 +400,53 @@ export type ReviewPull = {
   /** `CI ✓`, `CI ✗`, `CI …`, or null with no checks. */
   ci: PullWord | null;
   project: { id: string; name: string };
-  /** The goal's slug. */
-  goal: string;
+  /** The slug of the goal the pull request maps to, or null for none. */
+  goal: string | null;
+  /** What the line prints after the project: the goal's slug, else the
+   * kind and the slug of the head (`chore readme` for `chore/readme`),
+   * else the head branch name. */
+  label: string;
 };
 
-/** The REVIEW line under the SESSIONS header: the open pull requests of
- * the goals that are not drafts, then the drafts. */
+/** The REVIEW line under the SESSIONS header: the open pull requests
+ * that are not drafts, then the drafts. */
 export type ReviewLine = { ready: ReviewPull[]; drafts: ReviewPull[] };
 
+/** A head of the shape `<kind>/<slug>`: `chore/readme`, `fix/enter-key`. */
+const KIND_HEAD = /^([a-z][a-z0-9-]*)\/([A-Za-z0-9][A-Za-z0-9._-]*)$/;
+
+/** What a pull request of no goal prints: `chore readme` for the head
+ * `chore/readme`, else the head branch name unchanged. */
+function headLabel(head: string): string {
+  const match = KIND_HEAD.exec(head);
+  return match ? `${match[1]} ${match[2]}` : head;
+}
+
 /**
- * The REVIEW line's data. It lists the open pull request of every goal,
- * in the order of the projects and of their goals, each number once per
- * project: the ones that are not drafts in `ready`, whatever their CI
- * says, and the drafts in `drafts`. A project with missing pull request
- * data adds nothing, and a pull request that belongs to no goal (a chore,
- * a person's branch) is not listed.
+ * The REVIEW line's data: every open pull request of each project, in
+ * the order of the projects and then the order the pulls route gives.
+ * The ones that are not drafts go in `ready`, whatever their CI says,
+ * and the drafts in `drafts`. The human merges a chore's pull request
+ * too, so a pull request needs no goal to be listed. Each carries its
+ * goal when `goalPull` maps one to it (the head `goal/<slug>`, or a
+ * number the summary, a `pr:` label or a record names; the first goal
+ * wins a number two goals name), else the label of its head. A project
+ * with missing pull request data adds nothing.
  */
 export function reviewLine(projects: readonly ReviewProject[]): ReviewLine {
   const line: ReviewLine = { ready: [], drafts: [] };
   for (const entry of projects) {
     const pulls = readPulls(entry.pulls);
     if (pulls === null) continue;
-    const seen = new Set<number>();
+    const goalOfPull = new Map<number, string>();
     for (const goal of entry.goals) {
-      const pull = goalPull(goal, entry.rows, pulls)?.pull;
-      if (!pull || pull.state !== "open" || goal.slug === undefined || seen.has(pull.number)) continue;
-      seen.add(pull.number);
-      const item: ReviewPull = { number: pull.number, href: pull.url ?? null, ci: ciWord(pull), project: entry.project, goal: goal.slug };
+      const found = goalPull(goal, entry.rows, pulls);
+      if (found && goal.slug !== undefined && !goalOfPull.has(found.number)) goalOfPull.set(found.number, goal.slug);
+    }
+    for (const pull of pulls) {
+      if (pull.state !== "open") continue;
+      const goal = goalOfPull.get(pull.number) ?? null;
+      const item: ReviewPull = { number: pull.number, href: pull.url ?? null, ci: ciWord(pull), project: entry.project, goal, label: goal ?? headLabel(pull.headRefName) };
       (pull.draft ? line.drafts : line.ready).push(item);
     }
   }
