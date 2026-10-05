@@ -39,10 +39,22 @@ import NIOConcurrencyHelpers
 /// `<knowledge>/<slug>/` alone from `origin/goal/<slug>`, with the same
 /// tree reader, caps and modes. A branch name passes the base's rule before
 /// any fetch. The summary route lays a branch's summary over the base's of
-/// the same slug (`Snapshot.merged`).
+/// the same slug (`Snapshot.merged`). A pull request from a fork names no
+/// branch of `origin`, so it is skipped. A branch the remote does not hold
+/// (its fetch alone exits non-zero while another ref fetches) is not read,
+/// so a stale local `origin/goal/<slug>` never replaces the base's summary.
+///
+/// The fetches of one read share `fetchBudgetSeconds` (30 s): the one fetch
+/// for every ref, then the fetches per ref after a failure. Once the budget
+/// is spent no further fetch starts, and the refs left read what is here
+/// with that reason. The fetch that runs when the budget ends keeps its own
+/// `timeoutSeconds`, so the fetches of one read end within 50 s.
 public final class KnowledgeBase: @unchecked Sendable {
     public static let refreshSeconds: TimeInterval = 60
     public static let timeoutSeconds: TimeInterval = 20
+    /// What the fetches of one read may take together before no further
+    /// fetch starts.
+    public static let fetchBudgetSeconds: TimeInterval = 30
     /// The blobs one read may hold together. A package over it is read from
     /// the working tree, with the reason.
     static let maxPackageBytes = 64 << 20
@@ -110,10 +122,12 @@ public final class KnowledgeBase: @unchecked Sendable {
     /// is `goal/<slug>` with a valid goal slug, one per slug, the first
     /// `maxGoalBranches` in the order `gh` printed them. A merged or closed
     /// pull request names no branch, and neither does `chore/<slug>`: a
-    /// chore has no goal folder.
+    /// chore has no goal folder. A pull request from a fork is skipped
+    /// before the count and the dedupe: its head is no branch of `origin`.
     public static func goalBranches(pulls: [PullRequestStatus.Pull]) -> [GoalBranch] {
         var branches: [GoalBranch] = []
-        for pull in pulls where pull.state == "open" && pull.headRefName.hasPrefix(branchPrefix) {
+        for pull in pulls
+        where pull.state == "open" && !pull.crossRepository && pull.headRefName.hasPrefix(branchPrefix) {
             let slug = String(pull.headRefName.dropFirst(branchPrefix.count))
             guard ProjectStore.isValidID(slug), !branches.contains(where: { $0.slug == slug }) else { continue }
             branches.append(GoalBranch(slug: slug, pull: pull.number))
@@ -405,21 +419,35 @@ public final class KnowledgeBase: @unchecked Sendable {
         // a branch the remote does not hold fetches nothing, so after such
         // an exit each ref is fetched alone and only the missing one fails.
         var failures: [String: String] = [:]
+        // The refs the remote does not hold: their fetch alone exited while
+        // another ref's fetch alone succeeded, so the remote answered.
+        var missing: Set<String> = []
         let names = (baseAccepted ? [base] : []) + wanted.map(\.name)
+        let started = clock()
         if !names.isEmpty, let whole = fetch(names) {
             if names.count > 1, whole.exited {
-                // A fetch that does not exit (a timeout) ends the retries:
-                // the refs left keep its failure and read what is here.
+                // A fetch that does not exit (a timeout) ends the retries,
+                // and so does the spent budget: the refs left keep that
+                // failure and read what is here.
                 var stopped: String?
+                var exited: Set<String> = []
+                var anyFetched = false
                 for name in names {
+                    if stopped == nil, clock().timeIntervalSince(started) >= Self.fetchBudgetSeconds {
+                        stopped = "git fetch not tried: the \(Int(Self.fetchBudgetSeconds)) s of the read are spent"
+                    }
                     if let stopped {
                         failures[name] = stopped
                         continue
                     }
-                    let alone = fetch([name])
-                    failures[name] = alone?.failure
-                    if let alone, !alone.exited { stopped = alone.failure }
+                    guard let alone = fetch([name]) else {
+                        anyFetched = true
+                        continue
+                    }
+                    failures[name] = alone.failure
+                    if alone.exited { exited.insert(name) } else { stopped = alone.failure }
                 }
+                if anyFetched { missing = exited }
             } else {
                 for name in names { failures[name] = whole.failure }
             }
@@ -536,7 +564,9 @@ public final class KnowledgeBase: @unchecked Sendable {
         }
 
         var outcome = readBase()
-        outcome.snapshot.branches = wanted.compactMap(readBranch)
+        // A local ref of a branch the remote does not hold is an earlier
+        // goal's, so it is not read.
+        outcome.snapshot.branches = wanted.filter { !missing.contains($0.name) }.compactMap(readBranch)
         return outcome
     }
 
@@ -647,7 +677,22 @@ public final class KnowledgeBase: @unchecked Sendable {
     /// A path under a goal that an open branch holds is walked in that
     /// branch's listing, which names `<slug>/` alone. A path under a goal
     /// folder the base does not hold answers nil, so the working tree
-    /// serves the goals it alone holds.
+    /// serves the goals it alone holds: the folders the summary lists,
+    /// which hold a regular `STATE.md`. Any other folder of the working
+    /// tree stays unserved while the base is read.
+    /// True when `<knowledge>/<slug>/STATE.md` is a regular file through
+    /// the jail of `KnowledgeFile.read`, the mark of a goal folder.
+    private static func isGoalFolderOnDisk(root: String, knowledge: String, slug: String) -> Bool {
+        do {
+            _ = try KnowledgeFile.read(root: root, knowledge: knowledge, path: slug + "/STATE.md")
+            return true
+        } catch KnowledgeFile.Failure.tooLarge {
+            return true
+        } catch {
+            return false
+        }
+    }
+
     func file(root: String, knowledge: String, path: String) throws -> KnowledgeFile.Payload? {
         let snapshot = snapshot(root: root, knowledge: knowledge)
         let segments = path.split(separator: "/").map(String.init)
@@ -660,7 +705,10 @@ public final class KnowledgeBase: @unchecked Sendable {
             // as the summary route lists it. A malformed path is refused
             // here, before any source is chosen by its first segment.
             guard KnowledgeFile.isValidRelative(path) else { throw KnowledgeFile.Failure.badPath }
-            if segments.count > 1, ProjectStore.isValidID(segments[0]), base.entries[segments[0]] == nil { return nil }
+            if segments.count > 1, ProjectStore.isValidID(segments[0]), base.entries[segments[0]] == nil,
+               Self.isGoalFolderOnDisk(root: root, knowledge: knowledge, slug: segments[0]) {
+                return nil
+            }
             tree = base
         } else {
             return nil

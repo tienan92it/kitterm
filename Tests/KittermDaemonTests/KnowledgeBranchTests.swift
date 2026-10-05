@@ -238,6 +238,12 @@ final class KnowledgeBranchTests: XCTestCase {
         // The file route hands a working-tree-only goal to the disk reader,
         // and still answers the base's own folders from the base.
         XCTAssertNil(try base.file(root: fixture.clone, knowledge: knowledge, path: "local/STATE.md"))
+        // A working-tree folder the summary does not list (no STATE.md) is not served.
+        try fixture.write("docs/goals/notes/draft.md", "a draft\n", in: fixture.clone)
+        XCTAssertFalse(goals.contains { $0.summary.slug == "notes" })
+        XCTAssertThrowsError(try base.file(root: fixture.clone, knowledge: knowledge, path: "notes/draft.md")) {
+            XCTAssertEqual($0 as? KnowledgeFile.Failure, .notFound)
+        }
         XCTAssertThrowsError(try base.file(root: fixture.clone, knowledge: knowledge, path: "alpha/none.md"))
     }
 
@@ -254,6 +260,130 @@ final class KnowledgeBranchTests: XCTestCase {
         XCTAssertEqual(goals[1].summary.round, 2)
         XCTAssertNil(KnowledgeBase.Snapshot().merged(disk: nil), "no source holds a knowledge directory")
         XCTAssertEqual(KnowledgeBase.Snapshot().merged(disk: [])?.count, 0)
+    }
+
+    // MARK: - forks, stale refs, two pull requests
+
+    func testAForkPullRequestWithAGoalHeadIsSkipped() throws {
+        var fork = pull(30, "goal/beta")
+        fork.crossRepository = true
+        // The fork is first in gh's order: it does not win the dedupe, so
+        // origin's branch keeps origin's number.
+        XCTAssertEqual(
+            KnowledgeBase.goalBranches(pulls: [fork, pull(12, "goal/beta")]), [.init(slug: "beta", pull: 12)])
+        XCTAssertEqual(KnowledgeBase.goalBranches(pulls: [fork]), [], "a fork alone names no branch of origin")
+        // Forks take no slot of the bound.
+        let forks = (0..<KnowledgeBase.maxGoalBranches).map { index -> PullRequestStatus.Pull in
+            var one = pull(40 + index, "goal/f\(index)")
+            one.crossRepository = true
+            return one
+        }
+        XCTAssertEqual(
+            KnowledgeBase.goalBranches(pulls: forks + [pull(12, "goal/beta")]), [.init(slug: "beta", pull: 12)])
+
+        // The field comes from `gh` and stays out of the pulls route's answer.
+        let json = """
+            [{"number":30,"state":"OPEN","headRefName":"goal/beta","isCrossRepository":true},
+             {"number":12,"state":"OPEN","headRefName":"goal/beta","isCrossRepository":false},
+             {"number":11,"state":"OPEN","headRefName":"goal/old"}]
+            """
+        let parsed = try XCTUnwrap(PullRequestStatus.parse(Data(json.utf8)))
+        XCTAssertEqual(parsed.map(\.crossRepository), [true, false, false])
+        XCTAssertNil(parsed[0].json["isCrossRepository"])
+        XCTAssertNil(parsed[0].json["crossRepository"])
+        XCTAssertEqual(
+            KnowledgeBase.goalBranches(pulls: parsed), [.init(slug: "beta", pull: 12), .init(slug: "old", pull: 11)])
+        XCTAssertTrue(PullRequestStatus.listArguments(repository: "o/r").last?.hasSuffix(",isCrossRepository") == true)
+
+        // With origin's branch on the remote too, the fork's number is on no goal.
+        try fixture.makeClone()
+        try pushBeta()
+        let snapshot = read(makeBase(), KnowledgeBase.goalBranches(pulls: [fork, pull(12, "goal/beta")]))
+        XCTAssertEqual(snapshot.branches.map(\.pull), [12])
+    }
+
+    func testTwoPullRequestsForOneSlugReadTheBranchOnceWithTheFirstNumber() throws {
+        try fixture.makeClone()
+        try pushBeta()
+        let branches = KnowledgeBase.goalBranches(pulls: [
+            pull(21, "goal/beta"), pull(12, "goal/beta"), pull(20, "goal/beta", "closed"),
+        ])
+        XCTAssertEqual(branches, [.init(slug: "beta", pull: 21)], "the first open one in gh's order")
+        let snapshot = read(makeBase(), branches)
+        XCTAssertEqual(snapshot.branches.map(\.pull), [21])
+        XCTAssertEqual(fetches().first?.filter { $0 == refspec("goal/beta") }.count, 1)
+        XCTAssertEqual(merged(snapshot).compactMap(\.summary.slug), ["alpha", "beta"])
+    }
+
+    func testABranchMissingOnOriginWithAStaleLocalRefIsNotRead() throws {
+        // An earlier goal's branch: the clone holds origin/goal/alpha, the
+        // remote deleted it at the merge.
+        try onBranch("goal/alpha") {
+            try fixture.write("docs/goals/alpha/STATE.md", GitFixture.state("alpha", status: "stopped", round: 7))
+        }
+        try fixture.makeClone()
+        XCTAssertNotNil(try? fixture.git(["-C", fixture.clone, "rev-parse", "--verify", "refs/remotes/origin/goal/alpha"]))
+        try fixture.git(["-C", fixture.bare, "branch", "-D", "goal/alpha"])
+        try pushBeta()
+
+        let base = makeBase()
+        let snapshot = read(base, [.init(slug: "alpha", pull: 31), beta])
+        XCTAssertEqual(snapshot.branches.map(\.slug), ["beta"], "the stale local ref is not read")
+        XCTAssertNil(snapshot.reason, "the base fetched alone")
+        let goals = merged(snapshot)
+        XCTAssertEqual(goals.first?.summary.round, 1, "the base's alpha answers")
+        XCTAssertEqual(goals.first?.source, "origin/main")
+        XCTAssertNil(goals.first?.pull)
+        XCTAssertEqual(fetches().count, 4, "one for all, then one per ref")
+        let state = try XCTUnwrap(try base.file(root: fixture.clone, knowledge: knowledge, path: "alpha/STATE.md"))
+        XCTAssertTrue(String(decoding: state.data, as: UTF8.self).contains("- Status: active"), "the file is the base's too")
+    }
+
+    func testWithTheRemoteGoneTheLocalBranchIsStillReadWithTheReason() throws {
+        // Every fetch alone fails too: the whole fetch failed, so this is
+        // no missing branch.
+        try pushBeta()
+        try fixture.makeClone()
+        try fixture.git(["-C", fixture.clone, "remote", "set-url", "origin", fixture.directory.path + "/gone.git"])
+        let snapshot = read(makeBase(), [beta])
+        XCTAssertEqual(snapshot.branches.map(\.slug), ["beta"])
+        XCTAssertEqual(snapshot.branches.first?.reason, "git fetch exited 128")
+        XCTAssertEqual(snapshot.goals?.compactMap(\.slug), ["alpha"])
+    }
+
+    // MARK: - the time budget
+
+    func testTheFetchesOfOneReadShareOneTimeBudget() throws {
+        XCTAssertEqual(KnowledgeBase.fetchBudgetSeconds, 30)
+        try pushBeta()
+        try fixture.makeClone()
+        // Each fetch takes 20 s of the clock. The one fetch fails on the
+        // ghost branch; the base alone ends at 40 s; no further fetch starts.
+        let clock = self.clock!
+        let base = makeBase(before: { args in
+            if args.contains("fetch") { clock.advance(20) }
+            return nil
+        })
+        let snapshot = read(base, [.init(slug: "ghost", pull: 1), beta, .init(slug: "g2", pull: 2), .init(slug: "g3", pull: 3)])
+        XCTAssertEqual(fetches().count, 2, "the whole fetch and the base alone")
+        XCTAssertEqual(fetches().last, KnowledgeBase.fetchArguments(root: fixture.clone, base: "main"))
+        XCTAssertNil(snapshot.reason, "the base fetched")
+        XCTAssertEqual(snapshot.branches.map(\.slug), ["beta"], "the local ref, read with the reason")
+        XCTAssertEqual(snapshot.branches.first?.reason, "git fetch not tried: the 30 s of the read are spent")
+    }
+
+    func testInsideTheBudgetEveryRefIsTriedAlone() throws {
+        try pushBeta()
+        try fixture.makeClone()
+        let clock = self.clock!
+        let base = makeBase(before: { args in
+            if args.contains("fetch") { clock.advance(5) }
+            return nil
+        })
+        let snapshot = read(base, [.init(slug: "ghost", pull: 1), beta])
+        XCTAssertEqual(fetches().count, 4)
+        XCTAssertEqual(snapshot.branches.map(\.slug), ["beta"])
+        XCTAssertNil(snapshot.branches.first?.reason)
     }
 
     // MARK: - the branch name is data
@@ -414,7 +544,7 @@ final class KnowledgeBranchTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(try file("alpha/STATE.md")).contains("- Status: active"), "the base's alpha")
         XCTAssertEqual(failure("alpha/branch-only.md"), .notFound)
         XCTAssertEqual(failure("facts.md"), .notFound, "the base has no facts.md")
-        XCTAssertNil(try file("other/STATE.md"), "the working tree answers, and it has no such folder")
+        XCTAssertEqual(failure("other/STATE.md"), .notFound, "no base, no working tree and no branch serves it")
         XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.clone + "/docs/goals/other"))
         for call in calls.calls where call.args.contains("cat-file") {
             XCTAssertFalse(call.args.contains { $0.contains("secret") })
@@ -439,6 +569,7 @@ final class KnowledgeBranchTests: XCTestCase {
         try fixture.makeClone()
         try pushBeta()
         try fixture.write("docs/goals/beta/rounds/002.md", "the working tree's draft\n", in: fixture.clone)
+        try fixture.write("docs/goals/beta/STATE.md", GitFixture.state("beta"), in: fixture.clone)
         let base = makeBase()
         _ = read(base, [beta])
         let record = try XCTUnwrap(try base.file(root: fixture.clone, knowledge: knowledge, path: "beta/rounds/002.md"))

@@ -64,6 +64,9 @@ public final class PullRequestStatus: @unchecked Sendable {
         public var ci: String?
         public var additions: Int
         public var deletions: Int
+        /// The head branch is in another repository (a fork). Not in `json`:
+        /// `KnowledgeBase.goalBranches` alone reads it.
+        public var crossRepository = false
 
         var json: [String: Any] {
             var item: [String: Any] = [
@@ -187,7 +190,7 @@ public final class PullRequestStatus: @unchecked Sendable {
     static func listArguments(repository: String) -> [String] {
         [
             "pr", "list", "--repo", repository, "--state", "all", "--limit", String(limit),
-            "--json", "number,title,state,isDraft,headRefName,mergedAt,url,statusCheckRollup,additions,deletions",
+            "--json", "number,title,state,isDraft,headRefName,mergedAt,url,statusCheckRollup,additions,deletions,isCrossRepository",
         ]
     }
 
@@ -233,7 +236,8 @@ public final class PullRequestStatus: @unchecked Sendable {
                 url: item["url"] as? String ?? "",
                 ci: ciWord(rollup: item["statusCheckRollup"] as? [[String: Any]] ?? []),
                 additions: item["additions"] as? Int ?? 0,
-                deletions: item["deletions"] as? Int ?? 0
+                deletions: item["deletions"] as? Int ?? 0,
+                crossRepository: item["isCrossRepository"] as? Bool ?? false
             )
         }
     }

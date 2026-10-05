@@ -302,6 +302,9 @@ final class KnowledgeBranchRouteTests: XCTestCase {
         XCTAssertEqual(try get(summary + "/secret.md").status, 404)
         let alpha = try get(summary + "/alpha/STATE.md")
         XCTAssertTrue(alpha.text.contains("- Status: active"), "the base's alpha")
+        // A working-tree folder the summary does not list is not served.
+        try fixture.write("docs/goals/notes/draft.md", "a draft\n", in: fixture.clone)
+        XCTAssertEqual(try get(summary + "/notes/draft.md").status, 404)
         // A goal only the working tree holds comes from the working tree.
         let local = try get(summary + "/local/STATE.md")
         XCTAssertEqual(local.status, 200)

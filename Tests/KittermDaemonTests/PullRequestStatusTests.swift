@@ -211,7 +211,7 @@ final class PullRequestStatusTests: XCTestCase {
         XCTAssertEqual(snapshot.readAt, clock.now)
         XCTAssertEqual(gh.calls, [
             "pr list --repo o/r --state all --limit 50 --json "
-                + "number,title,state,isDraft,headRefName,mergedAt,url,statusCheckRollup,additions,deletions",
+                + "number,title,state,isDraft,headRefName,mergedAt,url,statusCheckRollup,additions,deletions,isCrossRepository",
         ], "one gh, no auth check after a good list")
     }
 
