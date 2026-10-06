@@ -1,14 +1,14 @@
 # STATE: sessions-workflow
 
-- Status: active
-- Round: 0 of 1 in this budget (resumed on the human's word)
-- Rounds total: 6
-- Last floor: green (2026-10-06, CI on `main` at 8a2dcb1)
+- Status: done
+- Round: 1 of 1 in this budget (resumed on the human's word)
+- Rounds total: 7
+- Last floor: green (2026-10-06, round 7 after: vitest 1633, PR CI on 9155c4a)
 - Updated: 2026-10-06, resumed for one round: the REVIEW rows (`corpus/02-review-rows.md`)
 
 ## Queue
 
-1. `review-rows` (`corpus/02-review-rows.md`), PR #186.
+None.
 
 ## Failures
 
@@ -22,6 +22,9 @@ None.
 
 ## Done
 
+- `review-rows`, round 7, PR #186. See `rounds/007.md`. REVIEW is a
+  header with the counts and one row per ready pull request, with the
+  drafts folded.
 - `stage-tree`, round 6, PR #185. See `rounds/006.md`. The SESSIONS
   tree prints each line's stage, the PR state and the `REVIEW` line, as
   the approved frames show.
@@ -43,5 +46,4 @@ None.
 
 ## Next action
 
-Round 7: `review-rows`; proof: vitests, screenshots at 1200 and 390,
-and the redrawn REVIEW frames in `design/sessions.pen`.
+The human merges PR #186; the foreman releases and upgrades.
