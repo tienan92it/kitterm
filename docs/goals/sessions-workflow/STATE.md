@@ -1,14 +1,14 @@
 # STATE: sessions-workflow
 
-- Status: done
-- Round: 3 of 3 in this budget (second budget)
+- Status: active
+- Round: 0 of 1 in this budget (resumed on the human's word)
 - Rounds total: 6
-- Last floor: green (2026-10-05, round 6 after: vitest 1608, PR CI on edd7ec0)
-- Updated: 2026-10-05, direction check: the human added the branch reader, dropped `list_pulls`, and set a second budget of 3
+- Last floor: green (2026-10-06, CI on `main` at 8a2dcb1)
+- Updated: 2026-10-06, resumed for one round: the REVIEW rows (`corpus/02-review-rows.md`)
 
 ## Queue
 
-None.
+1. `review-rows` (`corpus/02-review-rows.md`)
 
 ## Failures
 
@@ -43,6 +43,5 @@ None.
 
 ## Next action
 
-The human reviews and merges PR #185. Then the foreman releases, runs
-`kitterm upgrade --live`, and proves condition 5 on the live page: a
-merge shows within two minutes with no `git pull`.
+Round 7: `review-rows`; proof: vitests, screenshots at 1200 and 390,
+and the redrawn REVIEW frames in `design/sessions.pen`.
