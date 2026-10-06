@@ -345,12 +345,15 @@ describe("reviewLine", () => {
       },
       { project: backend, goals: [demo], rows: [], pulls: answer([pull({ number: 2899, draft: false, ci: "pending", headRefName: "goal/demo-backend", url: undefined })]) },
     ]);
-    expect(line.ready).toEqual([
+    // Chartered in round 7 (`corpus/02-review-rows.md`): a row carries its
+    // title, words, size and wait too (`sessions-review-rows.test.ts`),
+    // and the header counts `2 ready`.
+    expect(line.ready).toMatchObject([
       { number: 180, href: "https://github.com/tienan92it/kitterm/pull/180", ci: "CI ✓", project, goal: "foreman-scope", label: "foreman-scope" },
       { number: 2899, href: null, ci: "CI …", project: backend, goal: "demo-backend", label: "demo-backend" },
     ]);
-    expect(line.drafts).toEqual([{ number: 185, href: "https://github.com/tienan92it/kitterm/pull/185", ci: null, project, goal: "sessions-workflow", label: "sessions-workflow" }]);
-    expect(reviewHead(line)).toBe("2 ready for review");
+    expect(line.drafts).toMatchObject([{ number: 185, href: "https://github.com/tienan92it/kitterm/pull/185", ci: null, project, goal: "sessions-workflow", label: "sessions-workflow" }]);
+    expect(reviewHead(line)).toBe("2 ready");
     expect(draftsLabel(line)).toBe("1 draft");
   });
 
@@ -379,8 +382,8 @@ describe("reviewLine", () => {
   it("lists a chore's pull request with its kind and slug", () => {
     const chore = pull({ number: 184, draft: false, ci: "passing", headRefName: "chore/subagent-estimate", url: "https://github.com/tienan92it/kitterm/pull/184" });
     const line = reviewLine([{ project, goals: [goal()], rows: [], pulls: answer([chore]) }]);
-    expect(line.ready).toEqual([{ number: 184, href: "https://github.com/tienan92it/kitterm/pull/184", ci: "CI ✓", project, goal: null, label: "chore subagent-estimate" }]);
-    expect(reviewHead(line)).toBe("1 ready for review");
+    expect(line.ready).toMatchObject([{ number: 184, href: "https://github.com/tienan92it/kitterm/pull/184", ci: "CI ✓", project, goal: null, label: "chore subagent-estimate" }]);
+    expect(reviewHead(line)).toBe("1 ready");
   });
 
   it("lists a pull request with an unrelated head by its head branch name", () => {
@@ -431,7 +434,7 @@ describe("reviewLine", () => {
       [190, null, "chore readme"],
       [185, "sessions-workflow", "sessions-workflow"],
     ]);
-    expect(reviewHead(line)).toBe("4 ready for review");
+    expect(reviewHead(line)).toBe("4 ready");
     expect(draftsLabel(line)).toBe("2 drafts");
   });
 

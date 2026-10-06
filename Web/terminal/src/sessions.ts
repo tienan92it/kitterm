@@ -80,7 +80,7 @@ import {
   type WherePanel,
   type YieldReport,
 } from "./sessions-value";
-import { isOpen, joins, sessionFactColumns, tree, visibleLines, type Join, type TreeFact, type TreeLine, type TreeSection } from "./sessions-tree";
+import { isOpen, joins, NO_FACT, sessionFactColumns, tree, visibleLines, type Join, type TreeFact, type TreeLine, type TreeSection } from "./sessions-tree";
 import {
   draftsLabel,
   pullHref,
@@ -89,6 +89,7 @@ import {
   readPulls,
   REVIEW_NONE,
   reviewLine,
+  reviewWait,
   SESSION_LEGEND,
   STAGE_LEGEND,
   type LegendEntry,
@@ -656,7 +657,8 @@ let leaksPainted = "";
  * keeps, each mark beside the bracketed word it always appears with, so a
  * reader never has to infer a mark (the frame `Sessions 1200`). The
  * working mark here stands still; only a line whose agent holds the tty
- * turns. Under it, in the same gutter, the `REVIEW` line (`paintReview`). */
+ * turns. Under it, in the same gutter, the `REVIEW` header and its rows
+ * (`paintReview`). */
 const treeHead = document.createElement("div");
 treeHead.className = "tree-head";
 const reviewLabel = document.createElement("span");
@@ -664,7 +666,14 @@ reviewLabel.className = "review-label";
 reviewLabel.textContent = "REVIEW";
 const reviewBody = document.createElement("p");
 reviewBody.className = "review";
+/** The rows under the header: one line per ready pull request, then the
+ * drafts fold (`corpus/02-review-rows.md`). */
+const reviewRows = document.createElement("div");
+reviewRows.className = "review-rows";
 let reviewPainted = "";
+/** Whether the `▶ N drafts` line is open; in memory, so it survives the
+ * repaints and not a reload, like `toggledRows`. */
+let reviewDraftsOpen = false;
 function legendKeys(title: string, entries: readonly LegendEntry[]): Node[] {
   return [
     span("tree-group", title),
@@ -682,7 +691,7 @@ function treeLegend(): Node[] {
   const rule = span("tree-rule", "|");
   rule.setAttribute("aria-hidden", "true");
   keys.append(...legendKeys("stage", STAGE_LEGEND), rule, ...legendKeys("session", SESSION_LEGEND));
-  return [span("tree-label", "SESSIONS"), keys, reviewLabel, reviewBody];
+  return [span("tree-label", "SESSIONS"), keys, reviewLabel, reviewBody, reviewRows];
 }
 /** The tree itself: one section per workspace or lone project, each a
  * list of lines. */
@@ -1564,14 +1573,15 @@ function pullNumber(text: string): (Node | string)[] {
   return [span("pr-prefix", "PR "), text.slice(3)];
 }
 
-/** The `REVIEW` line under the header: the open pull requests that are
- * not drafts, counted and linked, then the drafts; the sentence that says
- * there is none; or, when `gh` is absent or has no login, the sentence
- * that says why no state is read (`reviewLine`, `pullsNotice`). Hidden
- * until one project's pull requests are read, and on a watch page. A
- * phone prints the count, each number and one state word. Rebuilt only
- * when its content changes, so a link a keyboard user sits on survives
- * the polls. */
+/** The `REVIEW` section under the header (`corpus/02-review-rows.md`):
+ * a header line that counts the ready pull requests and the drafts, `3
+ * ready · 2 drafts`, or the sentence that says none is ready, or, when
+ * `gh` is absent or has no login, the sentence that says why no state is
+ * read (`reviewLine`, `pullsNotice`); then one row per ready pull
+ * request, the longest wait first, and the drafts behind `▶ N drafts`,
+ * closed by default (`reviewRow`). Hidden until one project's pull
+ * requests are read, and on a watch page. Rebuilt only when its content
+ * changes, so a link a keyboard user sits on survives the polls. */
 function paintReview(): void {
   const answers = [...pulls.values()].map((entry) => entry.answer);
   const notice = pullsNotice(answers);
@@ -1583,59 +1593,126 @@ function paintReview(): void {
     pulls: pulls.get(project.id)?.answer,
   })));
   const model = notice !== null ? { notice } : read ? { line } : null;
-  // A link's `href` is built on the project's base, so the bases are in.
-  const signature = JSON.stringify([model, projects.map((p) => p.pullRequestBase ?? null)]);
+  const now = Date.now();
+  // A link's `href` is built on the project's base, so the bases are in;
+  // the wait moves once a minute at most, so it is in too.
+  const waits = [...line.ready, ...line.drafts].map((pull) => reviewWait(pull.since, now));
+  const signature = JSON.stringify([model, projects.map((p) => p.pullRequestBase ?? null), reviewDraftsOpen, waits]);
   if (signature === reviewPainted) return;
   reviewPainted = signature;
   reviewLabel.hidden = model === null;
   reviewBody.hidden = model === null;
+  reviewRows.hidden = model === null || notice !== null;
   if (model === null) {
     reviewBody.replaceChildren();
+    reviewRows.replaceChildren();
     return;
   }
   if (notice !== null) {
     reviewBody.replaceChildren(notice.text, ...(notice.command ? [" ", span("note-command", notice.command)] : []));
+    reviewRows.replaceChildren();
     return;
   }
-  const item = (pull: ReviewPull, draft: boolean): HTMLElement => {
-    const el = span("review-pull", "");
-    const href = pullHref(pull.href, projects.find((p) => p.id === pull.project.id)?.pullRequestBase, pull.number);
-    const text = `PR #${pull.number}`;
-    if (href) {
-      const link = pullRequestLink(text, href);
-      link.dataset.focus = focusKey("review", pull.project.id, String(pull.number));
-      el.append(link);
-    } else el.append(...pullNumber(text));
-    // A draft says so; its CI word goes on a phone, which prints one word.
-    if (draft) el.append(" draft");
-    if (pull.ci !== null) {
-      const ci = span(draft ? "review-ci review-long" : "review-ci", "");
-      ci.append(draft ? " · " : " ", ...stateWords([pull.ci]));
-      el.append(ci);
-    }
-    el.append(span("review-where review-long", ` ${pull.project.name} / ${pull.label}`));
-    return el;
-  };
-  const nodes: (Node | string)[] = [];
-  const separate = (items: HTMLElement[]): void => {
-    items.forEach((el, i) => {
-      nodes.push(i === 0 ? " " : " · ", el);
-    });
-  };
-  if (line.ready.length === 0) {
-    nodes.push(span("review-long", REVIEW_NONE), span("review-short", "none ready"));
-  } else {
-    // The count is a mark: the amber of what waits on the reader.
-    nodes.push(span("mark attention wide", String(line.ready.length)), span("review-long", " ready for review"), span("review-short", " ready"));
-    separate(line.ready.map((pull) => item(pull, false)));
-  }
+  // The header: the count is a mark, the amber of what waits on the
+  // reader; the sentence has a short form for a phone.
+  const head: (Node | string)[] = [];
+  if (line.ready.length === 0) head.push(span("review-long", REVIEW_NONE), span("review-short", "none ready"));
+  else head.push(span("mark attention wide", String(line.ready.length)), " ready");
   const drafts = draftsLabel(line);
+  if (drafts !== null) head.push(span("review-drafts", `${line.ready.length === 0 ? " " : " · "}${drafts}`));
+  reviewBody.replaceChildren(...head);
+  const rows: HTMLElement[] = line.ready.map((pull) => reviewRow(pull, now));
   if (drafts !== null) {
-    if (line.ready.length > 0) nodes.push(span("tree-rule review-long", " | "));
-    nodes.push(span("review-short", " ·"), span("review-drafts", ` ${drafts}`));
-    separate(line.drafts.map((pull) => item(pull, true)));
+    rows.push(reviewFold(drafts));
+    if (reviewDraftsOpen) rows.push(...line.drafts.map((pull) => reviewRow(pull, now)));
   }
-  reviewBody.replaceChildren(...nodes);
+  reviewRows.replaceChildren(...rows);
+}
+
+/** One row of the REVIEW section, on the line grid: the mark in the left
+ * column (`?` for a ready pull request, which waits on the reader; `•`
+ * for a draft), `PR #N` as a link, where it belongs (`project / goal`,
+ * else the project and the head's kind and slug), the title in grey,
+ * the state and CI words, the size and the wait. A phone keeps the mark,
+ * `#N`, where it belongs and one state word. */
+function reviewRow(pull: ReviewPull, now: number): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "line line-review";
+  el.style.setProperty("--depth", "0");
+  el.append(mark(pull.draft ? "pending" : "attention"));
+  const main = document.createElement("div");
+  main.className = "main";
+  const number = span("pr", "");
+  number.dataset.col = "3";
+  const href = pullHref(pull.href, projects.find((p) => p.id === pull.project.id)?.pullRequestBase, pull.number);
+  const text = `PR #${pull.number}`;
+  if (href) {
+    const link = pullRequestLink(text, href);
+    link.dataset.focus = focusKey("review", pull.project.id, String(pull.number));
+    number.append(link);
+  } else number.append(...pullNumber(text));
+  main.append(number);
+  const where = span("line-name", `${pull.project.name} / ${pull.label}`);
+  where.dataset.name = "";
+  where.title = where.textContent ?? "";
+  main.append(where);
+  if (pull.title) {
+    const title = span("line-detail", pull.title);
+    title.title = pull.title;
+    main.append(title);
+  }
+  const state = span("state", "");
+  if (pull.words.length > 0) {
+    const words = span("pr-words", "");
+    words.append(...stateWords(pull.words));
+    state.append(words);
+  }
+  if (pull.word !== null) {
+    const word = span("pr-word", "");
+    word.append(...stateWords([pull.word]));
+    state.append(word);
+  }
+  main.append(state);
+  const size = span("size", pull.size ?? NO_FACT);
+  size.dataset.col = "2";
+  main.append(size);
+  const wait = span("since", reviewWait(pull.since, now) ?? NO_FACT);
+  wait.dataset.col = "4";
+  if (pull.since !== null) wait.title = `last changed ${new Date(pull.since).toLocaleString()}`;
+  main.append(wait);
+  el.append(main);
+  return el;
+}
+
+/** The `▶ N drafts` line: a disclosure button like a goal's, which opens
+ * the draft rows under it and folds them again; `reviewDraftsOpen` keeps
+ * it across repaints. Not an action: it moves nothing but the page. */
+function reviewFold(label: string): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "line line-review line-fold";
+  el.style.setProperty("--depth", "0");
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "mark disclosure";
+  b.textContent = disclosureGlyph(reviewDraftsOpen);
+  b.setAttribute("aria-expanded", String(reviewDraftsOpen));
+  b.setAttribute("aria-label", `${reviewDraftsOpen ? "Fold" : "Open"} the ${label}`);
+  b.dataset.focus = "fold:review-drafts";
+  b.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    reviewDraftsOpen = !reviewDraftsOpen;
+    paintReview();
+    restoreFocus("fold:review-drafts");
+  });
+  el.append(b);
+  const main = document.createElement("div");
+  main.className = "main";
+  const name = span("line-name", label);
+  name.dataset.name = "";
+  main.append(name);
+  el.append(main);
+  return el;
 }
 
 /** One section: a workspace with its projects, or a lone project. */

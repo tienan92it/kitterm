@@ -64,6 +64,14 @@ public final class PullRequestStatus: @unchecked Sendable {
         public var ci: String?
         public var additions: Int
         public var deletions: Int
+        /// When the pull request was opened and when it last changed, as
+        /// `gh` prints them (`2026-10-06T08:10:36Z`); nil when `gh` gave
+        /// none. The time a pull request left draft is not in `gh pr list`,
+        /// so the fleet view counts a ready pull request's wait from
+        /// `updatedAt`: a push, a review or a label moves it, so the wait is
+        /// never longer than the true one (`sessions-workflow` round 7).
+        public var createdAt: String?
+        public var updatedAt: String?
         /// The head branch is in another repository (a fork). Not in `json`:
         /// `KnowledgeBase.goalBranches` alone reads it.
         public var crossRepository = false
@@ -75,6 +83,8 @@ public final class PullRequestStatus: @unchecked Sendable {
             ]
             if let mergedAt { item["mergedAt"] = mergedAt }
             if let ci { item["ci"] = ci }
+            if let createdAt { item["createdAt"] = createdAt }
+            if let updatedAt { item["updatedAt"] = updatedAt }
             return item
         }
     }
@@ -190,7 +200,7 @@ public final class PullRequestStatus: @unchecked Sendable {
     static func listArguments(repository: String) -> [String] {
         [
             "pr", "list", "--repo", repository, "--state", "all", "--limit", String(limit),
-            "--json", "number,title,state,isDraft,headRefName,mergedAt,url,statusCheckRollup,additions,deletions,isCrossRepository",
+            "--json", "number,title,state,isDraft,headRefName,mergedAt,url,statusCheckRollup,additions,deletions,createdAt,updatedAt,isCrossRepository",
         ]
     }
 
@@ -237,6 +247,8 @@ public final class PullRequestStatus: @unchecked Sendable {
                 ci: ciWord(rollup: item["statusCheckRollup"] as? [[String: Any]] ?? []),
                 additions: item["additions"] as? Int ?? 0,
                 deletions: item["deletions"] as? Int ?? 0,
+                createdAt: item["createdAt"] as? String,
+                updatedAt: item["updatedAt"] as? String,
                 crossRepository: item["isCrossRepository"] as? Bool ?? false
             )
         }

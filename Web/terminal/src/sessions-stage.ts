@@ -48,6 +48,11 @@ export type PullRequest = {
   ci?: PullCi;
   additions?: number;
   deletions?: number;
+  /** When the pull request was opened and when it last changed, as `gh`
+   * prints them (`2026-10-06T08:10:36Z`). Absent from a daemon before
+   * round 7 of `sessions-workflow`. */
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 /** What `GET /api/projects/<id>/pulls` answers. `readAt` is absent before
@@ -404,7 +409,7 @@ export type ReviewProject = {
   pulls: PullsAnswer | null | undefined;
 };
 
-/** One pull request on the REVIEW line. */
+/** One row of the REVIEW section (`corpus/02-review-rows.md`). */
 export type ReviewPull = {
   number: number;
   /** The pull request's `url` as the pulls route gave it. Not an `href`
@@ -415,14 +420,30 @@ export type ReviewPull = {
   project: { id: string; name: string };
   /** The slug of the goal the pull request maps to, or null for none. */
   goal: string | null;
-  /** What the line prints after the project: the goal's slug, else the
+  /** What the row prints after the project: the goal's slug, else the
    * kind and the slug of the head (`chore readme` for `chore/readme`),
    * else the head branch name. */
   label: string;
+  /** The pull request's title, as `gh` printed it; empty for none. */
+  title: string;
+  draft: boolean;
+  /** The state words at 768 px and up (`pullStateWords`): `ready · CI ✓`,
+   * `draft · CI …`. */
+  words: PullWord[];
+  /** The one word a phone prints (`pullStateWord`). */
+  word: PullWord | null;
+  /** The size, `+120 −8`; null when the route gave no counts. */
+  size: string | null;
+  /** The epoch millisecond the wait counts from: the pull request's
+   * `updatedAt`. The time a pull request left draft is not in `gh pr
+   * list`, so the last change stands in for a ready pull request, and the
+   * wait is never longer than the true one. Null with no `updatedAt`. */
+  since: number | null;
 };
 
-/** The REVIEW line under the SESSIONS header: the open pull requests
- * that are not drafts, then the drafts. */
+/** The REVIEW section under the SESSIONS header: the open pull requests
+ * that are not drafts, then the drafts, each list by wait, longest
+ * first. */
 export type ReviewLine = { ready: ReviewPull[]; drafts: ReviewPull[] };
 
 /** A head of the shape `<kind>/<slug>`: `chore/readme`, `fix/enter-key`. */
@@ -435,19 +456,42 @@ function headLabel(head: string): string {
   return match ? `${match[1]} ${match[2]}` : head;
 }
 
+/** The size of a pull request, `+120 −8`, with the minus sign; null
+ * when the route gave neither count. */
+export function sizeLabel(pull: Pick<PullRequest, "additions" | "deletions">): string | null {
+  if (typeof pull.additions !== "number" && typeof pull.deletions !== "number") return null;
+  return `+${pull.additions ?? 0} −${pull.deletions ?? 0}`;
+}
+
+/** The epoch millisecond of an ISO time `gh` printed, or null for none
+ * or for one that does not parse. */
+function epochOf(time: string | undefined): number | null {
+  if (typeof time !== "string") return null;
+  const ms = Date.parse(time);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/** The order of the rows: the longest wait first; a row with no time
+ * last; two rows alike keep the order they came in. */
+function byWait(a: { since: number | null; index: number }, b: { since: number | null; index: number }): number {
+  if (a.since === null || b.since === null) return a.since === b.since ? a.index - b.index : a.since === null ? 1 : -1;
+  return a.since - b.since || a.index - b.index;
+}
+
 /**
- * The REVIEW line's data: every open pull request of each project, in
- * the order of the projects and then the order the pulls route gives.
+ * The REVIEW section's data: every open pull request of each project.
  * The ones that are not drafts go in `ready`, whatever their CI says,
- * and the drafts in `drafts`. The human merges a chore's pull request
- * too, so a pull request needs no goal to be listed. Each carries its
- * goal when `goalPull` maps one to it (the head `goal/<slug>`, or a
- * number the summary, a `pr:` label or a record names; the first goal
- * wins a number two goals name), else the label of its head. A project
- * with missing pull request data adds nothing.
+ * and the drafts in `drafts`; each list is ordered by wait, longest
+ * first (`byWait`), from the pull request's `updatedAt`. The human
+ * merges a chore's pull request too, so a pull request needs no goal to
+ * be listed. Each carries its goal when `goalPull` maps one to it (the
+ * head `goal/<slug>`, or a number the summary, a `pr:` label or a record
+ * names; the first goal wins a number two goals name), else the label of
+ * its head. A project with missing pull request data adds nothing.
  */
 export function reviewLine(projects: readonly ReviewProject[]): ReviewLine {
-  const line: ReviewLine = { ready: [], drafts: [] };
+  const ready: (ReviewPull & { index: number })[] = [];
+  const drafts: (ReviewPull & { index: number })[] = [];
   for (const entry of projects) {
     const pulls = readPulls(entry.pulls);
     if (pulls === null) continue;
@@ -459,20 +503,33 @@ export function reviewLine(projects: readonly ReviewProject[]): ReviewLine {
     for (const pull of pulls) {
       if (pull.state !== "open") continue;
       const goal = goalOfPull.get(pull.number) ?? null;
-      const item: ReviewPull = { number: pull.number, href: pull.url ?? null, ci: ciWord(pull), project: entry.project, goal, label: goal ?? headLabel(pull.headRefName) };
-      (pull.draft ? line.drafts : line.ready).push(item);
+      const item: ReviewPull & { index: number } = {
+        number: pull.number, href: pull.url ?? null, ci: ciWord(pull), project: entry.project, goal, label: goal ?? headLabel(pull.headRefName),
+        title: pull.title ?? "", draft: pull.draft, words: pullStateWords(pull), word: pullStateWord(pull), size: sizeLabel(pull), since: epochOf(pull.updatedAt),
+        index: ready.length + drafts.length,
+      };
+      (pull.draft ? drafts : ready).push(item);
     }
   }
-  return line;
+  const strip = ({ index: _i, ...pull }: ReviewPull & { index: number }): ReviewPull => pull;
+  return { ready: ready.sort(byWait).map(strip), drafts: drafts.sort(byWait).map(strip) };
 }
 
 /** The sentence that says there is nothing to review. */
 export const REVIEW_NONE = "No pull request is ready for review.";
 
-/** What the REVIEW line says first: `2 ready for review`, else the
- * sentence that says there is none. */
+/** What the REVIEW header says first: `3 ready`, else the sentence that
+ * says there is none. */
 export function reviewHead(line: ReviewLine): string {
-  return line.ready.length === 0 ? REVIEW_NONE : `${line.ready.length} ready for review`;
+  return line.ready.length === 0 ? REVIEW_NONE : `${line.ready.length} ready`;
+}
+
+/** The last column of a REVIEW row: how long the pull request has waited
+ * since `since`, in one unit rounded down (`2h`, `1d`, `<1m`); null with
+ * no time, or with one after `now`. */
+export function reviewWait(since: number | null, now: number): string | null {
+  if (since === null || since > now) return null;
+  return now - since < 60_000 ? "<1m" : spanLabel(now - since);
 }
 
 /** The count before the drafts: `1 draft`, `2 drafts`; null with none. */
