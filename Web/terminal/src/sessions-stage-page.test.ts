@@ -97,50 +97,51 @@ describe("the header", () => {
 
   it("puts REVIEW in the header's gutter, under SESSIONS", () => {
     const head = page.root.querySelector(".tree-head")!;
-    expect(kids(head).map((c) => c.className)).toEqual(["tree-label", "tree-keys", "review-label", "review"]);
+    // Chartered in round 7 (`corpus/02-review-rows.md`): the rows sit under
+    // the header, in `.review-rows`.
+    expect(kids(head).map((c) => c.className)).toEqual(["tree-label", "tree-keys", "review-label", "review", "review-rows"]);
     expect(head.querySelector(".review-label")?.textContent).toBe("REVIEW");
     expect(head.querySelector(".review")?.hidden).toBe(false);
   });
 });
 
-describe("the REVIEW line (goal.md, condition 4)", () => {
+describe("the REVIEW section (goal.md, condition 4)", () => {
+  // Chartered in round 7 (`corpus/02-review-rows.md`): the one paragraph
+  // became a header with the counts and one row per ready pull request,
+  // the drafts behind a closed fold. `sessions-review-rows-page.test.ts`
+  // pins the rows; this file keeps what condition 4 asks: the count, a
+  // link per ready pull request, a chore's too, the drafts counted, the
+  // sentence for none.
   const review = () => page.root.querySelector(".review")!;
+  const rows = () => page.root.querySelector(".review-rows")!.querySelectorAll(".line-review").filter((row) => !row.classList.contains("line-fold"));
 
   it("counts the pull requests that are ready and links each one, a chore's too, then the drafts", () => {
     expect(review().querySelector(".mark")?.className).toBe("mark attention wide");
     expect(review().querySelector(".mark")?.textContent).toBe("3");
-    const items = review().querySelectorAll(".review-pull");
-    expect(items.map((i) => i.textContent)).toEqual([
-      "PR #180 CI ✓ kitterm / foreman-scope",
-      "PR #177 kitterm / chore readme",
-      "PR #156 CI ✗ kitterm / green-ci-again",
-      "PR #185 draft · CI … kitterm / sessions-workflow",
-    ]);
+    const items = rows();
+    expect(items.map((i) => i.querySelector(".pr")?.textContent)).toEqual(["PR #180", "PR #177", "PR #156"]);
     expect(items.map((i) => { const a = i.querySelector("a")!; return [a.className, a.href, a.getAttribute("data-focus")]; })).toEqual([
       ["pr-link", `${BASE}180`, "review:kitterm:180"],
       ["pr-link", `${BASE}177`, "review:kitterm:177"],
       ["pr-link", `${BASE}156`, "review:kitterm:156"],
-      ["pr-link", `${BASE}185`, "review:kitterm:185"],
     ]);
-    expect(review().querySelector(".review-drafts")?.textContent).toBe(" 1 draft");
-    // A merged pull request is not on the line.
-    expect(review().textContent).not.toContain("#150");
+    expect(review().querySelector(".review-drafts")?.textContent).toBe(" · 1 draft");
+    expect(page.root.querySelector(".review-rows")!.querySelector(".line-fold")?.textContent).toBe("▶1 draft");
+    // A merged pull request is not in the section.
+    expect(page.root.querySelector(".tree-head")!.textContent).not.toContain("#150");
   });
 
   it("colours the CI glyph alone, as a mark", () => {
-    const marks = review().querySelectorAll(".review-ci").flatMap((ci) => ci.querySelectorAll(".mark").map((m) => `${m.className}=${m.textContent}`));
+    const marks = rows().flatMap((row) => row.querySelectorAll(".pr-words").flatMap((ci) => ci.querySelectorAll(".mark").map((m) => `${m.className}=${m.textContent}`)));
     expect(marks).toEqual(["mark done wide=✓", "mark failed wide=✗"]);
   });
 
   it("carries the short form a phone prints: the count, each number, one state word", () => {
     // The sheet shows `.review-short` and hides `.review-long`, `.pr-prefix`
-    // and a draft's CI word below 768 px (`sessions-stage-css.test.ts`).
-    const phone = (el: FakeElement): string => kids(el).filter((c) => !c.classList.contains("review-long") && !c.classList.contains("pr-prefix")).map((c) => (c.children.some((k) => typeof k !== "string") ? phone(c) : c.textContent)).join("") + el.children.filter((c) => typeof c === "string").join("");
-    const short = review().children.map((c) => (typeof c === "string" ? c : c.classList.contains("review-long") ? "" : c.classList.contains("review-pull") ? phone(c) : c.textContent)).join("");
-    expect(short.replace(/\s+/g, " ")).toContain("3 ready");
-    expect(short).toContain("#180");
-    expect(short).not.toContain("kitterm /");
-    expect(review().querySelectorAll(".review-short").map((s) => s.textContent)).toEqual([" ready", " ·"]);
+    // and `.pr-words` below 768 px (`sessions-stage-css.test.ts`).
+    expect(review().textContent).toBe("3 ready · 1 draft");
+    expect(rows().map((row) => [row.querySelector(".pr")?.textContent?.replace("PR ", ""), row.querySelector(".pr-word")?.textContent ?? null])).toEqual([["#180", "CI ✓"], ["#177", "ready"], ["#156", "CI ✗"]]);
+    expect(review().querySelectorAll(".review-short")).toEqual([]);
   });
 
   it("says so when no pull request is ready", async () => {
@@ -150,20 +151,22 @@ describe("the REVIEW line (goal.md, condition 4)", () => {
       routes["/api/projects/kitterm/pulls"] = { ...was, pulls: [pull(185, "goal/sessions-workflow", { draft: true, ci: "pending" })] };
       later.mockReturnValue(NOW + 60_000);
       await page.poll();
-      expect(kids(review()).slice(0, 2).map((s) => `${s.className}=${s.textContent}`)).toEqual(["review-long=No pull request is ready for review.", "review-short=none ready"]);
+      expect(kids(review()).map((s) => `${s.className}=${s.textContent}`)).toEqual(["review-long=No pull request is ready for review.", "review-short=none ready", "review-drafts= 1 draft"]);
       expect(review().querySelector(".mark.attention"), "no count to mark").toBeNull();
-      expect(review().querySelectorAll(".review-pull").map((i) => i.textContent)).toEqual(["PR #185 draft · CI … kitterm / sessions-workflow"]);
+      expect(rows()).toEqual([]);
+      expect(page.root.querySelector(".review-rows")!.querySelector(".line-fold")?.textContent).toBe("▶1 draft");
       routes["/api/projects/kitterm/pulls"] = { ...was, pulls: [] };
       later.mockReturnValue(NOW + 120_000);
       await page.poll();
       expect(review().textContent).toBe("No pull request is ready for review.none ready");
+      expect(page.root.querySelector(".review-rows")!.children).toEqual([]);
     } finally {
       routes["/api/projects/kitterm/pulls"] = was;
       later.mockReturnValue(NOW + 180_000);
       await page.poll();
       later.mockRestore();
     }
-    expect(review().querySelectorAll(".review-pull")).toHaveLength(4);
+    expect(rows()).toHaveLength(3);
   });
 });
 
@@ -244,7 +247,8 @@ describe("the poll of the pulls route", () => {
   it("keeps the last answer and waits ten seconds after a request that fails, a network error or a 500", async () => {
     const count = () => page.requests.filter((u) => u.includes("/pulls")).length;
     const words = () => goalNamed("foreman-scope").querySelector(".pr-words")?.textContent;
-    const ready = () => page.root.querySelector(".review")!.querySelectorAll(".review-pull").length;
+    // Chartered in round 7: the ready pull requests are rows of `.review-rows`.
+    const ready = () => page.root.querySelector(".review-rows")!.querySelectorAll(".line-review").filter((row) => !row.classList.contains("line-fold")).length;
     const later = vi.spyOn(Date, "now");
     try {
       for (const [mode, at] of [["throw", 1_000_000], ["500", 2_000_000]] as const) {
@@ -260,7 +264,7 @@ describe("the poll of the pulls route", () => {
         expect(count(), `${mode}: no request on the next polls`).toBe(before + 1);
         // The state words and the REVIEW line stay.
         expect(words(), mode).toBe(" ready · CI ✓");
-        expect(ready(), mode).toBe(4);
+        expect(ready(), mode).toBe(3);
         expect(page.root.querySelector(".review")?.hidden).toBe(false);
         // Ten seconds later the page asks again.
         later.mockReturnValue(NOW + at + 11_000);
@@ -277,17 +281,19 @@ describe("the poll of the pulls route", () => {
   });
 
   it("builds every link on the project's base, and builds them again when the base changes", async () => {
-    const hrefs = () => page.root.querySelector(".review")!.querySelectorAll("a").map((a) => a.href);
+    // Chartered in round 7: the links are in the rows, and the draft's row
+    // sits behind the closed fold.
+    const hrefs = () => page.root.querySelector(".review-rows")!.querySelectorAll("a").map((a) => a.href);
     // The `javascript:` url and the foreign host of the fixture are not links.
-    expect(hrefs()).toEqual([`${BASE}180`, `${BASE}177`, `${BASE}156`, `${BASE}185`]);
+    expect(hrefs()).toEqual([`${BASE}180`, `${BASE}177`, `${BASE}156`]);
     expect(goalNamed("green-ci-again").querySelector(".pr")?.querySelector("a")?.href).toBe(`${BASE}156`);
     const moved = "https://github.com/tienan92it/kitterm-next/pull/";
     routes["/api/projects"] = { projects: [{ ...kitterm, pullRequestBase: moved }, local] };
     await page.poll();
-    expect(hrefs()).toEqual([`${moved}180`, `${moved}177`, `${moved}156`, `${moved}185`]);
+    expect(hrefs()).toEqual([`${moved}180`, `${moved}177`, `${moved}156`]);
     routes["/api/projects"] = { projects: [kitterm, local] };
     await page.poll();
-    expect(hrefs()).toEqual([`${BASE}180`, `${BASE}177`, `${BASE}156`, `${BASE}185`]);
+    expect(hrefs()).toEqual([`${BASE}180`, `${BASE}177`, `${BASE}156`]);
   });
 
   it("says on the line of a project with no GitHub remote why its numbers carry no state, and prints the number as plain text", () => {
@@ -301,7 +307,8 @@ describe("the poll of the pulls route", () => {
 describe("the page still holds no action", () => {
   it("adds links and triangles, and no other control", () => {
     const head = page.root.querySelector(".tree-head")!;
-    expect(head.querySelectorAll("button")).toEqual([]);
+    // Chartered in round 7: the drafts fold's triangle, and no other button.
+    expect(head.querySelectorAll("button").map((b) => b.className)).toEqual(["mark disclosure"]);
     expect(head.querySelectorAll("input")).toEqual([]);
     expect(page.root.querySelector(".tree")!.querySelectorAll("button").map((b) => b.className).every((c) => c === "mark disclosure")).toBe(true);
   });

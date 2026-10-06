@@ -195,7 +195,9 @@ final class PullRequestRouteTests: XCTestCase {
         XCTAssertNotNil(second.json["ageSeconds"] as? Int)
         XCTAssertEqual(second.pulls.map { $0["number"] as? Int }, [185, 184, 7])
         let open = second.pulls[0]
-        XCTAssertEqual(Set(open.keys), ["number", "title", "state", "draft", "headRefName", "url", "ci", "additions", "deletions"])
+        XCTAssertEqual(Set(open.keys), ["number", "title", "state", "draft", "headRefName", "url", "ci", "additions", "deletions", "createdAt", "updatedAt"])
+        XCTAssertEqual(open["createdAt"] as? String, "2026-10-03T10:00:00Z")
+        XCTAssertEqual(open["updatedAt"] as? String, "2026-10-05T18:34:00Z", "the wait of a ready pull request counts from it")
         XCTAssertEqual(open["state"] as? String, "open")
         XCTAssertEqual(open["draft"] as? Bool, true)
         XCTAssertEqual(open["ci"] as? String, "pending")
@@ -208,6 +210,7 @@ final class PullRequestRouteTests: XCTestCase {
         XCTAssertEqual(second.pulls[1]["ci"] as? String, "passing")
         XCTAssertEqual(second.pulls[2]["state"] as? String, "closed")
         XCTAssertNil(second.pulls[2]["ci"])
+        XCTAssertNil(second.pulls[2]["updatedAt"], "absent when gh printed none")
         XCTAssertEqual(gh.calls.first?.hasPrefix("pr list --repo o/r --state all --limit 50 --json "), true)
     }
 

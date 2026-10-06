@@ -46,11 +46,12 @@ struct FakeGH {
     static let pulls = """
         [{"additions":16844,"deletions":52,"headRefName":"goal/sessions-workflow","isDraft":true,"mergedAt":null,
           "number":185,"state":"OPEN","title":"sessions-workflow","url":"https://github.com/o/r/pull/185",
+          "createdAt":"2026-10-03T10:00:00Z","updatedAt":"2026-10-05T18:34:00Z",
           "statusCheckRollup":[{"__typename":"CheckRun","conclusion":"","name":"test","status":"IN_PROGRESS"},
                                {"__typename":"CheckRun","conclusion":"SUCCESS","name":"pages","status":"COMPLETED"}]},
          {"additions":505,"deletions":20,"headRefName":"chore/respawn-resync","isDraft":false,
           "mergedAt":"2026-10-02T01:42:11Z","number":184,"state":"MERGED","title":"A respawned shell",
-          "url":"https://github.com/o/r/pull/184",
+          "url":"https://github.com/o/r/pull/184","createdAt":"2026-10-01T09:00:00Z","updatedAt":"2026-10-02T01:42:11Z",
           "statusCheckRollup":[{"__typename":"CheckRun","conclusion":"SUCCESS","name":"test","status":"COMPLETED"},
                                {"__typename":"CheckRun","conclusion":"SKIPPED","name":"bench","status":"COMPLETED"}]},
          {"additions":1,"deletions":2,"headRefName":"old","isDraft":false,"mergedAt":null,"number":7,
@@ -141,7 +142,8 @@ final class PullRequestStatusTests: XCTestCase {
         XCTAssertEqual(pulls[0], PullRequestStatus.Pull(
             number: 185, title: "sessions-workflow", state: "open", draft: true,
             headRefName: "goal/sessions-workflow", mergedAt: nil, url: "https://github.com/o/r/pull/185",
-            ci: "pending", additions: 16844, deletions: 52
+            ci: "pending", additions: 16844, deletions: 52,
+            createdAt: "2026-10-03T10:00:00Z", updatedAt: "2026-10-05T18:34:00Z"
         ))
         XCTAssertEqual(pulls[1].state, "merged")
         XCTAssertEqual(pulls[1].mergedAt, "2026-10-02T01:42:11Z")
@@ -149,6 +151,8 @@ final class PullRequestStatusTests: XCTestCase {
         XCTAssertFalse(pulls[1].draft)
         XCTAssertEqual(pulls[2].state, "closed")
         XCTAssertNil(pulls[2].ci, "no check, no word")
+        XCTAssertNil(pulls[2].createdAt, "a gh that printed no time gives none")
+        XCTAssertNil(pulls[2].updatedAt)
     }
 
     func testParseRefusesWhatIsNotAList() {
@@ -163,7 +167,11 @@ final class PullRequestStatusTests: XCTestCase {
         let closed = pulls[2].json
         XCTAssertNil(closed["ci"])
         XCTAssertNil(closed["mergedAt"])
+        XCTAssertNil(closed["createdAt"])
+        XCTAssertNil(closed["updatedAt"])
         XCTAssertEqual(closed["draft"] as? Bool, false)
+        XCTAssertEqual(pulls[0].json["createdAt"] as? String, "2026-10-03T10:00:00Z")
+        XCTAssertEqual(pulls[0].json["updatedAt"] as? String, "2026-10-05T18:34:00Z")
         XCTAssertEqual(pulls[1].json["mergedAt"] as? String, "2026-10-02T01:42:11Z")
         XCTAssertEqual(pulls[1].json["ci"] as? String, "passing")
     }
@@ -211,7 +219,7 @@ final class PullRequestStatusTests: XCTestCase {
         XCTAssertEqual(snapshot.readAt, clock.now)
         XCTAssertEqual(gh.calls, [
             "pr list --repo o/r --state all --limit 50 --json "
-                + "number,title,state,isDraft,headRefName,mergedAt,url,statusCheckRollup,additions,deletions,isCrossRepository",
+                + "number,title,state,isDraft,headRefName,mergedAt,url,statusCheckRollup,additions,deletions,createdAt,updatedAt,isCrossRepository",
         ], "one gh, no auth check after a good list")
     }
 

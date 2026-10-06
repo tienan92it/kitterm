@@ -1,10 +1,10 @@
 # STATE: sessions-workflow
 
 - Status: done
-- Round: 3 of 3 in this budget (second budget)
-- Rounds total: 6
-- Last floor: green (2026-10-05, round 6 after: vitest 1608, PR CI on edd7ec0)
-- Updated: 2026-10-05, direction check: the human added the branch reader, dropped `list_pulls`, and set a second budget of 3
+- Round: 1 of 1 in this budget (resumed on the human's word)
+- Rounds total: 7
+- Last floor: green (2026-10-06, round 7 after: vitest 1633, PR CI on 9155c4a)
+- Updated: 2026-10-06, resumed for one round: the REVIEW rows (`corpus/02-review-rows.md`)
 
 ## Queue
 
@@ -22,6 +22,9 @@ None.
 
 ## Done
 
+- `review-rows`, round 7, PR #186. See `rounds/007.md`. REVIEW is a
+  header with the counts and one row per ready pull request, with the
+  drafts folded.
 - `stage-tree`, round 6, PR #185. See `rounds/006.md`. The SESSIONS
   tree prints each line's stage, the PR state and the `REVIEW` line, as
   the approved frames show.
@@ -43,6 +46,4 @@ None.
 
 ## Next action
 
-The human reviews and merges PR #185. Then the foreman releases, runs
-`kitterm upgrade --live`, and proves condition 5 on the live page: a
-merge shows within two minutes with no `git pull`.
+The human merges PR #186; the foreman releases and upgrades.

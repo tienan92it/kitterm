@@ -81,6 +81,7 @@ describe("a watch page", () => {
   it("prints no REVIEW line and no pull request state", () => {
     expect(page.root.querySelector(".review")?.hidden).toBe(true);
     expect(page.root.querySelector(".review-label")?.hidden).toBe(true);
+    expect(page.root.querySelector(".review-rows")?.hidden, "the rows go with the header (round 7)").toBe(true);
     expect(page.root.querySelectorAll(".pr-words")).toEqual([]);
     expect(page.root.querySelectorAll(".pr-word")).toEqual([]);
   });
