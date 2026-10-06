@@ -8,7 +8,7 @@
 
 ## Queue
 
-1. `review-rows` (`corpus/02-review-rows.md`)
+1. `review-rows` (`corpus/02-review-rows.md`), PR #186.
 
 ## Failures
 
