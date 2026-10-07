@@ -8,7 +8,7 @@
 
 ## Queue
 
-1. `screen-fixtures` (capability 1)
+1. `screen-fixtures` (capability 1), PR #187.
 2. `screen-rules` (capability 2)
 3. `screen-count` (capability 3)
 4. `clef-fallback` (capability 4)
