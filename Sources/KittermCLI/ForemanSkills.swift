@@ -116,7 +116,12 @@ enum ForemanSkills {
 
         Do this before every `send_input` into a pane that runs an interactive agent.
 
-        1. Call `read_screen`. Find the row the cursor is on.
+        1. Call `screen_state` first. On `prompt-empty`, type the message now and
+           skip to step 4. On `trust-dialog`, `permission-dialog`, `working`, or
+           `waiting-on-own-job`, act as step 3 says, and call `read_screen` before
+           any keystroke into a dialog. On `unknown`, `agent-exited`, or anything
+           else, call `read_screen`, find the row the cursor is on, and follow the
+           rest of these steps from step 2.
         2. Type only when the prompt is at the cursor and the input box is empty: the
            cursor row reads `❯` and the cursor sits right after it. A `{dim}…{/dim}`
            run at the cursor is a placeholder. Treat it as empty. Never treat it as
@@ -598,7 +603,12 @@ enum ForemanSkills {
 
         Do this before every `send_input` into a pane that runs an interactive agent.
 
-        1. Call `read_screen`. Find the row the cursor is on.
+        1. Call `screen_state` first. On `prompt-empty`, type the message now and
+           skip to step 4. On `trust-dialog`, `permission-dialog`, `working`, or
+           `waiting-on-own-job`, act as step 3 says, and call `read_screen` before
+           any keystroke into a dialog. On `unknown`, `agent-exited`, or anything
+           else, call `read_screen`, find the row the cursor is on, and follow the
+           rest of these steps from step 2.
         2. Type only when the prompt is at the cursor and the input box is empty: the
            cursor row reads `❯` and the cursor sits right after it. A `{dim}…{/dim}`
            run at the cursor is a placeholder. Treat it as empty. Never treat it as
@@ -687,7 +697,12 @@ enum ForemanSkills {
 
         Do this before every `send_input` into a pane that runs an interactive agent.
 
-        1. Call `read_screen`. Find the row the cursor is on.
+        1. Call `screen_state` first. On `prompt-empty`, type the message now and
+           skip to step 4. On `trust-dialog`, `permission-dialog`, `working`, or
+           `waiting-on-own-job`, act as step 3 says, and call `read_screen` before
+           any keystroke into a dialog. On `unknown`, `agent-exited`, or anything
+           else, call `read_screen`, find the row the cursor is on, and follow the
+           rest of these steps from step 2.
         2. Type only when the prompt is at the cursor and the input box is empty: the
            cursor row reads `❯` and the cursor sits right after it. A `{dim}…{/dim}`
            run at the cursor is a placeholder. Treat it as empty. Never treat it as

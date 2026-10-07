@@ -707,7 +707,10 @@ State lives in `~/.kitterm/`. The default port is 3418.
 ├── usage-limits.json         the quota windows the statusline posted, a time per window (0600)
 ├── vapid.json                the VAPID key pair every subscription is bound to (0600)
 ├── takeover/                 live-upgrade handoff, between execv and adoption
-└── web-root                  the web bundle the running daemon pinned
+├── web-root                  the web bundle the running daemon pinned
+└── screen-state.log[.1]      one JSON line per `screen_state` answer (0600,
+                              rotated past 1 MiB, one old file kept); read by
+                              `kitterm screen-state stats`
 ```
 
 The order is the order `DaemonPaths.swift` declares them.

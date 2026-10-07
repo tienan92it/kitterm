@@ -67,6 +67,14 @@ enum MCPBridge {
             return
         }
         let arguments = params["arguments"] as? [String: Any] ?? [:]
+        // `screen_state` is the one tool that needs two daemon routes — the
+        // session row for `foregroundProgram`, then the output route
+        // `read_screen` also reads — so it does not fit the one-`Call`
+        // mapping every other tool uses.
+        if name == "screen_state" {
+            handleScreenState(id: id, arguments: arguments, client: client)
+            return
+        }
         let call: MCPTools.Call
         do {
             call = try MCPTools.call(named: name, arguments: arguments)
@@ -114,6 +122,90 @@ enum MCPBridge {
                 )
             )
         }
+    }
+
+    /// `screen_state`: the session row first, for `foregroundProgram`, then
+    /// the same output route `read_screen` reads. Two requests, never a
+    /// network call outside the daemon.
+    private static func handleScreenState(id: Any?, arguments: [String: Any], client: MCPHTTPClient) {
+        let sessionCall: MCPTools.Call
+        let screenCall: MCPTools.Call
+        do {
+            sessionCall = try MCPTools.call(named: "get_session", arguments: arguments)
+            screenCall = try MCPTools.call(named: "screen_state", arguments: arguments)
+        } catch let MCPTools.ToolError.badArguments(reason) {
+            respond(id: id, result: toolResult(text: "invalid arguments: \(reason)", isError: true))
+            return
+        } catch {
+            respond(id: id, result: toolResult(text: "invalid arguments", isError: true))
+            return
+        }
+
+        let foregroundProgram: String?
+        switch client.send(sessionCall) {
+        case .success(let status, _, let data):
+            guard (200..<300).contains(status) else {
+                let body = String(decoding: data, as: UTF8.self)
+                respond(id: id, result: toolResult(text: body.isEmpty ? "(\(status))" : body, isError: true))
+                return
+            }
+            let row = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            foregroundProgram = row?["foregroundProgram"] as? String
+        case .failure(let reason):
+            respond(
+                id: id,
+                result: toolResult(
+                    text: "cannot reach the kitterm daemon: \(reason). Is it running? (kitterm status)",
+                    isError: true
+                )
+            )
+            return
+        }
+
+        guard let screenOptions = screenCall.screen else { return }  // always set above
+        switch client.send(screenCall) {
+        case .success(let status, let headers, let data):
+            guard (200..<300).contains(status) else {
+                let body = String(decoding: data, as: UTF8.self)
+                respond(id: id, result: toolResult(text: body.isEmpty ? "(\(status))" : body, isError: true))
+                return
+            }
+            do {
+                let text = try ScreenStateReport.text(
+                    data: data, headers: headers, options: screenOptions, foregroundProgram: foregroundProgram
+                )
+                respond(id: id, result: toolResult(text: text, isError: false))
+                logScreenState(session: arguments["session"] as? String, answer: text)
+            } catch {
+                respond(
+                    id: id,
+                    result: toolResult(
+                        text: "the daemon did not report the pane size; upgrade kitterm (kitterm upgrade)",
+                        isError: true
+                    )
+                )
+            }
+        case .failure(let reason):
+            respond(
+                id: id,
+                result: toolResult(
+                    text: "cannot reach the kitterm daemon: \(reason). Is it running? (kitterm status)",
+                    isError: true
+                )
+            )
+        }
+    }
+
+    /// Append one `ScreenStateLog` line for an answered `screen_state` call,
+    /// after the response already went out: the tool's own answer is the
+    /// source, so this never re-renders the screen and never fails the call.
+    private static func logScreenState(session: String?, answer: String) {
+        guard let session,
+              let object = (try? JSONSerialization.jsonObject(with: Data(answer.utf8))) as? [String: Any],
+              let state = object["state"] as? String,
+              let rule = object["rule"] as? String
+        else { return }
+        ScreenStateLog.append(session: session, state: state, rule: rule)
     }
 
     // MARK: - JSON-RPC framing

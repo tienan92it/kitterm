@@ -1,0 +1,22 @@
+{
+  "claudeCodeVersion": "2.1.292",
+  "cols": 120,
+  "cursor": {
+    "col": 24,
+    "row": 3,
+    "visible": true
+  },
+  "legend": "{dim}…{/dim} marks dim text (a placeholder or hint, not typed input); {inv}…{/inv} marks inverse video (a selected row)",
+  "lines": [
+    "",
+    "{dim}Resume this session with:{/dim}",
+    "{dim}claude --resume 00000000-0000-0000-0000-000000000000{/dim}",
+    "user@host main %"
+  ],
+  "method": "typed /exit, chose Exit and stop tasks at the confirmation dialog; captured the plain shell prompt afterward. get_session confirmed foregroundProgram is absent",
+  "ok": true,
+  "recordedAt": "2026-10-07",
+  "renderedBytes": 65536,
+  "rows": 32,
+  "state": "agent-exited"
+}

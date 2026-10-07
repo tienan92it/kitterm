@@ -234,6 +234,13 @@ decision moves to `docs/adr/`.
   empty Claude Code prompt shows a dim ghost suggestion. (2026-09-04)
 - `claude --resume` needs the full transcript UUID; a prefix opens the
   picker, which finds nothing in a worktree cwd. (2026-09-07)
+- Claude Code 2.1.292 printed no `esc to interrupt` in any recorded
+  turn; a busy turn shows a spinner line or a pending `⏺` tool call
+  (2026-10-07, `screen-state` round 1).
+- A Sonnet 5 crew posted its PLAN note after it had written the code in
+  two rounds running, though the brief asked for it first; check that
+  the PLAN note arrived before the crew's first edit (2026-10-07,
+  `screen-state` rounds 2 and 3).
 
 ## Fleet view
 
@@ -481,4 +488,7 @@ decision moves to `docs/adr/`.
   in 10 minutes 21 seconds with no human input and stopped at the budget
   with the digest shape from `LOOP.md`; it left the package uncommitted
   until told. (2026-09-09, round 8)
-
+- A crew can stop on an account's model limit ("You've reached your
+  Fable limit") and wait at its prompt with no note and no hook event the
+  foreman watches. Watch a crew's `lastOutputAt` too, and switch the pane
+  with `/model` (2026-10-07, `screen-state` round 1).

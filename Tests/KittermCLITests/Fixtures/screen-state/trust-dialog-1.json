@@ -1,0 +1,37 @@
+{
+  "claudeCodeVersion": "2.1.292",
+  "cols": 120,
+  "cursor": {
+    "col": 1,
+    "row": 15,
+    "visible": false
+  },
+  "legend": "{dim}…{/dim} marks dim text (a placeholder or hint, not typed input); {inv}…{/inv} marks inverse video (a selected row)",
+  "lines": [
+    "Last login: Wed Oct  7 12:50:15 on ttys001",
+    "user@host trust-dialog % claude --model claude-haiku-4-5-20251001",
+    "",
+    "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+    " Accessing workspace:",
+    "",
+    " /tmp/project",
+    "",
+    " Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source",
+    " project, or work from your team). If not, take a moment to review what's in this folder first.",
+    "",
+    " Claude Code'll be able to read, edit, and execute files here.",
+    "",
+    " Security guide",
+    "",
+    " ❯ No, exit",
+    "   Yes, I trust this folder",
+    "",
+    " Enter to confirm · Esc to cancel"
+  ],
+  "method": "spawned claude in a brand-new scratch directory; captured the first screen before answering the trust dialog",
+  "ok": true,
+  "recordedAt": "2026-10-07",
+  "renderedBytes": 2018,
+  "rows": 32,
+  "state": "trust-dialog"
+}
