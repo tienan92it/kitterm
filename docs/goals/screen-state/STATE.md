@@ -1,0 +1,31 @@
+# STATE: screen-state
+
+- Status: active
+- Round: 0 of 3 in this budget (first budget)
+- Rounds total: 0
+- Last floor: green (2026-10-07, CI on `main` at c0949c1)
+- Updated: 2026-10-07
+
+## Queue
+
+1. `screen-fixtures` (capability 1)
+2. `screen-rules` (capability 2)
+3. `screen-count` (capability 3)
+4. `clef-fallback` (capability 4)
+
+## Failures
+
+None.
+
+## Proposals waiting on the human
+
+None.
+
+## Done
+
+None.
+
+## Next action
+
+Round 1: `screen-fixtures` from `plan.md` row 1; proof: the recorded
+fixtures and their parse test.
