@@ -234,6 +234,9 @@ decision moves to `docs/adr/`.
   empty Claude Code prompt shows a dim ghost suggestion. (2026-09-04)
 - `claude --resume` needs the full transcript UUID; a prefix opens the
   picker, which finds nothing in a worktree cwd. (2026-09-07)
+- Claude Code 2.1.292 printed no `esc to interrupt` in any recorded
+  turn; a busy turn shows a spinner line or a pending `⏺` tool call
+  (2026-10-07, `screen-state` round 1).
 
 ## Fleet view
 
@@ -485,6 +488,3 @@ decision moves to `docs/adr/`.
   Fable limit") and wait at its prompt with no note and no hook event the
   foreman watches. Watch a crew's `lastOutputAt` too, and switch the pane
   with `/model` (2026-10-07, `screen-state` round 1).
-- Claude Code 2.1.292 printed no `esc to interrupt` in any recorded
-  turn; a busy turn shows a spinner line or a pending `⏺` tool call
-  (2026-10-07, `screen-state` round 1).
