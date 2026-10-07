@@ -4,7 +4,7 @@
 - Round: 3 of 3 in this budget (first budget)
 - Rounds total: 3
 - Last floor: green (2026-10-07, round 3 after: swift test 1185, PR CI on aa8b831)
-- Updated: 2026-10-07, the budget is spent: direction check
+- Updated: 2026-10-07, direction check: merge capabilities 1 to 3, measure, then decide capability 4
 
 ## Queue
 
@@ -16,10 +16,9 @@ None.
 
 ## Proposals waiting on the human
 
-- Decide capability 4, the opt-in Clef-flash fallback for `unknown`:
-  build it now, or merge capabilities 1 to 3 first and decide with the
-  count `kitterm screen-state stats` shows after real use. See
-  `rounds/003.md`.
+- Decide capability 4 (`clef-fallback`) on or after 2026-10-21, with the
+  `unknown` share that `kitterm screen-state stats --days 14` prints.
+  2026-10-07: the human chose to merge capabilities 1 to 3 first.
 
 ## Done
 
@@ -34,4 +33,7 @@ None.
 
 ## Next action
 
-Direction check: the human decides capability 4.
+The human merges PR #187 (capabilities 1 to 3). On or after 2026-10-21,
+the foreman runs `kitterm screen-state stats --days 14` and brings the
+`unknown` share to the human, who decides capability 4. The goal stays
+`waiting` until then.
