@@ -237,6 +237,10 @@ decision moves to `docs/adr/`.
 - Claude Code 2.1.292 printed no `esc to interrupt` in any recorded
   turn; a busy turn shows a spinner line or a pending `⏺` tool call
   (2026-10-07, `screen-state` round 1).
+- A Sonnet 5 crew posted its PLAN note after it had written the code in
+  two rounds running, though the brief asked for it first; check that
+  the PLAN note arrived before the crew's first edit (2026-10-07,
+  `screen-state` rounds 2 and 3).
 
 ## Fleet view
 

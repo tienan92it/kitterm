@@ -1,15 +1,14 @@
 # STATE: screen-state
 
-- Status: active
-- Round: 2 of 3 in this budget (first budget)
-- Rounds total: 2
-- Last floor: green (2026-10-07, round 2 after: swift test 1158, PR CI on 1873adb)
-- Updated: 2026-10-07
+- Status: waiting
+- Round: 3 of 3 in this budget (first budget)
+- Rounds total: 3
+- Last floor: green (2026-10-07, round 3 after: swift test 1185, PR CI on aa8b831)
+- Updated: 2026-10-07, the budget is spent: direction check
 
 ## Queue
 
-1. `screen-count` (capability 3), PR #187.
-2. `clef-fallback` (capability 4)
+1. `clef-fallback` (capability 4)
 
 ## Failures
 
@@ -17,10 +16,16 @@ None.
 
 ## Proposals waiting on the human
 
-None.
+- Decide capability 4, the opt-in Clef-flash fallback for `unknown`:
+  build it now, or merge capabilities 1 to 3 first and decide with the
+  count `kitterm screen-state stats` shows after real use. See
+  `rounds/003.md`.
 
 ## Done
 
+- `screen-count`, round 3, PR #187. See `rounds/003.md`. Each answer is
+  counted in `~/.kitterm/screen-state.log`, `kitterm screen-state stats`
+  prints the count, and the skill calls `screen_state` first.
 - `screen-rules`, round 2, PR #187. See `rounds/002.md`. The MCP tool
   `screen_state` answers a pane's state from rules, with the rule and
   the line.
@@ -29,5 +34,4 @@ None.
 
 ## Next action
 
-Round 3: `screen-count` from `plan.md` row 3; proof: tests for the log
-bound, the stats output and the skill's text.
+Direction check: the human decides capability 4.

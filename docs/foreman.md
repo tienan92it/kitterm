@@ -69,6 +69,7 @@ The bridge gives the foreman these tools.
 | `wait_for_command` | Block until a command finishes, then read its exit code. |
 | `read_output` | Read a command's captured output. |
 | `read_screen` | Read what a pane shows, rendered at its real size. Use it before you type into a TUI. |
+| `screen_state` | Name what a pane shows from rules over its screen: `prompt-empty`, `prompt-has-text`, `working`, `waiting-on-own-job`, `trust-dialog`, `permission-dialog`, `agent-exited`, or `unknown`, with the rule and the line that matched. No network call. `unknown` means: read the screen. |
 | `wait_for_events` | Block until anything changes across the whole crew. |
 | `post_note` | Post a status note onto the event feed. |
 | `list_approvals` | The tool calls blocked waiting for a human. |
@@ -314,7 +315,12 @@ still at the folder-trust dialog. So the foreman reads before it types.
 
 Do this before every `send_input` into a pane that runs an interactive agent.
 
-1. Call `read_screen`. Find the row the cursor is on.
+1. Call `screen_state` first. On `prompt-empty`, type the message and go
+   to step 4. On a dialog, a working turn or `waiting-on-own-job`, act as
+   step 3 says. On any other answer, and before any keystroke into a
+   dialog, call `read_screen`, find the row the cursor is on, and go on
+   from step 2. Every answer is counted in `~/.kitterm/screen-state.log`;
+   `kitterm screen-state stats` shows how often the rules say `unknown`.
 2. Type only when the prompt is at the cursor and the input box is empty: the
    cursor row reads `❯` and the cursor sits right after it. A `{dim}…{/dim}`
    run at the cursor is a placeholder, so an empty prompt can read as
