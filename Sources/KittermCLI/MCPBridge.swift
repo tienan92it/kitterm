@@ -175,6 +175,7 @@ enum MCPBridge {
                     data: data, headers: headers, options: screenOptions, foregroundProgram: foregroundProgram
                 )
                 respond(id: id, result: toolResult(text: text, isError: false))
+                logScreenState(session: arguments["session"] as? String, answer: text)
             } catch {
                 respond(
                     id: id,
@@ -193,6 +194,18 @@ enum MCPBridge {
                 )
             )
         }
+    }
+
+    /// Append one `ScreenStateLog` line for an answered `screen_state` call,
+    /// after the response already went out: the tool's own answer is the
+    /// source, so this never re-renders the screen and never fails the call.
+    private static func logScreenState(session: String?, answer: String) {
+        guard let session,
+              let object = (try? JSONSerialization.jsonObject(with: Data(answer.utf8))) as? [String: Any],
+              let state = object["state"] as? String,
+              let rule = object["rule"] as? String
+        else { return }
+        ScreenStateLog.append(session: session, state: state, rule: rule)
     }
 
     // MARK: - JSON-RPC framing

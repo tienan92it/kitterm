@@ -164,6 +164,13 @@ public enum DaemonPaths: Sendable {
         stateDirectory.appendingPathComponent("web-root")
     }
 
+    /// One JSON line per `screen_state` answer (`ScreenStateLog`, in
+    /// `KittermCLI`), `0600`, bounded at 1 MiB with one rotated file kept
+    /// as `screen-state.log.1`. `kitterm screen-state stats` reads both.
+    public static var screenStateLogFile: URL {
+        stateDirectory.appendingPathComponent("screen-state.log")
+    }
+
     /// Creates the state directory owner-only. It holds tokens and shell
     /// output, so a directory the umask left world-readable would let
     /// another local user list what is there. An existing directory keeps

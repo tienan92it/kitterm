@@ -71,6 +71,8 @@ enum KittermMain {
                 try GoalCommand.run(args.dropFirst())
             case "archive":
                 try ArchiveCommand.run(args.dropFirst())
+            case "screen-state":
+                try ScreenStateCommand.run(args.dropFirst())
             case "foreman":
                 try ForemanCommand.run(args.dropFirst())
             case "skills":
@@ -205,6 +207,9 @@ enum KittermMain {
                                       # an archived session's bill, no daemon needed:
                                       # the round record's `- Cost:` line, or the
                                       # bill as GET /api/archives/<id>/cost gives it
+              kitterm screen-state stats [--days N] [--json]
+                                      # count per state and the unknown share from
+                                      # ~/.kitterm/screen-state.log, no daemon needed
               kitterm foreman catch-up [--scope PATH] [--json]
                                       # what a new foreman reads first, for one
                                       # scope (default: the working directory)
