@@ -481,4 +481,10 @@ decision moves to `docs/adr/`.
   in 10 minutes 21 seconds with no human input and stopped at the budget
   with the digest shape from `LOOP.md`; it left the package uncommitted
   until told. (2026-09-09, round 8)
-
+- A crew can stop on an account's model limit ("You've reached your
+  Fable limit") and wait at its prompt with no note and no hook event the
+  foreman watches. Watch a crew's `lastOutputAt` too, and switch the pane
+  with `/model` (2026-10-07, `screen-state` round 1).
+- Claude Code 2.1.292 printed no `esc to interrupt` in any recorded
+  turn; a busy turn shows a spinner line or a pending `⏺` tool call
+  (2026-10-07, `screen-state` round 1).
