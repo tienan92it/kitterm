@@ -147,6 +147,12 @@ enum MCPTools {
                 required: ["session"]
             ),
             tool(
+                "screen_state",
+                "Decide what a session's pane shows right now, with no network call: an empty prompt, a prompt with text, a running turn, a crew waiting on its own background job, a trust dialog, a permission dialog, an exited agent, or unknown. Reads the same rendered screen as read_screen plus the session's foregroundProgram and answers {ok, state, rule, line, claudeCodeVersion?}: state is one of prompt-empty, prompt-has-text, working, waiting-on-own-job, trust-dialog, permission-dialog, agent-exited, unknown; rule names the rule that matched; line is the matched row ({index, text}) or null. unknown means no rule matched — call read_screen and read it yourself before typing.",
+                properties: ["session": idProp],
+                required: ["session"]
+            ),
+            tool(
                 "wait_for_events",
                 "The foreman's heartbeat: block until something changes across the whole crew — a status change (one `agent.status` event per transition: a session that stays `working` across many tool calls is silent, and a repeated `needs-input` is a new event only when its message changes), an approval, a spawn, an exit, a posted note, a `command.failed` (a non-zero exit in an orchestrated session, with `index` for `read_output`), or a `session.lingered` (the linger clock kept a session past a window; its data says why: reason `foreground` with the `program` name, or `output`, and `heldSince`) — then return the events. Pass the `next` cursor from the previous call as `since` and its `epoch` as `epoch`. One call watches every session at once; re-invoke in a loop. A timeout returns no events, which just means \"still quiet\". A result whose `epoch` differs from the last one means the daemon restarted: every session id you held is gone, the first event is `daemon.started`, and `pruned` is true. Re-list the sessions and match them by labels and cwd. A `daemon.started` whose data has `takeover` set to \"true\" in the same epoch is an upgrade in place: every session id is still good, so continue. A connection error mid-wait is that upgrade's socket closing; call again with the same cursor and epoch.",
                 properties: [
@@ -321,6 +327,17 @@ enum MCPTools {
                 options[keyPath: keyPath] = value
             }
             return Call(method: "GET", path: path, screen: options)
+
+        case "screen_state":
+            // Same route and rendering as `read_screen`, at the pane's real
+            // size, styled so the rules can read a `{dim}…{/dim}` ghost
+            // suggestion as the placeholder it is. The bridge fetches the
+            // session row for `foregroundProgram` separately (MCPBridge).
+            return Call(
+                method: "GET",
+                path: "/api/sessions/\(try id(arguments))/output",
+                screen: ScreenOptions(styles: true)
+            )
 
         case "wait_for_events":
             var query: [String] = []

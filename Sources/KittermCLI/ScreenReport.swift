@@ -44,7 +44,9 @@ enum ScreenReport {
         return String(decoding: json, as: UTF8.self)
     }
 
-    private static func header(_ name: String, in headers: [String: String]) -> String? {
+    /// Shared with `ScreenStateReport`, which renders the same route's
+    /// response the same way before it runs the rules.
+    static func header(_ name: String, in headers: [String: String]) -> String? {
         headers.first { $0.key.lowercased() == name }?.value
     }
 }

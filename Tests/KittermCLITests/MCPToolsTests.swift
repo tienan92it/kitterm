@@ -15,12 +15,12 @@ final class MCPToolsTests: XCTestCase {
 
     func testEverySchemaHasNameAndInputSchema() {
         let schemas = MCPTools.schemas()
-        XCTAssertEqual(schemas.count, 16)
+        XCTAssertEqual(schemas.count, 17)
         let names = Set(schemas.compactMap { $0["name"] as? String })
         XCTAssertTrue(names.isSuperset(of: [
             "list_sessions", "spawn_session", "send_input", "wait_for_command",
             "wait_for_events", "post_note", "kill_session", "archive_session", "list_archives",
-            "read_screen",
+            "read_screen", "screen_state",
         ]))
         // Deciding is a human privilege: no approve/deny tool is exposed.
         XCTAssertFalse(names.contains("approve"))
@@ -165,6 +165,17 @@ final class MCPToolsTests: XCTestCase {
         XCTAssertThrowsError(try call("read_screen", ["session": deadbeef, "cols": "wide"]))
         // Every other tool returns the daemon's body as-is.
         XCTAssertNil(try call("read_output", ["session": deadbeef, "command": 1]).screen)
+    }
+
+    /// `screen_state` reads the same route as `read_screen`, always styled,
+    /// with no size override — the bridge fetches `foregroundProgram` from
+    /// the session row separately (`MCPBridge.handleScreenState`).
+    func testScreenStateFetchesTheSameRouteAsReadScreen() throws {
+        let c = try call("screen_state", ["session": deadbeef])
+        XCTAssertEqual(c.method, "GET")
+        XCTAssertEqual(c.path, "/api/sessions/\(deadbeef)/output")
+        XCTAssertEqual(c.screen, MCPTools.ScreenOptions(cols: nil, rows: nil, styles: true))
+        XCTAssertThrowsError(try call("screen_state", [:]))
     }
 
     func testKillIsADelete() throws {
