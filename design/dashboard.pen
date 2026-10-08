@@ -1,5 +1,5 @@
 {
-  "version": "2.18",
+  "version": "2.20",
   "children": [
     {
       "type": "frame",
@@ -1251,6 +1251,304 @@
                       "fontFamily": "JetBrains Mono",
                       "fontSize": 12,
                       "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "O6loo",
+                      "name": "lifetime",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": "$space-2",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "x1bSUR",
+                          "name": "lifetime header",
+                          "gap": "$space-4",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Yivvz",
+                              "name": "lifetime label",
+                              "fill": "$faint",
+                              "content": "LIFETIME",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "600",
+                              "letterSpacing": 1
+                            },
+                            {
+                              "type": "text",
+                              "id": "P2cmN",
+                              "name": "lifetime subtitle",
+                              "fill": "$muted",
+                              "content": "index, 10 Aug = 100",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "o6cvj",
+                          "name": "lifetime plot",
+                          "width": "fill_container",
+                          "height": 160,
+                          "layout": "none",
+                          "children": [
+                            {
+                              "type": "rectangle",
+                              "id": "bbhka",
+                              "x": 30,
+                              "y": 103.3,
+                              "name": "y gridline 100",
+                              "fill": "$border",
+                              "width": 760,
+                              "height": 1
+                            },
+                            {
+                              "type": "text",
+                              "id": "wPU9d",
+                              "x": 0,
+                              "y": 97.3,
+                              "name": "y label 100",
+                              "fill": "$faint",
+                              "textGrowth": "fixed-width",
+                              "width": 26,
+                              "content": "100",
+                              "textAlign": "right",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "path",
+                              "id": "mqCuR",
+                              "x": 30,
+                              "y": 0,
+                              "name": "line $/PR",
+                              "geometry": "M0 103.3l12.9 14.1 12.9 0 12.8-29.9 12.9-6.4 12.9-7.1 12.9-1.9 12.9-1.8 12.9 0 12.8-0.4 12.9-2.4 12.9 0 12.9-5 12.9 0 12.8 0.8 12.9-12.3 12.9 1 12.9-11.6 12.9 0 12.8 0 12.9 0 12.9-0.1 12.9-0.4 12.9 0 12.9-12.4 12.8-2.2 12.9 1.8 12.9 1.1 12.9 1 12.9 0.6 12.8-0.4 12.9 0.3 12.9 1.7 12.9-0.1 12.9 0 12.8-0.3 12.9 0.5 12.9 0.7 12.9-1.6 12.9-1.3 12.9-0.3 12.8 0.1 12.9 0.2 12.9 0.3 12.9 0.1 12.9 0.5 12.8 0.8 12.9-0.2 12.9 0 12.9 0.1 12.9 0 12.8 0.1 12.9 0.2 12.9-1.5 12.9-0.2 12.9-0.4 12.9-0.4 12.8-0.3 12.9-0.3 12.9-0.4",
+                              "viewBox": [
+                                0,
+                                0,
+                                760,
+                                160
+                              ],
+                              "width": 760,
+                              "height": 160,
+                              "stroke": "$accent",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "ZU8hw",
+                              "x": 30,
+                              "y": 0,
+                              "name": "line $/line",
+                              "geometry": "M0 103.3l4.9 6.3m3.1 3.9l4.9 6.2m0 0l0.1 0m5 0l7.8 0m0 0l0.1-0.2m2.6-4.3l4-6.9m2.6-4.3l3.5-6m0 0l0.9-0.5m4.5-2.2l7.2-3.5m4.4-2.4l7-3.9m4.3 0.5l6.8 4.2m4.4 2.1l7.9-1.1m5-0.6l8 0m5-0.1l7.9-0.7m5-0.5l7.9-1.4m4.9-0.8l8 0m4.9-0.4l7.5-2.9m4.7-1.7l8 0m5 0l7.9 0.8m4.9 0.2l5.8-5.5m3.6-3.5l3.2-3.1m0 0l3.2 1.4m4.6 1.9l5.1 2.1m0 0l1.9-1.7m3.7-3.3l6-5.3m4.5-1.2l8 0m5 0l8 0m5 0l8 0m5 0l8-0.1m5-0.1l8-0.4m5 0l8 0m4.5-2l6.9-4m4.5-2l7.8-1.9m4.9-0.3l7.8 1.6m5 0.6l7.9-0.4m5-0.2l8 0.2m5 0.5l7.8 1.7m4.9 0.8l8 0.3m5-0.1l8-0.9m4.9-0.2l8 0.6m5 0.3l8-0.2m5 0l8 0m5 0l8-0.2m5 0l8-0.1m5 0.2l7.9 0.8m5 0l7.9-1.1m5-0.4l8-0.2m5-0.2l8-0.2m4.9 0.5l7.8 2m4.9 0.6l8 0.2m5 0l8 0m5-0.1l8-0.1m5-0.1l8-0.2m5 0l8 0.1m5 0l8-0.2m5 0l8 0m5-0.2l8-0.4m5-0.2l8-0.1m5 0.1l8 0.1m5 0.1l8 0.2m4.9-0.5l8-1m5-0.2l8-0.1m5-0.1l7.9-0.4m4.9 1.1l7.7 2.2m4.9 0.6l8 0.3m5 0l8-0.1m5-0.1l8-0.2",
+                              "viewBox": [
+                                0,
+                                0,
+                                760,
+                                160
+                              ],
+                              "width": 760,
+                              "height": 160,
+                              "stroke": "$accent",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "qnHtb",
+                              "x": 30,
+                              "y": 0,
+                              "name": "line $/release",
+                              "geometry": "M0 103.3l0 0m3.4 4.9l0 0m3.5 5l0 0m3.4 4.9l0 0m4 3.8l0 0m6 0l0 0m5.7-0.5l0 0m2.2-5.6l0 0m2.3-5.5l0-0.1m2.2-5.5l0 0m2.2-5.6l0 0m2.3-5.6l0 0m3.3-4.5l0 0m5.4-2.7l0 0m5.4-2.7l0 0m5.2-2.9l0 0m5.3-2.9l0 0m5.6-1.7l0 0m6-0.5l0 0m6-0.7l0 0m5.9-0.8l0.1 0m5.9-0.6l0 0m6 0l0 0m6 0l0 0m6 0l0.1 0m6 0.1l0 0m5.9-1l0 0m5.9-1.1l0 0m6-0.3l0 0m6 0l0 0m5.7-1.3l0.1 0m5.6-2.1l0 0m5.7-1.6l0 0m6 0l0 0m6 0.1l0 0m6 0.6l0 0m5.9 0.6l0.1 0m4.3-4.1l0 0m4.3-4.2l0 0m4.4-4.1l0 0m6-0.1l0 0m6-0.1l0 0m4.7-3.5l0 0m4.4-4l0 0m4.5-4l0 0m6-0.1l0 0m6 0l0 0m6 0l0 0m6 0l0 0m6 0l0 0m6 0l0.1 0m6 0l0 0m6-0.1l0 0m6-0.1l0 0m6-0.2l0 0m6-0.1l0 0m6 0l0 0m5.8-0.5l0 0m4.3-4.2l0 0m4.3-4.2l0 0m4.4-4l0 0m5.4-2.7l0 0m5.4-2.6l0 0m5.9-0.4l0 0m6 0.3l0 0m6 0.4l0 0m6 0.3l0 0m5.9 0.7l0 0m5.9 1.1l0 0m5.9 0.6l0.1 0m5.9-0.7l0 0m6-0.8l0 0m5.9-0.8l0 0m6-0.9l0 0m6-0.4l0 0m6-0.4l0 0m5.9-0.9l0 0m5.9-1.1l0 0m6-0.5l0 0m6-0.1l0 0m6 0l0 0m6 0l0 0m6 0l0 0m6-0.1l0 0m6-0.2l0-0.1m6-0.7l0 0m6-0.8l0 0m6-0.4l0 0m6-0.4l0 0m5.9-0.7l0 0m6-0.9l0 0m5.9-1.1l0 0m5.8-1.4l0 0m6-0.7l0 0m6-0.1l0 0m6-0.1l0 0m6-0.1l0 0m6 0l0 0m6 0.4l0 0m6 0.3l0 0m6-0.1l0 0m6 0l0 0m6 0.3l0 0m6 0.3l0 0m6 0l0 0m6-0.1l0 0m6-0.1l0 0m6 0.1l0.1 0m6 0l0 0m6-0.1l0 0m6-0.1l0 0m6 0l0 0m6 0l0 0m6 0l0 0m6 0l0 0m6-0.1l0 0m6-0.1l0 0m6 0.3l0 0m6 0.3l0 0m6 0.3l0 0m6 0.3l0 0m6-0.3l0 0m6-0.6l0 0m6-0.3l0 0m6-0.1l0 0m6-0.2l0 0m6-0.1l0 0m6-0.2l0 0m6 0l0.1 0m6 0l0 0m6 0l0 0m6-0.1l0 0m6 0l0 0m6 0l0 0m6-0.1l0 0m6-0.2l0 0",
+                              "viewBox": [
+                                0,
+                                0,
+                                760,
+                                160
+                              ],
+                              "width": 760,
+                              "height": 160,
+                              "stroke": "$accent",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "hyedV",
+                              "x": 30,
+                              "y": 0,
+                              "name": "line $/hour",
+                              "geometry": "M0 103.3l8 0m4 0l0 0m4 0l8 0m3.7 1.2l0 0m3.3 2.2l6.7 4.3m3.9 0.7l0 0m4 0.1l5.9 0.2m0 0l2.1 0m4 0.1l0 0m4 0.1l2.8 0.1m0 0l5.2 0m4 0.1l0 0m4 0l8 0.1m4 0l0 0m4 0l8 0m4 0l0 0m4 0l6.3 0m0 0l1.7 0m4 0l0 0m4 0.1l3.2 0m0 0l4.8 0m4 0l0 0m4 0l0.1 0m0 0l7.9 0.1m4 0.1l0 0m4 0l8 0m4 0l0 0.1m4 0l6.7 0.2m0 0l1.3 0m4-0.2l0 0m4-0.1l3.6-0.1m0 0l4.4-0.1m4-0.2l0 0m4-0.1l0.5 0m0 0l7.5-0.3m4-0.1l0 0m4-0.1l8 0m4 0l0.1 0m4 0l7 0m0 0l1 0m4 0l0 0m4 0l3.9 0m0 0l4.1 0m4 0.1l0 0m4 0l0.8 0m0 0l7.2 0.3m4 0.1l0 0m4 0.1l8 0m3.8 0.6l0 0m3.7 1.7l7.2 3.5m3.9 0.7l0 0m4 0.4l5.7 0.5m0 0l2.2 0m4 0l0 0m4 0.1l2.7 0m0 0l5.3 0.4m4 0.2l0 0.1m4 0.2l8 0.3m4 0.1l0 0m4 0.1l8 0.3m4 0.1l0 0m4 0.1l6.2 0.1m0 0l1.8 0m4 0l0 0m4 0.1l3.1 0m0 0l4.9 0m4 0l0 0m4 0l8 0m4 0l0 0m4 0l8 0m4 0l0.1 0m4 0l6.5 0m0 0l1.5 0m4 0l0 0m4 0l3.4 0m0 0l4.6 0.2m4 0.1l0 0m4 0.2l0.3 0m0 0l7.7 0m4 0l0 0m4 0l8-0.1m4 0l0 0m4 0l7 0m0 0l1 0m4 0.1l0 0m4 0l3.8 0.1m0 0l4.2 0.1m4 0.1l0 0m4 0.1l0.7 0m0 0l7.3 0m4 0l0 0m4 0l8 0.1m4 0l0 0m4 0l7.4 0.1m0 0l0.6 0m4 0.1l0 0m4 0.1l4.2 0.1m0 0l3.8 0m4 0.1l0 0m4 0l1.1 0m0 0l6.9 0m4 0l0 0m4 0.1l8 0.4m4 0.2l0 0m4 0l7.8 0.1m0 0l0.2 0m4 0.1l0 0m4 0l4.6 0.1m0 0l3.4 0.1m4 0l0.1 0m4 0.1l1.4 0m0 0l6.6-0.1m4 0l0 0m4 0l8 0m4 0l0 0m4 0l8 0.1m4 0l0 0m4 0l5 0m0 0l3 0.1m4 0.1l0 0m4 0.1l1.8 0m0 0l6.2 0.2m4 0.1l0 0m4 0.1l8 0.2",
+                              "viewBox": [
+                                0,
+                                0,
+                                760,
+                                160
+                              ],
+                              "width": 760,
+                              "height": 160,
+                              "stroke": "$accent",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "text",
+                              "id": "lOZVR",
+                              "x": 800,
+                              "y": 21.7,
+                              "name": "end label $/PR",
+                              "fill": "$text",
+                              "textGrowth": "fixed-width",
+                              "width": 240,
+                              "content": "── $/PR  $42.48",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "CA2cG",
+                              "x": 800,
+                              "y": 55.1,
+                              "name": "end label $/line",
+                              "fill": "$text",
+                              "textGrowth": "fixed-width",
+                              "width": 240,
+                              "content": "– – $/line  $0.046",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "bcFOo",
+                              "x": 800,
+                              "y": 6.8,
+                              "name": "end label $/release",
+                              "fill": "$text",
+                              "textGrowth": "fixed-width",
+                              "width": 240,
+                              "content": "···· $/release  $132.76",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "lpuJf",
+                              "x": 800,
+                              "y": 119.7,
+                              "name": "end label $/hour",
+                              "fill": "$text",
+                              "textGrowth": "fixed-width",
+                              "width": 240,
+                              "content": "─·─ $/hour  $55.36",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "ellipse",
+                              "id": "rQIFi",
+                              "x": 555.1,
+                              "y": 26.1,
+                              "name": "tooltip point",
+                              "fill": "$accent",
+                              "width": 6,
+                              "height": 6
+                            },
+                            {
+                              "type": "frame",
+                              "id": "WlxXl",
+                              "x": 570.1,
+                              "y": 37.1,
+                              "name": "tooltip example",
+                              "fill": "$surface",
+                              "cornerRadius": 2,
+                              "stroke": "$border",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
+                              "layout": "vertical",
+                              "gap": 2,
+                              "padding": [
+                                5,
+                                7
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "c63oF",
+                                  "name": "tooltip day",
+                                  "fill": "$text",
+                                  "content": "20 Sep",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "iwTUo",
+                                  "name": "tooltip values",
+                                  "fill": "$muted",
+                                  "content": "index 3888 · $39.56/PR",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "E1ZAjD",
+                          "name": "lifetime axis",
+                          "width": "fill_container",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "top": 1
+                          },
+                          "strokeAlignment": "inner",
+                          "strokeLinejoin": "round",
+                          "padding": [
+                            4,
+                            0,
+                            0,
+                            0
+                          ],
+                          "justifyContent": "space_between",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "bSxky",
+                              "name": "lifetime axis start",
+                              "fill": "$faint",
+                              "content": "10 Aug",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "MnmAn",
+                              "name": "lifetime axis end",
+                              "fill": "$faint",
+                              "content": "8 Oct",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        }
+                      ]
                     }
                   ]
                 }
@@ -4478,6 +4776,248 @@
                   "fontFamily": "JetBrains Mono",
                   "fontSize": 12,
                   "fontWeight": "normal"
+                },
+                {
+                  "type": "frame",
+                  "id": "uQcnm",
+                  "name": "lifetime",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": "$space-2",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "P8p1Ia",
+                      "name": "lifetime header",
+                      "gap": "$space-4",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "xhju0",
+                          "name": "lifetime label",
+                          "fill": "$faint",
+                          "content": "LIFETIME",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 12,
+                          "fontWeight": "600",
+                          "letterSpacing": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "qY3eG",
+                          "name": "lifetime subtitle",
+                          "fill": "$muted",
+                          "content": "index, 10 Aug = 100",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "cqH9i",
+                      "name": "lifetime plot",
+                      "width": "fill_container",
+                      "height": 110,
+                      "layout": "none",
+                      "children": [
+                        {
+                          "type": "rectangle",
+                          "id": "E3f8pb",
+                          "x": 30,
+                          "y": 70,
+                          "name": "y gridline 100",
+                          "fill": "$border",
+                          "width": 300,
+                          "height": 1
+                        },
+                        {
+                          "type": "text",
+                          "id": "PUsS7",
+                          "x": 0,
+                          "y": 64,
+                          "name": "y label 100",
+                          "fill": "$faint",
+                          "textGrowth": "fixed-width",
+                          "width": 26,
+                          "content": "100",
+                          "textAlign": "right",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "path",
+                          "id": "oZyDW",
+                          "x": 30,
+                          "y": 0,
+                          "name": "line $/PR",
+                          "geometry": "M0 70l5.1 9 5.1 0 5.1-19.2 5-4.1 5.1-4.6 5.1-1.2 5.1-1.1 5.1 0 5.1-0.3 5-1.5 5.1 0 5.1-3.3 5.1 0 5.1 0.6 5.1-8 5.1 0.7 5-7.4 5.1 0 5.1 0 5.1 0 5.1-0.1 5.1-0.3 5 0 5.1-8 5.1-1.4 5.1 1.2 5.1 0.7 5.1 0.7 5.1 0.3 5-0.2 5.1 0.1 5.1 1.1 5.1 0 5.1 0 5.1-0.2 5.1 0.3 5 0.5 5.1-1.1 5.1-0.8 5.1-0.2 5.1 0.1 5.1 0.1 5 0.2 5.1 0.1 5.1 0.3 5.1 0.5 5.1-0.1 5.1 0 5.1 0.1 5-0.1 5.1 0.1 5.1 0.1 5.1-1 5.1-0.1 5.1-0.2 5-0.3 5.1-0.2 5.1-0.2 5.1-0.2",
+                          "viewBox": [
+                            0,
+                            0,
+                            300,
+                            110
+                          ],
+                          "width": 300,
+                          "height": 110,
+                          "stroke": "$accent",
+                          "strokeWidth": 2,
+                          "strokeLinecap": "round"
+                        },
+                        {
+                          "type": "path",
+                          "id": "Oz46L",
+                          "x": 30,
+                          "y": 0,
+                          "name": "line $/line",
+                          "geometry": "M0 70l3.5 7.2m2.9 3.3l3.8 0m0 0l1.5-4m1.7-4.7l1.9-5.2m0 0l1.9-1.5m3.8-3.2l4.4-4m0 0l1.5 1.5m3.5 3.5l0.1 0.1m0 0l5.1-1.2m0 0l2.6 0m5-0.3l2.6-0.4m0 0l5-1.5m0 0l0.2 0m5 0l5-3.3m0 0l2 0m5 0.3l3.2 0.6m0 0l2.5-4m2.8-3.9l4.9 3.4m0 0l1.1-1.7m2.8-4.1l1.1-1.6m0 0l5.1 0m0 0l1 0m5 0l4.2 0m0 0l3.8-0.1m5-0.2l1.4-0.1m0 0l5 0m0 0l1.2-1.1m3.6-3.4l0.3-0.3m0 0l5.1-2m0 0l2 0.7m4.8 0.9l3.4-0.3m0 0l4.6 0.2m4.8 1.5l0.8 0.3m0 0l5 0.3m0 0l2.1-0.4m4.9-0.3l3.2 0.4m0 0l4.8-0.1m5 0l0.4 0m0 0l5.1-0.1m0 0l2.5 0m4.9 0.3l2.7 0.4m0 0l5.1-1m0 0l0.1 0m5-0.3l0 0m0 0l5.1-0.2m0 0l2.7 1.1m4.8 0.9l2.7 0.1m0 0l5 0m0 0l0.3 0m5-0.1l4.9-0.2m0 0l3.1 0m5-0.1l2.1 0m0 0l5.1 0m0 0l0.8-0.1m5-0.3l4.3-0.1m0 0l3.7 0.1m5 0.1l1.5 0.1m0 0l5.1-1.1m0 0l1.3 0m5-0.2l3.9-0.2m0 0l3.6 1.8m4.9 0.8l1.6 0.1m0 0l5.1 0m0 0l1.3-0.1",
+                          "viewBox": [
+                            0,
+                            0,
+                            300,
+                            110
+                          ],
+                          "width": 300,
+                          "height": 110,
+                          "stroke": "$accent",
+                          "strokeWidth": 2,
+                          "strokeLinecap": "round"
+                        },
+                        {
+                          "type": "path",
+                          "id": "OXZBj",
+                          "x": 30,
+                          "y": 0,
+                          "name": "line $/release",
+                          "geometry": "M0 70l0 0m2.4 5.5l0 0m2.3 5.5l0 0.1m5.5 0.8l0 0m1.4-5.8l0 0m1.5-5.8l0-0.1m1.4-5.8l0.1 0m2.9-4.8l0 0m4.6-3.9l0 0m4.9-3.2l0 0m5.9-1.1l0 0m5.9-0.6l0 0m6 0.1l0 0m5.8-1.5l0 0m5.9-0.5l0 0m5.2-2.8l0 0m6 0.3l0 0m4.8-1.5l0 0m3.2-5l0 0m5.6-1l0 0m3.4-4.9l0 0m4.6-2.6l0 0m6 0l0 0m6 0l0 0m6 0l0 0m6-0.3l0 0m4.9-2l0-0.1m3.2-5l0 0m4.4-4l0 0m5.7-0.6l0 0m6 0.5l0 0m5.7 1.3l0 0m5.9-1.2l0 0m5.9-1l0 0m5.9-1.3l0 0m5.9-0.6l0 0m6 0l0 0m6-0.4l0 0m5.9-1l0 0m6-0.9l0 0m5.7-1.8l0 0m5.9-0.9l0 0m6-0.1l0 0m6 0.5l0 0m6 0.1l0 0m6 0.2l0 0m6 0l0 0m6-0.1l0 0m6 0l0 0m6-0.1l0 0m6 0.1l0 0m6 0.4l0 0m5.9-0.4l0.1 0m5.9-0.3l0 0m6-0.3l0 0m6 0l0.1 0m6 0l0 0m6-0.2l0 0",
+                          "viewBox": [
+                            0,
+                            0,
+                            300,
+                            110
+                          ],
+                          "width": 300,
+                          "height": 110,
+                          "stroke": "$accent",
+                          "strokeWidth": 2,
+                          "strokeLinecap": "round"
+                        },
+                        {
+                          "type": "path",
+                          "id": "Zl1NR",
+                          "x": 30,
+                          "y": 0,
+                          "name": "line $/hour",
+                          "geometry": "M0 70l5.1 0m0 0l2.9 0m3.4 1.3l0.1 0m2.7 2.9l1.1 1.1m0 0l5 0.3m0 0l1.4 0.1m4 0.1l0.1 0m4 0l0.7 0m0 0l5.1 0.1m0 0l2.2 0m4 0l0 0m4 0l0 0m0 0l5 0m0 0l3 0m4 0.1l0 0m4 0.1l4.3 0m0 0l3.7 0.1m4-0.1l0 0m4-0.2l3.6-0.1m0 0l4.3-0.3m4 0l0.1 0m4 0l2.8 0m0 0l5.1 0m0 0l0.1 0m4 0l0 0m4 0.2l2.1 0.1m0 0l5 0m0 0l0.7 0.5m3.1 2.5l0 0m3.7 1.4l2.7 0.4m0 0l5.1 0.1m0 0l0.1 0m4 0.4l0 0m4 0.3l2.1 0.1m0 0l5.1 0.3m0 0l0.8 0m4 0.1l0 0m4 0.1l1.3 0m0 0l5.1 0m0 0l1.6 0m4 0l0 0m4 0l0.6 0m0 0l5.1 0m0 0l2.3 0m4 0.1l0 0m4 0.2l4.9 0.1m0 0l3.1-0.1m4 0l0 0m4 0l4.2 0.1m0 0l3.8 0.1m4 0.1l0 0m4 0l3.4 0.1m0 0l4.6 0m4 0.1l0 0m4 0.1l2.7 0m0 0l5.1 0m0 0l0.2 0m4 0.4l0 0m4 0.2l1.9 0m0 0l5.1 0.1m0 0l1 0m4 0.1l0 0m4 0l1.2 0m0 0l5.1 0m0 0l1.7 0m4 0l0 0m4 0l0.4 0m0 0l5.1 0.2m0 0l2.5 0.1m4 0.3l0 0",
+                          "viewBox": [
+                            0,
+                            0,
+                            300,
+                            110
+                          ],
+                          "width": 300,
+                          "height": 110,
+                          "stroke": "$accent",
+                          "strokeWidth": 2,
+                          "strokeLinecap": "round"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "BS4bo",
+                      "name": "lifetime axis",
+                      "width": "fill_container",
+                      "stroke": "$border",
+                      "strokeWidth": {
+                        "top": 1
+                      },
+                      "strokeAlignment": "inner",
+                      "strokeLinejoin": "round",
+                      "padding": [
+                        4,
+                        0,
+                        0,
+                        0
+                      ],
+                      "justifyContent": "space_between",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "a80sx",
+                          "name": "lifetime axis start",
+                          "fill": "$faint",
+                          "content": "10 Aug",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "hO4gQ",
+                          "name": "lifetime axis end",
+                          "fill": "$faint",
+                          "content": "8 Oct",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "veCyw",
+                      "name": "lifetime legend",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "z0lyFs",
+                          "name": "legend $/PR",
+                          "fill": "$text",
+                          "content": "── $/PR  $42.48",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "w1A9v",
+                          "name": "legend $/line",
+                          "fill": "$text",
+                          "content": "– – $/line  $0.046",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "m8f5bs",
+                          "name": "legend $/release",
+                          "fill": "$text",
+                          "content": "···· $/release  $132.76",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "iJWMR",
+                          "name": "legend $/hour",
+                          "fill": "$text",
+                          "content": "─·─ $/hour  $55.36",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
                 }
               ]
             }
@@ -17493,6 +18033,283 @@
                   ]
                 }
               ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "S5CgQj",
+          "name": "LIFETIME",
+          "reusable": true,
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": "$space-5",
+          "children": [
+            {
+              "type": "frame",
+              "id": "SJ8WI",
+              "name": "A dash key",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 2,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "rQM4v",
+                  "name": "h LIFETIME DASH KEY",
+                  "fill": "$faint",
+                  "content": "LIFETIME · DASH KEY",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 12,
+                  "fontWeight": "600",
+                  "letterSpacing": 1
+                },
+                {
+                  "type": "frame",
+                  "id": "pNh7h",
+                  "name": "dash key $/PR",
+                  "width": "fill_container",
+                  "height": 24,
+                  "gap": "$space-3",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "path",
+                      "id": "dcRv8",
+                      "name": "swatch",
+                      "geometry": "M2 7l36 0",
+                      "viewBox": [
+                        0,
+                        0,
+                        40,
+                        14
+                      ],
+                      "width": 40,
+                      "height": 14,
+                      "stroke": "$accent",
+                      "strokeWidth": 2,
+                      "strokeLinecap": "round"
+                    },
+                    {
+                      "type": "text",
+                      "id": "urnZD",
+                      "name": "word",
+                      "fill": "$muted",
+                      "textGrowth": "fixed-width",
+                      "width": 90,
+                      "content": "$/PR",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "uvZav",
+                      "name": "meaning",
+                      "fill": "$faint",
+                      "content": "spend over merged pull requests",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "nUZxF",
+                  "name": "dash key $/line",
+                  "width": "fill_container",
+                  "height": 24,
+                  "gap": "$space-3",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "path",
+                      "id": "OdVxA",
+                      "name": "swatch",
+                      "geometry": "M2 7l0.92 0m0 0l0.93 0m0 0l0.92 0m0 0l0.92 0m0 0l0.93 0m0 0l0.92 0m0 0l0.46 0m4 0l0.15 0m0 0l0.93 0m0 0l0.92 0m0 0l0.92 0m0 0l0.93 0m0 0l0.92 0m0 0l0.92 0m0 0l0.31 0m4 0l0.31 0m0 0l0.92 0m0 0l0.92 0m0 0l0.93 0m0 0l0.92 0m0 0l0.92 0m0 0l0.93 0m0 0l0.15 0m4 0l0.46 0m0 0l0.92 0m0 0l0.93 0m0 0l0.92 0m0 0l0.92 0m0 0l0.93 0m0 0l0.92 0",
+                      "viewBox": [
+                        0,
+                        0,
+                        40,
+                        14
+                      ],
+                      "width": 40,
+                      "height": 14,
+                      "stroke": "$accent",
+                      "strokeWidth": 2,
+                      "strokeLinecap": "round"
+                    },
+                    {
+                      "type": "text",
+                      "id": "JmrCH",
+                      "name": "word",
+                      "fill": "$muted",
+                      "textGrowth": "fixed-width",
+                      "width": 90,
+                      "content": "$/line",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Z4ioQ",
+                      "name": "meaning",
+                      "fill": "$faint",
+                      "content": "spend over merged lines added",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "VLfnl",
+                  "name": "dash key $/release",
+                  "width": "fill_container",
+                  "height": 24,
+                  "gap": "$space-3",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "path",
+                      "id": "Y4qiu",
+                      "name": "swatch",
+                      "geometry": "M2 7l0.01 0m4 0l0.01 0m4 0l0.01 0m4 0l0.01 0m4 0l0.01 0m4 0l0.01 0m4 0l0.01 0m4 0l0.01 0m4 0l0.01 0",
+                      "viewBox": [
+                        0,
+                        0,
+                        40,
+                        14
+                      ],
+                      "width": 40,
+                      "height": 14,
+                      "stroke": "$accent",
+                      "strokeWidth": 2,
+                      "strokeLinecap": "round"
+                    },
+                    {
+                      "type": "text",
+                      "id": "n6oEg",
+                      "name": "word",
+                      "fill": "$muted",
+                      "textGrowth": "fixed-width",
+                      "width": 90,
+                      "content": "$/release",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "kqRGe",
+                      "name": "meaning",
+                      "fill": "$faint",
+                      "content": "spend over releases",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "erRlt",
+                  "name": "dash key $/hour",
+                  "width": "fill_container",
+                  "height": 24,
+                  "gap": "$space-3",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "path",
+                      "id": "gZqEv",
+                      "name": "swatch",
+                      "geometry": "M2 7l0.92 0m0 0l0.93 0m0 0l0.92 0m0 0l0.92 0m0 0l0.93 0m0 0l0.92 0m0 0l0.46 0m3 0l0.01 0m3 0l0.91 0m0 0l0.93 0m0 0l0.92 0m0 0l0.92 0m0 0l0.93 0m0 0l0.92 0m0 0l0.47 0m3 0l0.01 0m3 0l0.9 0m0 0l0.93 0m0 0l0.92 0m0 0l0.92 0m0 0l0.93 0m0 0l0.92 0m0 0l0.48 0m3 0l0.01 0",
+                      "viewBox": [
+                        0,
+                        0,
+                        40,
+                        14
+                      ],
+                      "width": 40,
+                      "height": 14,
+                      "stroke": "$accent",
+                      "strokeWidth": 2,
+                      "strokeLinecap": "round"
+                    },
+                    {
+                      "type": "text",
+                      "id": "InVom",
+                      "name": "word",
+                      "fill": "$muted",
+                      "textGrowth": "fixed-width",
+                      "width": 90,
+                      "content": "$/hour",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "YTaCp",
+                      "name": "meaning",
+                      "fill": "$faint",
+                      "content": "measured spend over model hours",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "TaJ1z",
+              "name": "B empty state",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 2,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "I59pLJ",
+                  "name": "h LIFETIME EMPTY",
+                  "fill": "$faint",
+                  "content": "LIFETIME · EMPTY",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 12,
+                  "fontWeight": "600",
+                  "letterSpacing": 1
+                },
+                {
+                  "type": "text",
+                  "id": "N8myq",
+                  "name": "empty sentence",
+                  "fill": "$muted",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "No lifetime cost yet: each line needs its first day with a count above zero.",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "id": "d0hBv",
+              "name": "note",
+              "fill": "$muted",
+              "textGrowth": "fixed-width",
+              "width": "fill_container",
+              "content": "The index is the spend from the first spend day over the units delivered since, divided by that same ratio on the base day of the line, times 100.",
+              "fontFamily": "JetBrains Mono",
+              "fontSize": 12,
+              "fontWeight": "normal"
             }
           ]
         }
