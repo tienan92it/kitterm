@@ -207,6 +207,124 @@ public struct RepositoryYield: Codable, Equatable, Sendable {
         process.waitUntilExit()
         return (process.terminationStatus, String(decoding: data, as: UTF8.self))
     }
+
+    // MARK: - the LIFETIME chart's day-by-day counts
+
+    /// One day's slice of a root's history, the `readDaily` counterpart of
+    /// `read`'s one total: the same absent-means-no-source rule, per day
+    /// instead of over the whole range. A root that is not a checkout
+    /// carries every field absent; a checkout with no remote carries the
+    /// two pull-request fields absent and `releases` counted.
+    public struct DailyCounts: Codable, Equatable, Sendable {
+        public var day: String
+        public var mergedPullRequests: Int?
+        public var mergedLines: Int?
+        public var releases: Int?
+
+        public init(day: String, mergedPullRequests: Int? = nil, mergedLines: Int? = nil, releases: Int? = nil) {
+            self.day = day
+            self.mergedPullRequests = mergedPullRequests
+            self.mergedLines = mergedLines
+            self.releases = releases
+        }
+    }
+
+    /// One commit's committer date, subject and insertions, read for
+    /// `readDaily`'s bucketing. A separate shape from `Commit`: `read`'s
+    /// one total never needs a date, and adding one to `Commit` would
+    /// change a shape an existing test constructs by its exact fields.
+    struct DatedCommit: Equatable {
+        var subject: String
+        var insertions: Int
+        var committerDate: Date
+    }
+
+    /// `git log --format=<RS>%cI<FS>%s` parsed the way `parseLog` reads
+    /// `<RS>%H<FS>%s`: one record per `RS`, the committer date and the
+    /// subject on the first line, the insertions from the stat line that
+    /// follows (`git`'s own `%cI`, strict ISO 8601 with the zone offset).
+    static func parseLogWithDate(_ output: String) -> [DatedCommit] {
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime]
+        return output.split(separator: Character(separator), omittingEmptySubsequences: true).compactMap { record in
+            let lines = record.split(separator: "\n", omittingEmptySubsequences: false)
+            guard let head = lines.first else { return nil }
+            let parts = head.split(separator: Character(field), maxSplits: 1, omittingEmptySubsequences: false)
+            guard parts.count == 2, !parts[0].isEmpty, let date = iso.date(from: String(parts[0])) else { return nil }
+            var insertions = 0
+            for line in lines.dropFirst() {
+                guard let range = line.range(of: " insertion") else { continue }
+                let before = line[..<range.lowerBound]
+                let digits = before.split(separator: " ").last.map(String.init) ?? ""
+                insertions = Int(digits) ?? 0
+            }
+            return DatedCommit(subject: String(parts[1]), insertions: insertions, committerDate: date)
+        }
+    }
+
+    /// Read `root`'s history day by day for `from` through `to`, inclusive,
+    /// in `zone`: one `DailyCounts` per day, zero-filled, from one `git
+    /// log` and one tag listing for the whole range — never one `git log`
+    /// per day. The same source and the same rules as `read`: the branch,
+    /// the squash/merge subject test, `--shortstat` insertions, and a tag's
+    /// creation date; only the bucketing (by committer day instead of
+    /// summed) is new. Synchronous; `RepositoryYields` runs it on its queue.
+    public static func readDaily(
+        root: String, from: DayKey, to: DayKey, zone: TimeZone, git: Git = { run(args: $0) }
+    ) -> [DailyCounts] {
+        var range: [DayKey] = []
+        var cursor = from
+        while cursor <= to {
+            range.append(cursor)
+            cursor = cursor.advanced(by: 1)
+        }
+        func at(_ args: [String]) -> (status: Int32, output: String)? { git(["-C", root] + args) }
+        guard let inside = at(["rev-parse", "--is-inside-work-tree"]), inside.status == 0,
+              inside.output.trimmingCharacters(in: .whitespacesAndNewlines) == "true"
+        else { return range.map { DailyCounts(day: $0.description) } }
+        let remotes = at(["remote"])
+        let remote = remotes?.status == 0 && !(remotes?.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        var branch: String?
+        for candidate in branchCandidates {
+            if let found = at(["rev-parse", "--verify", "--quiet", candidate]), found.status == 0 {
+                branch = candidate == "HEAD" ? "HEAD" : String(candidate.dropFirst("refs/remotes/".count))
+                break
+            }
+        }
+        var prsByDay: [String: Int] = [:]
+        var linesByDay: [String: Int] = [:]
+        let since = Int(firstInstant(of: from, in: zone).timeIntervalSince1970)
+        let until = Int(firstInstant(of: to.advanced(by: 1), in: zone).timeIntervalSince1970) - 1
+        if remote, let branch, let log = at([
+            "log", branch == "HEAD" ? "HEAD" : "refs/remotes/" + branch, "--first-parent", "--diff-merges=first-parent",
+            "--shortstat", "--since=@\(since)", "--until=@\(until)",
+            "--format=\(separator)%cI\(field)%s",
+        ]), log.status == 0 {
+            for commit in parseLogWithDate(log.output) where isPullRequest(commit.subject) {
+                let day = DayKey(commit.committerDate, in: zone).description
+                prsByDay[day, default: 0] += 1
+                linesByDay[day, default: 0] += commit.insertions
+            }
+        }
+        var releasesByDay: [String: Int] = [:]
+        if let tags = at(["for-each-ref", "refs/tags", "--format=%(creatordate:unix)"]), tags.status == 0 {
+            for line in tags.output.split(separator: "\n") {
+                guard let seconds = Double(line.trimmingCharacters(in: .whitespaces)) else { continue }
+                let day = DayKey(Date(timeIntervalSince1970: seconds), in: zone)
+                guard from <= day, day <= to else { continue }
+                releasesByDay[day.description, default: 0] += 1
+            }
+        }
+        return range.map { day in
+            let key = day.description
+            return DailyCounts(
+                day: key,
+                mergedPullRequests: remote ? (prsByDay[key] ?? 0) : nil,
+                mergedLines: remote ? (linesByDay[key] ?? 0) : nil,
+                releases: releasesByDay[key] ?? 0
+            )
+        }
+    }
 }
 
 /// The yield of every project the daemon knows, behind `GET /api/yield`.
@@ -259,6 +377,40 @@ public final class RepositoryYields: @unchecked Sendable {
         public var totals: Totals
     }
 
+    /// One project's day in the `GET /api/yield/daily` series, the same
+    /// absent-means-no-source rule as `ProjectYield.yield` per day.
+    public struct ProjectDay: Codable, Equatable, Sendable {
+        public var id: String
+        public var name: String
+        public var root: String
+        public var registered: Bool
+        public var mergedPullRequests: Int?
+        public var mergedLines: Int?
+        public var releases: Int?
+    }
+
+    /// One day of the `GET /api/yield/daily` series: every project's own
+    /// counts, plus the day's sum over the projects counted (the same
+    /// "counted" rule `Totals` sums by — a project with no remote
+    /// contributes no pull requests or lines, but its releases).
+    public struct Day: Codable, Equatable, Sendable {
+        public var day: String
+        public var mergedPullRequests = 0
+        public var mergedLines = 0
+        public var releases = 0
+        public var projects: [ProjectDay]
+    }
+
+    /// The day-by-day counterpart of `Report`, behind `GET
+    /// /api/yield/daily`: one entry per day in the range, zero-filled,
+    /// oldest first.
+    public struct DailyReport: Codable, Equatable, Sendable {
+        public var ok = true
+        public var from: String
+        public var to: String
+        public var days: [Day]
+    }
+
     private struct Key: Hashable {
         var root: String
         var from: Int
@@ -269,6 +421,7 @@ public final class RepositoryYields: @unchecked Sendable {
     private let git: RepositoryYield.Git
     private let lock = NIOLock()
     private var cache: [Key: (at: Date, yield: RepositoryYield)] = [:]
+    private var dailyCache: [Key: (at: Date, series: [RepositoryYield.DailyCounts])] = [:]
 
     public init(zone: TimeZone = .current, git: @escaping RepositoryYield.Git = { RepositoryYield.run(args: $0) }) {
         self.zone = zone
@@ -301,5 +454,49 @@ public final class RepositoryYields: @unchecked Sendable {
             totals.releases += yield.releases ?? 0
         }
         return Report(from: from.description, to: to.description, projects: items, totals: totals)
+    }
+
+    /// The day-by-day report for `projects` over the range: one `git log`
+    /// per root per range (`RepositoryYield.readDaily`), never one per day,
+    /// cached separately from `report`'s totals cache so a caller of one
+    /// route never pays for the other's read. Synchronous; the route calls
+    /// it on `queue`.
+    public func dailyReport(projects: [ProjectRef], from: DayKey, to: DayKey, now: Date = Date()) -> DailyReport {
+        var range: [DayKey] = []
+        var cursor = from
+        while cursor <= to {
+            range.append(cursor)
+            cursor = cursor.advanced(by: 1)
+        }
+        var seriesByProject: [String: [RepositoryYield.DailyCounts]] = [:]
+        for project in projects {
+            let key = Key(root: project.root, from: from.number, to: to.number)
+            let kept = lock.withLock { dailyCache[key] }
+            let series: [RepositoryYield.DailyCounts]
+            if let kept, now.timeIntervalSince(kept.at) < Self.ttlSeconds {
+                series = kept.series
+            } else {
+                series = RepositoryYield.readDaily(root: project.root, from: from, to: to, zone: zone, git: git)
+                lock.withLock { dailyCache[key] = (now, series) }
+            }
+            seriesByProject[project.id] = series
+        }
+        let days: [Day] = range.enumerated().map { index, day in
+            var result = Day(day: day.description, projects: [])
+            for project in projects {
+                let counts = seriesByProject[project.id]?[index] ?? RepositoryYield.DailyCounts(day: day.description)
+                result.projects.append(ProjectDay(
+                    id: project.id, name: project.name, root: project.root, registered: project.registered,
+                    mergedPullRequests: counts.mergedPullRequests, mergedLines: counts.mergedLines, releases: counts.releases
+                ))
+                if let prs = counts.mergedPullRequests, let lines = counts.mergedLines {
+                    result.mergedPullRequests += prs
+                    result.mergedLines += lines
+                }
+                result.releases += counts.releases ?? 0
+            }
+            return result
+        }
+        return DailyReport(from: from.description, to: to.description, days: days)
     }
 }
