@@ -8,7 +8,7 @@
 
 ## Queue
 
-1. `lifetime-design` (capability 1)
+1. `lifetime-design` (capability 1), PR #188.
 2. `yield-per-day` (capability 2)
 3. `lifetime-series` (capability 3)
 4. `lifetime-chart` (capability 4)
