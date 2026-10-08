@@ -241,6 +241,16 @@ decision moves to `docs/adr/`.
   two rounds running, though the brief asked for it first; check that
   the PLAN note arrived before the crew's first edit (2026-10-07,
   `screen-state` rounds 2 and 3).
+- The pen.dev CLI edits a `.pen` file headless, with no desktop window:
+  `pen interactive --in <file> --out <file>` takes the same `execute`
+  calls as the Pencil MCP, and `save()` writes the file. It does not
+  touch Pen's active editor, which another project's crew may hold. A
+  PNG `Export` of a 1200 px frame timed out after 55 s in that mode
+  (2026-10-08, `value-lifetime`).
+- A crew's `lastOutputAt` stays fresh while Claude Code's screen redraws
+  at an idle prompt, so it cannot show a crew stopped on a model limit.
+  Watch the agent's state instead: `needs-input` or `completed` with no
+  note for minutes (2026-10-08, `value-lifetime` round 1).
 
 ## Fleet view
 
