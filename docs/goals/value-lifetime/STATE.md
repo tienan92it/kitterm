@@ -1,15 +1,14 @@
 # STATE: value-lifetime
 
 - Status: active
-- Round: 0 of 3 in this budget (second budget)
-- Rounds total: 3
-- Last floor: green (2026-10-09, round 3 after: vitest 1658, PR CI linux-build on 6acbb80)
+- Round: 1 of 3 in this budget (second budget)
+- Rounds total: 4
+- Last floor: green (2026-10-09, round 4 after: vitest 1662)
 - Updated: 2026-10-09, direction check: the median rule for the base day, a second budget of 3
 
 ## Queue
 
-1. `base-day-rule` (capability 3, the human's rule of 2026-10-09), PR #188.
-2. `lifetime-chart` (capability 4)
+1. `lifetime-chart` (capability 4), PR #188.
 
 ## Failures
 
@@ -22,6 +21,8 @@ at least 25% of the median daily spend).
 
 ## Done
 
+- `base-day-rule`, round 4, PR #188. See `rounds/004.md`. The base day
+  follows the human's median rule.
 - `lifetime-series`, round 3, PR #188. See `rounds/003.md`. The pure
   series module, with the base-day rule fix queued.
 - `lifetime-design`, round 2, PR #188. See `rounds/002.md`. The human
@@ -31,5 +32,5 @@ at least 25% of the median daily spend).
 
 ## Next action
 
-Round 4: `base-day-rule`: `baseDayOf` takes the human's median rule,
-and the fixture holds 23 Aug as $0.09, the real value.
+Round 5: `lifetime-chart` from `plan.md` row 4; proof: the foundation's
+proofs and a check against the live daemon.
