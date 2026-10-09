@@ -1,5 +1,5 @@
 {
-  "version": "2.18",
+  "version": "2.20",
   "children": [
     {
       "type": "frame",
@@ -1251,6 +1251,879 @@
                       "fontFamily": "JetBrains Mono",
                       "fontSize": 12,
                       "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "KJzyZ",
+                      "name": "lifetime",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": "$space-5",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "VXA0L",
+                          "name": "totals chart",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": "$space-2",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "kRB0Q",
+                              "name": "totals header",
+                              "gap": "$space-4",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "Dfbb2",
+                                  "name": "totals label",
+                                  "fill": "$faint",
+                                  "content": "TOTALS",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "600",
+                                  "letterSpacing": 1
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "iyy7n",
+                                  "name": "totals subtitle",
+                                  "fill": "$muted",
+                                  "content": "growth since 3 Sep, log scale",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "H27aXH",
+                              "name": "totals plot",
+                              "width": "fill_container",
+                              "height": 150,
+                              "layout": "none",
+                              "children": [
+                                {
+                                  "type": "rectangle",
+                                  "id": "CJQRM",
+                                  "x": 30,
+                                  "y": 150,
+                                  "name": "totals gridline 1",
+                                  "fill": "$border",
+                                  "width": 760,
+                                  "height": 1
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "D78Xc",
+                                  "x": 0,
+                                  "y": 144,
+                                  "name": "totals y label 1",
+                                  "fill": "$faint",
+                                  "textGrowth": "fixed-width",
+                                  "width": 26,
+                                  "content": "×1",
+                                  "textAlign": "right",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "rectangle",
+                                  "id": "vViDs",
+                                  "x": 30,
+                                  "y": 123.4,
+                                  "name": "totals gridline 2",
+                                  "fill": "$border",
+                                  "width": 760,
+                                  "height": 1
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "AXMFe",
+                                  "x": 0,
+                                  "y": 117.4,
+                                  "name": "totals y label 2",
+                                  "fill": "$faint",
+                                  "textGrowth": "fixed-width",
+                                  "width": 26,
+                                  "content": "×2",
+                                  "textAlign": "right",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "rectangle",
+                                  "id": "EFkak",
+                                  "x": 30,
+                                  "y": 88.3,
+                                  "name": "totals gridline 5",
+                                  "fill": "$border",
+                                  "width": 760,
+                                  "height": 1
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "e4Plq7",
+                                  "x": 0,
+                                  "y": 82.3,
+                                  "name": "totals y label 5",
+                                  "fill": "$faint",
+                                  "textGrowth": "fixed-width",
+                                  "width": 26,
+                                  "content": "×5",
+                                  "textAlign": "right",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "rectangle",
+                                  "id": "x7kYR9",
+                                  "x": 30,
+                                  "y": 61.7,
+                                  "name": "totals gridline 10",
+                                  "fill": "$border",
+                                  "width": 760,
+                                  "height": 1
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "DnYQ5",
+                                  "x": 0,
+                                  "y": 55.7,
+                                  "name": "totals y label 10",
+                                  "fill": "$faint",
+                                  "textGrowth": "fixed-width",
+                                  "width": 26,
+                                  "content": "×10",
+                                  "textAlign": "right",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "rectangle",
+                                  "id": "qUHbL",
+                                  "x": 30,
+                                  "y": 35.1,
+                                  "name": "totals gridline 20",
+                                  "fill": "$border",
+                                  "width": 760,
+                                  "height": 1
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "UFY0s",
+                                  "x": 0,
+                                  "y": 29.1,
+                                  "name": "totals y label 20",
+                                  "fill": "$faint",
+                                  "textGrowth": "fixed-width",
+                                  "width": 26,
+                                  "content": "×20",
+                                  "textAlign": "right",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "rectangle",
+                                  "id": "qlVGB",
+                                  "x": 30,
+                                  "y": 0,
+                                  "name": "totals gridline 50",
+                                  "fill": "$border",
+                                  "width": 760,
+                                  "height": 1
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "Jypsn",
+                                  "x": 0,
+                                  "y": -6,
+                                  "name": "totals y label 50",
+                                  "fill": "$faint",
+                                  "textGrowth": "fixed-width",
+                                  "width": 26,
+                                  "content": "×50",
+                                  "textAlign": "right",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "path",
+                                  "id": "bwCCX",
+                                  "x": 30,
+                                  "y": 0,
+                                  "name": "totals line spend",
+                                  "geometry": "M0 150l21.1-17.4 21.1-1 21.1-3.1 21.1-5 21.2-4.6 21.1-5.1 21.1-6 21.1-5.7 21.1-0.3 21.1 0 21.1-0.4 21.1-3.2 21.1-4 21.2-3.4 21.1-5.6 21.1-0.6 21.1-1.6 21.1-1.8 21.1-0.2 21.1-1 21.1-0.5 21.1-0.8 21.2-0.3 21.1 0 21.1-2.1 21.1-0.4 21.1-0.5 21.1-0.6 21.1-3.3 21.1-0.4 21.1-0.8 21.2-0.9 21.1-0.9 21.1-0.8 21.1-1.1 21.1 0",
+                                  "viewBox": [
+                                    0,
+                                    0,
+                                    760,
+                                    150
+                                  ],
+                                  "width": 760,
+                                  "height": 150,
+                                  "stroke": "$data-1",
+                                  "strokeWidth": 2,
+                                  "strokeLinecap": "round"
+                                },
+                                {
+                                  "type": "path",
+                                  "id": "wQOBz",
+                                  "x": 30,
+                                  "y": 0,
+                                  "name": "totals line prs",
+                                  "geometry": "M0 150l21.1-8.8 21.1-3.3 21.1-4.8 21.1-5.2 21.2-4.5 21.1-3.4 21.1-5.4 21.1-7.7 21.1 0 21.1 0 21.1 0 21.1-3.5 21.1-6.2 21.2-2.1 21.1-3.2 21.1-0.4 21.1-1.5 21.1-2.3 21.1-1.1 21.1-2.9 21.1-1.7 21.1-2.6 21.2-0.2 21.1-0.2 21.1-3.2 21.1-0.6 21.1-1.2 21.1-1.9 21.1-1.5 21.1 0 21.1 0 21.2-0.5 21.1-1.2 21.1-1.9 21.1-1.1 21.1-0.3",
+                                  "viewBox": [
+                                    0,
+                                    0,
+                                    760,
+                                    150
+                                  ],
+                                  "width": 760,
+                                  "height": 150,
+                                  "stroke": "$data-2",
+                                  "strokeWidth": 2,
+                                  "strokeLinecap": "round"
+                                },
+                                {
+                                  "type": "path",
+                                  "id": "AfNTs",
+                                  "x": 30,
+                                  "y": 0,
+                                  "name": "totals line lines",
+                                  "geometry": "M0 150l21.1-9.1 21.1-5.2 21.1-9.2 21.1-3.9 21.2-7.4 21.1-4.8 21.1-2.4 21.1-6.5 21.1 0 21.1 0 21.1 0 21.1-2.5 21.1-6.8 21.2-1.6 21.1-4.4 21.1-0.6 21.1-6.1 21.1-7 21.1-0.9 21.1-0.8 21.1-0.2 21.1-4.8 21.2-0.6 21.1-1 21.1-4 21.1-0.4 21.1-0.9 21.1-0.9 21.1-15.4 21.1 0 21.1 0 21.2-3.9 21.1-2.4 21.1-6.8 21.1-2.8 21.1-1.9",
+                                  "viewBox": [
+                                    0,
+                                    0,
+                                    760,
+                                    150
+                                  ],
+                                  "width": 760,
+                                  "height": 150,
+                                  "stroke": "$data-3",
+                                  "strokeWidth": 2,
+                                  "strokeLinecap": "round"
+                                },
+                                {
+                                  "type": "path",
+                                  "id": "FsagX",
+                                  "x": 30,
+                                  "y": 0,
+                                  "name": "totals line releases",
+                                  "geometry": "M0 150l21.1-4.3 21.1-1.9 21.1-3.7 21.1-7.8 21.2-1.4 21.1-1.4 21.1-3.8 21.1-1.1 21.1 0 21.1 0 21.1 0 21.1 0 21.1-2.3 21.2 0 21.1 0 21.1 0 21.1-1.1 21.1-3 21.1 0 21.1-2 21.1 0 21.1-0.9 21.2 0 21.1 0 21.1-1.8 21.1-0.8 21.1-2.5 21.1-3.8 21.1-3.5 21.1 0 21.1 0 21.2-1.9 21.1-3.6 21.1-0.6 21.1-1.1 21.1 0",
+                                  "viewBox": [
+                                    0,
+                                    0,
+                                    760,
+                                    150
+                                  ],
+                                  "width": 760,
+                                  "height": 150,
+                                  "stroke": "$data-4",
+                                  "strokeWidth": 2,
+                                  "strokeLinecap": "round"
+                                },
+                                {
+                                  "type": "path",
+                                  "id": "L9la2",
+                                  "x": 0,
+                                  "y": 0,
+                                  "name": "totals leader spend",
+                                  "geometry": "M790 66.6l8 15",
+                                  "viewBox": [
+                                    0,
+                                    0,
+                                    30,
+                                    150
+                                  ],
+                                  "width": 30,
+                                  "height": 150,
+                                  "stroke": "$data-1",
+                                  "strokeWidth": 1
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "FkCsI",
+                                  "x": 800,
+                                  "y": 75.6,
+                                  "name": "totals end label spend",
+                                  "fill": "$data-1",
+                                  "textGrowth": "fixed-width",
+                                  "width": 240,
+                                  "content": "×8.8 spend",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "r0qpsk",
+                                  "x": 800,
+                                  "y": 59.6,
+                                  "name": "totals end label prs",
+                                  "fill": "$data-2",
+                                  "textGrowth": "fixed-width",
+                                  "width": 240,
+                                  "content": "×9.0 PRs",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "F7DUY9",
+                                  "x": 800,
+                                  "y": 18.8,
+                                  "name": "totals end label lines",
+                                  "fill": "$data-3",
+                                  "textGrowth": "fixed-width",
+                                  "width": 240,
+                                  "content": "×26.2 lines",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "e63aA",
+                                  "x": 800,
+                                  "y": 91.6,
+                                  "name": "totals end label releases",
+                                  "fill": "$data-4",
+                                  "textGrowth": "fixed-width",
+                                  "width": 240,
+                                  "content": "×4.1 releases",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "ellipse",
+                                  "id": "STrHW",
+                                  "x": 385.9,
+                                  "y": 80,
+                                  "name": "totals tooltip point",
+                                  "fill": "$data-1",
+                                  "width": 6,
+                                  "height": 6
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "h0f8rW",
+                                  "x": 400.9,
+                                  "y": 91,
+                                  "name": "totals tooltip example",
+                                  "fill": "$surface",
+                                  "cornerRadius": 2,
+                                  "stroke": "$border",
+                                  "strokeWidth": 1,
+                                  "strokeAlignment": "inner",
+                                  "layout": "vertical",
+                                  "gap": 2,
+                                  "padding": [
+                                    5,
+                                    7
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "V76WK",
+                                      "name": "totals tooltip day",
+                                      "fill": "$text",
+                                      "content": "20 Sep, against 3 Sep",
+                                      "fontFamily": "JetBrains Mono",
+                                      "fontSize": 12,
+                                      "fontWeight": "600"
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "wNv3R",
+                                      "name": "totals tooltip multiples",
+                                      "fill": "$muted",
+                                      "content": "spend ×5.7 · PRs ×4.8 · lines ×6.3 · releases ×2.1",
+                                      "fontFamily": "JetBrains Mono",
+                                      "fontSize": 12,
+                                      "fontWeight": "normal"
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "SJF0n",
+                                      "name": "totals tooltip values",
+                                      "fill": "$muted",
+                                      "content": "$4.2k · 129 PRs · 105k lines · 36 releases",
+                                      "fontFamily": "JetBrains Mono",
+                                      "fontSize": 12,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "hCr2a",
+                              "name": "totals axis",
+                              "width": "fill_container",
+                              "stroke": "$border",
+                              "strokeWidth": {
+                                "top": 1
+                              },
+                              "strokeAlignment": "inner",
+                              "strokeLinejoin": "round",
+                              "padding": [
+                                4,
+                                0,
+                                0,
+                                0
+                              ],
+                              "justifyContent": "space_between",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "cICFz",
+                                  "name": "totals axis start",
+                                  "fill": "$faint",
+                                  "content": "3 Sep",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "DXt1g",
+                                  "name": "totals axis end",
+                                  "fill": "$faint",
+                                  "content": "9 Oct",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "WUITZ",
+                          "name": "unit chart",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": "$space-2",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "C4Nq3H",
+                              "name": "unit header",
+                              "gap": "$space-4",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "TDUcz",
+                                  "name": "unit label",
+                                  "fill": "$faint",
+                                  "content": "UNIT COSTS",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "600",
+                                  "letterSpacing": 1
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "Vnggu",
+                                  "name": "unit subtitle",
+                                  "fill": "$muted",
+                                  "content": "dollars, since 10 Aug",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "g1spAu",
+                              "name": "unit plot",
+                              "width": "fill_container",
+                              "height": 150,
+                              "layout": "none",
+                              "children": [
+                                {
+                                  "type": "rectangle",
+                                  "id": "Z4k3l",
+                                  "x": 30,
+                                  "y": 150,
+                                  "name": "unit gridline 0",
+                                  "fill": "$border",
+                                  "width": 760,
+                                  "height": 1
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "aOBeB",
+                                  "x": 0,
+                                  "y": 144,
+                                  "name": "unit y label 0",
+                                  "fill": "$faint",
+                                  "textGrowth": "fixed-width",
+                                  "width": 26,
+                                  "content": "0",
+                                  "textAlign": "right",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "rectangle",
+                                  "id": "XwZnQ",
+                                  "x": 30,
+                                  "y": 112.5,
+                                  "name": "unit gridline 50",
+                                  "fill": "$border",
+                                  "width": 760,
+                                  "height": 1
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "ZKwYf",
+                                  "x": 0,
+                                  "y": 106.5,
+                                  "name": "unit y label 50",
+                                  "fill": "$faint",
+                                  "textGrowth": "fixed-width",
+                                  "width": 26,
+                                  "content": "50",
+                                  "textAlign": "right",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "rectangle",
+                                  "id": "AfD9P",
+                                  "x": 30,
+                                  "y": 75,
+                                  "name": "unit gridline 100",
+                                  "fill": "$border",
+                                  "width": 760,
+                                  "height": 1
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "g5tu54",
+                                  "x": 0,
+                                  "y": 69,
+                                  "name": "unit y label 100",
+                                  "fill": "$faint",
+                                  "textGrowth": "fixed-width",
+                                  "width": 26,
+                                  "content": "100",
+                                  "textAlign": "right",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "rectangle",
+                                  "id": "nPvGd",
+                                  "x": 30,
+                                  "y": 37.5,
+                                  "name": "unit gridline 150",
+                                  "fill": "$border",
+                                  "width": 760,
+                                  "height": 1
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "U9JSPW",
+                                  "x": 0,
+                                  "y": 31.5,
+                                  "name": "unit y label 150",
+                                  "fill": "$faint",
+                                  "textGrowth": "fixed-width",
+                                  "width": 26,
+                                  "content": "150",
+                                  "textAlign": "right",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "rectangle",
+                                  "id": "gnjxe",
+                                  "x": 30,
+                                  "y": 0,
+                                  "name": "unit gridline 200",
+                                  "fill": "$border",
+                                  "width": 760,
+                                  "height": 1
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "nzwjU",
+                                  "x": 0,
+                                  "y": -6,
+                                  "name": "unit y label 200",
+                                  "fill": "$faint",
+                                  "textGrowth": "fixed-width",
+                                  "width": 26,
+                                  "content": "200",
+                                  "textAlign": "right",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "path",
+                                  "id": "KYRwS",
+                                  "x": 30,
+                                  "y": 0,
+                                  "name": "unit line perPR",
+                                  "geometry": "M0 149.2l12.7 0.4 12.6 0 12.7-1.3 12.7-0.6 12.6-0.9 12.7-0.4 12.7-0.3 12.6 0 12.7-0.1 12.7-0.5 12.6 0 12.7-1.2 12.7 0 12.6 0.2 12.7-1.9 12.7 0.5 12.6-4.7 12.7 1.5 12.7 0 12.6 0 12.7 0 12.7 0.2 12.6 0 12.7-10.4 12.7-5.1 12.6 1.4 12.7 1.1 12.7 0.1 12.6-0.1 12.7-1 12.7-0.3 12.6 1.1 12.7-0.1 12.7 0 12.6-0.3 12.7 0.2 12.7 1.3 12.6-0.7 12.7-1.4 12.7-0.3 12.6 0 12.7 0.3 12.7 0.6 12.6 1.1 12.7 0.7 12.7 1 12.6 0 12.7 0.1 12.7 0.6 12.6 0.1 12.7 0.3 12.7 0.7 12.6-1 12.7-0.1 12.7-0.5 12.6-0.2 12.7 0.2 12.7 0.5 12.6 0 12.7 0.2",
+                                  "viewBox": [
+                                    0,
+                                    0,
+                                    760,
+                                    150
+                                  ],
+                                  "width": 760,
+                                  "height": 150,
+                                  "stroke": "$data-2",
+                                  "strokeWidth": 2,
+                                  "strokeLinecap": "round"
+                                },
+                                {
+                                  "type": "path",
+                                  "id": "iex7m",
+                                  "x": 30,
+                                  "y": 0,
+                                  "name": "unit line per1kLines",
+                                  "geometry": "M0 145.7l12.7 2.4 12.6 0 12.7-3.7 12.7-2.1 12.6-3.2 12.7 3.5 12.7-0.7 12.6 0 12.7-0.5 12.7-1 12.6 0 12.7-2.7 12.7 0 12.6 0.7 12.7-7.6 12.7 4.2 12.6-10.4 12.7 0.1 12.7 0 12.6 0 12.7-0.1 12.7 5.7 12.6 0 12.7-13.2 12.7-8 12.6 4.2 12.7 5.4 12.7-0.9 12.6 2.3 12.7-0.3 12.7-2.9 12.6 0.6 12.7-0.2 12.7 0 12.6-0.4 12.7-0.6 12.7 2.4 12.6-1.5 12.7-1 12.7-0.1 12.6 3.8 12.7 3.8 12.7 0.6 12.6-0.2 12.7-0.2 12.7 2.6 12.6 0.2 12.7 0.6 12.7 1.1 12.6 0 12.7 0.2 12.7 0.2 12.6 5.7 12.7-0.2 12.7-0.3 12.6 1.2 12.7 0.6 12.7 2 12.6 0.5 12.7 0.6",
+                                  "viewBox": [
+                                    0,
+                                    0,
+                                    760,
+                                    150
+                                  ],
+                                  "width": 760,
+                                  "height": 150,
+                                  "stroke": "$data-3",
+                                  "strokeWidth": 2,
+                                  "strokeLinecap": "round"
+                                },
+                                {
+                                  "type": "path",
+                                  "id": "B0lqSm",
+                                  "x": 30,
+                                  "y": 0,
+                                  "name": "unit line perRelease",
+                                  "geometry": "M0 148.9l12.7 0.6 12.6 0 12.7-1.7 12.7-0.8 12.6-1.3 12.7-0.3 12.7-0.4 12.6 0 12.7 0 12.7-0.6 12.6 0 12.7-1.6 12.7 0 12.6 0.5 12.7-3.4 12.7-0.3 12.6-6.6 12.7 1.2 12.7 0 12.6 0 12.7-0.1 12.7-0.3 12.6 0 12.7-16 12.7-13.2 12.6 1.1 12.7 0.6 12.7 3.2 12.6-3.6 12.7-4.5 12.7-2.9 12.6-6.5 12.7-0.3 12.7 0 12.6-0.7 12.7-5.2 12.7-3 12.6-6.2 12.7-11.4 12.7-1.5 12.6-1.1 12.7 2.8 12.7-0.4 12.6 2.1 12.7-1.1 12.7 0.2 12.6-0.6 12.7-0.1 12.7-0.7 12.6 1.1 12.7 4.2 12.7 6.4 12.6 0.2 12.7-0.6 12.7-1.6 12.6 2 12.7 5 12.7-0.5 12.6 0 12.7 0",
+                                  "viewBox": [
+                                    0,
+                                    0,
+                                    760,
+                                    150
+                                  ],
+                                  "width": 760,
+                                  "height": 150,
+                                  "stroke": "$data-4",
+                                  "strokeWidth": 2,
+                                  "strokeLinecap": "round"
+                                },
+                                {
+                                  "type": "path",
+                                  "id": "VOfzg",
+                                  "x": 30,
+                                  "y": 0,
+                                  "name": "unit line perHour",
+                                  "geometry": "M0 24.8l12.7 0 12.6 0 12.7 42 12.7 1.5 12.6 1.2 12.7 0.5 12.7 0.2 12.6 0 12.7 0.3 12.7 0.1 12.6 0 12.7 0.8 12.7 0.1 12.6 1.1 12.7-1.4 12.7-1.5 12.6-2.1 12.7 0.1 12.7 0 12.6 0 12.7 0.1 12.7 2.1 12.6 0 12.7 21.1 12.7 3.4 12.6 0.3 12.7 2.4 12.7 1.1 12.6 1.1 12.7 0.5 12.7 0.3 12.6 0.1 12.7-0.1 12.7 0 12.6 0 12.7 0 12.7 1.4 12.6 0 12.7-0.4 12.7 0 12.6 0.4 12.7 0.7 12.7 0.1 12.6 0.4 12.7 0.2 12.7 0.5 12.6 0.2 12.7 0 12.7 1.7 12.6 0.2 12.7 0.4 12.7 0.4 12.6-0.1 12.7 0.1 12.7 0 12.6 0.1 12.7 0.5 12.7 0.9 12.6 1 12.7 0",
+                                  "viewBox": [
+                                    0,
+                                    0,
+                                    760,
+                                    150
+                                  ],
+                                  "width": 760,
+                                  "height": 150,
+                                  "stroke": "$data-1",
+                                  "strokeWidth": 2,
+                                  "strokeLinecap": "round"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "K4rSf",
+                                  "x": 800,
+                                  "y": 122,
+                                  "name": "unit end label perPR",
+                                  "fill": "$data-2",
+                                  "textGrowth": "fixed-width",
+                                  "width": 240,
+                                  "content": "$/PR  $26.40",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "v3B2eS",
+                                  "x": 800,
+                                  "y": 138,
+                                  "name": "unit end label per1kLines",
+                                  "fill": "$data-3",
+                                  "textGrowth": "fixed-width",
+                                  "width": 240,
+                                  "content": "$/1k lines  $14.77",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "Wsbr8",
+                                  "x": 800,
+                                  "y": 72.8,
+                                  "name": "unit end label perRelease",
+                                  "fill": "$data-4",
+                                  "textGrowth": "fixed-width",
+                                  "width": 240,
+                                  "content": "$/release  $92.03",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "BWYXz",
+                                  "x": 800,
+                                  "y": 100.6,
+                                  "name": "unit end label perHour",
+                                  "fill": "$data-1",
+                                  "textGrowth": "fixed-width",
+                                  "width": 240,
+                                  "content": "$/hour  $54.92",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "ellipse",
+                                  "id": "sTnsm",
+                                  "x": 546.3,
+                                  "y": 122.6,
+                                  "name": "unit tooltip point",
+                                  "fill": "$data-2",
+                                  "width": 6,
+                                  "height": 6
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "Aomgq",
+                                  "x": 561.3,
+                                  "y": 133.6,
+                                  "name": "unit tooltip example",
+                                  "fill": "$surface",
+                                  "cornerRadius": 2,
+                                  "stroke": "$border",
+                                  "strokeWidth": 1,
+                                  "strokeAlignment": "inner",
+                                  "layout": "vertical",
+                                  "gap": 2,
+                                  "padding": [
+                                    5,
+                                    7
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "St8Rl",
+                                      "name": "unit tooltip day",
+                                      "fill": "$text",
+                                      "content": "20 Sep",
+                                      "fontFamily": "JetBrains Mono",
+                                      "fontSize": 12,
+                                      "fontWeight": "600"
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "GXp7X",
+                                      "name": "unit tooltip values",
+                                      "fill": "$muted",
+                                      "textGrowth": "fixed-width",
+                                      "width": 195,
+                                      "content": "$32.51/PR · $40.09/1k lines · $116/release · $64.63/hour",
+                                      "fontFamily": "JetBrains Mono",
+                                      "fontSize": 12,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "K6ASD5",
+                              "name": "unit axis",
+                              "width": "fill_container",
+                              "stroke": "$border",
+                              "strokeWidth": {
+                                "top": 1
+                              },
+                              "strokeAlignment": "inner",
+                              "strokeLinejoin": "round",
+                              "padding": [
+                                4,
+                                0,
+                                0,
+                                0
+                              ],
+                              "justifyContent": "space_between",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "b8fCPl",
+                                  "name": "unit axis start",
+                                  "fill": "$faint",
+                                  "content": "10 Aug",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "H99I9l",
+                                  "name": "unit axis end",
+                                  "fill": "$faint",
+                                  "content": "9 Oct",
+                                  "fontFamily": "JetBrains Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "Xyzro",
+                          "name": "lifetime note",
+                          "fill": "$muted",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Spend before early September is mostly missing from the record, so the August unit costs read low.",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
                     }
                   ]
                 }
@@ -4478,6 +5351,737 @@
                   "fontFamily": "JetBrains Mono",
                   "fontSize": 12,
                   "fontWeight": "normal"
+                },
+                {
+                  "type": "frame",
+                  "id": "Z49PZq",
+                  "name": "lifetime",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": "$space-5",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "z8mzcO",
+                      "name": "totals chart",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": "$space-2",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "NPfOY",
+                          "name": "totals header",
+                          "gap": "$space-4",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "VKx5C",
+                              "name": "totals label",
+                              "fill": "$faint",
+                              "content": "TOTALS",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "600",
+                              "letterSpacing": 1
+                            },
+                            {
+                              "type": "text",
+                              "id": "tA0KR",
+                              "name": "totals subtitle",
+                              "fill": "$muted",
+                              "content": "growth since 3 Sep, log scale",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "e3T8zD",
+                          "name": "totals plot",
+                          "width": "fill_container",
+                          "height": 110,
+                          "layout": "none",
+                          "children": [
+                            {
+                              "type": "rectangle",
+                              "id": "O3GYP",
+                              "x": 30,
+                              "y": 110,
+                              "name": "totals gridline 1",
+                              "fill": "$border",
+                              "width": 300,
+                              "height": 1
+                            },
+                            {
+                              "type": "text",
+                              "id": "bZ4Ni",
+                              "x": 0,
+                              "y": 104,
+                              "name": "totals y label 1",
+                              "fill": "$faint",
+                              "textGrowth": "fixed-width",
+                              "width": 26,
+                              "content": "×1",
+                              "textAlign": "right",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "rectangle",
+                              "id": "U4aib",
+                              "x": 30,
+                              "y": 90.5,
+                              "name": "totals gridline 2",
+                              "fill": "$border",
+                              "width": 300,
+                              "height": 1
+                            },
+                            {
+                              "type": "text",
+                              "id": "EbrgI",
+                              "x": 0,
+                              "y": 84.5,
+                              "name": "totals y label 2",
+                              "fill": "$faint",
+                              "textGrowth": "fixed-width",
+                              "width": 26,
+                              "content": "×2",
+                              "textAlign": "right",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "rectangle",
+                              "id": "DZh7i",
+                              "x": 30,
+                              "y": 64.7,
+                              "name": "totals gridline 5",
+                              "fill": "$border",
+                              "width": 300,
+                              "height": 1
+                            },
+                            {
+                              "type": "text",
+                              "id": "XW64j",
+                              "x": 0,
+                              "y": 58.7,
+                              "name": "totals y label 5",
+                              "fill": "$faint",
+                              "textGrowth": "fixed-width",
+                              "width": 26,
+                              "content": "×5",
+                              "textAlign": "right",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "rectangle",
+                              "id": "USZsu",
+                              "x": 30,
+                              "y": 45.3,
+                              "name": "totals gridline 10",
+                              "fill": "$border",
+                              "width": 300,
+                              "height": 1
+                            },
+                            {
+                              "type": "text",
+                              "id": "cSF5g",
+                              "x": 0,
+                              "y": 39.3,
+                              "name": "totals y label 10",
+                              "fill": "$faint",
+                              "textGrowth": "fixed-width",
+                              "width": 26,
+                              "content": "×10",
+                              "textAlign": "right",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "rectangle",
+                              "id": "zNgCL",
+                              "x": 30,
+                              "y": 25.8,
+                              "name": "totals gridline 20",
+                              "fill": "$border",
+                              "width": 300,
+                              "height": 1
+                            },
+                            {
+                              "type": "text",
+                              "id": "V6Ysgg",
+                              "x": 0,
+                              "y": 19.8,
+                              "name": "totals y label 20",
+                              "fill": "$faint",
+                              "textGrowth": "fixed-width",
+                              "width": 26,
+                              "content": "×20",
+                              "textAlign": "right",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "rectangle",
+                              "id": "tjAMK",
+                              "x": 30,
+                              "y": 0,
+                              "name": "totals gridline 50",
+                              "fill": "$border",
+                              "width": 300,
+                              "height": 1
+                            },
+                            {
+                              "type": "text",
+                              "id": "upM1x",
+                              "x": 0,
+                              "y": -6,
+                              "name": "totals y label 50",
+                              "fill": "$faint",
+                              "textGrowth": "fixed-width",
+                              "width": 26,
+                              "content": "×50",
+                              "textAlign": "right",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "path",
+                              "id": "ljHB5",
+                              "x": 30,
+                              "y": 0,
+                              "name": "totals line spend",
+                              "geometry": "M0 110l8.3-12.7 8.4-0.8 8.3-2.3 8.3-3.6 8.4-3.4 8.3-3.7 8.3-4.4 8.4-4.3 8.3-0.1 8.3 0 8.4-0.3 8.3-2.4 8.3-2.9 8.4-2.5 8.3-4.1 8.3-0.5 8.4-1.1 8.3-1.4 8.3-0.1 8.4-0.7 8.3-0.4 8.3-0.6 8.4-0.2 8.3 0 8.3-1.5 8.4-0.3 8.3-0.4 8.3-0.4 8.4-2.5 8.3-0.2 8.3-0.6 8.4-0.7 8.3-0.6 8.3-0.7 8.4-0.8 8.3 0",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                110
+                              ],
+                              "width": 300,
+                              "height": 110,
+                              "stroke": "$data-1",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "wQ9ct",
+                              "x": 30,
+                              "y": 0,
+                              "name": "totals line prs",
+                              "geometry": "M0 110l8.3-6.5 8.4-2.4 8.3-3.5 8.3-3.8 8.4-3.3 8.3-2.5 8.3-4 8.4-5.6 8.3 0 8.3 0 8.4 0 8.3-2.6 8.3-4.5 8.4-1.6 8.3-2.3 8.3-0.3 8.4-1.1 8.3-1.7 8.3-0.8 8.4-2.1 8.3-1.3 8.3-1.8 8.4-0.2 8.3-0.2 8.3-2.3 8.4-0.5 8.3-0.8 8.3-1.4 8.4-1.1 8.3 0 8.3 0 8.4-0.4 8.3-0.9 8.3-1.3 8.4-0.9 8.3-0.2",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                110
+                              ],
+                              "width": 300,
+                              "height": 110,
+                              "stroke": "$data-2",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "deZiz",
+                              "x": 30,
+                              "y": 0,
+                              "name": "totals line lines",
+                              "geometry": "M0 110l8.3-6.7 8.4-3.8 8.3-6.7 8.3-2.9 8.4-5.4 8.3-3.5 8.3-1.8 8.4-4.7 8.3 0 8.3 0 8.4 0 8.3-1.9 8.3-5 8.4-1.2 8.3-3.2 8.3-0.4 8.4-4.5 8.3-5.1 8.3-0.7 8.4-0.6 8.3-0.1 8.3-3.5 8.4-0.5 8.3-0.7 8.3-3 8.4-0.2 8.3-0.7 8.3-0.7 8.4-11.2 8.3 0 8.3 0 8.4-2.9 8.3-1.7 8.3-5.1 8.4-2 8.3-1.4",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                110
+                              ],
+                              "width": 300,
+                              "height": 110,
+                              "stroke": "$data-3",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "ng2WC",
+                              "x": 30,
+                              "y": 0,
+                              "name": "totals line releases",
+                              "geometry": "M0 110l8.3-3.1 8.4-1.5 8.3-2.6 8.3-5.8 8.4-1 8.3-1 8.3-2.8 8.4-0.9 8.3 0 8.3 0 8.4 0 8.3 0 8.3-1.6 8.4 0 8.3 0 8.3 0 8.4-0.8 8.3-2.2 8.3 0 8.4-1.5 8.3 0 8.3-0.6 8.4 0 8.3 0 8.3-1.3 8.4-0.7 8.3-1.8 8.3-2.8 8.4-2.5 8.3 0 8.3 0 8.4-1.4 8.3-2.7 8.3-0.4 8.4-0.8 8.3 0",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                110
+                              ],
+                              "width": 300,
+                              "height": 110,
+                              "stroke": "$data-4",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "wSZAM",
+                          "name": "totals axis",
+                          "width": "fill_container",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "top": 1
+                          },
+                          "strokeAlignment": "inner",
+                          "strokeLinejoin": "round",
+                          "padding": [
+                            4,
+                            0,
+                            0,
+                            0
+                          ],
+                          "justifyContent": "space_between",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "w9k2lA",
+                              "name": "totals axis start",
+                              "fill": "$faint",
+                              "content": "3 Sep",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "RQSKE",
+                              "name": "totals axis end",
+                              "fill": "$faint",
+                              "content": "9 Oct",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "BMICq",
+                          "name": "totals legend",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 2,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "t8EUi",
+                              "name": "totals legend spend",
+                              "fill": "$data-1",
+                              "content": "×8.8 spend",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "L3ViQD",
+                              "name": "totals legend prs",
+                              "fill": "$data-2",
+                              "content": "×9.0 PRs",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "cwufy",
+                              "name": "totals legend lines",
+                              "fill": "$data-3",
+                              "content": "×26.2 lines",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "WQGuA",
+                              "name": "totals legend releases",
+                              "fill": "$data-4",
+                              "content": "×4.1 releases",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "M89nRn",
+                      "name": "unit chart",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": "$space-2",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "fb2BG",
+                          "name": "unit header",
+                          "gap": "$space-4",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "VprHS",
+                              "name": "unit label",
+                              "fill": "$faint",
+                              "content": "UNIT COSTS",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "600",
+                              "letterSpacing": 1
+                            },
+                            {
+                              "type": "text",
+                              "id": "B07B5",
+                              "name": "unit subtitle",
+                              "fill": "$muted",
+                              "content": "dollars, since 10 Aug",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "CDBlS",
+                          "name": "unit plot",
+                          "width": "fill_container",
+                          "height": 110,
+                          "layout": "none",
+                          "children": [
+                            {
+                              "type": "rectangle",
+                              "id": "TJavt",
+                              "x": 30,
+                              "y": 110,
+                              "name": "unit gridline 0",
+                              "fill": "$border",
+                              "width": 300,
+                              "height": 1
+                            },
+                            {
+                              "type": "text",
+                              "id": "qMZiR",
+                              "x": 0,
+                              "y": 104,
+                              "name": "unit y label 0",
+                              "fill": "$faint",
+                              "textGrowth": "fixed-width",
+                              "width": 26,
+                              "content": "0",
+                              "textAlign": "right",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "rectangle",
+                              "id": "bXgbf",
+                              "x": 30,
+                              "y": 82.5,
+                              "name": "unit gridline 50",
+                              "fill": "$border",
+                              "width": 300,
+                              "height": 1
+                            },
+                            {
+                              "type": "text",
+                              "id": "IQ43H",
+                              "x": 0,
+                              "y": 76.5,
+                              "name": "unit y label 50",
+                              "fill": "$faint",
+                              "textGrowth": "fixed-width",
+                              "width": 26,
+                              "content": "50",
+                              "textAlign": "right",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "rectangle",
+                              "id": "JbGKx",
+                              "x": 30,
+                              "y": 55,
+                              "name": "unit gridline 100",
+                              "fill": "$border",
+                              "width": 300,
+                              "height": 1
+                            },
+                            {
+                              "type": "text",
+                              "id": "WVgUm",
+                              "x": 0,
+                              "y": 49,
+                              "name": "unit y label 100",
+                              "fill": "$faint",
+                              "textGrowth": "fixed-width",
+                              "width": 26,
+                              "content": "100",
+                              "textAlign": "right",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "rectangle",
+                              "id": "aaybX",
+                              "x": 30,
+                              "y": 27.5,
+                              "name": "unit gridline 150",
+                              "fill": "$border",
+                              "width": 300,
+                              "height": 1
+                            },
+                            {
+                              "type": "text",
+                              "id": "U8eVo7",
+                              "x": 0,
+                              "y": 21.5,
+                              "name": "unit y label 150",
+                              "fill": "$faint",
+                              "textGrowth": "fixed-width",
+                              "width": 26,
+                              "content": "150",
+                              "textAlign": "right",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "rectangle",
+                              "id": "fs7hS",
+                              "x": 30,
+                              "y": 0,
+                              "name": "unit gridline 200",
+                              "fill": "$border",
+                              "width": 300,
+                              "height": 1
+                            },
+                            {
+                              "type": "text",
+                              "id": "OZJo6",
+                              "x": 0,
+                              "y": -6,
+                              "name": "unit y label 200",
+                              "fill": "$faint",
+                              "textGrowth": "fixed-width",
+                              "width": 26,
+                              "content": "200",
+                              "textAlign": "right",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "path",
+                              "id": "Qi8Ng",
+                              "x": 30,
+                              "y": 0,
+                              "name": "unit line perPR",
+                              "geometry": "M0 109.4l5 0.3 5 0 5-0.9 5-0.5 5-0.7 5-0.2 5-0.2 5 0 5-0.1 5-0.4 5 0 5-0.9 5 0 5 0.2 5-1.4 5 0.3 5-3.4 5 1.1 5 0 5 0 5 0 5 0.2 5 0 5-7.7 5-3.7 5 1 5 0.8 5 0.1 5-0.1 5-0.7 5-0.3 5 0.9 5-0.1 5 0 5-0.2 5 0.1 5 1 5-0.6 5-1 5-0.2 5 0 5 0.2 5 0.5 5 0.8 5 0.5 5 0.7 5 0 5 0.1 5 0.4 5 0.1 5 0.2 5 0.5 5-0.7 5-0.1 5-0.3 5-0.2 5 0.2 5 0.4 5 0 5 0.1",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                110
+                              ],
+                              "width": 300,
+                              "height": 110,
+                              "stroke": "$data-2",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "k499f",
+                              "x": 30,
+                              "y": 0,
+                              "name": "unit line per1kLines",
+                              "geometry": "M0 106.8l5 1.8 5 0 5-2.7 5-1.5 5-2.4 5 2.6 5-0.5 5 0 5-0.4 5-0.8 5 0 5-1.9 5 0 5 0.5 5-5.6 5 3.1 5-7.6 5 0 5 0 5 0 5 0 5 4.2 5 0 5-9.8 5-5.8 5 3.1 5 4 5-0.7 5 1.6 5-0.1 5-2.2 5 0.5 5-0.2 5 0 5-0.3 5-0.4 5 1.8 5-1.2 5-0.7 5 0 5 2.8 5 2.7 5 0.4 5-0.1 5-0.1 5 1.8 5 0.2 5 0.4 5 0.8 5 0 5 0.2 5 0.1 5 4.2 5-0.1 5-0.2 5 0.9 5 0.4 5 1.5 5 0.4 5 0.4",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                110
+                              ],
+                              "width": 300,
+                              "height": 110,
+                              "stroke": "$data-3",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "PnRrd",
+                              "x": 30,
+                              "y": 0,
+                              "name": "unit line perRelease",
+                              "geometry": "M0 109.2l5 0.5 5 0 5-1.3 5-0.6 5-1 5-0.2 5-0.3 5 0 5 0.1 5-0.5 5 0 5-1.1 5-0.1 5 0.4 5-2.5 5-0.2 5-4.9 5 0.9 5 0 5 0 5 0 5-0.3 5 0 5-11.8 5-9.6 5 0.8 5 0.4 5 2.4 5-2.6 5-3.3 5-2.2 5-4.7 5-0.3 5 0 5-0.5 5-3.8 5-2.1 5-4.6 5-8.4 5-1.1 5-0.8 5 2 5-0.2 5 1.5 5-0.8 5 0.2 5-0.5 5-0.1 5-0.5 5 0.8 5 3.1 5 4.7 5 0.2 5-0.5 5-1.2 5 1.5 5 3.7 5-0.4 5 0 5 0",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                110
+                              ],
+                              "width": 300,
+                              "height": 110,
+                              "stroke": "$data-4",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "k14dLJ",
+                              "x": 30,
+                              "y": 0,
+                              "name": "unit line perHour",
+                              "geometry": "M0 18.2l5 0 5 0 5 30.8 5 1.1 5 0.9 5 0.4 5 0.1 5 0 5 0.2 5 0.1 5 0 5 0.5 5 0.1 5 0.8 5-1 5-1.1 5-1.6 5 0.1 5 0 5 0 5 0.1 5 1.6 5 0 5 15.4 5 2.5 5 0.3 5 1.7 5 0.8 5 0.8 5 0.4 5 0.2 5 0 5 0 5 0 5 0 5 0 5 1 5 0 5-0.2 5-0.1 5 0.4 5 0.5 5 0 5 0.3 5 0.1 5 0.4 5 0.2 5 0 5 1.2 5 0.2 5 0.2 5 0.3 5 0 5 0 5 0 5 0.1 5 0.4 5 0.6 5 0.8 5 0",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                110
+                              ],
+                              "width": 300,
+                              "height": 110,
+                              "stroke": "$data-1",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "IvcJV",
+                          "name": "unit axis",
+                          "width": "fill_container",
+                          "stroke": "$border",
+                          "strokeWidth": {
+                            "top": 1
+                          },
+                          "strokeAlignment": "inner",
+                          "strokeLinejoin": "round",
+                          "padding": [
+                            4,
+                            0,
+                            0,
+                            0
+                          ],
+                          "justifyContent": "space_between",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "p3WzN",
+                              "name": "unit axis start",
+                              "fill": "$faint",
+                              "content": "10 Aug",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "EMSDb",
+                              "name": "unit axis end",
+                              "fill": "$faint",
+                              "content": "9 Oct",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ZM738",
+                          "name": "unit legend",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 2,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "dNisC",
+                              "name": "unit legend perPR",
+                              "fill": "$data-2",
+                              "content": "$/PR  $26.40",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "V3GDr1",
+                              "name": "unit legend per1kLines",
+                              "fill": "$data-3",
+                              "content": "$/1k lines  $14.77",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "WYOFA",
+                              "name": "unit legend perRelease",
+                              "fill": "$data-4",
+                              "content": "$/release  $92.03",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "Is6bE",
+                              "name": "unit legend perHour",
+                              "fill": "$data-1",
+                              "content": "$/hour  $54.92",
+                              "fontFamily": "JetBrains Mono",
+                              "fontSize": 12,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "ZBJCF",
+                      "name": "lifetime note",
+                      "fill": "$muted",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Spend before early September is mostly missing from the record, so the August unit costs read low.",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
                 }
               ]
             }
@@ -17495,6 +19099,672 @@
               ]
             }
           ]
+        },
+        {
+          "type": "frame",
+          "id": "UsAf1",
+          "name": "LIFETIME",
+          "reusable": true,
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": "$space-5",
+          "children": [
+            {
+              "type": "frame",
+              "id": "lCflu",
+              "name": "TOTALS · COLOUR KEY block",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 2,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "WcuUN",
+                  "name": "h TOTALS · COLOUR KEY",
+                  "fill": "$faint",
+                  "content": "TOTALS · COLOUR KEY",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 12,
+                  "fontWeight": "600",
+                  "letterSpacing": 1
+                },
+                {
+                  "type": "frame",
+                  "id": "UOacU",
+                  "name": "colour key spend",
+                  "width": "fill_container",
+                  "height": 24,
+                  "gap": "$space-3",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "rectangle",
+                      "cornerRadius": 1,
+                      "id": "H4UG6",
+                      "name": "swatch",
+                      "fill": "$data-1",
+                      "width": 20,
+                      "height": 10
+                    },
+                    {
+                      "type": "text",
+                      "id": "Jsx6c",
+                      "name": "word",
+                      "fill": "$data-1",
+                      "textGrowth": "fixed-width",
+                      "width": 90,
+                      "content": "spend",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "X4MxYP",
+                      "name": "meaning",
+                      "fill": "$faint",
+                      "content": "lifetime spend over its 3 Sep value",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "qPZU4",
+                  "name": "colour key prs",
+                  "width": "fill_container",
+                  "height": 24,
+                  "gap": "$space-3",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "rectangle",
+                      "cornerRadius": 1,
+                      "id": "VAjWs",
+                      "name": "swatch",
+                      "fill": "$data-2",
+                      "width": 20,
+                      "height": 10
+                    },
+                    {
+                      "type": "text",
+                      "id": "qnz4x",
+                      "name": "word",
+                      "fill": "$data-2",
+                      "textGrowth": "fixed-width",
+                      "width": 90,
+                      "content": "PRs",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "BHbbP",
+                      "name": "meaning",
+                      "fill": "$faint",
+                      "content": "merged pull requests over their 3 Sep count",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "b9tVD",
+                  "name": "colour key lines",
+                  "width": "fill_container",
+                  "height": 24,
+                  "gap": "$space-3",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "rectangle",
+                      "cornerRadius": 1,
+                      "id": "X5MzT",
+                      "name": "swatch",
+                      "fill": "$data-3",
+                      "width": 20,
+                      "height": 10
+                    },
+                    {
+                      "type": "text",
+                      "id": "zLhp8",
+                      "name": "word",
+                      "fill": "$data-3",
+                      "textGrowth": "fixed-width",
+                      "width": 90,
+                      "content": "lines",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "B30rBN",
+                      "name": "meaning",
+                      "fill": "$faint",
+                      "content": "merged lines over their 3 Sep count",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "C9b6oW",
+                  "name": "colour key releases",
+                  "width": "fill_container",
+                  "height": 24,
+                  "gap": "$space-3",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "rectangle",
+                      "cornerRadius": 1,
+                      "id": "X1gYM",
+                      "name": "swatch",
+                      "fill": "$data-4",
+                      "width": 20,
+                      "height": 10
+                    },
+                    {
+                      "type": "text",
+                      "id": "UeoxX",
+                      "name": "word",
+                      "fill": "$data-4",
+                      "textGrowth": "fixed-width",
+                      "width": 90,
+                      "content": "releases",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Z0GfHx",
+                      "name": "meaning",
+                      "fill": "$faint",
+                      "content": "releases over their 3 Sep count",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "CjGQn",
+                  "name": "key note",
+                  "fill": "$muted",
+                  "content": "×1 = the 3 Sep value; the tooltip gives the real totals",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "di6jN",
+              "name": "UNIT COSTS · COLOUR KEY block",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 2,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "UYkyK",
+                  "name": "h UNIT COSTS · COLOUR KEY",
+                  "fill": "$faint",
+                  "content": "UNIT COSTS · COLOUR KEY",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 12,
+                  "fontWeight": "600",
+                  "letterSpacing": 1
+                },
+                {
+                  "type": "frame",
+                  "id": "LjPPj",
+                  "name": "colour key perPR",
+                  "width": "fill_container",
+                  "height": 24,
+                  "gap": "$space-3",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "rectangle",
+                      "cornerRadius": 1,
+                      "id": "QRH4L",
+                      "name": "swatch",
+                      "fill": "$data-2",
+                      "width": 20,
+                      "height": 10
+                    },
+                    {
+                      "type": "text",
+                      "id": "B3qb5",
+                      "name": "word",
+                      "fill": "$data-2",
+                      "textGrowth": "fixed-width",
+                      "width": 90,
+                      "content": "$/PR",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "BAODj",
+                      "name": "meaning",
+                      "fill": "$faint",
+                      "content": "lifetime spend over merged pull requests",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "U0gfU",
+                  "name": "colour key per1kLines",
+                  "width": "fill_container",
+                  "height": 24,
+                  "gap": "$space-3",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "rectangle",
+                      "cornerRadius": 1,
+                      "id": "q38y13",
+                      "name": "swatch",
+                      "fill": "$data-3",
+                      "width": 20,
+                      "height": 10
+                    },
+                    {
+                      "type": "text",
+                      "id": "BcVle",
+                      "name": "word",
+                      "fill": "$data-3",
+                      "textGrowth": "fixed-width",
+                      "width": 90,
+                      "content": "$/1k lines",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "C6p9y3",
+                      "name": "meaning",
+                      "fill": "$faint",
+                      "content": "lifetime spend over merged lines, per 1,000",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "AULxu",
+                  "name": "colour key perRelease",
+                  "width": "fill_container",
+                  "height": 24,
+                  "gap": "$space-3",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "rectangle",
+                      "cornerRadius": 1,
+                      "id": "qbQZp",
+                      "name": "swatch",
+                      "fill": "$data-4",
+                      "width": 20,
+                      "height": 10
+                    },
+                    {
+                      "type": "text",
+                      "id": "qLfwb",
+                      "name": "word",
+                      "fill": "$data-4",
+                      "textGrowth": "fixed-width",
+                      "width": 90,
+                      "content": "$/release",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "C0stp8",
+                      "name": "meaning",
+                      "fill": "$faint",
+                      "content": "lifetime spend over releases",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "QtORI",
+                  "name": "colour key perHour",
+                  "width": "fill_container",
+                  "height": 24,
+                  "gap": "$space-3",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "rectangle",
+                      "cornerRadius": 1,
+                      "id": "FxkZa",
+                      "name": "swatch",
+                      "fill": "$data-1",
+                      "width": 20,
+                      "height": 10
+                    },
+                    {
+                      "type": "text",
+                      "id": "qoAYA",
+                      "name": "word",
+                      "fill": "$data-1",
+                      "textGrowth": "fixed-width",
+                      "width": 90,
+                      "content": "$/hour",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "jYoU4",
+                      "name": "meaning",
+                      "fill": "$faint",
+                      "content": "measured spend over model hours",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "N1Lmq",
+              "name": "SHORTHAND block",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 2,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "XM8TA",
+                  "name": "h SHORTHAND",
+                  "fill": "$faint",
+                  "content": "LIFETIME · SHORTHAND",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 12,
+                  "fontWeight": "600",
+                  "letterSpacing": 1
+                },
+                {
+                  "type": "text",
+                  "id": "s8GLU7",
+                  "name": "shorthand rule",
+                  "fill": "$muted",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "A count of 1,000 or over prints as k, 1,000,000 or over as m, one decimal under ten, else a whole number. A unit cost prints two decimals under $100, a whole dollar at $100 or over.",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "frame",
+                  "id": "IYvZQ",
+                  "name": "shorthand row 244",
+                  "width": "fill_container",
+                  "height": 20,
+                  "gap": "$space-3",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "rNw1V",
+                      "name": "raw",
+                      "fill": "$faint",
+                      "textGrowth": "fixed-width",
+                      "width": 100,
+                      "content": "244",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "hcITG",
+                      "name": "arrow",
+                      "fill": "$faint",
+                      "content": "->",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "cFv02",
+                      "name": "out",
+                      "fill": "$text",
+                      "content": "244 PRs",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "RBRpq",
+                  "name": "shorthand row 6,442.02",
+                  "width": "fill_container",
+                  "height": 20,
+                  "gap": "$space-3",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "bZTGr",
+                      "name": "raw",
+                      "fill": "$faint",
+                      "textGrowth": "fixed-width",
+                      "width": 100,
+                      "content": "6,442.02",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "K7sk1",
+                      "name": "arrow",
+                      "fill": "$faint",
+                      "content": "->",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "d9N9e",
+                      "name": "out",
+                      "fill": "$text",
+                      "content": "$6.4k spend",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "lczvD",
+                  "name": "shorthand row 436,046",
+                  "width": "fill_container",
+                  "height": 20,
+                  "gap": "$space-3",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "q6ZH6x",
+                      "name": "raw",
+                      "fill": "$faint",
+                      "textGrowth": "fixed-width",
+                      "width": 100,
+                      "content": "436,046",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "oQAxJ",
+                      "name": "arrow",
+                      "fill": "$faint",
+                      "content": "->",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "d9FPbt",
+                      "name": "out",
+                      "fill": "$text",
+                      "content": "436k lines",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "J2bpB",
+                  "name": "shorthand row 70",
+                  "width": "fill_container",
+                  "height": 20,
+                  "gap": "$space-3",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "SpW1z",
+                      "name": "raw",
+                      "fill": "$faint",
+                      "textGrowth": "fixed-width",
+                      "width": 100,
+                      "content": "70",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "GUWIL",
+                      "name": "arrow",
+                      "fill": "$faint",
+                      "content": "->",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Z1JzW",
+                      "name": "out",
+                      "fill": "$text",
+                      "content": "70 releases",
+                      "fontFamily": "JetBrains Mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "IFdR1",
+              "name": "LIFETIME NOTE block",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 2,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "YbLmN",
+                  "name": "h LIFETIME NOTE",
+                  "fill": "$faint",
+                  "content": "LIFETIME · NOTE",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 12,
+                  "fontWeight": "600",
+                  "letterSpacing": 1
+                },
+                {
+                  "type": "text",
+                  "id": "R8MSaj",
+                  "name": "lifetime note",
+                  "fill": "$muted",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Spend before early September is mostly missing from the record, so the August unit costs read low.",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "qxe2p",
+              "name": "LIFETIME EMPTY block",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 2,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "Y2Mm7r",
+                  "name": "h LIFETIME EMPTY",
+                  "fill": "$faint",
+                  "content": "LIFETIME · EMPTY",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 12,
+                  "fontWeight": "600",
+                  "letterSpacing": 1
+                },
+                {
+                  "type": "text",
+                  "id": "N1EJB",
+                  "name": "lifetime empty",
+                  "fill": "$muted",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "No spend recorded yet: the two charts need a first spend day to draw from.",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -25354,6 +27624,74 @@
         },
         {
           "value": "#b8641f",
+          "theme": {
+            "theme": "light"
+          }
+        }
+      ]
+    },
+    "data-1": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#04c7a0",
+          "theme": {
+            "theme": "dark"
+          }
+        },
+        {
+          "value": "#11866c",
+          "theme": {
+            "theme": "light"
+          }
+        }
+      ]
+    },
+    "data-2": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f7ab07",
+          "theme": {
+            "theme": "dark"
+          }
+        },
+        {
+          "value": "#9c6d1a",
+          "theme": {
+            "theme": "light"
+          }
+        }
+      ]
+    },
+    "data-3": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#5582f7",
+          "theme": {
+            "theme": "dark"
+          }
+        },
+        {
+          "value": "#446fe2",
+          "theme": {
+            "theme": "light"
+          }
+        }
+      ]
+    },
+    "data-4": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#fe2497",
+          "theme": {
+            "theme": "dark"
+          }
+        },
+        {
+          "value": "#e40784",
           "theme": {
             "theme": "light"
           }

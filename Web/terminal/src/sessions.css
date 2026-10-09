@@ -76,6 +76,17 @@
   --ui-warning: light-dark(#8a6415, #e9c46a);  /* needs you */
   --ui-danger: light-dark(#b0472c, #e76f51);   /* failed */
   --ui-caution: light-dark(#b8641f, #f4a261);  /* the quota fill and its percentage at 80 % and over */
+
+  /* The data palette (`design/foundation.md`, "Data palette"; Set 3,
+     Chartered by `corpus/02-direction.md`): four colours for the TOTALS and
+     UNIT COSTS chart lines and their end labels, one slot per measure so
+     the same colour names the same thing on both charts. Marks only, like
+     the five above: a chart line's stroke and its end label's background,
+     clipped to the glyph, never a border or a fill behind text. */
+  --ui-data-1: light-dark(#11866c, #04c7a0);   /* spend, $/hour */
+  --ui-data-2: light-dark(#9c6d1a, #f7ab07);   /* PRs, $/PR */
+  --ui-data-3: light-dark(#446fe2, #5582f7);   /* lines, $/1k lines */
+  --ui-data-4: light-dark(#e40784, #fe2497);   /* releases, $/release */
 }
 @media (min-width: 768px) {
   :root { --line-h: 28px; }
@@ -141,10 +152,16 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .mark.pending { background: var(--ui-text-faint); }
 /* The quota's fill and percentage at 80 % and over. */
 .mark.caution { background: var(--ui-caution); }
+/* The data palette: a TOTALS or UNIT COSTS end label, one slot per measure. */
+.mark.data-1 { background: var(--ui-data-1); }
+.mark.data-2 { background: var(--ui-data-2); }
+.mark.data-3 { background: var(--ui-data-3); }
+.mark.data-4 { background: var(--ui-data-4); }
 /* The clip comes after the colours and at their specificity, because the
    `background` shorthand above resets it, and a mark whose background is
    not clipped to its glyph paints a box. */
-.mark.running, .mark.attention, .mark.failed, .mark.idle, .mark.done, .mark.pending, .mark.unknown, .mark.caution {
+.mark.running, .mark.attention, .mark.failed, .mark.idle, .mark.done, .mark.pending, .mark.unknown, .mark.caution,
+.mark.data-1, .mark.data-2, .mark.data-3, .mark.data-4 {
   -webkit-background-clip: text; background-clip: text;
 }
 /* The empty mark cell of a heading with nothing to say: the cell keeps the
@@ -336,6 +353,70 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
 .yield-rate { font-variant-numeric: tabular-nums; }
 .yield-noun-short { display: none; }
 
+/* The two lifetime charts under the tiles (`value-lifetime`, capability 4;
+   the Dashboard frames): TOTALS (growth since the base day, a log axis)
+   and UNIT COSTS (dollars, since the first spend day). Each chart is an
+   inline SVG whose four lines are marks, so `stroke` takes the data
+   palette, never `color`; the end labels sit beside the chart as marks too,
+   stacked by `stackEndLabels` and positioned with `top`, which a phone
+   drops so they stack below the chart in document order instead. A
+   transparent hit layer takes keyboard and pointer focus for the tooltip;
+   it carries no text of its own; the chart's one `aria-label` sentence is
+   what a screen reader gets without it. */
+.lifetime { margin: var(--space-4) 0 0; }
+.lifetime-chart-block {
+  /* The tick and label gutters, named so `.lifetime-plot` and
+     `.lifetime-axis` (a sibling, not a descendant) agree on their width
+     with no bare pixel on a margin. */
+  --lifetime-tick-col: 28px;
+  /* Wide enough for the longest label a bundled theme's font renders,
+     `$/1k lines  $123.45` (measured against the live scratch daemon,
+     round 5: 143px at 12px mono). */
+  --lifetime-label-col: 160px;
+  margin: 0 0 var(--space-4);
+}
+.lifetime-chart-block:last-of-type { margin-bottom: 0; }
+.lifetime-title { margin: 0; color: var(--ui-text-muted); }
+.lifetime-title-word { color: var(--ui-text); font-weight: 600; letter-spacing: 0.04em; }
+/* Three columns: the axis ticks, the chart itself, the end labels. Each is
+   its own positioning context, so a tick or a label can sit at the exact
+   height its value maps to (a log axis spaces them unevenly) without
+   reaching outside its own column. */
+.lifetime-plot {
+  display: grid; grid-template-columns: var(--lifetime-tick-col) minmax(0, 1fr) var(--lifetime-label-col);
+  margin: var(--space-1) 0 0;
+}
+.lifetime-ticks, .lifetime-chart-area, .lifetime-labels { position: relative; }
+.lifetime-tick {
+  position: absolute; left: 0; transform: translateY(-50%);
+  /* `--ui-text-muted`, not `--ui-text-faint`: this file's faint token is for
+     a mark alone, never for a line someone reads. */
+  color: var(--ui-text-muted); white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.lifetime-chart { display: block; width: 100%; height: 140px; }
+.lifetime-chart .axis-grid { stroke: var(--ui-border); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.lifetime-chart .lifetime-line { fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.lifetime-chart .lifetime-line.data-1 { stroke: var(--ui-data-1); }
+.lifetime-chart .lifetime-line.data-2 { stroke: var(--ui-data-2); }
+.lifetime-chart .lifetime-line.data-3 { stroke: var(--ui-data-3); }
+.lifetime-chart .lifetime-line.data-4 { stroke: var(--ui-data-4); }
+/* `.mark`'s own 16px column is sized for a single glyph; a label carries a
+   multiple or a dollar value and its measure word, so it overrides that
+   width to its own content's. */
+.lifetime-label { position: absolute; left: 0; width: auto; transform: translateY(-50%); white-space: nowrap; }
+.lifetime-hit { position: absolute; inset: 0; background: none; border: none; padding: 0; cursor: crosshair; }
+.lifetime-hit:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: -2px; }
+.lifetime-tooltip { position: absolute; z-index: 1; max-width: 260px; padding: var(--space-2); background: var(--ui-surface); border: 1px solid var(--ui-border); color: var(--ui-text); pointer-events: none; }
+.lifetime-tooltip[hidden] { display: none; }
+.lifetime-tooltip-day { margin: 0; color: var(--ui-text-muted); white-space: nowrap; }
+.lifetime-tooltip-line { margin: var(--space-1) 0 0; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lifetime-axis {
+  display: flex; justify-content: space-between;
+  margin: var(--space-1) var(--lifetime-label-col) 0 var(--lifetime-tick-col);
+  color: var(--ui-text-muted); font-variant-numeric: tabular-nums;
+}
+.lifetime-note, .lifetime-empty { margin: var(--space-2) 0 0; color: var(--ui-text-muted); overflow-wrap: anywhere; }
+
 /* A split row: the name in the shared name column, the bar, then the facts,
    right-aligned in fixed columns (the Components frame, WHERE at each
    filter: spend, a count, the pull requests, a unit cost; MODELS: spend,
@@ -392,6 +473,18 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
   .yield-noun-short { display: block; }
   .split-spend, .split-units { display: none; }
   .split-short { display: block; }
+  /* The end labels stack below the chart, in document order, instead of
+     sitting beside it (the frame `Dashboard 390`): too little width for
+     both. */
+  .lifetime-chart-block { --lifetime-tick-col: 24px; }
+  .lifetime-plot { grid-template-columns: var(--lifetime-tick-col) minmax(0, 1fr); grid-template-rows: auto auto; }
+  .lifetime-ticks, .lifetime-chart-area { grid-row: 1; }
+  .lifetime-labels {
+    grid-column: 1 / -1; grid-row: 2; position: static;
+    display: flex; flex-direction: column; gap: var(--space-1); margin: var(--space-1) 0 0;
+  }
+  .lifetime-label { position: static; transform: none; }
+  .lifetime-axis { margin-right: 0; margin-left: var(--lifetime-tick-col); }
 }
 
 /* --- the tree's header -----------------------------------------------------

@@ -409,6 +409,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             serveUsageDaily(grade: grade, head: head, context: context)
         case (.GET, "/api/yield"):
             serveYield(grade: grade, head: head, context: context)
+        case (.GET, "/api/yield/daily"):
+            serveYieldDaily(grade: grade, head: head, context: context)
         case (.GET, "/api/usage/limits"):
             serveUsageLimits(grade: grade, head: head, context: context)
         case (.POST, "/api/usage/limits"):
@@ -1168,6 +1170,81 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     }
 
     static func yieldBody(_ report: RepositoryYields.Report) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(report), let body = String(data: data, encoding: .utf8) else {
+            return #"{"ok":false,"error":"encoding failed"}"#
+        }
+        return body
+    }
+
+    /// `GET /api/yield/daily?from=YYYY-MM-DD&to=YYYY-MM-DD` — the
+    /// day-by-day counts the LIFETIME chart needs: for each day in the
+    /// range, the merged pull requests, the merged lines added and the
+    /// releases, per project and summed over the projects counted,
+    /// zero-filled, by the same rules `RepositoryYield` already counts by
+    /// (`RepositoryYield.readDaily`). A separate route from `GET
+    /// /api/yield`, not a field on it, because the two callers want
+    /// different ranges — the VALUE tiles poll the toggled 7d/30d/90d
+    /// range while LIFETIME wants one wide range from the first spend day
+    /// to today — and a caller who only wants totals should not pay for
+    /// the extra `git log` the day-by-day bucketing costs; keeping it
+    /// separate also leaves `/api/yield`'s `Report` shape and its tests
+    /// untouched. Same bounds, defaults and refusals as `/api/yield`;
+    /// full grade only. The `git` runs happen on `RepositoryYields.queue`,
+    /// never on the loop, one `git log` per project per range, and are
+    /// cached five minutes per root and range, in a cache of their own so
+    /// a caller of one route never pays for the other's read.
+    private func serveYieldDaily(grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let yields = repositoryYields else {
+            writeJSON(
+                status: .serviceUnavailable,
+                body: #"{"ok":false,"error":"repository yield unavailable"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let (from, to) = dayRange(head: head, context: context, zone: usageRollup?.timeZone ?? .current) else { return }
+        let loop = context.eventLoop
+        let bound = NIOLoopBound(context, eventLoop: loop)
+        let projects = self.projects
+        let promise = loop.makePromise(of: String.self)
+        promise.completeWithTask {
+            let summaries = await self.registry.summaries()
+            let registered = projects.registered()
+            var byID: [String: RepositoryYields.ProjectRef] = [:]
+            for project in registered {
+                byID[project.id] = .init(id: project.id, name: project.name, root: project.root, registered: true)
+            }
+            for project in summaries.compactMap(\.project) where byID[project.id] == nil {
+                guard let root = project.root else { continue }
+                byID[project.id] = .init(id: project.id, name: project.name, root: root, registered: project.registered)
+            }
+            let listed = byID.values.sorted { ($0.name.lowercased(), $0.id) < ($1.name.lowercased(), $1.id) }
+            return await withCheckedContinuation { continuation in
+                RepositoryYields.queue.async {
+                    continuation.resume(returning: Self.yieldDailyBody(yields.dailyReport(projects: listed, from: from, to: to)))
+                }
+            }
+        }
+        promise.futureResult.whenComplete { result in
+            let body = (try? result.get()) ?? #"{"ok":false,"error":"could not read the repositories"}"#
+            self.writeJSON(
+                status: .ok, body: body,
+                context: bound.value, version: head.version, keepAlive: head.isKeepAlive
+            )
+        }
+    }
+
+    static func yieldDailyBody(_ report: RepositoryYields.DailyReport) -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         guard let data = try? encoder.encode(report), let body = String(data: data, encoding: .utf8) else {

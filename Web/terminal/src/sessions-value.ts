@@ -255,6 +255,27 @@ export function valuePanel(report: UsageDaily | null | undefined, yieldReport: Y
   return { tiles, note: `${shortNote}. ${VALUE_NOTE}`, shortNote };
 }
 
+// --- the lifetime charts (capability 4; the series and the labels are
+// `value-lifetime.ts`'s job, not this module's) ------------------------
+
+/** One day of `GET /api/yield/daily`'s `days`: the counts summed over the
+ * projects counted that day, never absent (round 1's absent-means-no-source
+ * rule applies to a day's own `projects` entries, not to this top-level
+ * sum). */
+export type YieldDailyDay = { day: string; mergedPullRequests: number; mergedLines: number; releases: number };
+
+/** The route's answer: one entry per day in the range, zero-filled. */
+export type YieldDaily = { ok: boolean; from: string; to: string; days: YieldDailyDay[] };
+
+/** The note under the two charts, approved with the frames
+ * (`corpus/03-approved-design.md`): a fixed fact, not a value the page
+ * computes. */
+export const LIFETIME_NOTE = "Spend before early September is mostly missing from the record, so the August unit costs read low.";
+
+/** The sentence in place of both charts when the fleet has no spend at all
+ * (`goal.md` condition 6; the Components frame, "LIFETIME · EMPTY"). */
+export const LIFETIME_EMPTY_LINE = "No spend recorded yet: the two charts need a first spend day to draw from.";
+
 // --- WHERE -----------------------------------------------------------------
 
 export type WhereGrouping = "project" | "goal" | "task" | "role";

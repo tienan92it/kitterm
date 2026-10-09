@@ -23,6 +23,7 @@ import {
   recordName,
   restartDismissName,
   restartNotice,
+  dayKey,
   rowLine,
   rowModel,
   rowName,
@@ -63,6 +64,8 @@ import {
 } from "./sessions-model";
 import {
   LEAKS_NO_TRANSCRIPT_LINE,
+  LIFETIME_EMPTY_LINE,
+  LIFETIME_NOTE,
   MODELS_NO_TRANSCRIPT_LINE,
   leakLines,
   modelsPanel,
@@ -78,8 +81,26 @@ import {
   type ValuePanel,
   type WhereGrouping,
   type WherePanel,
+  type YieldDaily,
   type YieldReport,
 } from "./sessions-value";
+import {
+  logPosition,
+  multipleLabel,
+  stackEndLabels,
+  totalsAxisTicks,
+  totalsMultiplesLine,
+  totalsRealLine,
+  totalsSeries,
+  unitCostAxisTicks,
+  unitCostLabel,
+  unitCostsLine,
+  unitCostsSeries,
+  type LifetimeUsageDay,
+  type LifetimeYieldDay,
+  type Totals,
+  type UnitCosts,
+} from "./value-lifetime";
 import { isOpen, joins, NO_FACT, sessionFactColumns, tree, visibleLines, type Join, type TreeFact, type TreeLine, type TreeSection } from "./sessions-tree";
 import {
   draftsLabel,
@@ -271,6 +292,21 @@ const USAGE_REFRESH_MS = 30_000;
  * (`GET /api/yield`), asked beside the rollup; null when the daemon has
  * no route or refused. */
 let yieldReport: YieldReport | null = null;
+/** The rollup and the yield over the lifetime range behind the TOTALS and
+ * UNIT COSTS charts (`value-lifetime`, capability 4): independent of
+ * `usageChoice`, asked once at load and every `LIFETIME_REFRESH_MS`
+ * thereafter, never on the toggle. Full grade only, like `/api/yield`: a
+ * watch client asks neither route (`fetchLifetime`), so both stay null and
+ * the charts stay off the page, as the rest of VALUE's numbers do. */
+let lifetimeUsage: UsageDaily | null = null;
+let lifetimeYield: YieldDaily | null = null;
+let lifetimeAskedAt = 0;
+const LIFETIME_REFRESH_MS = 5 * 60_000;
+/** The widest range the daily routes take (`GET /api/usage/daily`,
+ * `GET /api/yield/daily`): a bound over 400 days is a 400. The lifetime
+ * charts ask for the whole of it; the routes zero-fill the days before the
+ * fleet's own first one. */
+const LIFETIME_DAYS = 400;
 /** The `WHERE` panel's grouping, kept across loads like the usage choice. */
 const WHERE_KEY = "kitterm.sessions.where";
 let whereGrouping: WhereGrouping = readWhereGrouping(readStorage(WHERE_KEY));
@@ -328,6 +364,44 @@ async function fetchUsage(now: number): Promise<void> {
   } catch {
     // A failed request keeps the last answer; the next poll asks again.
     usageAsked = "";
+  }
+}
+
+/** The widest range the daily routes answer, ending today: 400 days, the
+ * bound both routes refuse past. The routes zero-fill every day before the
+ * fleet's own first one, so one wide request finds the real first day
+ * without the page needing to know it in advance. */
+function lifetimeRange(now: number): { from: string; to: string } {
+  const to = new Date(now);
+  const from = new Date(to.getFullYear(), to.getMonth(), to.getDate() - (LIFETIME_DAYS - 1), 12);
+  return { from: dayKey(from.getTime()), to: dayKey(now) };
+}
+
+/** Ask the two lifetime routes once at load and every `LIFETIME_REFRESH_MS`
+ * after, never on the `usageChoice` toggle, which `fetchUsage` already
+ * covers for its own narrower range. Full grade only: a watch client asks
+ * neither route, the same reason the pulls route waits for `gradeKnown`
+ * (`goal.md` condition 5). `lifetimeAskedAt` is set before the request and
+ * kept on a non-ok answer or a throw (`fetchPulls`'s own rule), so a blip
+ * keeps the charts on the last good answer and waits the full five minutes
+ * before asking again, rather than retrying on the very next 2 s poll. */
+async function fetchLifetime(now: number): Promise<void> {
+  if (!gradeKnown || watchOnly) return;
+  if (lifetimeAskedAt !== 0 && now - lifetimeAskedAt < LIFETIME_REFRESH_MS) return;
+  lifetimeAskedAt = now;
+  const { from, to } = lifetimeRange(now);
+  const query = `from=${from}&to=${to}`;
+  try {
+    const headers = { accept: "application/json" };
+    const [res, yielded] = await Promise.all([
+      fetch(`/api/usage/daily?${query}`, { headers }),
+      fetch(`/api/yield/daily?${query}`, { headers }),
+    ]);
+    if (res.ok) lifetimeUsage = (await res.json()) as UsageDaily;
+    if (yielded.ok) lifetimeYield = (await yielded.json()) as YieldDaily;
+  } catch {
+    // Keep the last good answer; `lifetimeAskedAt` is already set, so the
+    // next poll waits the full five minutes before asking again.
   }
 }
 
@@ -461,6 +535,7 @@ async function poll(): Promise<void> {
     sessions = data.sessions ?? [];
     await fetchUsage(Date.now());
     await fetchBills(Date.now());
+    await fetchLifetime(Date.now());
     failedPolls = 0;
     render();
   } catch {
@@ -749,6 +824,8 @@ function render(): void {
     panel,
     yieldReport,
     whereGrouping,
+    lifetimeUsage,
+    lifetimeYield,
   ]);
   if (signature === lastSignature) return;
   lastSignature = signature;
@@ -791,7 +868,7 @@ function paint(): void {
   // yield were asked for it, the tree reads it off the rollup, and the
   // round records are filtered to it here.
   const range = chosenRange(now);
-  paintValue(valuePanel(usage, yieldReport, usageChoice.span));
+  paintValue(valuePanel(usage, yieldReport, usageChoice.span), lifetimeModel());
   paintWhere(wherePanel(whereGrouping, { report: usage, yield: yieldReport, projects, goals, range }));
   // No transcript at all (round 21): MODELS and LEAKS each print one
   // sentence in place of their rows. The pure panels keep their own
@@ -1113,12 +1190,327 @@ function paintQuota(panel: QuotaPanel | null): void {
   });
 }
 
+// --- the lifetime charts (capability 4): TOTALS and UNIT COSTS under the
+// VALUE tiles. The series and the labels are `value-lifetime.ts`'s; this
+// file turns them into SVG geometry and DOM.
+
+/** The totals/unit-costs series over the lifetime range, from the two
+ * routes `fetchLifetime` asks; null before the first answer, or when
+ * either route refused (a watch client, an old daemon). */
+type LifetimeModel = { totals: Totals; unitCosts: UnitCosts };
+
+function lifetimeModel(): LifetimeModel | null {
+  if (!lifetimeUsage?.ok || !lifetimeYield?.ok) return null;
+  const usageDays: LifetimeUsageDay[] = lifetimeUsage.days.map((d) => ({ day: d.day, costUSD: d.costUSD, measuredUSD: d.measuredUSD, apiMs: d.apiMs }));
+  const yieldDays: LifetimeYieldDay[] = lifetimeYield.days.map((d) => ({ day: d.day, mergedPullRequests: d.mergedPullRequests, mergedLines: d.mergedLines, releases: d.releases }));
+  return { totals: totalsSeries(usageDays, yieldDays), unitCosts: unitCostsSeries(usageDays, yieldDays) };
+}
+
+/** The fixed pixel height of `.lifetime-chart` and the label line height it
+ * stacks end labels by, in the same percentage units the chart's `viewBox`
+ * uses (0 to 100 over the chart's full height), so `stackEndLabels` moves
+ * a label by a real line height and not an arbitrary number. */
+const LIFETIME_CHART_H = 140;
+const LIFETIME_LABEL_LINE_PCT = (16 / LIFETIME_CHART_H) * 100;
+
+/** One SVG `path` `d` string through the defined points, breaking into a
+ * new subpath after a gap (a null `y`, a day with no source for that
+ * measure yet) rather than joining across it. */
+function pathFor(points: ReadonlyArray<{ x: number; y: number | null }>): string {
+  let d = "";
+  let drawing = false;
+  for (const p of points) {
+    if (p.y === null) {
+      drawing = false;
+      continue;
+    }
+    d += `${drawing ? "L" : "M"}${p.x.toFixed(2)},${p.y.toFixed(2)} `;
+    drawing = true;
+  }
+  return d.trim();
+}
+
+/** One axis-tick label, positioned at `y` percent of the chart's height. */
+function tickLabel(text: string, y: number): HTMLElement {
+  const el = span("lifetime-tick", text);
+  el.style.top = `${y}%`;
+  return el;
+}
+
+/** The transparent hit layer and the tooltip it shows: a keyboard and
+ * pointer target spanning the chart, so a reader can move a cursor by day
+ * (arrow keys) or point (the mouse) and read its tooltip, on hover and on
+ * focus. `points` is one entry per day in the chart's x order; `purpose`
+ * is the hit layer's own `aria-label`, since the chart's single summary
+ * sentence sits on the `<svg>` beside it. */
+function lifetimeHit(points: ReadonlyArray<{ x: number; content: () => { day: string; lines: readonly string[] } }>, purpose: string): { hit: HTMLElement; tooltip: HTMLElement; announce: HTMLElement } {
+  const hit = document.createElement("div");
+  hit.className = "lifetime-hit";
+  hit.tabIndex = 0;
+  hit.setAttribute("aria-label", purpose);
+  const tooltip = document.createElement("div");
+  tooltip.className = "lifetime-tooltip";
+  tooltip.hidden = true;
+  // A screen reader does not see the visible tooltip move: `show` updates
+  // this polite live region with the same day and the same lines every
+  // time it updates the tooltip, on hover and on the arrow keys alike.
+  const announce = document.createElement("p");
+  announce.className = "sr-only";
+  announce.setAttribute("aria-live", "polite");
+  let cursor = points.length - 1;
+  const show = (index: number): void => {
+    if (points.length === 0) return;
+    cursor = Math.max(0, Math.min(points.length - 1, index));
+    const point = points[cursor];
+    const { day, lines } = point.content();
+    const dayP = document.createElement("p");
+    dayP.className = "lifetime-tooltip-day";
+    dayP.textContent = day;
+    const lineEls = lines.map((line) => {
+      const p = document.createElement("p");
+      p.className = "lifetime-tooltip-line";
+      p.textContent = line;
+      return p;
+    });
+    tooltip.replaceChildren(dayP, ...lineEls);
+    const onRight = point.x > 60;
+    tooltip.style.left = onRight ? "auto" : `${point.x}%`;
+    tooltip.style.right = onRight ? `${100 - point.x}%` : "auto";
+    tooltip.hidden = false;
+    announce.textContent = [day, ...lines].join(". ");
+  };
+  const hide = (): void => {
+    tooltip.hidden = true;
+  };
+  hit.addEventListener("mousemove", (event) => {
+    const rect = hit.getBoundingClientRect?.();
+    if (!rect || rect.width <= 0 || points.length === 0) return;
+    const mouse = event as MouseEvent;
+    const frac = (mouse.clientX - rect.left) / rect.width;
+    show(Math.round(frac * (points.length - 1)));
+  });
+  hit.addEventListener("mouseleave", hide);
+  hit.addEventListener("focus", () => show(cursor));
+  hit.addEventListener("blur", hide);
+  hit.addEventListener("keydown", (event) => {
+    const key = (event as KeyboardEvent).key;
+    if (key === "ArrowRight") {
+      (event as KeyboardEvent).preventDefault();
+      show(cursor + 1);
+    } else if (key === "ArrowLeft") {
+      (event as KeyboardEvent).preventDefault();
+      show(cursor - 1);
+    }
+  });
+  return { hit, tooltip, announce };
+}
+
+type TotalsMeasure = "spend" | "prs" | "lines" | "releases";
+const TOTALS_MEASURES: readonly TotalsMeasure[] = ["spend", "prs", "lines", "releases"];
+/** The data palette slot per measure (`design/foundation.md`, "Data
+ * palette"): the same slot on both charts, so `data-1` always means spend
+ * or $/hour. */
+const TOTALS_SLOT: Record<TotalsMeasure, 1 | 2 | 3 | 4> = { spend: 1, prs: 2, lines: 3, releases: 4 };
+const TOTALS_WORD: Record<TotalsMeasure, string> = { spend: "spend", prs: "PRs", lines: "lines", releases: "releases" };
+
+/** TOTALS: growth since the base day on a log axis, four lines in the data
+ * palette, their end labels stacked, a tooltip, the axis, the screen-reader
+ * sentence. Only called with at least one point. */
+function totalsChartBlock(totals: Totals): HTMLElement {
+  const baseDay = totals.baseDay!;
+  const points = totals.points;
+  const last = points[points.length - 1];
+  const maxMultiple = Math.max(1, ...points.flatMap((p) => TOTALS_MEASURES.map((m) => p.multiple[m] ?? 1)));
+  const ticks = totalsAxisTicks(maxMultiple);
+  const axisMax = ticks[ticks.length - 1];
+  const yOf = (v: number): number => 100 - logPosition(v, axisMax) * 100;
+  const xOf = (i: number): number => (points.length > 1 ? (i / (points.length - 1)) * 100 : 0);
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "lifetime-chart");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.setAttribute("viewBox", "0 0 100 100");
+  svg.setAttribute("aria-label", `Totals chart: growth since ${dayLabel(baseDay)} on a log axis. Today, ${totalsMultiplesLine(last)}; the real totals are ${totalsRealLine(last)}.`);
+  for (const tick of ticks) {
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("class", "axis-grid");
+    line.setAttribute("x1", "0");
+    line.setAttribute("x2", "100");
+    line.setAttribute("y1", `${yOf(tick)}`);
+    line.setAttribute("y2", `${yOf(tick)}`);
+    svg.append(line);
+  }
+  const endPositions: number[] = [];
+  for (const m of TOTALS_MEASURES) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("class", `lifetime-line data-${TOTALS_SLOT[m]}`);
+    path.setAttribute("d", pathFor(points.map((p, i) => ({ x: xOf(i), y: p.multiple[m] === null ? null : yOf(p.multiple[m]!) }))));
+    svg.append(path);
+    const lastValue = last.multiple[m];
+    endPositions.push(lastValue === null ? 100 : yOf(lastValue));
+  }
+  const stacked = stackEndLabels(endPositions, LIFETIME_LABEL_LINE_PCT);
+
+  const ticksCol = document.createElement("div");
+  ticksCol.className = "lifetime-ticks";
+  ticksCol.setAttribute("aria-hidden", "true");
+  for (const tick of ticks) ticksCol.append(tickLabel(`×${tick}`, yOf(tick)));
+
+  const { hit, tooltip, announce } = lifetimeHit(
+    points.map((p, i) => ({ x: xOf(i), content: () => ({ day: `${dayLabel(p.day)}, against ${dayLabel(baseDay)}`, lines: [totalsMultiplesLine(p), totalsRealLine(p)] }) })),
+    `Move with arrow keys to see a day's growth against ${dayLabel(baseDay)}`,
+  );
+  const chartArea = document.createElement("div");
+  chartArea.className = "lifetime-chart-area";
+  chartArea.append(svg, hit, tooltip, announce);
+
+  const labelsCol = document.createElement("div");
+  labelsCol.className = "lifetime-labels";
+  labelsCol.setAttribute("aria-hidden", "true");
+  TOTALS_MEASURES.forEach((m, i) => {
+    const label = document.createElement("span");
+    label.className = `lifetime-label mark data-${TOTALS_SLOT[m]}`;
+    label.style.top = `${stacked[i]}%`;
+    const value = last.multiple[m];
+    label.textContent = `${value === null ? "–" : multipleLabel(value)} ${TOTALS_WORD[m]}`;
+    labelsCol.append(label);
+  });
+
+  const plot = document.createElement("div");
+  plot.className = "lifetime-plot";
+  plot.append(ticksCol, chartArea, labelsCol);
+
+  const title = document.createElement("p");
+  title.className = "lifetime-title";
+  title.append(span("lifetime-title-word", "TOTALS"), `   growth since ${dayLabel(baseDay)}, log scale`);
+
+  const axis = document.createElement("p");
+  axis.className = "lifetime-axis";
+  axis.append(span("lifetime-axis-from", dayLabel(points[0].day)), span("lifetime-axis-to", dayLabel(last.day)));
+
+  const block = document.createElement("div");
+  block.className = "lifetime-chart-block totals";
+  block.append(title, plot, axis);
+  return block;
+}
+
+type UnitCostMeasure = "perPR" | "perKLines" | "perRelease" | "perHour";
+const UNIT_COST_MEASURES: readonly UnitCostMeasure[] = ["perHour", "perPR", "perKLines", "perRelease"];
+const UNIT_COST_SLOT: Record<UnitCostMeasure, 1 | 2 | 3 | 4> = { perHour: 1, perPR: 2, perKLines: 3, perRelease: 4 };
+const UNIT_COST_WORD: Record<UnitCostMeasure, string> = { perPR: "$/PR", perKLines: "$/1k lines", perRelease: "$/release", perHour: "$/hour" };
+
+/** UNIT COSTS: dollars since the first spend day on one linear axis, the
+ * same four-part geometry as TOTALS. Only called with at least one point. */
+function unitCostsChartBlock(unitCosts: UnitCosts): HTMLElement {
+  const firstDay = unitCosts.firstSpendDay!;
+  const points = unitCosts.points;
+  const last = points[points.length - 1];
+  const maxValue = Math.max(0, ...points.flatMap((p) => UNIT_COST_MEASURES.map((m) => p[m] ?? 0)));
+  const ticks = unitCostAxisTicks(maxValue);
+  const axisMax = ticks[ticks.length - 1] || 1;
+  const yOf = (v: number): number => 100 - (v / axisMax) * 100;
+  const xOf = (i: number): number => (points.length > 1 ? (i / (points.length - 1)) * 100 : 0);
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "lifetime-chart");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.setAttribute("viewBox", "0 0 100 100");
+  svg.setAttribute("aria-label", `Unit costs chart: dollars since ${dayLabel(firstDay)}. Today, ${unitCostsLine(last)}.`);
+  for (const tick of ticks) {
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("class", "axis-grid");
+    line.setAttribute("x1", "0");
+    line.setAttribute("x2", "100");
+    line.setAttribute("y1", `${yOf(tick)}`);
+    line.setAttribute("y2", `${yOf(tick)}`);
+    svg.append(line);
+  }
+  const endPositions: number[] = [];
+  for (const m of UNIT_COST_MEASURES) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("class", `lifetime-line data-${UNIT_COST_SLOT[m]}`);
+    path.setAttribute("d", pathFor(points.map((p, i) => ({ x: xOf(i), y: p[m] === null ? null : yOf(p[m]!) }))));
+    svg.append(path);
+    const lastValue = last[m];
+    endPositions.push(lastValue === null ? 100 : yOf(lastValue));
+  }
+  const stacked = stackEndLabels(endPositions, LIFETIME_LABEL_LINE_PCT);
+
+  const ticksCol = document.createElement("div");
+  ticksCol.className = "lifetime-ticks";
+  ticksCol.setAttribute("aria-hidden", "true");
+  for (const tick of ticks) ticksCol.append(tickLabel(`${tick}`, yOf(tick)));
+
+  const { hit, tooltip, announce } = lifetimeHit(
+    points.map((p, i) => ({ x: xOf(i), content: () => ({ day: dayLabel(p.day), lines: [unitCostsLine(p)] }) })),
+    "Move with arrow keys to see a day's unit costs",
+  );
+  const chartArea = document.createElement("div");
+  chartArea.className = "lifetime-chart-area";
+  chartArea.append(svg, hit, tooltip, announce);
+
+  const labelsCol = document.createElement("div");
+  labelsCol.className = "lifetime-labels";
+  labelsCol.setAttribute("aria-hidden", "true");
+  UNIT_COST_MEASURES.forEach((m, i) => {
+    const label = document.createElement("span");
+    label.className = `lifetime-label mark data-${UNIT_COST_SLOT[m]}`;
+    label.style.top = `${stacked[i]}%`;
+    const value = last[m];
+    label.textContent = `${UNIT_COST_WORD[m]}  ${value === null ? "–" : unitCostLabel(value)}`;
+    labelsCol.append(label);
+  });
+
+  const plot = document.createElement("div");
+  plot.className = "lifetime-plot";
+  plot.append(ticksCol, chartArea, labelsCol);
+
+  const title = document.createElement("p");
+  title.className = "lifetime-title";
+  title.append(span("lifetime-title-word", "UNIT COSTS"), `   dollars, since ${dayLabel(firstDay)}`);
+
+  const axis = document.createElement("p");
+  axis.className = "lifetime-axis";
+  axis.append(span("lifetime-axis-from", dayLabel(points[0].day)), span("lifetime-axis-to", dayLabel(last.day)));
+
+  const block = document.createElement("div");
+  block.className = "lifetime-chart-block unit-costs";
+  block.append(title, plot, axis);
+  return block;
+}
+
+/** The two charts and the note under the tiles, or the one empty sentence
+ * when the fleet has no spend at all (`goal.md` condition 6). */
+function lifetimeBlock(lifetime: LifetimeModel): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = "lifetime";
+  if (lifetime.totals.baseDay === null && lifetime.unitCosts.firstSpendDay === null) {
+    const empty = document.createElement("p");
+    empty.className = "lifetime-empty";
+    empty.textContent = LIFETIME_EMPTY_LINE;
+    wrap.append(empty);
+    return wrap;
+  }
+  if (lifetime.totals.points.length > 0) wrap.append(totalsChartBlock(lifetime.totals));
+  if (lifetime.unitCosts.points.length > 0) wrap.append(unitCostsChartBlock(lifetime.unitCosts));
+  const note = document.createElement("p");
+  note.className = "lifetime-note";
+  note.textContent = LIFETIME_NOTE;
+  wrap.append(note);
+  return wrap;
+}
+
 /** `VALUE`: four tiles, each behind a 2 px accent rule — a count at the
- * headline size, its noun, what one unit cost — and one note that names
- * the scope, the span and the caveat. A tile with no source prints a
- * dash. */
-function paintValue(panel: ValuePanel | null): void {
-  valuePainted = paintPanel(valueBlock, valuePainted, panel, () => {
+ * headline size, its noun, what one unit cost — one note that names the
+ * scope, the span and the caveat, then the two lifetime charts, TOTALS and
+ * UNIT COSTS (capability 4), null while the lifetime routes have not
+ * answered yet or for a watch client, which asks neither. A tile with no
+ * source prints a dash. */
+function paintValue(panel: ValuePanel | null, lifetime: LifetimeModel | null): void {
+  const model = panel ? { panel, lifetime } : null;
+  valuePainted = paintPanel(valueBlock, valuePainted, model, () => {
     const tiles = document.createElement("div");
     tiles.className = "yield";
     for (const tile of panel!.tiles) {
@@ -1135,6 +1527,7 @@ function paintValue(panel: ValuePanel | null): void {
     const body = document.createElement("div");
     body.className = "panel-body";
     body.append(tiles, noteLine(panel!.note, panel!.shortNote, panel!.command));
+    if (lifetime !== null) body.append(lifetimeBlock(lifetime));
     return [panelLabel("VALUE"), body];
   });
 }

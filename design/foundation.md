@@ -236,6 +236,38 @@ palette on 2026-09-17 and amended it on 2026-09-19; the values are the
 They paint a mark: a glyph, a bar, the tile's rule, or the one run of
 text that carries a state. They never paint a background or a border.
 
+### Data palette
+
+Four colours for chart lines and their labels only, `design/dashboard.pen`
+variables `data-1` to `data-4`, each with a dark and a light value, one
+slot per measure so the same colour names the same thing on both charts:
+
+| Token | Dark | Light | Measure | Source |
+|---|---|---|---|---|
+| `data-1` | `#04c7a0` | `#11866c` | spend, $/hour | between Okabe-Ito `#009E73` and ColorBrewer Dark2 `#1B9E77`, hue widened toward cyan |
+| `data-2` | `#f7ab07` | `#9c6d1a` | PRs, $/PR | Okabe-Ito `#E69F00` |
+| `data-3` | `#5582f7` | `#446fe2` | lines, $/1k lines | Observable 10 `#4269D0` |
+| `data-4` | `#fe2497` | `#e40784` | releases, $/release | ColorBrewer Dark2 `#E7298A` |
+
+Each value clears 3:1 against the ground in its theme (the full range is
+4.50 to 10.11), and the four are told apart under a deuteranopia and a
+protanopia simulation (the worst pairwise distance is 36.0, `data-2` vs
+`data-4`; every other pair clears 52). Their OKLCh hues sit at least 80.5°
+apart, the widest spacing of the three sets the human was shown. Two
+sit near a state colour, not on it: `data-1` is 10-11° from `success`,
+`data-2` is 4-11° from `warning`, close enough to flag, far enough that a
+simulated reader still tells chart from state.
+
+This replaces the index-paired set approved 2026-10-09 (`data-1` spend/
+$-PR, `data-2` PRs/$-1k-lines, `data-3` lines/$-release, `data-4`
+releases/$-hour), which reused the `accent`/`warning`/`caution`/`danger`
+hues outright and paired a totals line with a unit-cost line by chart
+position rather than by what they measure. Chartered by
+`corpus/02-direction.md`; the human picked this set, researched from
+Okabe-Ito, ColorBrewer and Observable 10, over the palette-only and the
+palette-plus-research alternatives shown beside it in `Components`.
+2026-10-09.
+
 ## The frame
 
 The two `Dashboard` frames in `design/dashboard.pen` are the layout: the band,
