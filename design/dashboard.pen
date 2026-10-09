@@ -1254,7 +1254,7 @@
                     },
                     {
                       "type": "frame",
-                      "id": "PKufl",
+                      "id": "KJzyZ",
                       "name": "lifetime",
                       "width": "fill_container",
                       "layout": "vertical",
@@ -1262,7 +1262,7 @@
                       "children": [
                         {
                           "type": "frame",
-                          "id": "VxvhK",
+                          "id": "VXA0L",
                           "name": "totals chart",
                           "width": "fill_container",
                           "layout": "vertical",
@@ -1270,14 +1270,14 @@
                           "children": [
                             {
                               "type": "frame",
-                              "id": "ghe7M",
+                              "id": "kRB0Q",
                               "name": "totals header",
                               "gap": "$space-4",
                               "alignItems": "center",
                               "children": [
                                 {
                                   "type": "text",
-                                  "id": "b3Hu5",
+                                  "id": "Dfbb2",
                                   "name": "totals label",
                                   "fill": "$faint",
                                   "content": "TOTALS",
@@ -1288,7 +1288,7 @@
                                 },
                                 {
                                   "type": "text",
-                                  "id": "xPDK1",
+                                  "id": "iyy7n",
                                   "name": "totals subtitle",
                                   "fill": "$muted",
                                   "content": "growth since 3 Sep, log scale",
@@ -1300,7 +1300,7 @@
                             },
                             {
                               "type": "frame",
-                              "id": "OTwfi",
+                              "id": "H27aXH",
                               "name": "totals plot",
                               "width": "fill_container",
                               "height": 150,
@@ -1308,7 +1308,7 @@
                               "children": [
                                 {
                                   "type": "rectangle",
-                                  "id": "xA6yc",
+                                  "id": "CJQRM",
                                   "x": 30,
                                   "y": 150,
                                   "name": "totals gridline 1",
@@ -1318,7 +1318,7 @@
                                 },
                                 {
                                   "type": "text",
-                                  "id": "iaMED",
+                                  "id": "D78Xc",
                                   "x": 0,
                                   "y": 144,
                                   "name": "totals y label 1",
@@ -1333,7 +1333,7 @@
                                 },
                                 {
                                   "type": "rectangle",
-                                  "id": "hlkb1",
+                                  "id": "vViDs",
                                   "x": 30,
                                   "y": 123.4,
                                   "name": "totals gridline 2",
@@ -1343,7 +1343,7 @@
                                 },
                                 {
                                   "type": "text",
-                                  "id": "nY71v",
+                                  "id": "AXMFe",
                                   "x": 0,
                                   "y": 117.4,
                                   "name": "totals y label 2",
@@ -1358,7 +1358,7 @@
                                 },
                                 {
                                   "type": "rectangle",
-                                  "id": "NaPCo",
+                                  "id": "EFkak",
                                   "x": 30,
                                   "y": 88.3,
                                   "name": "totals gridline 5",
@@ -1368,7 +1368,7 @@
                                 },
                                 {
                                   "type": "text",
-                                  "id": "RWJw8",
+                                  "id": "e4Plq7",
                                   "x": 0,
                                   "y": 82.3,
                                   "name": "totals y label 5",
@@ -1383,7 +1383,7 @@
                                 },
                                 {
                                   "type": "rectangle",
-                                  "id": "n8CTk",
+                                  "id": "x7kYR9",
                                   "x": 30,
                                   "y": 61.7,
                                   "name": "totals gridline 10",
@@ -1393,7 +1393,7 @@
                                 },
                                 {
                                   "type": "text",
-                                  "id": "B0ndiz",
+                                  "id": "DnYQ5",
                                   "x": 0,
                                   "y": 55.7,
                                   "name": "totals y label 10",
@@ -1408,7 +1408,7 @@
                                 },
                                 {
                                   "type": "rectangle",
-                                  "id": "kvGls",
+                                  "id": "qUHbL",
                                   "x": 30,
                                   "y": 35.1,
                                   "name": "totals gridline 20",
@@ -1418,7 +1418,7 @@
                                 },
                                 {
                                   "type": "text",
-                                  "id": "a0vHW",
+                                  "id": "UFY0s",
                                   "x": 0,
                                   "y": 29.1,
                                   "name": "totals y label 20",
@@ -1433,7 +1433,7 @@
                                 },
                                 {
                                   "type": "rectangle",
-                                  "id": "zEAkV",
+                                  "id": "qlVGB",
                                   "x": 30,
                                   "y": 0,
                                   "name": "totals gridline 50",
@@ -1443,7 +1443,7 @@
                                 },
                                 {
                                   "type": "text",
-                                  "id": "U1GR0",
+                                  "id": "Jypsn",
                                   "x": 0,
                                   "y": -6,
                                   "name": "totals y label 50",
@@ -1458,7 +1458,7 @@
                                 },
                                 {
                                   "type": "path",
-                                  "id": "wbD38",
+                                  "id": "bwCCX",
                                   "x": 30,
                                   "y": 0,
                                   "name": "totals line spend",
@@ -1477,7 +1477,7 @@
                                 },
                                 {
                                   "type": "path",
-                                  "id": "eiFPr",
+                                  "id": "wQOBz",
                                   "x": 30,
                                   "y": 0,
                                   "name": "totals line prs",
@@ -1496,7 +1496,7 @@
                                 },
                                 {
                                   "type": "path",
-                                  "id": "nGphs",
+                                  "id": "AfNTs",
                                   "x": 30,
                                   "y": 0,
                                   "name": "totals line lines",
@@ -1515,7 +1515,7 @@
                                 },
                                 {
                                   "type": "path",
-                                  "id": "MddST",
+                                  "id": "FsagX",
                                   "x": 30,
                                   "y": 0,
                                   "name": "totals line releases",
@@ -1534,7 +1534,7 @@
                                 },
                                 {
                                   "type": "path",
-                                  "id": "jgiDo",
+                                  "id": "L9la2",
                                   "x": 0,
                                   "y": 0,
                                   "name": "totals leader spend",
@@ -1552,7 +1552,7 @@
                                 },
                                 {
                                   "type": "text",
-                                  "id": "oiwsK",
+                                  "id": "FkCsI",
                                   "x": 800,
                                   "y": 75.6,
                                   "name": "totals end label spend",
@@ -1566,7 +1566,7 @@
                                 },
                                 {
                                   "type": "text",
-                                  "id": "GsM8I",
+                                  "id": "r0qpsk",
                                   "x": 800,
                                   "y": 59.6,
                                   "name": "totals end label prs",
@@ -1580,7 +1580,7 @@
                                 },
                                 {
                                   "type": "text",
-                                  "id": "hgcG7",
+                                  "id": "F7DUY9",
                                   "x": 800,
                                   "y": 18.8,
                                   "name": "totals end label lines",
@@ -1594,7 +1594,7 @@
                                 },
                                 {
                                   "type": "text",
-                                  "id": "g0zxaR",
+                                  "id": "e63aA",
                                   "x": 800,
                                   "y": 91.6,
                                   "name": "totals end label releases",
@@ -1608,7 +1608,7 @@
                                 },
                                 {
                                   "type": "ellipse",
-                                  "id": "cBB0v",
+                                  "id": "STrHW",
                                   "x": 385.9,
                                   "y": 80,
                                   "name": "totals tooltip point",
@@ -1618,7 +1618,7 @@
                                 },
                                 {
                                   "type": "frame",
-                                  "id": "kYFgd",
+                                  "id": "h0f8rW",
                                   "x": 400.9,
                                   "y": 91,
                                   "name": "totals tooltip example",
@@ -1636,7 +1636,7 @@
                                   "children": [
                                     {
                                       "type": "text",
-                                      "id": "p0WA5",
+                                      "id": "V76WK",
                                       "name": "totals tooltip day",
                                       "fill": "$text",
                                       "content": "20 Sep, against 3 Sep",
@@ -1646,11 +1646,9 @@
                                     },
                                     {
                                       "type": "text",
-                                      "id": "G6x4R3",
+                                      "id": "wNv3R",
                                       "name": "totals tooltip multiples",
                                       "fill": "$muted",
-                                      "textGrowth": "fixed-width",
-                                      "width": 195,
                                       "content": "spend ×5.7 · PRs ×4.8 · lines ×6.3 · releases ×2.1",
                                       "fontFamily": "JetBrains Mono",
                                       "fontSize": 12,
@@ -1658,11 +1656,9 @@
                                     },
                                     {
                                       "type": "text",
-                                      "id": "hVnyo",
+                                      "id": "SJF0n",
                                       "name": "totals tooltip values",
                                       "fill": "$muted",
-                                      "textGrowth": "fixed-width",
-                                      "width": 195,
                                       "content": "$4.2k · 129 PRs · 105k lines · 36 releases",
                                       "fontFamily": "JetBrains Mono",
                                       "fontSize": 12,
@@ -1674,7 +1670,7 @@
                             },
                             {
                               "type": "frame",
-                              "id": "i5nK4I",
+                              "id": "hCr2a",
                               "name": "totals axis",
                               "width": "fill_container",
                               "stroke": "$border",
@@ -1693,7 +1689,7 @@
                               "children": [
                                 {
                                   "type": "text",
-                                  "id": "P0qa9",
+                                  "id": "cICFz",
                                   "name": "totals axis start",
                                   "fill": "$faint",
                                   "content": "3 Sep",
@@ -1703,7 +1699,7 @@
                                 },
                                 {
                                   "type": "text",
-                                  "id": "HgvY2",
+                                  "id": "DXt1g",
                                   "name": "totals axis end",
                                   "fill": "$faint",
                                   "content": "9 Oct",
@@ -1717,7 +1713,7 @@
                         },
                         {
                           "type": "frame",
-                          "id": "yhGLh",
+                          "id": "WUITZ",
                           "name": "unit chart",
                           "width": "fill_container",
                           "layout": "vertical",
@@ -1725,14 +1721,14 @@
                           "children": [
                             {
                               "type": "frame",
-                              "id": "Sbwaj",
+                              "id": "C4Nq3H",
                               "name": "unit header",
                               "gap": "$space-4",
                               "alignItems": "center",
                               "children": [
                                 {
                                   "type": "text",
-                                  "id": "bJ74h",
+                                  "id": "TDUcz",
                                   "name": "unit label",
                                   "fill": "$faint",
                                   "content": "UNIT COSTS",
@@ -1743,7 +1739,7 @@
                                 },
                                 {
                                   "type": "text",
-                                  "id": "vqgdc",
+                                  "id": "Vnggu",
                                   "name": "unit subtitle",
                                   "fill": "$muted",
                                   "content": "dollars, since 10 Aug",
@@ -1755,7 +1751,7 @@
                             },
                             {
                               "type": "frame",
-                              "id": "Lh6Sj",
+                              "id": "g1spAu",
                               "name": "unit plot",
                               "width": "fill_container",
                               "height": 150,
@@ -1763,7 +1759,7 @@
                               "children": [
                                 {
                                   "type": "rectangle",
-                                  "id": "a1YBG7",
+                                  "id": "Z4k3l",
                                   "x": 30,
                                   "y": 150,
                                   "name": "unit gridline 0",
@@ -1773,7 +1769,7 @@
                                 },
                                 {
                                   "type": "text",
-                                  "id": "j7SwT5",
+                                  "id": "aOBeB",
                                   "x": 0,
                                   "y": 144,
                                   "name": "unit y label 0",
@@ -1788,7 +1784,7 @@
                                 },
                                 {
                                   "type": "rectangle",
-                                  "id": "knv8P",
+                                  "id": "XwZnQ",
                                   "x": 30,
                                   "y": 112.5,
                                   "name": "unit gridline 50",
@@ -1798,7 +1794,7 @@
                                 },
                                 {
                                   "type": "text",
-                                  "id": "uL0C5",
+                                  "id": "ZKwYf",
                                   "x": 0,
                                   "y": 106.5,
                                   "name": "unit y label 50",
@@ -1813,7 +1809,7 @@
                                 },
                                 {
                                   "type": "rectangle",
-                                  "id": "vBnwC",
+                                  "id": "AfD9P",
                                   "x": 30,
                                   "y": 75,
                                   "name": "unit gridline 100",
@@ -1823,7 +1819,7 @@
                                 },
                                 {
                                   "type": "text",
-                                  "id": "ZheZu",
+                                  "id": "g5tu54",
                                   "x": 0,
                                   "y": 69,
                                   "name": "unit y label 100",
@@ -1838,7 +1834,7 @@
                                 },
                                 {
                                   "type": "rectangle",
-                                  "id": "Rh2g2",
+                                  "id": "nPvGd",
                                   "x": 30,
                                   "y": 37.5,
                                   "name": "unit gridline 150",
@@ -1848,7 +1844,7 @@
                                 },
                                 {
                                   "type": "text",
-                                  "id": "AkXpg",
+                                  "id": "U9JSPW",
                                   "x": 0,
                                   "y": 31.5,
                                   "name": "unit y label 150",
@@ -1863,7 +1859,7 @@
                                 },
                                 {
                                   "type": "rectangle",
-                                  "id": "RbBVm",
+                                  "id": "gnjxe",
                                   "x": 30,
                                   "y": 0,
                                   "name": "unit gridline 200",
@@ -1873,7 +1869,7 @@
                                 },
                                 {
                                   "type": "text",
-                                  "id": "hXYT7",
+                                  "id": "nzwjU",
                                   "x": 0,
                                   "y": -6,
                                   "name": "unit y label 200",
@@ -1888,7 +1884,7 @@
                                 },
                                 {
                                   "type": "path",
-                                  "id": "V7Dlzh",
+                                  "id": "KYRwS",
                                   "x": 30,
                                   "y": 0,
                                   "name": "unit line perPR",
@@ -1907,7 +1903,7 @@
                                 },
                                 {
                                   "type": "path",
-                                  "id": "LLtWa",
+                                  "id": "iex7m",
                                   "x": 30,
                                   "y": 0,
                                   "name": "unit line per1kLines",
@@ -1926,7 +1922,7 @@
                                 },
                                 {
                                   "type": "path",
-                                  "id": "B19fLL",
+                                  "id": "B0lqSm",
                                   "x": 30,
                                   "y": 0,
                                   "name": "unit line perRelease",
@@ -1945,7 +1941,7 @@
                                 },
                                 {
                                   "type": "path",
-                                  "id": "bChaE",
+                                  "id": "VOfzg",
                                   "x": 30,
                                   "y": 0,
                                   "name": "unit line perHour",
@@ -1964,7 +1960,7 @@
                                 },
                                 {
                                   "type": "text",
-                                  "id": "GFx48",
+                                  "id": "K4rSf",
                                   "x": 800,
                                   "y": 122,
                                   "name": "unit end label perPR",
@@ -1978,7 +1974,7 @@
                                 },
                                 {
                                   "type": "text",
-                                  "id": "qK3MO",
+                                  "id": "v3B2eS",
                                   "x": 800,
                                   "y": 138,
                                   "name": "unit end label per1kLines",
@@ -1992,7 +1988,7 @@
                                 },
                                 {
                                   "type": "text",
-                                  "id": "jlLxT",
+                                  "id": "Wsbr8",
                                   "x": 800,
                                   "y": 72.8,
                                   "name": "unit end label perRelease",
@@ -2006,7 +2002,7 @@
                                 },
                                 {
                                   "type": "text",
-                                  "id": "ioRoC",
+                                  "id": "BWYXz",
                                   "x": 800,
                                   "y": 100.6,
                                   "name": "unit end label perHour",
@@ -2020,7 +2016,7 @@
                                 },
                                 {
                                   "type": "ellipse",
-                                  "id": "M78li",
+                                  "id": "sTnsm",
                                   "x": 546.3,
                                   "y": 122.6,
                                   "name": "unit tooltip point",
@@ -2030,7 +2026,7 @@
                                 },
                                 {
                                   "type": "frame",
-                                  "id": "FZLVb",
+                                  "id": "Aomgq",
                                   "x": 561.3,
                                   "y": 133.6,
                                   "name": "unit tooltip example",
@@ -2048,7 +2044,7 @@
                                   "children": [
                                     {
                                       "type": "text",
-                                      "id": "aA06i",
+                                      "id": "St8Rl",
                                       "name": "unit tooltip day",
                                       "fill": "$text",
                                       "content": "20 Sep",
@@ -2058,7 +2054,7 @@
                                     },
                                     {
                                       "type": "text",
-                                      "id": "I82r2q",
+                                      "id": "GXp7X",
                                       "name": "unit tooltip values",
                                       "fill": "$muted",
                                       "textGrowth": "fixed-width",
@@ -2074,7 +2070,7 @@
                             },
                             {
                               "type": "frame",
-                              "id": "vhbeB",
+                              "id": "K6ASD5",
                               "name": "unit axis",
                               "width": "fill_container",
                               "stroke": "$border",
@@ -2093,7 +2089,7 @@
                               "children": [
                                 {
                                   "type": "text",
-                                  "id": "w7e73n",
+                                  "id": "b8fCPl",
                                   "name": "unit axis start",
                                   "fill": "$faint",
                                   "content": "10 Aug",
@@ -2103,7 +2099,7 @@
                                 },
                                 {
                                   "type": "text",
-                                  "id": "uBiAW",
+                                  "id": "H99I9l",
                                   "name": "unit axis end",
                                   "fill": "$faint",
                                   "content": "9 Oct",
@@ -2117,7 +2113,7 @@
                         },
                         {
                           "type": "text",
-                          "id": "qjcv6",
+                          "id": "Xyzro",
                           "name": "lifetime note",
                           "fill": "$muted",
                           "textGrowth": "fixed-width",
@@ -5358,7 +5354,7 @@
                 },
                 {
                   "type": "frame",
-                  "id": "ASCyG",
+                  "id": "Z49PZq",
                   "name": "lifetime",
                   "width": "fill_container",
                   "layout": "vertical",
@@ -5366,7 +5362,7 @@
                   "children": [
                     {
                       "type": "frame",
-                      "id": "OvUv5",
+                      "id": "z8mzcO",
                       "name": "totals chart",
                       "width": "fill_container",
                       "layout": "vertical",
@@ -5374,14 +5370,14 @@
                       "children": [
                         {
                           "type": "frame",
-                          "id": "Sr1yg",
+                          "id": "NPfOY",
                           "name": "totals header",
                           "gap": "$space-4",
                           "alignItems": "center",
                           "children": [
                             {
                               "type": "text",
-                              "id": "j34u4",
+                              "id": "VKx5C",
                               "name": "totals label",
                               "fill": "$faint",
                               "content": "TOTALS",
@@ -5392,7 +5388,7 @@
                             },
                             {
                               "type": "text",
-                              "id": "FjBRy",
+                              "id": "tA0KR",
                               "name": "totals subtitle",
                               "fill": "$muted",
                               "content": "growth since 3 Sep, log scale",
@@ -5404,7 +5400,7 @@
                         },
                         {
                           "type": "frame",
-                          "id": "F9VYZ",
+                          "id": "e3T8zD",
                           "name": "totals plot",
                           "width": "fill_container",
                           "height": 110,
@@ -5412,7 +5408,7 @@
                           "children": [
                             {
                               "type": "rectangle",
-                              "id": "y1dpIE",
+                              "id": "O3GYP",
                               "x": 30,
                               "y": 110,
                               "name": "totals gridline 1",
@@ -5422,7 +5418,7 @@
                             },
                             {
                               "type": "text",
-                              "id": "K4muqZ",
+                              "id": "bZ4Ni",
                               "x": 0,
                               "y": 104,
                               "name": "totals y label 1",
@@ -5437,7 +5433,7 @@
                             },
                             {
                               "type": "rectangle",
-                              "id": "QiZLe",
+                              "id": "U4aib",
                               "x": 30,
                               "y": 90.5,
                               "name": "totals gridline 2",
@@ -5447,7 +5443,7 @@
                             },
                             {
                               "type": "text",
-                              "id": "wmRke",
+                              "id": "EbrgI",
                               "x": 0,
                               "y": 84.5,
                               "name": "totals y label 2",
@@ -5462,7 +5458,7 @@
                             },
                             {
                               "type": "rectangle",
-                              "id": "Pbdq0",
+                              "id": "DZh7i",
                               "x": 30,
                               "y": 64.7,
                               "name": "totals gridline 5",
@@ -5472,7 +5468,7 @@
                             },
                             {
                               "type": "text",
-                              "id": "dz4qg",
+                              "id": "XW64j",
                               "x": 0,
                               "y": 58.7,
                               "name": "totals y label 5",
@@ -5487,7 +5483,7 @@
                             },
                             {
                               "type": "rectangle",
-                              "id": "hQUw7",
+                              "id": "USZsu",
                               "x": 30,
                               "y": 45.3,
                               "name": "totals gridline 10",
@@ -5497,7 +5493,7 @@
                             },
                             {
                               "type": "text",
-                              "id": "FCz4F",
+                              "id": "cSF5g",
                               "x": 0,
                               "y": 39.3,
                               "name": "totals y label 10",
@@ -5512,7 +5508,7 @@
                             },
                             {
                               "type": "rectangle",
-                              "id": "n2aYYS",
+                              "id": "zNgCL",
                               "x": 30,
                               "y": 25.8,
                               "name": "totals gridline 20",
@@ -5522,7 +5518,7 @@
                             },
                             {
                               "type": "text",
-                              "id": "J6n7Pl",
+                              "id": "V6Ysgg",
                               "x": 0,
                               "y": 19.8,
                               "name": "totals y label 20",
@@ -5537,7 +5533,7 @@
                             },
                             {
                               "type": "rectangle",
-                              "id": "NqPX7",
+                              "id": "tjAMK",
                               "x": 30,
                               "y": 0,
                               "name": "totals gridline 50",
@@ -5547,7 +5543,7 @@
                             },
                             {
                               "type": "text",
-                              "id": "dVugq",
+                              "id": "upM1x",
                               "x": 0,
                               "y": -6,
                               "name": "totals y label 50",
@@ -5562,7 +5558,7 @@
                             },
                             {
                               "type": "path",
-                              "id": "ejv5R",
+                              "id": "ljHB5",
                               "x": 30,
                               "y": 0,
                               "name": "totals line spend",
@@ -5581,7 +5577,7 @@
                             },
                             {
                               "type": "path",
-                              "id": "h5AEi",
+                              "id": "wQ9ct",
                               "x": 30,
                               "y": 0,
                               "name": "totals line prs",
@@ -5600,7 +5596,7 @@
                             },
                             {
                               "type": "path",
-                              "id": "q6kgkv",
+                              "id": "deZiz",
                               "x": 30,
                               "y": 0,
                               "name": "totals line lines",
@@ -5619,7 +5615,7 @@
                             },
                             {
                               "type": "path",
-                              "id": "L3IgiD",
+                              "id": "ng2WC",
                               "x": 30,
                               "y": 0,
                               "name": "totals line releases",
@@ -5640,7 +5636,7 @@
                         },
                         {
                           "type": "frame",
-                          "id": "ZFzT3",
+                          "id": "wSZAM",
                           "name": "totals axis",
                           "width": "fill_container",
                           "stroke": "$border",
@@ -5659,7 +5655,7 @@
                           "children": [
                             {
                               "type": "text",
-                              "id": "egr0o",
+                              "id": "w9k2lA",
                               "name": "totals axis start",
                               "fill": "$faint",
                               "content": "3 Sep",
@@ -5669,7 +5665,7 @@
                             },
                             {
                               "type": "text",
-                              "id": "gtnOU",
+                              "id": "RQSKE",
                               "name": "totals axis end",
                               "fill": "$faint",
                               "content": "9 Oct",
@@ -5681,7 +5677,7 @@
                         },
                         {
                           "type": "frame",
-                          "id": "u4hmCx",
+                          "id": "BMICq",
                           "name": "totals legend",
                           "width": "fill_container",
                           "layout": "vertical",
@@ -5689,7 +5685,7 @@
                           "children": [
                             {
                               "type": "text",
-                              "id": "isePM",
+                              "id": "t8EUi",
                               "name": "totals legend spend",
                               "fill": "$data-1",
                               "content": "×8.8 spend",
@@ -5699,7 +5695,7 @@
                             },
                             {
                               "type": "text",
-                              "id": "hXXJp",
+                              "id": "L3ViQD",
                               "name": "totals legend prs",
                               "fill": "$data-2",
                               "content": "×9.0 PRs",
@@ -5709,7 +5705,7 @@
                             },
                             {
                               "type": "text",
-                              "id": "yBhiV",
+                              "id": "cwufy",
                               "name": "totals legend lines",
                               "fill": "$data-3",
                               "content": "×26.2 lines",
@@ -5719,7 +5715,7 @@
                             },
                             {
                               "type": "text",
-                              "id": "O91QWf",
+                              "id": "WQGuA",
                               "name": "totals legend releases",
                               "fill": "$data-4",
                               "content": "×4.1 releases",
@@ -5733,7 +5729,7 @@
                     },
                     {
                       "type": "frame",
-                      "id": "HeA70",
+                      "id": "M89nRn",
                       "name": "unit chart",
                       "width": "fill_container",
                       "layout": "vertical",
@@ -5741,14 +5737,14 @@
                       "children": [
                         {
                           "type": "frame",
-                          "id": "FvxYU",
+                          "id": "fb2BG",
                           "name": "unit header",
                           "gap": "$space-4",
                           "alignItems": "center",
                           "children": [
                             {
                               "type": "text",
-                              "id": "FvnsY",
+                              "id": "VprHS",
                               "name": "unit label",
                               "fill": "$faint",
                               "content": "UNIT COSTS",
@@ -5759,7 +5755,7 @@
                             },
                             {
                               "type": "text",
-                              "id": "U2nEMC",
+                              "id": "B07B5",
                               "name": "unit subtitle",
                               "fill": "$muted",
                               "content": "dollars, since 10 Aug",
@@ -5771,7 +5767,7 @@
                         },
                         {
                           "type": "frame",
-                          "id": "zoOe7",
+                          "id": "CDBlS",
                           "name": "unit plot",
                           "width": "fill_container",
                           "height": 110,
@@ -5779,7 +5775,7 @@
                           "children": [
                             {
                               "type": "rectangle",
-                              "id": "UX1eQ",
+                              "id": "TJavt",
                               "x": 30,
                               "y": 110,
                               "name": "unit gridline 0",
@@ -5789,7 +5785,7 @@
                             },
                             {
                               "type": "text",
-                              "id": "ZIhWE",
+                              "id": "qMZiR",
                               "x": 0,
                               "y": 104,
                               "name": "unit y label 0",
@@ -5804,7 +5800,7 @@
                             },
                             {
                               "type": "rectangle",
-                              "id": "Qit2v",
+                              "id": "bXgbf",
                               "x": 30,
                               "y": 82.5,
                               "name": "unit gridline 50",
@@ -5814,7 +5810,7 @@
                             },
                             {
                               "type": "text",
-                              "id": "znEFF",
+                              "id": "IQ43H",
                               "x": 0,
                               "y": 76.5,
                               "name": "unit y label 50",
@@ -5829,7 +5825,7 @@
                             },
                             {
                               "type": "rectangle",
-                              "id": "dixYB",
+                              "id": "JbGKx",
                               "x": 30,
                               "y": 55,
                               "name": "unit gridline 100",
@@ -5839,7 +5835,7 @@
                             },
                             {
                               "type": "text",
-                              "id": "WdYNu",
+                              "id": "WVgUm",
                               "x": 0,
                               "y": 49,
                               "name": "unit y label 100",
@@ -5854,7 +5850,7 @@
                             },
                             {
                               "type": "rectangle",
-                              "id": "Fzmzx",
+                              "id": "aaybX",
                               "x": 30,
                               "y": 27.5,
                               "name": "unit gridline 150",
@@ -5864,7 +5860,7 @@
                             },
                             {
                               "type": "text",
-                              "id": "AON2r",
+                              "id": "U8eVo7",
                               "x": 0,
                               "y": 21.5,
                               "name": "unit y label 150",
@@ -5879,7 +5875,7 @@
                             },
                             {
                               "type": "rectangle",
-                              "id": "DRrIM",
+                              "id": "fs7hS",
                               "x": 30,
                               "y": 0,
                               "name": "unit gridline 200",
@@ -5889,7 +5885,7 @@
                             },
                             {
                               "type": "text",
-                              "id": "Z8dJrm",
+                              "id": "OZJo6",
                               "x": 0,
                               "y": -6,
                               "name": "unit y label 200",
@@ -5904,7 +5900,7 @@
                             },
                             {
                               "type": "path",
-                              "id": "vrq1K",
+                              "id": "Qi8Ng",
                               "x": 30,
                               "y": 0,
                               "name": "unit line perPR",
@@ -5923,7 +5919,7 @@
                             },
                             {
                               "type": "path",
-                              "id": "YGbkn",
+                              "id": "k499f",
                               "x": 30,
                               "y": 0,
                               "name": "unit line per1kLines",
@@ -5942,7 +5938,7 @@
                             },
                             {
                               "type": "path",
-                              "id": "JPaQb",
+                              "id": "PnRrd",
                               "x": 30,
                               "y": 0,
                               "name": "unit line perRelease",
@@ -5961,7 +5957,7 @@
                             },
                             {
                               "type": "path",
-                              "id": "a7mxu",
+                              "id": "k14dLJ",
                               "x": 30,
                               "y": 0,
                               "name": "unit line perHour",
@@ -5982,7 +5978,7 @@
                         },
                         {
                           "type": "frame",
-                          "id": "MzCbJ",
+                          "id": "IvcJV",
                           "name": "unit axis",
                           "width": "fill_container",
                           "stroke": "$border",
@@ -6001,7 +5997,7 @@
                           "children": [
                             {
                               "type": "text",
-                              "id": "hXCa9",
+                              "id": "p3WzN",
                               "name": "unit axis start",
                               "fill": "$faint",
                               "content": "10 Aug",
@@ -6011,7 +6007,7 @@
                             },
                             {
                               "type": "text",
-                              "id": "vcGhf",
+                              "id": "EMSDb",
                               "name": "unit axis end",
                               "fill": "$faint",
                               "content": "9 Oct",
@@ -6023,7 +6019,7 @@
                         },
                         {
                           "type": "frame",
-                          "id": "g2Hdo",
+                          "id": "ZM738",
                           "name": "unit legend",
                           "width": "fill_container",
                           "layout": "vertical",
@@ -6031,7 +6027,7 @@
                           "children": [
                             {
                               "type": "text",
-                              "id": "E6rwf",
+                              "id": "dNisC",
                               "name": "unit legend perPR",
                               "fill": "$data-2",
                               "content": "$/PR  $26.40",
@@ -6041,7 +6037,7 @@
                             },
                             {
                               "type": "text",
-                              "id": "r5q5C",
+                              "id": "V3GDr1",
                               "name": "unit legend per1kLines",
                               "fill": "$data-3",
                               "content": "$/1k lines  $14.77",
@@ -6051,7 +6047,7 @@
                             },
                             {
                               "type": "text",
-                              "id": "Wtc20",
+                              "id": "WYOFA",
                               "name": "unit legend perRelease",
                               "fill": "$data-4",
                               "content": "$/release  $92.03",
@@ -6061,7 +6057,7 @@
                             },
                             {
                               "type": "text",
-                              "id": "xXnJ1",
+                              "id": "Is6bE",
                               "name": "unit legend perHour",
                               "fill": "$data-1",
                               "content": "$/hour  $54.92",
@@ -6075,7 +6071,7 @@
                     },
                     {
                       "type": "text",
-                      "id": "IjInC",
+                      "id": "ZBJCF",
                       "name": "lifetime note",
                       "fill": "$muted",
                       "textGrowth": "fixed-width",
@@ -19106,7 +19102,7 @@
         },
         {
           "type": "frame",
-          "id": "PmpGr",
+          "id": "UsAf1",
           "name": "LIFETIME",
           "reusable": true,
           "width": "fill_container",
@@ -19115,7 +19111,7 @@
           "children": [
             {
               "type": "frame",
-              "id": "VT6rg",
+              "id": "lCflu",
               "name": "TOTALS · COLOUR KEY block",
               "width": "fill_container",
               "layout": "vertical",
@@ -19123,7 +19119,7 @@
               "children": [
                 {
                   "type": "text",
-                  "id": "BeiNE",
+                  "id": "WcuUN",
                   "name": "h TOTALS · COLOUR KEY",
                   "fill": "$faint",
                   "content": "TOTALS · COLOUR KEY",
@@ -19134,7 +19130,7 @@
                 },
                 {
                   "type": "frame",
-                  "id": "mzgFe",
+                  "id": "UOacU",
                   "name": "colour key spend",
                   "width": "fill_container",
                   "height": 24,
@@ -19144,7 +19140,7 @@
                     {
                       "type": "rectangle",
                       "cornerRadius": 1,
-                      "id": "otPWC",
+                      "id": "H4UG6",
                       "name": "swatch",
                       "fill": "$data-1",
                       "width": 20,
@@ -19152,7 +19148,7 @@
                     },
                     {
                       "type": "text",
-                      "id": "Usald",
+                      "id": "Jsx6c",
                       "name": "word",
                       "fill": "$data-1",
                       "textGrowth": "fixed-width",
@@ -19164,10 +19160,10 @@
                     },
                     {
                       "type": "text",
-                      "id": "FXqDa",
+                      "id": "X4MxYP",
                       "name": "meaning",
                       "fill": "$faint",
-                      "content": "cumulative spend since the first spend day",
+                      "content": "lifetime spend over its 3 Sep value",
                       "fontFamily": "JetBrains Mono",
                       "fontSize": 12,
                       "fontWeight": "normal"
@@ -19176,7 +19172,7 @@
                 },
                 {
                   "type": "frame",
-                  "id": "gLwlh",
+                  "id": "qPZU4",
                   "name": "colour key prs",
                   "width": "fill_container",
                   "height": 24,
@@ -19186,7 +19182,7 @@
                     {
                       "type": "rectangle",
                       "cornerRadius": 1,
-                      "id": "SnOjI",
+                      "id": "VAjWs",
                       "name": "swatch",
                       "fill": "$data-2",
                       "width": 20,
@@ -19194,7 +19190,7 @@
                     },
                     {
                       "type": "text",
-                      "id": "g0f19",
+                      "id": "qnz4x",
                       "name": "word",
                       "fill": "$data-2",
                       "textGrowth": "fixed-width",
@@ -19206,10 +19202,10 @@
                     },
                     {
                       "type": "text",
-                      "id": "uKkSY",
+                      "id": "BHbbP",
                       "name": "meaning",
                       "fill": "$faint",
-                      "content": "cumulative merged pull requests",
+                      "content": "merged pull requests over their 3 Sep count",
                       "fontFamily": "JetBrains Mono",
                       "fontSize": 12,
                       "fontWeight": "normal"
@@ -19218,7 +19214,7 @@
                 },
                 {
                   "type": "frame",
-                  "id": "SSnjR",
+                  "id": "b9tVD",
                   "name": "colour key lines",
                   "width": "fill_container",
                   "height": 24,
@@ -19228,7 +19224,7 @@
                     {
                       "type": "rectangle",
                       "cornerRadius": 1,
-                      "id": "i8VgP",
+                      "id": "X5MzT",
                       "name": "swatch",
                       "fill": "$data-3",
                       "width": 20,
@@ -19236,7 +19232,7 @@
                     },
                     {
                       "type": "text",
-                      "id": "ddPmG",
+                      "id": "zLhp8",
                       "name": "word",
                       "fill": "$data-3",
                       "textGrowth": "fixed-width",
@@ -19248,10 +19244,10 @@
                     },
                     {
                       "type": "text",
-                      "id": "A7hlm",
+                      "id": "B30rBN",
                       "name": "meaning",
                       "fill": "$faint",
-                      "content": "cumulative merged lines added",
+                      "content": "merged lines over their 3 Sep count",
                       "fontFamily": "JetBrains Mono",
                       "fontSize": 12,
                       "fontWeight": "normal"
@@ -19260,7 +19256,7 @@
                 },
                 {
                   "type": "frame",
-                  "id": "FjhAK",
+                  "id": "C9b6oW",
                   "name": "colour key releases",
                   "width": "fill_container",
                   "height": 24,
@@ -19270,7 +19266,7 @@
                     {
                       "type": "rectangle",
                       "cornerRadius": 1,
-                      "id": "gq9sr",
+                      "id": "X1gYM",
                       "name": "swatch",
                       "fill": "$data-4",
                       "width": 20,
@@ -19278,7 +19274,7 @@
                     },
                     {
                       "type": "text",
-                      "id": "nEhLB",
+                      "id": "UeoxX",
                       "name": "word",
                       "fill": "$data-4",
                       "textGrowth": "fixed-width",
@@ -19290,21 +19286,31 @@
                     },
                     {
                       "type": "text",
-                      "id": "kXFZq",
+                      "id": "Z0GfHx",
                       "name": "meaning",
                       "fill": "$faint",
-                      "content": "cumulative releases",
+                      "content": "releases over their 3 Sep count",
                       "fontFamily": "JetBrains Mono",
                       "fontSize": 12,
                       "fontWeight": "normal"
                     }
                   ]
+                },
+                {
+                  "type": "text",
+                  "id": "CjGQn",
+                  "name": "key note",
+                  "fill": "$muted",
+                  "content": "×1 = the 3 Sep value; the tooltip gives the real totals",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
                 }
               ]
             },
             {
               "type": "frame",
-              "id": "l6rXo",
+              "id": "di6jN",
               "name": "UNIT COSTS · COLOUR KEY block",
               "width": "fill_container",
               "layout": "vertical",
@@ -19312,7 +19318,7 @@
               "children": [
                 {
                   "type": "text",
-                  "id": "LasPb",
+                  "id": "UYkyK",
                   "name": "h UNIT COSTS · COLOUR KEY",
                   "fill": "$faint",
                   "content": "UNIT COSTS · COLOUR KEY",
@@ -19323,7 +19329,7 @@
                 },
                 {
                   "type": "frame",
-                  "id": "UsS4Z",
+                  "id": "LjPPj",
                   "name": "colour key perPR",
                   "width": "fill_container",
                   "height": 24,
@@ -19333,7 +19339,7 @@
                     {
                       "type": "rectangle",
                       "cornerRadius": 1,
-                      "id": "NMmDi",
+                      "id": "QRH4L",
                       "name": "swatch",
                       "fill": "$data-2",
                       "width": 20,
@@ -19341,7 +19347,7 @@
                     },
                     {
                       "type": "text",
-                      "id": "SGa4O",
+                      "id": "B3qb5",
                       "name": "word",
                       "fill": "$data-2",
                       "textGrowth": "fixed-width",
@@ -19353,7 +19359,7 @@
                     },
                     {
                       "type": "text",
-                      "id": "QH8fw",
+                      "id": "BAODj",
                       "name": "meaning",
                       "fill": "$faint",
                       "content": "lifetime spend over merged pull requests",
@@ -19365,7 +19371,7 @@
                 },
                 {
                   "type": "frame",
-                  "id": "BYMBq",
+                  "id": "U0gfU",
                   "name": "colour key per1kLines",
                   "width": "fill_container",
                   "height": 24,
@@ -19375,7 +19381,7 @@
                     {
                       "type": "rectangle",
                       "cornerRadius": 1,
-                      "id": "hGOFJ",
+                      "id": "q38y13",
                       "name": "swatch",
                       "fill": "$data-3",
                       "width": 20,
@@ -19383,7 +19389,7 @@
                     },
                     {
                       "type": "text",
-                      "id": "JHcgb",
+                      "id": "BcVle",
                       "name": "word",
                       "fill": "$data-3",
                       "textGrowth": "fixed-width",
@@ -19395,7 +19401,7 @@
                     },
                     {
                       "type": "text",
-                      "id": "RujIb",
+                      "id": "C6p9y3",
                       "name": "meaning",
                       "fill": "$faint",
                       "content": "lifetime spend over merged lines, per 1,000",
@@ -19407,7 +19413,7 @@
                 },
                 {
                   "type": "frame",
-                  "id": "UU5P3",
+                  "id": "AULxu",
                   "name": "colour key perRelease",
                   "width": "fill_container",
                   "height": 24,
@@ -19417,7 +19423,7 @@
                     {
                       "type": "rectangle",
                       "cornerRadius": 1,
-                      "id": "rem4A",
+                      "id": "qbQZp",
                       "name": "swatch",
                       "fill": "$data-4",
                       "width": 20,
@@ -19425,7 +19431,7 @@
                     },
                     {
                       "type": "text",
-                      "id": "OLg9y",
+                      "id": "qLfwb",
                       "name": "word",
                       "fill": "$data-4",
                       "textGrowth": "fixed-width",
@@ -19437,7 +19443,7 @@
                     },
                     {
                       "type": "text",
-                      "id": "SlEmK",
+                      "id": "C0stp8",
                       "name": "meaning",
                       "fill": "$faint",
                       "content": "lifetime spend over releases",
@@ -19449,7 +19455,7 @@
                 },
                 {
                   "type": "frame",
-                  "id": "bXWiq",
+                  "id": "QtORI",
                   "name": "colour key perHour",
                   "width": "fill_container",
                   "height": 24,
@@ -19459,7 +19465,7 @@
                     {
                       "type": "rectangle",
                       "cornerRadius": 1,
-                      "id": "r44Evl",
+                      "id": "FxkZa",
                       "name": "swatch",
                       "fill": "$data-1",
                       "width": 20,
@@ -19467,7 +19473,7 @@
                     },
                     {
                       "type": "text",
-                      "id": "RxZRF",
+                      "id": "qoAYA",
                       "name": "word",
                       "fill": "$data-1",
                       "textGrowth": "fixed-width",
@@ -19479,7 +19485,7 @@
                     },
                     {
                       "type": "text",
-                      "id": "jotwE",
+                      "id": "jYoU4",
                       "name": "meaning",
                       "fill": "$faint",
                       "content": "measured spend over model hours",
@@ -19493,7 +19499,7 @@
             },
             {
               "type": "frame",
-              "id": "F1gnE",
+              "id": "N1Lmq",
               "name": "SHORTHAND block",
               "width": "fill_container",
               "layout": "vertical",
@@ -19501,7 +19507,7 @@
               "children": [
                 {
                   "type": "text",
-                  "id": "KtdxO",
+                  "id": "XM8TA",
                   "name": "h SHORTHAND",
                   "fill": "$faint",
                   "content": "LIFETIME · SHORTHAND",
@@ -19512,7 +19518,7 @@
                 },
                 {
                   "type": "text",
-                  "id": "W6oC9Y",
+                  "id": "s8GLU7",
                   "name": "shorthand rule",
                   "fill": "$muted",
                   "textGrowth": "fixed-width",
@@ -19524,7 +19530,7 @@
                 },
                 {
                   "type": "frame",
-                  "id": "Ij3sA",
+                  "id": "IYvZQ",
                   "name": "shorthand row 244",
                   "width": "fill_container",
                   "height": 20,
@@ -19532,7 +19538,7 @@
                   "children": [
                     {
                       "type": "text",
-                      "id": "xtUMi",
+                      "id": "rNw1V",
                       "name": "raw",
                       "fill": "$faint",
                       "textGrowth": "fixed-width",
@@ -19544,7 +19550,7 @@
                     },
                     {
                       "type": "text",
-                      "id": "RmwbL",
+                      "id": "hcITG",
                       "name": "arrow",
                       "fill": "$faint",
                       "content": "->",
@@ -19554,7 +19560,7 @@
                     },
                     {
                       "type": "text",
-                      "id": "EvjPu",
+                      "id": "cFv02",
                       "name": "out",
                       "fill": "$text",
                       "content": "244 PRs",
@@ -19566,7 +19572,7 @@
                 },
                 {
                   "type": "frame",
-                  "id": "i8VRR",
+                  "id": "RBRpq",
                   "name": "shorthand row 6,442.02",
                   "width": "fill_container",
                   "height": 20,
@@ -19574,7 +19580,7 @@
                   "children": [
                     {
                       "type": "text",
-                      "id": "Kp3p2",
+                      "id": "bZTGr",
                       "name": "raw",
                       "fill": "$faint",
                       "textGrowth": "fixed-width",
@@ -19586,7 +19592,7 @@
                     },
                     {
                       "type": "text",
-                      "id": "av7OW",
+                      "id": "K7sk1",
                       "name": "arrow",
                       "fill": "$faint",
                       "content": "->",
@@ -19596,7 +19602,7 @@
                     },
                     {
                       "type": "text",
-                      "id": "ZX9ur",
+                      "id": "d9N9e",
                       "name": "out",
                       "fill": "$text",
                       "content": "$6.4k spend",
@@ -19608,7 +19614,7 @@
                 },
                 {
                   "type": "frame",
-                  "id": "QKgdb",
+                  "id": "lczvD",
                   "name": "shorthand row 436,046",
                   "width": "fill_container",
                   "height": 20,
@@ -19616,7 +19622,7 @@
                   "children": [
                     {
                       "type": "text",
-                      "id": "WVFE6",
+                      "id": "q6ZH6x",
                       "name": "raw",
                       "fill": "$faint",
                       "textGrowth": "fixed-width",
@@ -19628,7 +19634,7 @@
                     },
                     {
                       "type": "text",
-                      "id": "t6sDJJ",
+                      "id": "oQAxJ",
                       "name": "arrow",
                       "fill": "$faint",
                       "content": "->",
@@ -19638,7 +19644,7 @@
                     },
                     {
                       "type": "text",
-                      "id": "B4d0Eg",
+                      "id": "d9FPbt",
                       "name": "out",
                       "fill": "$text",
                       "content": "436k lines",
@@ -19650,7 +19656,7 @@
                 },
                 {
                   "type": "frame",
-                  "id": "pgfkV",
+                  "id": "J2bpB",
                   "name": "shorthand row 70",
                   "width": "fill_container",
                   "height": 20,
@@ -19658,7 +19664,7 @@
                   "children": [
                     {
                       "type": "text",
-                      "id": "dJMDv",
+                      "id": "SpW1z",
                       "name": "raw",
                       "fill": "$faint",
                       "textGrowth": "fixed-width",
@@ -19670,7 +19676,7 @@
                     },
                     {
                       "type": "text",
-                      "id": "a7lUO",
+                      "id": "GUWIL",
                       "name": "arrow",
                       "fill": "$faint",
                       "content": "->",
@@ -19680,7 +19686,7 @@
                     },
                     {
                       "type": "text",
-                      "id": "I8wlT",
+                      "id": "Z1JzW",
                       "name": "out",
                       "fill": "$text",
                       "content": "70 releases",
@@ -19694,7 +19700,7 @@
             },
             {
               "type": "frame",
-              "id": "jVehp",
+              "id": "IFdR1",
               "name": "LIFETIME NOTE block",
               "width": "fill_container",
               "layout": "vertical",
@@ -19702,7 +19708,7 @@
               "children": [
                 {
                   "type": "text",
-                  "id": "qv4jl",
+                  "id": "YbLmN",
                   "name": "h LIFETIME NOTE",
                   "fill": "$faint",
                   "content": "LIFETIME · NOTE",
@@ -19713,7 +19719,7 @@
                 },
                 {
                   "type": "text",
-                  "id": "yUUEh",
+                  "id": "R8MSaj",
                   "name": "lifetime note",
                   "fill": "$muted",
                   "textGrowth": "fixed-width",
@@ -19727,7 +19733,7 @@
             },
             {
               "type": "frame",
-              "id": "l4GjQv",
+              "id": "qxe2p",
               "name": "LIFETIME EMPTY block",
               "width": "fill_container",
               "layout": "vertical",
@@ -19735,7 +19741,7 @@
               "children": [
                 {
                   "type": "text",
-                  "id": "QvmuY",
+                  "id": "Y2Mm7r",
                   "name": "h LIFETIME EMPTY",
                   "fill": "$faint",
                   "content": "LIFETIME · EMPTY",
@@ -19746,7 +19752,7 @@
                 },
                 {
                   "type": "text",
-                  "id": "FhctP",
+                  "id": "N1EJB",
                   "name": "lifetime empty",
                   "fill": "$muted",
                   "textGrowth": "fixed-width",
