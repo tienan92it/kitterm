@@ -74,3 +74,31 @@ colour-blind reader, and none equal to or near a colour that carries a
 meaning on the page (the accent's working, success, warning, danger,
 caution). Each line's label wears its line's colour. The human approves
 the four values with the frames.
+
+## Later the same day: TOTALS is growth since 3 Sep on a log axis
+
+The human asked why the TOTALS lines meet at the end (each on its own
+scale, every cumulative line ends at the top), saw a log draft, and
+said:
+
+> Keep the log TOTALS. I want to measure grow against each other.
+
+The foreman offered rebased growth; the human asked why it starts on
+3 Sep and not at the beginning. On 10 Aug the spend record is $3.05, so
+a 10 Aug base gives spend ×2,112 against PRs ×81, a multiple of the
+missing record, not of growth. On 3 Sep all four measures are complete
+($730.96, 27 PRs, 16,643 lines, 17 releases). The human saw two drafts
+(from 10 Aug with the base on 3 Sep, and from 3 Sep only) and chose:
+
+> Option 2, apply it
+
+So TOTALS is: each measure divided by its own value on 2026-09-03, on a
+log axis (×1, ×2, ×5, ×10, ×20, ×50), from 3 Sep to today; every line
+starts at ×1; the end label is the multiple and the measure
+(`×26.2 lines`, `×9.0 PRs`, `×8.8 spend`, `×4.1 releases`), and labels
+closer than one line height stack instead of overlapping; the tooltip
+gives the day's multiples and its real totals in shorthand. The base day
+is the first day of full spend records; the foreman proposes that the
+page find it as the first day of a run of days with spend, and the human
+decides that rule with the build. UNIT COSTS keeps its start, 10 Aug, and
+its note.

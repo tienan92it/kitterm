@@ -2,12 +2,12 @@
 
 ## Objective
 
-Under the VALUE tiles, the human sees two line charts that cover the
-fleet's lifetime, from the first recorded spend day to today, whatever
-the 7d/30d/90d toggle says. TOTALS draws the cumulative spend, merged
-pull requests, merged lines and releases, each on its own scale from 0
-to its value today, with that value in shorthand (`$6.4k`, `401k
-lines`) at the line's end. UNIT COSTS draws, on one dollar axis, the
+Under the VALUE tiles, the human sees two line charts, whatever
+the 7d/30d/90d toggle says. TOTALS draws how the cumulative spend, merged
+pull requests, merged lines and releases grew against each other: each
+divided by its own value on 3 Sep, on a log axis, from 3 Sep to today,
+the multiple at the line's end (`×26.2 lines`) and the real totals in
+shorthand in the tooltip. UNIT COSTS draws, on one dollar axis, the
 lifetime cost per merged pull request, per 1,000 merged lines, per
 release and per hour of model time. A tooltip gives a day's values, and
 a note says that spend before early September is mostly missing from
