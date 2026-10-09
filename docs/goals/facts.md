@@ -256,6 +256,10 @@ decision moves to `docs/adr/`.
   send", and the paste's own Enter did not submit it. Read the screen
   after a long `send_input`; on that line, press Enter again
   (`keys: ["enter"]`) (2026-10-09, `value-lifetime` round 2).
+- A crew ran `git stash` to revert its fix for a fail-before proof. The
+  stash stack is shared by every worktree of the repository, so a pop
+  can take another session's entry; use a WIP commit or a second
+  worktree for that proof (2026-10-09, `value-lifetime` round 5).
 
 ## Fleet view
 

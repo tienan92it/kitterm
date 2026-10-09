@@ -1,14 +1,14 @@
 # STATE: value-lifetime
 
-- Status: active
-- Round: 1 of 3 in this budget (second budget)
-- Rounds total: 4
-- Last floor: green (2026-10-09, round 4 after: vitest 1662)
-- Updated: 2026-10-09, direction check: the median rule for the base day, a second budget of 3
+- Status: done
+- Round: 2 of 3 in this budget (second budget)
+- Rounds total: 5
+- Last floor: green (2026-10-09, round 5 after: vitest 1724, PR CI on 7a3deb1)
+- Updated: 2026-10-09, the goal is done; PR #188 is ready
 
 ## Queue
 
-1. `lifetime-chart` (capability 4), PR #188.
+None.
 
 ## Failures
 
@@ -21,6 +21,8 @@ at least 25% of the median daily spend).
 
 ## Done
 
+- `lifetime-chart`, round 5, PR #188. See `rounds/005.md`. TOTALS and
+  UNIT COSTS draw under VALUE.
 - `base-day-rule`, round 4, PR #188. See `rounds/004.md`. The base day
   follows the human's median rule.
 - `lifetime-series`, round 3, PR #188. See `rounds/003.md`. The pure
@@ -32,5 +34,5 @@ at least 25% of the median daily spend).
 
 ## Next action
 
-Round 5: `lifetime-chart` from `plan.md` row 4; proof: the foundation's
-proofs and a check against the live daemon.
+The human merges PR #188; the foreman releases and upgrades, and checks
+the charts on the live page.
