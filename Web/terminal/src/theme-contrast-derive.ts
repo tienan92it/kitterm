@@ -540,6 +540,15 @@ const BLOCK_SURFACES: Array<{ block: string; stack: string[]; why: string }> = [
   { block: "leak-lines", stack: ["var(--ui-bg)"], why: "in .panel-body, on the body" },
   { block: "leak-line", stack: ["var(--ui-bg)"], why: "in .leak-lines, on the body" },
   { block: "leak-text", stack: ["var(--ui-bg)"], why: "in .leak-line, on the body" },
+  // --- sessions.css: the two lifetime charts under VALUE's tiles ---
+  { block: "lifetime-title", stack: ["var(--ui-bg)"], why: "in .lifetime, on the body" },
+  { block: "lifetime-title-word", stack: ["var(--ui-bg)"], why: "in .lifetime-title, on the body" },
+  { block: "lifetime-tick", stack: ["var(--ui-bg)"], why: "in .lifetime-ticks, on the body" },
+  { block: "lifetime-tooltip", stack: ["var(--ui-surface)"], why: "a tooltip over the chart; it paints --ui-surface itself" },
+  { block: "lifetime-tooltip-day", stack: ["var(--ui-surface)"], why: "in .lifetime-tooltip" },
+  { block: "lifetime-axis", stack: ["var(--ui-bg)"], why: "in .lifetime-plot's chart block, on the body" },
+  { block: "lifetime-note", stack: ["var(--ui-bg)"], why: "in .lifetime, on the body" },
+  { block: "lifetime-empty", stack: ["var(--ui-bg)"], why: "in .lifetime, in place of the two charts, on the body" },
   // --- sessions.css: the tree's header and the tree, on the body ---
   { block: "tree-head", stack: ["var(--ui-bg)"], why: "above the tree, on the body; it paints nothing" },
   { block: "tree-label", stack: ["var(--ui-bg)"], why: "in .tree-head, on the body" },

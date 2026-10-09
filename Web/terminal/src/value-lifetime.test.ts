@@ -2,14 +2,20 @@ import { describe, expect, it } from "vitest";
 
 import {
   baseDayOf,
+  logPosition,
   type LifetimeUsageDay,
   type LifetimeYieldDay,
   multipleLabel,
   shorthandCount,
   shorthandDollars,
   stackEndLabels,
+  totalsAxisTicks,
+  totalsMultiplesLine,
+  totalsRealLine,
   totalsSeries,
+  unitCostAxisTicks,
   unitCostLabel,
+  unitCostsLine,
   unitCostsSeries,
 } from "./value-lifetime";
 
@@ -216,6 +222,23 @@ describe("baseDayOf", () => {
     expect(baseDayOf(usage)).toEqual({ firstSpendDay: "2026-01-01", baseDay: "2026-01-01" });
   });
 
+  it("ignores zero-filled days before the first spend day when computing the median and the run", () => {
+    // A caller that asks a wide range to find the first spend day without
+    // knowing it in advance (`value-lifetime`, capability 4: the lifetime
+    // charts ask 400 days) gets 300 zero-filled days before the real
+    // record starts. Without trimming to the first spend day, those zeros
+    // would drag the median to 0, and the padding's own leading run of
+    // true zeros would then qualify as the base day.
+    const firstRealDay = Date.UTC(2026, 7, 10); // 2026-08-10, usageDays[0]
+    const padding: LifetimeUsageDay[] = Array.from({ length: 300 }, (_, i) => {
+      const d = new Date(firstRealDay - (300 - i) * 86_400_000);
+      const day = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+      return { day, costUSD: 0 };
+    });
+    const padded = [...padding, ...usageDays];
+    expect(baseDayOf(padded)).toEqual(baseDayOf(usageDays));
+  });
+
   it("makes the first day the base day when every day's spend is equal", () => {
     const usage: LifetimeUsageDay[] = Array.from({ length: 10 }, (_, i) => ({
       day: `2026-02-${String(i + 1).padStart(2, "0")}`,
@@ -362,6 +385,88 @@ describe("multipleLabel", () => {
 
   it("prints two decimals under 1", () => {
     expect(multipleLabel(0.1055)).toBe("×0.11");
+  });
+});
+
+describe("totalsAxisTicks", () => {
+  it("gives the approved frame's ticks for the real record's top multiple, ×26.2 lines", () => {
+    expect(totalsAxisTicks(26.2)).toEqual([1, 2, 5, 10, 20, 50]);
+  });
+
+  it("stops at the first tick that reaches an exact power of ten", () => {
+    expect(totalsAxisTicks(10)).toEqual([1, 2, 5, 10]);
+  });
+
+  it("climbs past ×50 by the same 1-2-5 sequence", () => {
+    expect(totalsAxisTicks(63)).toEqual([1, 2, 5, 10, 20, 50, 100]);
+  });
+
+  it("gives the ×1 tick alone for a multiple at or under 1", () => {
+    expect(totalsAxisTicks(1)).toEqual([1]);
+    expect(totalsAxisTicks(0.4)).toEqual([1]);
+  });
+});
+
+describe("logPosition", () => {
+  it("places the base day's own line, ×1, at 0", () => {
+    expect(logPosition(1, 50)).toBe(0);
+  });
+
+  it("places the axis's top tick at 1", () => {
+    expect(logPosition(50, 50)).toBe(1);
+  });
+
+  it("places ×10 on a ×50 axis a little past half way up (a log axis, not linear)", () => {
+    const pos = logPosition(10, 50);
+    expect(pos).toBeGreaterThan(0.55);
+    expect(pos).toBeLessThan(0.6);
+    expect(pos).toBeCloseTo(Math.log(10) / Math.log(50), 10);
+  });
+});
+
+describe("unitCostAxisTicks", () => {
+  it("gives the single 0 tick with no positive value", () => {
+    expect(unitCostAxisTicks(0)).toEqual([0]);
+  });
+
+  it("picks a round $50 step that covers a peak around $180, the frame's own gridlines", () => {
+    expect(unitCostAxisTicks(180)).toEqual([0, 50, 100, 150, 200]);
+  });
+
+  it("picks a round $5 step for a peak around $17", () => {
+    expect(unitCostAxisTicks(17)).toEqual([0, 5, 10, 15, 20]);
+  });
+
+  it("picks a round $2 step for a peak around $7", () => {
+    expect(unitCostAxisTicks(7)).toEqual([0, 2, 4, 6, 8]);
+  });
+});
+
+describe("totalsMultiplesLine and totalsRealLine", () => {
+  it("prints the human's table on 2026-09-20", () => {
+    const point = totalsOn("2026-09-20");
+    expect(totalsMultiplesLine(point)).toBe("spend ×5.7 · PRs ×4.8 · lines ×6.3 · releases ×2.1");
+  });
+
+  it("prints the dash for a null multiple", () => {
+    const point = { multiple: { spend: null, prs: 1, lines: 1, releases: 1 } };
+    expect(totalsMultiplesLine(point)).toBe("spend – · PRs ×1.0 · lines ×1.0 · releases ×1.0");
+  });
+
+  it("prints the real totals in shorthand", () => {
+    const point = totalsOn("2026-10-09");
+    expect(totalsRealLine(point)).toBe("$6.4k · 244 PRs · 436k lines · 70 releases");
+  });
+});
+
+describe("unitCostsLine", () => {
+  it("prints the human's table on 2026-10-09", () => {
+    const point = unitCostsOn("2026-10-09");
+    expect(unitCostsLine(point)).toBe("$26.40/PR · $14.77/1k lines · $92.03/release · $54.92/hour");
+  });
+
+  it("prints the dash for a null count", () => {
+    expect(unitCostsLine({ day: "2026-01-01", perPR: null, perKLines: null, perRelease: null, perHour: null })).toBe("–/PR · –/1k lines · –/release · –/hour");
   });
 });
 

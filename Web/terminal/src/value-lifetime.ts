@@ -67,18 +67,27 @@ function medianOf(values: readonly number[]): number {
  */
 export function baseDayOf(usageDays: readonly LifetimeUsageDay[]): BaseDayResult {
   const sorted = [...usageDays].sort((a, b) => cmpDay(a.day, b.day));
-  const firstSpendDay = sorted.find((d) => d.costUSD > 0)?.day ?? null;
-  if (firstSpendDay === null) return { firstSpendDay: null, baseDay: null };
-  const floor = medianOf(sorted.map((d) => d.costUSD)) * BASE_RUN_FLOOR_SHARE;
+  const firstSpendIndex = sorted.findIndex((d) => d.costUSD > 0);
+  if (firstSpendIndex === -1) return { firstSpendDay: null, baseDay: null };
+  const firstSpendDay = sorted[firstSpendIndex].day;
+  // The median and the run both read from the first spend day on: a day
+  // before it is not the record, it is a day the fleet did not exist, and
+  // `GET /api/usage/daily` zero-fills it the same as a quiet one inside the
+  // record. A caller that asks a wide range to find the first spend day
+  // without knowing it in advance (the lifetime charts ask 400 days) would
+  // otherwise drag the median toward 0 with padding and let a run of true
+  // zeros before the record qualify.
+  const record = sorted.slice(firstSpendIndex);
+  const floor = medianOf(record.map((d) => d.costUSD)) * BASE_RUN_FLOOR_SHARE;
   let baseDay: string | null = null;
-  for (let i = 0; i + BASE_RUN_DAYS <= sorted.length && baseDay === null; i++) {
+  for (let i = 0; i + BASE_RUN_DAYS <= record.length && baseDay === null; i++) {
     let run = true;
     for (let j = 0; j < BASE_RUN_DAYS; j++) {
-      const day = sorted[i + j];
+      const day = record[i + j];
       if (!(day.costUSD >= floor)) { run = false; break; }
-      if (j > 0 && epochDay(day.day) !== epochDay(sorted[i + j - 1].day) + 1) { run = false; break; }
+      if (j > 0 && epochDay(day.day) !== epochDay(record[i + j - 1].day) + 1) { run = false; break; }
     }
-    if (run) baseDay = sorted[i].day;
+    if (run) baseDay = record[i].day;
   }
   return { firstSpendDay, baseDay };
 }
@@ -232,4 +241,77 @@ export function stackEndLabels(positions: readonly number[], lineHeight: number)
     result[originalIndex] = sorted[sortedIndex];
   });
   return result;
+}
+
+// --- chart axes and geometry (capability 4: the charts) ----------------
+
+/** The TOTALS log axis: ×1 ×2 ×5 ×10 ×20 ×50, extended by the same 1-2-5
+ * sequence (×100 ×200 ×500 …) until a tick is at or above the highest
+ * multiple any line reaches that day (`corpus/02-direction.md`, the frame
+ * `Dashboard 1200`). `maxMultiple` under 1 still gets the ×1 tick: the
+ * axis never reads below the base day's own line. */
+export function totalsAxisTicks(maxMultiple: number): number[] {
+  const ticks: number[] = [];
+  let decade = 1;
+  for (;;) {
+    for (const step of [1, 2, 5]) {
+      const tick = step * decade;
+      ticks.push(tick);
+      if (tick >= maxMultiple) return ticks;
+    }
+    decade *= 10;
+  }
+}
+
+/** A point's position on the TOTALS log axis, 0 at the base day's own line
+ * (×1) to 1 at `axisMax` (the top tick `totalsAxisTicks` returns): the
+ * fraction of the axis's log span a multiple of `value` has climbed.
+ * `value` is always 1 or more on a TOTALS line (`totalsSeries` divides a
+ * cumulative total by itself or an earlier one), so this never takes a
+ * value under 1. */
+export function logPosition(value: number, axisMax: number): number {
+  return Math.log(value) / Math.log(axisMax);
+}
+
+/** A UNIT COSTS axis tick list from 0 to a round dollar amount at or above
+ * `max`: a 1-2-5-10 step picked so four to five gridlines cover the range,
+ * the same family of round numbers `totalsAxisTicks` climbs. `max` of 0 or
+ * less draws the single tick at 0. */
+export function unitCostAxisTicks(max: number): number[] {
+  if (max <= 0) return [0];
+  const rough = max / 4;
+  const magnitude = 10 ** Math.floor(Math.log10(rough));
+  const residual = rough / magnitude;
+  const step = (residual >= 5 ? 10 : residual >= 2 ? 5 : residual >= 1 ? 2 : 1) * magnitude;
+  const ticks: number[] = [0];
+  while (ticks[ticks.length - 1] < max - step * 1e-9) ticks.push(Math.round((ticks[ticks.length - 1] + step) * 100) / 100);
+  return ticks;
+}
+
+// --- tooltip text --------------------------------------------------------
+
+const TOOLTIP_DASH = "–";
+
+/** The TOTALS tooltip's multiples line: `spend ×5.7 · PRs ×4.8 · lines
+ * ×6.3 · releases ×2.1`, the day's multiples in the chart's measure order
+ * (`corpus/03-approved-design.md`). A null multiple (the base day's own
+ * value was 0) prints the dash. */
+export function totalsMultiplesLine(point: Pick<TotalsPoint, "multiple">): string {
+  const m = (x: number | null): string => (x === null ? TOOLTIP_DASH : multipleLabel(x));
+  return `spend ${m(point.multiple.spend)} · PRs ${m(point.multiple.prs)} · lines ${m(point.multiple.lines)} · releases ${m(point.multiple.releases)}`;
+}
+
+/** The TOTALS tooltip's second line: the day's real totals in shorthand,
+ * `$4.2k · 129 PRs · 105k lines · 36 releases`. */
+export function totalsRealLine(point: Pick<TotalsPoint, "cumulative">): string {
+  const c = point.cumulative;
+  return `${shorthandDollars(c.spend)} · ${shorthandCount(c.prs)} PRs · ${shorthandCount(c.lines)} lines · ${shorthandCount(c.releases)} releases`;
+}
+
+/** The UNIT COSTS tooltip's one line: `$32.51/PR · $40.09/1k lines ·
+ * $116/release · $64.63/hour`. A null count (nothing merged or billed yet
+ * that day) prints the dash. */
+export function unitCostsLine(point: UnitCostPoint): string {
+  const p = (x: number | null): string => (x === null ? TOOLTIP_DASH : unitCostLabel(x));
+  return `${p(point.perPR)}/PR · ${p(point.perKLines)}/1k lines · ${p(point.perRelease)}/release · ${p(point.perHour)}/hour`;
 }
