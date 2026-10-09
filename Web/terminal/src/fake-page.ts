@@ -144,6 +144,14 @@ export function fakeStatus(status: number, body: unknown = {}): unknown {
   return { [STATUS_MARKER]: status, body };
 }
 
+const THROW_MARKER = Symbol("fake-page-throw");
+
+/** A route value that makes `fetch` reject, the way a network blip or a
+ * timed-out request does, rather than answering a status. */
+export function fakeThrow(): unknown {
+  return { [THROW_MARKER]: true };
+}
+
 export type FakePage = {
   /** The `#sessions` element the page paints into. */
   root: FakeElement;
@@ -211,6 +219,9 @@ export function installFakePage(routes: Record<string, unknown>): FakePage {
     const entry = routes[path];
     const body = typeof entry === "function" ? (entry as (query: URLSearchParams) => unknown)(new URLSearchParams(url.replace(/^[^?]*\??/, ""))) : entry;
     if (body === undefined) return new Response("not found", { status: 404 });
+    if (body !== null && typeof body === "object" && THROW_MARKER in body) {
+      throw new TypeError("fake network failure");
+    }
     if (body !== null && typeof body === "object" && STATUS_MARKER in body) {
       const { [STATUS_MARKER]: status, body: inner } = body as { [STATUS_MARKER]: number; body: unknown };
       return new Response(JSON.stringify(inner), { status, headers: { "content-type": "application/json" } });

@@ -157,6 +157,30 @@ describe("TOTALS", () => {
     hit.listeners.get("blur")?.[0]({});
     expect(tooltip.hidden).toBe(true);
   });
+
+  it("announces the tooltip's day and lines in a polite live region, on focus and on the arrow keys", () => {
+    // A screen reader does not see the visible tooltip move, so `show`
+    // also updates an `aria-live="polite"` sr-only paragraph beside it.
+    const hit = totalsBlock().querySelector(".lifetime-hit")! as FakeElement;
+    const announce = totalsBlock().querySelector('[aria-live="polite"]')!;
+    expect(announce.classList.contains("sr-only")).toBe(true);
+    const keydown = (key: string): void => hit.listeners.get("keydown")?.[0]({ key, preventDefault: () => undefined });
+
+    // The previous test left the cursor mid-series; push it past the end
+    // (`show` clamps) so this test starts from a known day, the last one.
+    for (let i = 0; i < totals.points.length + 1; i += 1) keydown("ArrowRight");
+    hit.listeners.get("focus")?.[0]({});
+    expect(announce.textContent).toContain(totalsMultiplesLine(lastTotals));
+    expect(announce.textContent).toContain(totalsRealLine(lastTotals));
+
+    const prev = totals.points[totals.points.length - 2];
+    keydown("ArrowLeft");
+    expect(announce.textContent).toContain(totalsMultiplesLine(prev));
+    // The live region keeps announcing after blur hides the visible
+    // tooltip: the last value read stays available, nothing is retracted.
+    hit.listeners.get("blur")?.[0]({});
+    expect(announce.textContent).toContain(totalsMultiplesLine(prev));
+  });
 });
 
 describe("UNIT COSTS", () => {

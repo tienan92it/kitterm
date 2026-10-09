@@ -381,8 +381,10 @@ function lifetimeRange(now: number): { from: string; to: string } {
  * after, never on the `usageChoice` toggle, which `fetchUsage` already
  * covers for its own narrower range. Full grade only: a watch client asks
  * neither route, the same reason the pulls route waits for `gradeKnown`
- * (`goal.md` condition 5). A failed request keeps the last answer and
- * retries on the next poll. */
+ * (`goal.md` condition 5). `lifetimeAskedAt` is set before the request and
+ * kept on a non-ok answer or a throw (`fetchPulls`'s own rule), so a blip
+ * keeps the charts on the last good answer and waits the full five minutes
+ * before asking again, rather than retrying on the very next 2 s poll. */
 async function fetchLifetime(now: number): Promise<void> {
   if (!gradeKnown || watchOnly) return;
   if (lifetimeAskedAt !== 0 && now - lifetimeAskedAt < LIFETIME_REFRESH_MS) return;
@@ -395,10 +397,11 @@ async function fetchLifetime(now: number): Promise<void> {
       fetch(`/api/usage/daily?${query}`, { headers }),
       fetch(`/api/yield/daily?${query}`, { headers }),
     ]);
-    lifetimeUsage = res.ok ? ((await res.json()) as UsageDaily) : null;
-    lifetimeYield = yielded.ok ? ((await yielded.json()) as YieldDaily) : null;
+    if (res.ok) lifetimeUsage = (await res.json()) as UsageDaily;
+    if (yielded.ok) lifetimeYield = (await yielded.json()) as YieldDaily;
   } catch {
-    lifetimeAskedAt = 0;
+    // Keep the last good answer; `lifetimeAskedAt` is already set, so the
+    // next poll waits the full five minutes before asking again.
   }
 }
 
@@ -1240,7 +1243,7 @@ function tickLabel(text: string, y: number): HTMLElement {
  * focus. `points` is one entry per day in the chart's x order; `purpose`
  * is the hit layer's own `aria-label`, since the chart's single summary
  * sentence sits on the `<svg>` beside it. */
-function lifetimeHit(points: ReadonlyArray<{ x: number; content: () => { day: string; lines: readonly string[] } }>, purpose: string): { hit: HTMLElement; tooltip: HTMLElement } {
+function lifetimeHit(points: ReadonlyArray<{ x: number; content: () => { day: string; lines: readonly string[] } }>, purpose: string): { hit: HTMLElement; tooltip: HTMLElement; announce: HTMLElement } {
   const hit = document.createElement("div");
   hit.className = "lifetime-hit";
   hit.tabIndex = 0;
@@ -1248,6 +1251,12 @@ function lifetimeHit(points: ReadonlyArray<{ x: number; content: () => { day: st
   const tooltip = document.createElement("div");
   tooltip.className = "lifetime-tooltip";
   tooltip.hidden = true;
+  // A screen reader does not see the visible tooltip move: `show` updates
+  // this polite live region with the same day and the same lines every
+  // time it updates the tooltip, on hover and on the arrow keys alike.
+  const announce = document.createElement("p");
+  announce.className = "sr-only";
+  announce.setAttribute("aria-live", "polite");
   let cursor = points.length - 1;
   const show = (index: number): void => {
     if (points.length === 0) return;
@@ -1268,6 +1277,7 @@ function lifetimeHit(points: ReadonlyArray<{ x: number; content: () => { day: st
     tooltip.style.left = onRight ? "auto" : `${point.x}%`;
     tooltip.style.right = onRight ? `${100 - point.x}%` : "auto";
     tooltip.hidden = false;
+    announce.textContent = [day, ...lines].join(". ");
   };
   const hide = (): void => {
     tooltip.hidden = true;
@@ -1292,7 +1302,7 @@ function lifetimeHit(points: ReadonlyArray<{ x: number; content: () => { day: st
       show(cursor - 1);
     }
   });
-  return { hit, tooltip };
+  return { hit, tooltip, announce };
 }
 
 type TotalsMeasure = "spend" | "prs" | "lines" | "releases";
@@ -1347,13 +1357,13 @@ function totalsChartBlock(totals: Totals): HTMLElement {
   ticksCol.setAttribute("aria-hidden", "true");
   for (const tick of ticks) ticksCol.append(tickLabel(`×${tick}`, yOf(tick)));
 
-  const { hit, tooltip } = lifetimeHit(
+  const { hit, tooltip, announce } = lifetimeHit(
     points.map((p, i) => ({ x: xOf(i), content: () => ({ day: `${dayLabel(p.day)}, against ${dayLabel(baseDay)}`, lines: [totalsMultiplesLine(p), totalsRealLine(p)] }) })),
     `Move with arrow keys to see a day's growth against ${dayLabel(baseDay)}`,
   );
   const chartArea = document.createElement("div");
   chartArea.className = "lifetime-chart-area";
-  chartArea.append(svg, hit, tooltip);
+  chartArea.append(svg, hit, tooltip, announce);
 
   const labelsCol = document.createElement("div");
   labelsCol.className = "lifetime-labels";
@@ -1433,13 +1443,13 @@ function unitCostsChartBlock(unitCosts: UnitCosts): HTMLElement {
   ticksCol.setAttribute("aria-hidden", "true");
   for (const tick of ticks) ticksCol.append(tickLabel(`${tick}`, yOf(tick)));
 
-  const { hit, tooltip } = lifetimeHit(
+  const { hit, tooltip, announce } = lifetimeHit(
     points.map((p, i) => ({ x: xOf(i), content: () => ({ day: dayLabel(p.day), lines: [unitCostsLine(p)] }) })),
     "Move with arrow keys to see a day's unit costs",
   );
   const chartArea = document.createElement("div");
   chartArea.className = "lifetime-chart-area";
-  chartArea.append(svg, hit, tooltip);
+  chartArea.append(svg, hit, tooltip, announce);
 
   const labelsCol = document.createElement("div");
   labelsCol.className = "lifetime-labels";
