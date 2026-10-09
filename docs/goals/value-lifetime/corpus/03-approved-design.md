@@ -33,3 +33,21 @@ The frames draw 3 Sep. The page finds it: the base day is the first day
 of the first run of seven days that each have recorded spend. On the
 real rollup that is 2026-09-03 (09-03 to 09-09: $428, $419, $31, $100,
 $177, $187, $232); every earlier seven-day run holds a day with $0.
+
+## The base day, decided (2026-10-09)
+
+Round 3 found the rule above too fragile: the foreman had read rounded
+numbers, and 2026-08-23 holds $0.09, not $0, so "each day has recorded
+spend" makes 22 Aug to 28 Aug a run and picks 22 Aug. The foreman
+showed the real days (08-20 $6.63, 08-21 $0, 08-22 $16.67, 08-23 $0.09,
+… 09-02 $0, 09-03 $427.76) and floors from $1 to $25, which all give
+3 Sep. The human chose:
+
+> 7 days, each ≥ 25% of median
+
+The base day is the first day of the first run of seven days in which
+every day's spend is at least a quarter of the median daily spend over
+the whole record. On the rollup of 2026-10-09 the median is $48.94, the
+floor $12.23, and the base day 2026-09-03 (its run: $427.76, $419.29,
+$31.41, $100.41, $176.95, $186.96, $231.77). This replaces "each have
+recorded spend" above.
