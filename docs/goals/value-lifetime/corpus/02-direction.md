@@ -58,3 +58,19 @@ repositories VALUE counts.
 | 09-06 | $1,282.07 | 42 | 30,730 | 22 | $30.53 | $41.72 | $58.28 | $70 |
 | 09-20 | $4,193.54 | 129 | 104,598 | 36 | $32.51 | $40.09 | $116.49 | $65 |
 | 10-08 | $6,375.79 | 240 | 400,666 | 69 | $26.57 | $15.91 | $92.40 | $55 |
+
+## Later the same day: colours, not dashes
+
+The human, after the frames of f9eab1e:
+
+> Use different colors for lines instead of dashed lines
+
+This replaces "the lines differ by dash in the one data colour". It
+amends the design foundation, which owned one data colour, on the
+human's word: a data palette of four colours for chart lines only
+(`--ui-data-1` to `--ui-data-4`), each with a dark and a light value,
+each at least 3:1 against the ground in both themes, told apart by a
+colour-blind reader, and none equal to or near a colour that carries a
+meaning on the page (the accent's working, success, warning, danger,
+caution). Each line's label wears its line's colour. The human approves
+the four values with the frames.
