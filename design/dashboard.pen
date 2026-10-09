@@ -19429,6 +19429,1327 @@
               ]
             }
           ]
+        },
+        {
+          "type": "frame",
+          "id": "jMJBm",
+          "name": "LINE COLOUR CANDIDATES",
+          "reusable": true,
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": "$space-5",
+          "children": [
+            {
+              "type": "text",
+              "id": "EHRA5",
+              "name": "h candidates",
+              "fill": "$faint",
+              "content": "LINE COLOUR CANDIDATES",
+              "fontFamily": "JetBrains Mono",
+              "fontSize": 12,
+              "fontWeight": "600",
+              "letterSpacing": 1
+            },
+            {
+              "type": "text",
+              "id": "L8hD5",
+              "name": "candidates note",
+              "fill": "$muted",
+              "textGrowth": "fixed-width",
+              "width": "fill_container",
+              "content": "Three 4-colour sets for the chart lines, one slot per measure (spend/$-hour, PRs/$-PR, lines/$-1k lines, releases/$-release), shown on both charts with the real data. Not yet applied to the main frames.",
+              "fontFamily": "JetBrains Mono",
+              "fontSize": 12,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "PWyZH",
+              "name": "Set 1 — palette only",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": "$space-2",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "pILCK",
+                  "name": "set title",
+                  "fill": "$text",
+                  "content": "Set 1 — palette only",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 12,
+                  "fontWeight": "600",
+                  "letterSpacing": 1
+                },
+                {
+                  "type": "frame",
+                  "id": "VBnsf",
+                  "name": "swatch row",
+                  "width": "fill_container",
+                  "gap": "$space-3",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "A1c7px",
+                      "name": "swatch slot1",
+                      "width": 150,
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "rectangle",
+                          "cornerRadius": 2,
+                          "id": "hU8yz",
+                          "name": "chip",
+                          "fill": "#2a9d8f",
+                          "width": 150,
+                          "height": 18
+                        },
+                        {
+                          "type": "text",
+                          "id": "ropGa",
+                          "name": "hexes",
+                          "fill": "$muted",
+                          "content": "#2a9d8f / #1d7268",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "MivLO",
+                          "name": "label",
+                          "fill": "$faint",
+                          "textGrowth": "fixed-width",
+                          "width": 150,
+                          "content": "spend / $-hour -- accent",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "CmRuD",
+                      "name": "swatch slot2",
+                      "width": 150,
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "rectangle",
+                          "cornerRadius": 2,
+                          "id": "Qhp2s",
+                          "name": "chip",
+                          "fill": "#e9c46a",
+                          "width": 150,
+                          "height": 18
+                        },
+                        {
+                          "type": "text",
+                          "id": "UHQ5z",
+                          "name": "hexes",
+                          "fill": "$muted",
+                          "content": "#e9c46a / #8a6415",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "SoKnq",
+                          "name": "label",
+                          "fill": "$faint",
+                          "textGrowth": "fixed-width",
+                          "width": 150,
+                          "content": "PRs / $-PR -- warning",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "fCMv6",
+                      "name": "swatch slot3",
+                      "width": 150,
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "rectangle",
+                          "cornerRadius": 2,
+                          "id": "arZip",
+                          "name": "chip",
+                          "fill": "#f4a261",
+                          "width": 150,
+                          "height": 18
+                        },
+                        {
+                          "type": "text",
+                          "id": "u6IkKY",
+                          "name": "hexes",
+                          "fill": "$muted",
+                          "content": "#f4a261 / #b8641f",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "fbluN",
+                          "name": "label",
+                          "fill": "$faint",
+                          "textGrowth": "fixed-width",
+                          "width": 150,
+                          "content": "lines / $-1k lines -- caution",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "h84S50",
+                      "name": "swatch slot4",
+                      "width": 150,
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "rectangle",
+                          "cornerRadius": 2,
+                          "id": "J3Y8n",
+                          "name": "chip",
+                          "fill": "#e76f51",
+                          "width": 150,
+                          "height": 18
+                        },
+                        {
+                          "type": "text",
+                          "id": "mCWG5",
+                          "name": "hexes",
+                          "fill": "$muted",
+                          "content": "#e76f51 / #b0472c",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "WOCbQ",
+                          "name": "label",
+                          "fill": "$faint",
+                          "textGrowth": "fixed-width",
+                          "width": 150,
+                          "content": "releases / $-release -- danger",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "Pt0yK",
+                  "name": "mini charts row",
+                  "width": "fill_container",
+                  "gap": "$space-5",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "QtUdL",
+                      "name": "mini TOTALS",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "kyiXZ",
+                          "name": "mini title",
+                          "fill": "$faint",
+                          "content": "TOTALS",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "600",
+                          "letterSpacing": 1
+                        },
+                        {
+                          "type": "frame",
+                          "id": "O76hip",
+                          "name": "mini plot",
+                          "width": 300,
+                          "height": 64,
+                          "layout": "none",
+                          "children": [
+                            {
+                              "type": "path",
+                              "id": "jjR2F",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini TOTALS spend",
+                              "geometry": "M0 64l5 0 5 0 5-0.2 5 0 5-0.1 5-0.1 5-0.1 5 0 5 0 5-0.1 5 0 5-0.2 5 0 5 0 5-0.7 5-0.2 5-1.2 5 0 5 0 5 0 5 0 5-0.1 5 0 5-4.3 5-4.1 5-0.3 5-1 5-1.8 5-1.9 5-2.3 5-3.1 5-3.6 5-0.1 5 0 5-0.3 5-2.3 5-3 5-2.9 5-5.3 5-0.7 5-1.7 5-2 5-0.2 5-1.1 5-0.6 5-1 5-0.4 5 0 5-2.6 5-0.5 5-0.7 5-0.8 5-4.7 5-0.5 5-1.2 5-1.4 5-1.4 5-1.3 5-1.9 5 0",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#2a9d8f",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "o3GRD",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini TOTALS prs",
+                              "geometry": "M0 63.2l5-0.8 5 0 5-0.5 5 0 5 0 5-0.3 5 0 5 0 5-0.2 5 0 5 0 5 0 5 0 5-0.3 5-1 5-0.8 5-0.3 5-0.8 5 0 5 0 5 0 5-0.2 5 0 5-1.1 5-1.8 5-0.8 5-1.3 5-1.6 5-1.6 5-1.3 5-2.3 5-4 5 0 5 0 5 0 5-2.1 5-4.2 5-1.5 5-2.7 5-0.2 5-1.3 5-2.1 5-1.1 5-2.9 5-1.8 5-2.9 5-0.3 5-0.2 5-3.9 5-0.8 5-1.6 5-2.6 5-2.1 5 0 5 0 5-0.8 5-1.9 5-2.8 5-1.9 5-0.5",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#e9c46a",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "bxG46",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini TOTALS lines",
+                              "geometry": "M0 63.9l5-0.1 5 0 5-0.1 5 0 5 0 5-0.3 5 0 5 0 5-0.1 5 0 5 0 5 0 5 0 5-0.1 5 0 5-0.4 5-0.1 5 0 5 0 5 0 5 0 5-0.4 5 0 5-0.7 5-0.7 5-0.4 5-1 5-0.5 5-1.1 5-0.8 5-0.4 5-1.3 5 0 5 0 5 0 5-0.6 5-1.8 5-0.5 5-1.4 5-0.2 5-2.3 5-3 5-0.5 5-0.4 5-0.1 5-2.6 5-0.3 5-0.6 5-2.5 5-0.3 5-0.6 5-0.6 5-13.3 5 0 5 0 5-4.3 5-2.8 5-9.3 5-4.2 5-3.2",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#f4a261",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "C2Y5Vl",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini TOTALS releases",
+                              "geometry": "M0 62.2l5-2.8 5 0 5-0.9 5 0 5 0 5-0.9 5 0 5 0 5-0.9 5 0 5 0 5 0 5 0 5-0.9 5-1.9 5-0.9 5-0.9 5-0.9 5 0 5 0 5 0 5 0 5 0 5-2.7 5-1.9 5-0.9 5-1.8 5-4.6 5-0.9 5-0.9 5-2.8 5-0.9 5 0 5 0 5 0 5 0 5-1.8 5 0 5 0 5 0 5-0.9 5-2.8 5 0 5-1.8 5 0 5-0.9 5 0 5 0 5-1.8 5-0.9 5-2.8 5-4.6 5-4.5 5 0 5 0 5-2.8 5-5.5 5-0.9 5-1.8 5 0",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#e76f51",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "qT5Qo",
+                      "name": "mini UNIT COSTS",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "SI4Aj",
+                          "name": "mini title",
+                          "fill": "$faint",
+                          "content": "UNIT COSTS",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "600",
+                          "letterSpacing": 1
+                        },
+                        {
+                          "type": "frame",
+                          "id": "blvpr",
+                          "name": "mini plot",
+                          "width": 300,
+                          "height": 64,
+                          "layout": "none",
+                          "children": [
+                            {
+                              "type": "path",
+                              "id": "qg6QG",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini UNIT COSTS perHour",
+                              "geometry": "M0 10.6l5 0 5 0 5 17.9 5 0.6 5 0.6 5 0.2 5 0.1 5 0 5 0.1 5 0 5 0 5 0.4 5 0 5 0.5 5-0.6 5-0.7 5-0.9 5 0.1 5 0 5 0 5 0 5 0.9 5 0 5 9 5 1.5 5 0.1 5 1 5 0.5 5 0.5 5 0.2 5 0.1 5 0 5 0 5 0 5 0 5 0 5 0.6 5 0 5-0.2 5 0 5 0.2 5 0.3 5 0.1 5 0.1 5 0.1 5 0.2 5 0.1 5 0 5 0.7 5 0.1 5 0.2 5 0.1 5 0 5 0 5 0.1 5 0 5 0.2 5 0.4 5 0.4 5 0",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#2a9d8f",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "G8MmLu",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini UNIT COSTS perPR",
+                              "geometry": "M0 63.7l5 0.1 5 0 5-0.5 5-0.3 5-0.4 5-0.1 5-0.2 5 0 5 0 5-0.2 5 0 5-0.5 5 0 5 0.1 5-0.9 5 0.2 5-2 5 0.7 5 0 5 0 5 0 5 0.1 5 0 5-4.5 5-2.1 5 0.6 5 0.4 5 0.1 5-0.1 5-0.4 5-0.1 5 0.5 5-0.1 5 0 5-0.1 5 0.1 5 0.5 5-0.3 5-0.6 5-0.1 5 0 5 0.1 5 0.3 5 0.5 5 0.3 5 0.4 5 0 5 0 5 0.2 5 0.1 5 0.1 5 0.3 5-0.4 5 0 5-0.2 5-0.1 5 0.1 5 0.2 5 0 5 0.1",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#e9c46a",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "qlfEY",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini UNIT COSTS per1kLines",
+                              "geometry": "M0 62.2l5 1 5 0 5-1.6 5-0.9 5-1.4 5 1.5 5-0.2 5 0 5-0.3 5-0.4 5 0 5-1.2 5 0 5 0.4 5-3.3 5 1.8 5-4.4 5 0 5 0 5 0 5 0 5 2.4 5 0 5-5.7 5-3.3 5 1.7 5 2.3 5-0.3 5 0.9 5-0.1 5-1.2 5 0.2 5 0 5 0 5-0.2 5-0.3 5 1 5-0.6 5-0.4 5-0.1 5 1.7 5 1.6 5 0.2 5 0 5-0.1 5 1.1 5 0 5 0.3 5 0.5 5 0 5 0.1 5 0 5 2.5 5-0.1 5-0.1 5 0.5 5 0.2 5 0.9 5 0.2 5 0.3",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#f4a261",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "wiSVq",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini UNIT COSTS perRelease",
+                              "geometry": "M0 63.5l5 0.3 5 0 5-0.7 5-0.4 5-0.5 5-0.2 5-0.1 5 0 5 0 5-0.3 5 0 5-0.7 5 0 5 0.2 5-1.4 5-0.1 5-2.8 5 0.5 5 0 5 0 5-0.1 5-0.1 5 0 5-6.9 5-5.6 5 0.5 5 0.3 5 1.3 5-1.5 5-1.9 5-1.3 5-2.8 5-0.1 5 0 5-0.3 5-2.2 5-1.3 5-2.6 5-4.9 5-0.6 5-0.5 5 1.2 5-0.2 5 0.9 5-0.4 5 0.1 5-0.3 5 0 5-0.3 5 0.4 5 1.8 5 2.7 5 0.1 5-0.2 5-0.7 5 0.8 5 2.2 5-0.2 5 0 5 0",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#e76f51",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "I771Rj",
+                  "name": "set notes",
+                  "fill": "$faint",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "All four slots reuse a meaning hue exactly: accent, warning, caution, danger. Min hue gap 22.7 deg (slot2-slot3, warning-caution). CVD minimum 17.5-19.9 across all four checks (slot2 vs slot3 or slot3 vs slot4 every time) -- the weakest of the three sets. Contrast 4.30-11.78.",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "i84xM",
+              "name": "Set 2 — 2 palette + 2 research",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": "$space-2",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "M1URb",
+                  "name": "set title",
+                  "fill": "$text",
+                  "content": "Set 2 — 2 palette + 2 research",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 12,
+                  "fontWeight": "600",
+                  "letterSpacing": 1
+                },
+                {
+                  "type": "frame",
+                  "id": "AwUMb",
+                  "name": "swatch row",
+                  "width": "fill_container",
+                  "gap": "$space-3",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "rH9YG",
+                      "name": "swatch slot1",
+                      "width": 150,
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "rectangle",
+                          "cornerRadius": 2,
+                          "id": "CPubD",
+                          "name": "chip",
+                          "fill": "#2a9d8f",
+                          "width": 150,
+                          "height": 18
+                        },
+                        {
+                          "type": "text",
+                          "id": "Wyn0S",
+                          "name": "hexes",
+                          "fill": "$muted",
+                          "content": "#2a9d8f / #1d7268",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "PwgBk",
+                          "name": "label",
+                          "fill": "$faint",
+                          "textGrowth": "fixed-width",
+                          "width": 150,
+                          "content": "spend / $-hour -- accent",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "PSrsn",
+                      "name": "swatch slot2",
+                      "width": 150,
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "rectangle",
+                          "cornerRadius": 2,
+                          "id": "sgrSM",
+                          "name": "chip",
+                          "fill": "#e76f51",
+                          "width": 150,
+                          "height": 18
+                        },
+                        {
+                          "type": "text",
+                          "id": "iUBSn",
+                          "name": "hexes",
+                          "fill": "$muted",
+                          "content": "#e76f51 / #b0472c",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "ShBHf",
+                          "name": "label",
+                          "fill": "$faint",
+                          "textGrowth": "fixed-width",
+                          "width": 150,
+                          "content": "PRs / $-PR -- danger",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "CTPNG",
+                      "name": "swatch slot3",
+                      "width": 150,
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "rectangle",
+                          "cornerRadius": 2,
+                          "id": "JikSR",
+                          "name": "chip",
+                          "fill": "#1e8fd8",
+                          "width": 150,
+                          "height": 18
+                        },
+                        {
+                          "type": "text",
+                          "id": "vZ5lW",
+                          "name": "hexes",
+                          "fill": "$muted",
+                          "content": "#1e8fd8 / #067cc0",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "SDiVO",
+                          "name": "label",
+                          "fill": "$faint",
+                          "textGrowth": "fixed-width",
+                          "width": 150,
+                          "content": "lines / $-1k lines -- Okabe-Ito blue #0072B2",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "U3ahM7",
+                      "name": "swatch slot4",
+                      "width": 150,
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "rectangle",
+                          "cornerRadius": 2,
+                          "id": "t3gA7",
+                          "name": "chip",
+                          "fill": "#c56b9e",
+                          "width": 150,
+                          "height": 18
+                        },
+                        {
+                          "type": "text",
+                          "id": "NxTYO",
+                          "name": "hexes",
+                          "fill": "$muted",
+                          "content": "#c56b9e / #af578a",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "V9mQ2W",
+                          "name": "label",
+                          "fill": "$faint",
+                          "textGrowth": "fixed-width",
+                          "width": 150,
+                          "content": "releases / $-release -- Okabe-Ito purple #CC79A7",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "pvRmB",
+                  "name": "mini charts row",
+                  "width": "fill_container",
+                  "gap": "$space-5",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "h7IdBR",
+                      "name": "mini TOTALS",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "Ic9Ot",
+                          "name": "mini title",
+                          "fill": "$faint",
+                          "content": "TOTALS",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "600",
+                          "letterSpacing": 1
+                        },
+                        {
+                          "type": "frame",
+                          "id": "VVmzC",
+                          "name": "mini plot",
+                          "width": 300,
+                          "height": 64,
+                          "layout": "none",
+                          "children": [
+                            {
+                              "type": "path",
+                              "id": "CWD7g",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini TOTALS spend",
+                              "geometry": "M0 64l5 0 5 0 5-0.2 5 0 5-0.1 5-0.1 5-0.1 5 0 5 0 5-0.1 5 0 5-0.2 5 0 5 0 5-0.7 5-0.2 5-1.2 5 0 5 0 5 0 5 0 5-0.1 5 0 5-4.3 5-4.1 5-0.3 5-1 5-1.8 5-1.9 5-2.3 5-3.1 5-3.6 5-0.1 5 0 5-0.3 5-2.3 5-3 5-2.9 5-5.3 5-0.7 5-1.7 5-2 5-0.2 5-1.1 5-0.6 5-1 5-0.4 5 0 5-2.6 5-0.5 5-0.7 5-0.8 5-4.7 5-0.5 5-1.2 5-1.4 5-1.4 5-1.3 5-1.9 5 0",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#2a9d8f",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "WwvoI",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini TOTALS prs",
+                              "geometry": "M0 63.2l5-0.8 5 0 5-0.5 5 0 5 0 5-0.3 5 0 5 0 5-0.2 5 0 5 0 5 0 5 0 5-0.3 5-1 5-0.8 5-0.3 5-0.8 5 0 5 0 5 0 5-0.2 5 0 5-1.1 5-1.8 5-0.8 5-1.3 5-1.6 5-1.6 5-1.3 5-2.3 5-4 5 0 5 0 5 0 5-2.1 5-4.2 5-1.5 5-2.7 5-0.2 5-1.3 5-2.1 5-1.1 5-2.9 5-1.8 5-2.9 5-0.3 5-0.2 5-3.9 5-0.8 5-1.6 5-2.6 5-2.1 5 0 5 0 5-0.8 5-1.9 5-2.8 5-1.9 5-0.5",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#e76f51",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "haHGp",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini TOTALS lines",
+                              "geometry": "M0 63.9l5-0.1 5 0 5-0.1 5 0 5 0 5-0.3 5 0 5 0 5-0.1 5 0 5 0 5 0 5 0 5-0.1 5 0 5-0.4 5-0.1 5 0 5 0 5 0 5 0 5-0.4 5 0 5-0.7 5-0.7 5-0.4 5-1 5-0.5 5-1.1 5-0.8 5-0.4 5-1.3 5 0 5 0 5 0 5-0.6 5-1.8 5-0.5 5-1.4 5-0.2 5-2.3 5-3 5-0.5 5-0.4 5-0.1 5-2.6 5-0.3 5-0.6 5-2.5 5-0.3 5-0.6 5-0.6 5-13.3 5 0 5 0 5-4.3 5-2.8 5-9.3 5-4.2 5-3.2",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#1e8fd8",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "aTvja",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini TOTALS releases",
+                              "geometry": "M0 62.2l5-2.8 5 0 5-0.9 5 0 5 0 5-0.9 5 0 5 0 5-0.9 5 0 5 0 5 0 5 0 5-0.9 5-1.9 5-0.9 5-0.9 5-0.9 5 0 5 0 5 0 5 0 5 0 5-2.7 5-1.9 5-0.9 5-1.8 5-4.6 5-0.9 5-0.9 5-2.8 5-0.9 5 0 5 0 5 0 5 0 5-1.8 5 0 5 0 5 0 5-0.9 5-2.8 5 0 5-1.8 5 0 5-0.9 5 0 5 0 5-1.8 5-0.9 5-2.8 5-4.6 5-4.5 5 0 5 0 5-2.8 5-5.5 5-0.9 5-1.8 5 0",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#c56b9e",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "gM7Up",
+                      "name": "mini UNIT COSTS",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "f3p6b",
+                          "name": "mini title",
+                          "fill": "$faint",
+                          "content": "UNIT COSTS",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "600",
+                          "letterSpacing": 1
+                        },
+                        {
+                          "type": "frame",
+                          "id": "E1Etss",
+                          "name": "mini plot",
+                          "width": 300,
+                          "height": 64,
+                          "layout": "none",
+                          "children": [
+                            {
+                              "type": "path",
+                              "id": "Ak1Eo",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini UNIT COSTS perHour",
+                              "geometry": "M0 10.6l5 0 5 0 5 17.9 5 0.6 5 0.6 5 0.2 5 0.1 5 0 5 0.1 5 0 5 0 5 0.4 5 0 5 0.5 5-0.6 5-0.7 5-0.9 5 0.1 5 0 5 0 5 0 5 0.9 5 0 5 9 5 1.5 5 0.1 5 1 5 0.5 5 0.5 5 0.2 5 0.1 5 0 5 0 5 0 5 0 5 0 5 0.6 5 0 5-0.2 5 0 5 0.2 5 0.3 5 0.1 5 0.1 5 0.1 5 0.2 5 0.1 5 0 5 0.7 5 0.1 5 0.2 5 0.1 5 0 5 0 5 0.1 5 0 5 0.2 5 0.4 5 0.4 5 0",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#2a9d8f",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "zYOIc",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini UNIT COSTS perPR",
+                              "geometry": "M0 63.7l5 0.1 5 0 5-0.5 5-0.3 5-0.4 5-0.1 5-0.2 5 0 5 0 5-0.2 5 0 5-0.5 5 0 5 0.1 5-0.9 5 0.2 5-2 5 0.7 5 0 5 0 5 0 5 0.1 5 0 5-4.5 5-2.1 5 0.6 5 0.4 5 0.1 5-0.1 5-0.4 5-0.1 5 0.5 5-0.1 5 0 5-0.1 5 0.1 5 0.5 5-0.3 5-0.6 5-0.1 5 0 5 0.1 5 0.3 5 0.5 5 0.3 5 0.4 5 0 5 0 5 0.2 5 0.1 5 0.1 5 0.3 5-0.4 5 0 5-0.2 5-0.1 5 0.1 5 0.2 5 0 5 0.1",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#e76f51",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "aqvW9",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini UNIT COSTS per1kLines",
+                              "geometry": "M0 62.2l5 1 5 0 5-1.6 5-0.9 5-1.4 5 1.5 5-0.2 5 0 5-0.3 5-0.4 5 0 5-1.2 5 0 5 0.4 5-3.3 5 1.8 5-4.4 5 0 5 0 5 0 5 0 5 2.4 5 0 5-5.7 5-3.3 5 1.7 5 2.3 5-0.3 5 0.9 5-0.1 5-1.2 5 0.2 5 0 5 0 5-0.2 5-0.3 5 1 5-0.6 5-0.4 5-0.1 5 1.7 5 1.6 5 0.2 5 0 5-0.1 5 1.1 5 0 5 0.3 5 0.5 5 0 5 0.1 5 0 5 2.5 5-0.1 5-0.1 5 0.5 5 0.2 5 0.9 5 0.2 5 0.3",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#1e8fd8",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "vMHvh",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini UNIT COSTS perRelease",
+                              "geometry": "M0 63.5l5 0.3 5 0 5-0.7 5-0.4 5-0.5 5-0.2 5-0.1 5 0 5 0 5-0.3 5 0 5-0.7 5 0 5 0.2 5-1.4 5-0.1 5-2.8 5 0.5 5 0 5 0 5-0.1 5-0.1 5 0 5-6.9 5-5.6 5 0.5 5 0.3 5 1.3 5-1.5 5-1.9 5-1.3 5-2.8 5-0.1 5 0 5-0.3 5-2.2 5-1.3 5-2.6 5-4.9 5-0.6 5-0.5 5 1.2 5-0.2 5 0.9 5-0.4 5 0.1 5-0.3 5 0 5-0.3 5 0.4 5 1.8 5 2.7 5 0.1 5-0.2 5-0.7 5 0.8 5 2.2 5-0.2 5 0 5 0",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#c56b9e",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "N82b8",
+                  "name": "set notes",
+                  "fill": "$faint",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "slot1 = accent, slot2 = danger exactly (the widest-spread pair the palette has); slot3/slot4 fill the blue-violet gap the palette lacks. Min hue gap 48.9 deg (slot1-slot3). CVD minimum 52.7-72.3, all four checks slot1 vs slot3. Contrast 4.51-6.37, the tightest range of the three.",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "k6AVcO",
+              "name": "Set 3 — research only",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": "$space-2",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "THNn8",
+                  "name": "set title",
+                  "fill": "$text",
+                  "content": "Set 3 — research only",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 12,
+                  "fontWeight": "600",
+                  "letterSpacing": 1
+                },
+                {
+                  "type": "frame",
+                  "id": "ZKP7b",
+                  "name": "swatch row",
+                  "width": "fill_container",
+                  "gap": "$space-3",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "Fz7x1",
+                      "name": "swatch slot1",
+                      "width": 150,
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "rectangle",
+                          "cornerRadius": 2,
+                          "id": "X7ERAL",
+                          "name": "chip",
+                          "fill": "#04c7a0",
+                          "width": 150,
+                          "height": 18
+                        },
+                        {
+                          "type": "text",
+                          "id": "J0VoB",
+                          "name": "hexes",
+                          "fill": "$muted",
+                          "content": "#04c7a0 / #11866c",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "n1MwP",
+                          "name": "label",
+                          "fill": "$faint",
+                          "textGrowth": "fixed-width",
+                          "width": 150,
+                          "content": "spend / $-hour -- between Okabe-Ito #009E73 and ColorBrewer #1B9E77, widened toward cyan",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "o1MF4K",
+                      "name": "swatch slot2",
+                      "width": 150,
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "rectangle",
+                          "cornerRadius": 2,
+                          "id": "N17gqI",
+                          "name": "chip",
+                          "fill": "#f7ab07",
+                          "width": 150,
+                          "height": 18
+                        },
+                        {
+                          "type": "text",
+                          "id": "rUuSJ",
+                          "name": "hexes",
+                          "fill": "$muted",
+                          "content": "#f7ab07 / #9c6d1a",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "BQVJ5",
+                          "name": "label",
+                          "fill": "$faint",
+                          "textGrowth": "fixed-width",
+                          "width": 150,
+                          "content": "PRs / $-PR -- Okabe-Ito orange #E69F00",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "jjO9o",
+                      "name": "swatch slot3",
+                      "width": 150,
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "rectangle",
+                          "cornerRadius": 2,
+                          "id": "ZiJqf",
+                          "name": "chip",
+                          "fill": "#5582f7",
+                          "width": 150,
+                          "height": 18
+                        },
+                        {
+                          "type": "text",
+                          "id": "ORdYs",
+                          "name": "hexes",
+                          "fill": "$muted",
+                          "content": "#5582f7 / #446fe2",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "ZcsPs",
+                          "name": "label",
+                          "fill": "$faint",
+                          "textGrowth": "fixed-width",
+                          "width": 150,
+                          "content": "lines / $-1k lines -- Observable 10 blue #4269D0",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ISLZt",
+                      "name": "swatch slot4",
+                      "width": 150,
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "rectangle",
+                          "cornerRadius": 2,
+                          "id": "qP4mw",
+                          "name": "chip",
+                          "fill": "#fe2497",
+                          "width": 150,
+                          "height": 18
+                        },
+                        {
+                          "type": "text",
+                          "id": "IrIkp",
+                          "name": "hexes",
+                          "fill": "$muted",
+                          "content": "#fe2497 / #e40784",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "lY44c",
+                          "name": "label",
+                          "fill": "$faint",
+                          "textGrowth": "fixed-width",
+                          "width": 150,
+                          "content": "releases / $-release -- ColorBrewer Dark2 magenta #E7298A",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "j5gTza",
+                  "name": "mini charts row",
+                  "width": "fill_container",
+                  "gap": "$space-5",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "XfR0M",
+                      "name": "mini TOTALS",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "Z6HFj",
+                          "name": "mini title",
+                          "fill": "$faint",
+                          "content": "TOTALS",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "600",
+                          "letterSpacing": 1
+                        },
+                        {
+                          "type": "frame",
+                          "id": "D3XhHw",
+                          "name": "mini plot",
+                          "width": 300,
+                          "height": 64,
+                          "layout": "none",
+                          "children": [
+                            {
+                              "type": "path",
+                              "id": "N1t7kR",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini TOTALS spend",
+                              "geometry": "M0 64l5 0 5 0 5-0.2 5 0 5-0.1 5-0.1 5-0.1 5 0 5 0 5-0.1 5 0 5-0.2 5 0 5 0 5-0.7 5-0.2 5-1.2 5 0 5 0 5 0 5 0 5-0.1 5 0 5-4.3 5-4.1 5-0.3 5-1 5-1.8 5-1.9 5-2.3 5-3.1 5-3.6 5-0.1 5 0 5-0.3 5-2.3 5-3 5-2.9 5-5.3 5-0.7 5-1.7 5-2 5-0.2 5-1.1 5-0.6 5-1 5-0.4 5 0 5-2.6 5-0.5 5-0.7 5-0.8 5-4.7 5-0.5 5-1.2 5-1.4 5-1.4 5-1.3 5-1.9 5 0",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#04c7a0",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "OTkd6",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini TOTALS prs",
+                              "geometry": "M0 63.2l5-0.8 5 0 5-0.5 5 0 5 0 5-0.3 5 0 5 0 5-0.2 5 0 5 0 5 0 5 0 5-0.3 5-1 5-0.8 5-0.3 5-0.8 5 0 5 0 5 0 5-0.2 5 0 5-1.1 5-1.8 5-0.8 5-1.3 5-1.6 5-1.6 5-1.3 5-2.3 5-4 5 0 5 0 5 0 5-2.1 5-4.2 5-1.5 5-2.7 5-0.2 5-1.3 5-2.1 5-1.1 5-2.9 5-1.8 5-2.9 5-0.3 5-0.2 5-3.9 5-0.8 5-1.6 5-2.6 5-2.1 5 0 5 0 5-0.8 5-1.9 5-2.8 5-1.9 5-0.5",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#f7ab07",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "fhgQB",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini TOTALS lines",
+                              "geometry": "M0 63.9l5-0.1 5 0 5-0.1 5 0 5 0 5-0.3 5 0 5 0 5-0.1 5 0 5 0 5 0 5 0 5-0.1 5 0 5-0.4 5-0.1 5 0 5 0 5 0 5 0 5-0.4 5 0 5-0.7 5-0.7 5-0.4 5-1 5-0.5 5-1.1 5-0.8 5-0.4 5-1.3 5 0 5 0 5 0 5-0.6 5-1.8 5-0.5 5-1.4 5-0.2 5-2.3 5-3 5-0.5 5-0.4 5-0.1 5-2.6 5-0.3 5-0.6 5-2.5 5-0.3 5-0.6 5-0.6 5-13.3 5 0 5 0 5-4.3 5-2.8 5-9.3 5-4.2 5-3.2",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#5582f7",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "vPfHr",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini TOTALS releases",
+                              "geometry": "M0 62.2l5-2.8 5 0 5-0.9 5 0 5 0 5-0.9 5 0 5 0 5-0.9 5 0 5 0 5 0 5 0 5-0.9 5-1.9 5-0.9 5-0.9 5-0.9 5 0 5 0 5 0 5 0 5 0 5-2.7 5-1.9 5-0.9 5-1.8 5-4.6 5-0.9 5-0.9 5-2.8 5-0.9 5 0 5 0 5 0 5 0 5-1.8 5 0 5 0 5 0 5-0.9 5-2.8 5 0 5-1.8 5 0 5-0.9 5 0 5 0 5-1.8 5-0.9 5-2.8 5-4.6 5-4.5 5 0 5 0 5-2.8 5-5.5 5-0.9 5-1.8 5 0",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#fe2497",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "EDDzg",
+                      "name": "mini UNIT COSTS",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "B5XVt4",
+                          "name": "mini title",
+                          "fill": "$faint",
+                          "content": "UNIT COSTS",
+                          "fontFamily": "JetBrains Mono",
+                          "fontSize": 11,
+                          "fontWeight": "600",
+                          "letterSpacing": 1
+                        },
+                        {
+                          "type": "frame",
+                          "id": "mK3si",
+                          "name": "mini plot",
+                          "width": 300,
+                          "height": 64,
+                          "layout": "none",
+                          "children": [
+                            {
+                              "type": "path",
+                              "id": "xSg6E",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini UNIT COSTS perHour",
+                              "geometry": "M0 10.6l5 0 5 0 5 17.9 5 0.6 5 0.6 5 0.2 5 0.1 5 0 5 0.1 5 0 5 0 5 0.4 5 0 5 0.5 5-0.6 5-0.7 5-0.9 5 0.1 5 0 5 0 5 0 5 0.9 5 0 5 9 5 1.5 5 0.1 5 1 5 0.5 5 0.5 5 0.2 5 0.1 5 0 5 0 5 0 5 0 5 0 5 0.6 5 0 5-0.2 5 0 5 0.2 5 0.3 5 0.1 5 0.1 5 0.1 5 0.2 5 0.1 5 0 5 0.7 5 0.1 5 0.2 5 0.1 5 0 5 0 5 0.1 5 0 5 0.2 5 0.4 5 0.4 5 0",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#04c7a0",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "cm9wk",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini UNIT COSTS perPR",
+                              "geometry": "M0 63.7l5 0.1 5 0 5-0.5 5-0.3 5-0.4 5-0.1 5-0.2 5 0 5 0 5-0.2 5 0 5-0.5 5 0 5 0.1 5-0.9 5 0.2 5-2 5 0.7 5 0 5 0 5 0 5 0.1 5 0 5-4.5 5-2.1 5 0.6 5 0.4 5 0.1 5-0.1 5-0.4 5-0.1 5 0.5 5-0.1 5 0 5-0.1 5 0.1 5 0.5 5-0.3 5-0.6 5-0.1 5 0 5 0.1 5 0.3 5 0.5 5 0.3 5 0.4 5 0 5 0 5 0.2 5 0.1 5 0.1 5 0.3 5-0.4 5 0 5-0.2 5-0.1 5 0.1 5 0.2 5 0 5 0.1",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#f7ab07",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "BOYW6",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini UNIT COSTS per1kLines",
+                              "geometry": "M0 62.2l5 1 5 0 5-1.6 5-0.9 5-1.4 5 1.5 5-0.2 5 0 5-0.3 5-0.4 5 0 5-1.2 5 0 5 0.4 5-3.3 5 1.8 5-4.4 5 0 5 0 5 0 5 0 5 2.4 5 0 5-5.7 5-3.3 5 1.7 5 2.3 5-0.3 5 0.9 5-0.1 5-1.2 5 0.2 5 0 5 0 5-0.2 5-0.3 5 1 5-0.6 5-0.4 5-0.1 5 1.7 5 1.6 5 0.2 5 0 5-0.1 5 1.1 5 0 5 0.3 5 0.5 5 0 5 0.1 5 0 5 2.5 5-0.1 5-0.1 5 0.5 5 0.2 5 0.9 5 0.2 5 0.3",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#5582f7",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            },
+                            {
+                              "type": "path",
+                              "id": "CnXl4",
+                              "x": 0,
+                              "y": 0,
+                              "name": "mini UNIT COSTS perRelease",
+                              "geometry": "M0 63.5l5 0.3 5 0 5-0.7 5-0.4 5-0.5 5-0.2 5-0.1 5 0 5 0 5-0.3 5 0 5-0.7 5 0 5 0.2 5-1.4 5-0.1 5-2.8 5 0.5 5 0 5 0 5-0.1 5-0.1 5 0 5-6.9 5-5.6 5 0.5 5 0.3 5 1.3 5-1.5 5-1.9 5-1.3 5-2.8 5-0.1 5 0 5-0.3 5-2.2 5-1.3 5-2.6 5-4.9 5-0.6 5-0.5 5 1.2 5-0.2 5 0.9 5-0.4 5 0.1 5-0.3 5 0 5-0.3 5 0.4 5 1.8 5 2.7 5 0.1 5-0.2 5-0.7 5 0.8 5 2.2 5-0.2 5 0 5 0",
+                              "viewBox": [
+                                0,
+                                0,
+                                300,
+                                64
+                              ],
+                              "width": 300,
+                              "height": 64,
+                              "stroke": "#fe2497",
+                              "strokeWidth": 2,
+                              "strokeLinecap": "round"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "i9iUE",
+                  "name": "set notes",
+                  "fill": "$faint",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "No exact reuse, but slot1 sits 10-11 deg from success and slot2 sits 4-11 deg from warning -- close, not identical. Min hue gap 80.5 deg (the widest of the three). CVD minimum 36.0-82.1 (slot2 vs slot4 every time; 36.0 is the one number near the floor we accepted last round). Contrast 4.50-10.11, the widest range and the highest chroma of the three.",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
         }
       ]
     },
