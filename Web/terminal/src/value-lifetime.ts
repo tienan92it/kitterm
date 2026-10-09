@@ -7,7 +7,9 @@
  * TOTALS: each of spend, merged pull requests, merged lines and releases,
  * cumulative from the first day of the range, divided by its own
  * cumulative value on the base day — the first day of the first run of
- * seven days that each have recorded spend. UNIT COSTS: cumulative spend
+ * seven consecutive days in which every day's spend is at least a
+ * quarter of the median daily spend over the whole record
+ * (`corpus/03-approved-design.md`, "The base day, decided"). UNIT COSTS: cumulative spend
  * over cumulative pull requests, over cumulative lines per 1,000, over
  * cumulative releases, from the first day with recorded spend; and
  * cumulative `measuredUSD` over cumulative model hours, the same division
@@ -40,26 +42,40 @@ function epochDay(day: string): number {
   return Math.round(Date.UTC(y, m - 1, d) / 86_400_000);
 }
 
+// The run length and its floor share: the human's rule of
+// `corpus/03-approved-design.md`, "The base day, decided" — seven days,
+// each at least a quarter of the median daily spend over the whole
+// record.
 const BASE_RUN_DAYS = 7;
+const BASE_RUN_FLOOR_SHARE = 0.25;
 
 export type BaseDayResult = { firstSpendDay: string | null; baseDay: string | null };
 
+function medianOf(values: readonly number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
 /**
  * The first day with recorded spend, and the base day: the first day of
- * the first run of `BASE_RUN_DAYS` consecutive calendar days that each
- * have `costUSD > 0` (`corpus/03-approved-design.md`). Both are null
- * with no spend at all; the base day alone is null with spend but no
- * seven-day run.
+ * the first run of `BASE_RUN_DAYS` consecutive calendar days in which
+ * every day's `costUSD` is at least `BASE_RUN_FLOOR_SHARE` of the
+ * median `costUSD` over the whole record (`corpus/03-approved-design.md`,
+ * "The base day, decided"). Both are null with no spend at all; the base
+ * day alone is null with spend but no such run.
  */
 export function baseDayOf(usageDays: readonly LifetimeUsageDay[]): BaseDayResult {
   const sorted = [...usageDays].sort((a, b) => cmpDay(a.day, b.day));
   const firstSpendDay = sorted.find((d) => d.costUSD > 0)?.day ?? null;
+  if (firstSpendDay === null) return { firstSpendDay: null, baseDay: null };
+  const floor = medianOf(sorted.map((d) => d.costUSD)) * BASE_RUN_FLOOR_SHARE;
   let baseDay: string | null = null;
   for (let i = 0; i + BASE_RUN_DAYS <= sorted.length && baseDay === null; i++) {
     let run = true;
     for (let j = 0; j < BASE_RUN_DAYS; j++) {
       const day = sorted[i + j];
-      if (!(day.costUSD > 0)) { run = false; break; }
+      if (!(day.costUSD >= floor)) { run = false; break; }
       if (j > 0 && epochDay(day.day) !== epochDay(sorted[i + j - 1].day) + 1) { run = false; break; }
     }
     if (run) baseDay = sorted[i].day;

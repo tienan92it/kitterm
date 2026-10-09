@@ -24,14 +24,12 @@ import {
  * own unit costs ($5.76 per 1k lines, $1.53 a release) only round-trip
  * from the fuller figure.
  *
- * `2026-08-23`'s `costUSD` is pinned at `0`, not the `0.09` the live
- * daemon now answers for that day: `corpus/03-approved-design.md` reads
- * the base day as `2026-09-03` because "every earlier seven-day run
- * holds a day with $0", and the 2026-08-22 to 2026-08-28 run had no such
- * day when this fixture was pulled — a drift of nine cents since the
- * design round, most likely a later apportioned split. Flagged in the
- * round's DONE note; `baseDayOf`'s own tests below exercise the rule
- * directly, with no such pin.
+ * `2026-08-23`'s `costUSD` is `0.09`, the real value from
+ * `/api/usage/daily` and `/api/yield` on 2026-10-09 — round 3 pinned it
+ * to `0` to match `corpus/03-approved-design.md`'s first rule ("every
+ * earlier seven-day run holds a day with $0"); the human's later rule
+ * (`corpus/03-approved-design.md`, "The base day, decided") no longer
+ * needs that pin, so this fixture holds the real day.
  */
 
 const usageDays: LifetimeUsageDay[] = [
@@ -48,7 +46,7 @@ const usageDays: LifetimeUsageDay[] = [
   { day: "2026-08-20", costUSD: 6.63, measuredUSD: 6.63, apiMs: 216000 },
   { day: "2026-08-21", costUSD: 0.0, measuredUSD: 0.0, apiMs: 0 },
   { day: "2026-08-22", costUSD: 16.67, measuredUSD: 16.67, apiMs: 612000 },
-  { day: "2026-08-23", costUSD: 0.0, measuredUSD: 0.0, apiMs: 0 },
+  { day: "2026-08-23", costUSD: 0.09, measuredUSD: 0.09, apiMs: 0 },
   { day: "2026-08-24", costUSD: 4.08, measuredUSD: 4.08, apiMs: 180000 },
   { day: "2026-08-25", costUSD: 67.61, measuredUSD: 67.61, apiMs: 2268000 },
   { day: "2026-08-26", costUSD: 18.41, measuredUSD: 18.41, apiMs: 504000 },
@@ -188,6 +186,43 @@ describe("baseDayOf", () => {
     const flat: LifetimeUsageDay[] = usageDays.map((d) => ({ ...d, costUSD: 0 }));
     expect(baseDayOf(flat)).toEqual({ firstSpendDay: null, baseDay: null });
   });
+
+  it("skips the 22-28 Aug run: its nine-cent day sits below the floor", () => {
+    // 2026-08-23 is 0.09, far under the real record's floor, so the
+    // 22-28 Aug run no longer qualifies the way a bare "$0 or not" rule
+    // once did; 2026-09-03 is still the first run where every day clears
+    // a quarter of the median.
+    const { baseDay } = baseDayOf(usageDays);
+    expect(baseDay).not.toBe("2026-08-22");
+    expect(baseDay).toBe("2026-09-03");
+  });
+
+  it("puts the real record's median at $48.94 and its quarter floor at $12.235", () => {
+    const sorted = usageDays.map((d) => d.costUSD).sort((a, b) => a - b);
+    const median = sorted[(sorted.length - 1) / 2]; // 61 days: the middle one
+    expect(median).toBeCloseTo(48.94, 2);
+    expect(median * 0.25).toBeCloseTo(12.235, 3);
+  });
+
+  it("counts a run whose days sit exactly at the floor", () => {
+    // Seven days at 3, then thirteen at 12: the median of the twenty
+    // days is 12 (the twelves outnumber the threes), so the floor is
+    // 12 * 0.25 = 3 - exactly the run's own value. The rule is "at
+    // least", so this run still counts.
+    const usage: LifetimeUsageDay[] = [
+      ...Array.from({ length: 7 }, (_, i) => ({ day: `2026-01-${String(i + 1).padStart(2, "0")}`, costUSD: 3 })),
+      ...Array.from({ length: 13 }, (_, i) => ({ day: `2026-01-${String(i + 8).padStart(2, "0")}`, costUSD: 12 })),
+    ];
+    expect(baseDayOf(usage)).toEqual({ firstSpendDay: "2026-01-01", baseDay: "2026-01-01" });
+  });
+
+  it("makes the first day the base day when every day's spend is equal", () => {
+    const usage: LifetimeUsageDay[] = Array.from({ length: 10 }, (_, i) => ({
+      day: `2026-02-${String(i + 1).padStart(2, "0")}`,
+      costUSD: 42,
+    }));
+    expect(baseDayOf(usage)).toEqual({ firstSpendDay: "2026-02-01", baseDay: "2026-02-01" });
+  });
 });
 
 describe("totalsSeries", () => {
@@ -196,7 +231,7 @@ describe("totalsSeries", () => {
     expect(totals.baseDay).toBe("2026-09-03");
     const base = totalsOn("2026-09-03");
     expect(base.multiple).toEqual({ spend: 1, prs: 1, lines: 1, releases: 1 });
-    expect(base.cumulative).toEqual({ spend: 730.8728, prs: 27, lines: 16643, releases: 17 });
+    expect(base.cumulative).toEqual({ spend: 730.9628, prs: 27, lines: 16643, releases: 17 });
   });
 
   it("matches the human's table on 2026-09-20", () => {
@@ -213,7 +248,7 @@ describe("totalsSeries", () => {
     expect(multipleLabel(point.multiple.prs!)).toBe("×9.0");
     expect(multipleLabel(point.multiple.lines!)).toBe("×26.2");
     expect(multipleLabel(point.multiple.releases!)).toBe("×4.1");
-    expect(point.cumulative.spend).toBeCloseTo(6441.9328, 4);
+    expect(point.cumulative.spend).toBeCloseTo(6442.0228, 4);
     expect({ prs: point.cumulative.prs, lines: point.cumulative.lines, releases: point.cumulative.releases }).toEqual({
       prs: 244,
       lines: 436046,
