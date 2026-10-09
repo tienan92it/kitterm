@@ -236,6 +236,27 @@ palette on 2026-09-17 and amended it on 2026-09-19; the values are the
 They paint a mark: a glyph, a bar, the tile's rule, or the one run of
 text that carries a state. They never paint a background or a border.
 
+### Data palette
+
+Four colours for chart lines and their labels only, `design/dashboard.pen`
+variables `data-1` to `data-4`, each with a dark and a light value:
+
+| Token | Dark | Light | Line |
+|---|---|---|---|
+| `data-1` | `#2a9d8f` | `#1d7268` | spend, $/PR |
+| `data-2` | `#56b4e9` | `#256ea4` | PRs, $/1k lines |
+| `data-3` | `#cc79a7` | `#9c3f73` | lines, $/release |
+| `data-4` | `#a99cf0` | `#6443e0` | releases, $/hour |
+
+Each value clears 3:1 against the ground in its theme, and the four are
+told apart under a deuteranopia and a protanopia simulation. `data-2`'s
+and `data-4`'s light values moved from the human's first numbers
+(`#1f6fa3`, `#5b4bb7`): that pair sat 15 to 25 apart under the two
+simulations, the closest of any pair, so `data-4` kept its hue and grew
+more saturated and `data-2` shifted a few degrees bluer, which widened
+every pair to 37 or more. 2026-10-09, chartered by
+`corpus/02-direction.md`.
+
 ## The frame
 
 The two `Dashboard` frames in `design/dashboard.pen` are the layout: the band,
