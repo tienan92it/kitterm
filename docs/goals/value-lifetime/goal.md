@@ -31,11 +31,12 @@ All 6 hold on a build from `main`:
 1. The VALUE section at 1200 px and 390 px matches the frames of
    `design/dashboard.pen` at the commit `corpus/03-approved-design.md`
    names.
-2. Each TOTALS line on day d is the cumulative value from the first spend
-   day to d; each UNIT COSTS line is the rule of
-   `corpus/02-direction.md`; a vitest pins the arithmetic on a fixture,
-   and a check against the live daemon matches the human's table on
-   three days.
+2. Each TOTALS line on day d is the cumulative value to d over the
+   cumulative value to the base day (3 Sep); each UNIT COSTS line is the
+   rule of `corpus/02-direction.md`; a vitest pins the arithmetic on a
+   fixture, and a check against the live daemon matches the human's
+   tables on three days (the multiples ×8.8, ×9.0, ×26.2 and ×4.1 on
+   9 Oct among them).
 3. Large numbers print in shorthand (`k`, `m`, `b`), and the unit costs
    in dollars with two decimals under $100 and whole dollars above.
 4. The daemon answers merged pull requests, merged lines and releases
