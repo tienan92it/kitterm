@@ -320,6 +320,34 @@ describe("totalsSeries", () => {
   });
 });
 
+describe("merges before the first spend day", () => {
+  it("do not count toward the base day's cumulative or any later multiple", () => {
+    // A repository's history reaches back further than the spend record —
+    // kitterm's own merges start 2026-07-16, over three weeks before the
+    // first billed day — and a caller who asks a wide range to find the
+    // first spend day without knowing it in advance (the lifetime charts
+    // ask 400 days) zero-fills every day before it in `/api/usage/daily`
+    // while `/api/yield/daily` still answers the real git history for
+    // those days. Without dropping them, the base day's own cumulative
+    // count would include a month of merges no spend paid for, and every
+    // later multiple would read too low (`corpus/02-direction.md`:
+    // "delivered from the first spend day to d").
+    const earlyUsage: LifetimeUsageDay = { day: "2026-07-20", costUSD: 0 };
+    const earlyYield: LifetimeYieldDay = { day: "2026-07-20", mergedPullRequests: 20, mergedLines: 5000, releases: 3 };
+    const paddedUsage = [earlyUsage, ...usageDays];
+    const paddedYield = [earlyYield, ...yieldDays];
+    expect(totalsSeries(paddedUsage, paddedYield)).toEqual(totalsSeries(usageDays, yieldDays));
+  });
+
+  it("do not count toward unit costs' cumulative either", () => {
+    const earlyUsage: LifetimeUsageDay = { day: "2026-07-20", costUSD: 0 };
+    const earlyYield: LifetimeYieldDay = { day: "2026-07-20", mergedPullRequests: 20, mergedLines: 5000, releases: 3 };
+    const paddedUsage = [earlyUsage, ...usageDays];
+    const paddedYield = [earlyYield, ...yieldDays];
+    expect(unitCostsSeries(paddedUsage, paddedYield)).toEqual(unitCostsSeries(usageDays, yieldDays));
+  });
+});
+
 describe("unitCostsSeries", () => {
   it("matches the human's table on 2026-08-10, the first spend day", () => {
     const unitCosts = unitCostsSeries(usageDays, yieldDays);

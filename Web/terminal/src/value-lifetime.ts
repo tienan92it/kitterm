@@ -107,13 +107,23 @@ export type Totals = { baseDay: string | null; points: readonly TotalsPoint[] };
  */
 export function totalsSeries(usageDays: readonly LifetimeUsageDay[], yieldDays: readonly LifetimeYieldDay[]): Totals {
   const sorted = [...usageDays].sort((a, b) => cmpDay(a.day, b.day));
-  const { baseDay } = baseDayOf(sorted);
+  const { firstSpendDay, baseDay } = baseDayOf(sorted);
   if (baseDay === null) return { baseDay: null, points: [] };
+  // Every cumulative count starts at the first spend day, PRs, lines and
+  // releases included: a repository's history reaches back further than
+  // the spend record (kitterm's own merges start 2026-07-16, over three
+  // weeks before the first billed day), and a caller who asks a wide range
+  // to find that first day without knowing it in advance (the lifetime
+  // charts ask 400 days) would otherwise load the base day's own
+  // cumulative count with merges no spend paid for, reading every later
+  // multiple and unit cost too low (`corpus/02-direction.md`: "delivered
+  // from the first spend day to d").
+  const record = sorted.filter((d) => cmpDay(d.day, firstSpendDay!) >= 0);
   const yieldByDay = new Map(yieldDays.map((y) => [y.day, y]));
   const cumulative: Record<Measure, number> = { spend: 0, prs: 0, lines: 0, releases: 0 };
   let baseCumulative: Record<Measure, number> | null = null;
   const points: TotalsPoint[] = [];
-  for (const u of sorted) {
+  for (const u of record) {
     cumulative.spend += u.costUSD;
     const y = yieldByDay.get(u.day);
     if (typeof y?.mergedPullRequests === "number") cumulative.prs += y.mergedPullRequests;
@@ -147,6 +157,11 @@ export function unitCostsSeries(usageDays: readonly LifetimeUsageDay[], yieldDay
   const sorted = [...usageDays].sort((a, b) => cmpDay(a.day, b.day));
   const { firstSpendDay } = baseDayOf(sorted);
   if (firstSpendDay === null) return { firstSpendDay: null, points: [] };
+  // Every cumulative count starts at the first spend day (see `totalsSeries`):
+  // a PR merged before it is not "delivered from the first spend day to d",
+  // and counting it inflates the denominator under a numerator that is
+  // genuinely 0 that early, reading every unit cost too low.
+  const record = sorted.filter((d) => cmpDay(d.day, firstSpendDay) >= 0);
   const yieldByDay = new Map(yieldDays.map((y) => [y.day, y]));
   let spend = 0;
   let measured = 0;
@@ -155,7 +170,7 @@ export function unitCostsSeries(usageDays: readonly LifetimeUsageDay[], yieldDay
   let lines = 0;
   let releases = 0;
   const points: UnitCostPoint[] = [];
-  for (const u of sorted) {
+  for (const u of record) {
     spend += u.costUSD;
     measured += u.measuredUSD ?? 0;
     apiMs += u.apiMs ?? 0;
@@ -163,16 +178,14 @@ export function unitCostsSeries(usageDays: readonly LifetimeUsageDay[], yieldDay
     if (typeof y?.mergedPullRequests === "number") prs += y.mergedPullRequests;
     if (typeof y?.mergedLines === "number") lines += y.mergedLines;
     if (typeof y?.releases === "number") releases += y.releases;
-    if (cmpDay(u.day, firstSpendDay) >= 0) {
-      const hours = apiMs / 3_600_000;
-      points.push({
-        day: u.day,
-        perPR: prs > 0 ? spend / prs : null,
-        perKLines: lines > 0 ? spend / (lines / 1000) : null,
-        perRelease: releases > 0 ? spend / releases : null,
-        perHour: hours > 0 ? measured / hours : null,
-      });
-    }
+    const hours = apiMs / 3_600_000;
+    points.push({
+      day: u.day,
+      perPR: prs > 0 ? spend / prs : null,
+      perKLines: lines > 0 ? spend / (lines / 1000) : null,
+      perRelease: releases > 0 ? spend / releases : null,
+      perHour: hours > 0 ? measured / hours : null,
+    });
   }
   return { firstSpendDay, points };
 }
