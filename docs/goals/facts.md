@@ -251,6 +251,11 @@ decision moves to `docs/adr/`.
   at an idle prompt, so it cannot show a crew stopped on a model limit.
   Watch the agent's state instead: `needs-input` or `completed` with no
   note for minutes (2026-10-08, `value-lifetime` round 1).
+- A Claude Code update of 2026-10-08 held a long `send_input` text in the
+  box with "Removed 1 invisible character · review and press Enter to
+  send", and the paste's own Enter did not submit it. Read the screen
+  after a long `send_input`; on that line, press Enter again
+  (`keys: ["enter"]`) (2026-10-09, `value-lifetime` round 2).
 
 ## Fleet view
 
