@@ -303,8 +303,45 @@ describe("the tooltip box", () => {
 
 describe("the space scale", () => {
   it("gives one more step between a chart's title and its plot (corpus/04-chart-polish.md)", () => {
-    const rule = /\.lifetime-plot\s*\{[^}]*margin:\s*var\(--space-(\d)\)/.exec(CSS_SOURCE);
+    // The gap sits on .lifetime-chart-body, the title's next sibling, not
+    // on .lifetime-plot (now nested inside it, beside the axis).
+    const rule = /\.lifetime-chart-body\s*\{[^}]*margin:\s*var\(--space-(\d)\)/.exec(CSS_SOURCE);
     expect(rule?.[1]).toBe("2");
+  });
+});
+
+describe("the plot, the axis and the legend", () => {
+  it("puts the axis directly under the plot, before the legend, in document order at every width (follow-up to chart-polish)", () => {
+    for (const block of [totalsBlock(), unitCostsBlock()]) {
+      const body = block.querySelector(".lifetime-chart-body")! as FakeElement;
+      const main = body.querySelector(".lifetime-chart-main")! as FakeElement;
+      const plot = main.querySelector(".lifetime-plot")!;
+      const axisEl = main.querySelector(".lifetime-axis")!;
+      const labels = body.querySelector(".lifetime-labels")!;
+      // The plot and the axis share .lifetime-chart-main, ahead of the
+      // legend, which sits in .lifetime-chart-body beside it: collapsing
+      // that body to one column on a narrow screen is what stacks the
+      // legend under the axis, never ahead of it.
+      expect(main.children[0]).toBe(plot);
+      expect(main.children[1]).toBe(axisEl);
+      expect(body.children[0]).toBe(main);
+      expect(body.children[1]).toBe(labels);
+    }
+  });
+
+  it("collapses the legend into the plot and axis's own single column on a narrow screen, in the CSS too, so stacking never puts it ahead of the axis", () => {
+    // The override drops the label column, so the body's one column holds
+    // .lifetime-chart-main (plot, then axis) followed by .lifetime-labels,
+    // in that document order, both inside a `@media (max-width: 767px)`
+    // block and nowhere else.
+    const override = ".lifetime-chart-body { grid-template-columns: minmax(0, 1fr); }";
+    const idx = CSS_SOURCE.indexOf(override);
+    expect(idx).toBeGreaterThan(-1);
+    expect(CSS_SOURCE.indexOf(override, idx + 1)).toBe(-1);
+    const mediaStart = CSS_SOURCE.lastIndexOf("@media (max-width: 767px)", idx);
+    expect(mediaStart).toBeGreaterThan(-1);
+    const mediaEnd = CSS_SOURCE.indexOf("\n}\n", mediaStart);
+    expect(idx).toBeLessThan(mediaEnd);
   });
 });
 

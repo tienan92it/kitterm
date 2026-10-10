@@ -365,9 +365,9 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
    what a screen reader gets without it. */
 .lifetime { margin: var(--space-4) 0 0; }
 .lifetime-chart-block {
-  /* The tick and label gutters, named so `.lifetime-plot` and
-     `.lifetime-axis` (a sibling, not a descendant) agree on their width
-     with no bare pixel on a margin. */
+  /* The tick gutter and the label column, named so `.lifetime-plot` and
+     `.lifetime-chart-body` agree on their width with no bare pixel on a
+     margin. */
   --lifetime-tick-col: 28px;
   /* Wide enough for the longest label a bundled theme's font renders,
      `$/1k lines  $123.45` (measured against the live scratch daemon,
@@ -378,16 +378,23 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
 .lifetime-chart-block:last-of-type { margin-bottom: 0; }
 .lifetime-title { margin: 0; color: var(--ui-text-muted); }
 .lifetime-title-word { color: var(--ui-text); font-weight: 600; letter-spacing: 0.04em; }
-/* Three columns: the axis ticks, the chart itself, the end labels. Each is
-   its own positioning context, so a tick or a label can sit at the exact
-   height its value maps to (a log axis spaces them unevenly) without
-   reaching outside its own column. */
-.lifetime-plot {
-  display: grid; grid-template-columns: var(--lifetime-tick-col) minmax(0, 1fr) var(--lifetime-label-col);
+/* The plot and its axis beside the end-label legend on a wide screen,
+   stacked above it on a narrow one — the axis sits directly under the plot
+   in document order either way, so a reader meets the dates before the
+   legend (`corpus/04-chart-polish.md` follow-up), never only in the
+   narrow layout's own stacking order. */
+.lifetime-chart-body {
+  display: grid; grid-template-columns: minmax(0, 1fr) var(--lifetime-label-col);
   /* One more step of the space scale below the title than between other
      stacked lines (`corpus/04-chart-polish.md`). */
   margin: var(--space-2) 0 0;
 }
+.lifetime-chart-main { min-width: 0; }
+/* Two columns: the axis ticks and the chart itself. Each is its own
+   positioning context, so a tick can sit at the exact height its value
+   maps to (a log axis spaces them unevenly) without reaching outside its
+   own column. */
+.lifetime-plot { display: grid; grid-template-columns: var(--lifetime-tick-col) minmax(0, 1fr); }
 .lifetime-ticks, .lifetime-chart-area, .lifetime-labels { position: relative; }
 .lifetime-tick {
   position: absolute; left: 0; transform: translateY(-50%);
@@ -431,7 +438,10 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
 .lifetime-tooltip-value { color: var(--ui-text); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .lifetime-axis {
   display: flex; justify-content: space-between;
-  margin: var(--space-1) var(--lifetime-label-col) 0 var(--lifetime-tick-col);
+  /* `.lifetime-chart-main` is already only as wide as the plot (the label
+     column is its own grid cell now, in `.lifetime-chart-body`), so the
+     axis needs no right margin to clear it. */
+  margin: var(--space-1) 0 0 var(--lifetime-tick-col);
   color: var(--ui-text-muted); font-variant-numeric: tabular-nums;
 }
 .lifetime-note, .lifetime-empty { margin: var(--space-2) 0 0; color: var(--ui-text-muted); overflow-wrap: anywhere; }
@@ -498,18 +508,18 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
   .yield-noun-short { display: block; }
   .split-spend, .split-units { display: none; }
   .split-short { display: block; }
-  /* The end labels stack below the chart, in document order, instead of
-     sitting beside it (the frame `Dashboard 390`): too little width for
-     both. */
+  /* The end labels stack below the plot and its axis, in document order,
+     instead of sitting beside them (the frame `Dashboard 390`): too little
+     width for both. `.lifetime-chart-body` collapsing to one column is
+     what stacks them; the axis already sits right after the plot in that
+     column, at every width. */
   .lifetime-chart-block { --lifetime-tick-col: 24px; }
-  .lifetime-plot { grid-template-columns: var(--lifetime-tick-col) minmax(0, 1fr); grid-template-rows: auto auto; }
-  .lifetime-ticks, .lifetime-chart-area { grid-row: 1; }
+  .lifetime-chart-body { grid-template-columns: minmax(0, 1fr); }
   .lifetime-labels {
-    grid-column: 1 / -1; grid-row: 2; position: static;
+    position: static;
     display: flex; flex-direction: column; gap: var(--space-1); margin: var(--space-1) 0 0;
   }
   .lifetime-label { position: static; transform: none; }
-  .lifetime-axis { margin-right: 0; margin-left: var(--lifetime-tick-col); }
 }
 
 /* --- the tree's header -----------------------------------------------------

@@ -1420,7 +1420,7 @@ function totalsChartBlock(totals: Totals): HTMLElement {
 
   const plot = document.createElement("div");
   plot.className = "lifetime-plot";
-  plot.append(ticksCol, chartArea, labelsCol);
+  plot.append(ticksCol, chartArea);
 
   const title = document.createElement("p");
   title.className = "lifetime-title";
@@ -1430,9 +1430,23 @@ function totalsChartBlock(totals: Totals): HTMLElement {
   axis.className = "lifetime-axis";
   axis.append(span("lifetime-axis-from", dayLabel(points[0].day)), span("lifetime-axis-to", dayLabel(last.day)));
 
+  // The axis sits directly under the plot in document order, at every
+  // width, so a reader sees the dates before the legend
+  // (`corpus/04-chart-polish.md` follow-up): `.lifetime-chart-main` holds
+  // the plot and its axis; `.lifetime-chart-body` places that beside the
+  // end-label legend on a wide screen and stacks it above the legend on a
+  // narrow one, in the same order either way.
+  const main = document.createElement("div");
+  main.className = "lifetime-chart-main";
+  main.append(plot, axis);
+
+  const body = document.createElement("div");
+  body.className = "lifetime-chart-body";
+  body.append(main, labelsCol);
+
   const block = document.createElement("div");
   block.className = "lifetime-chart-block totals";
-  block.append(title, plot, axis);
+  block.append(title, body);
   return block;
 }
 
@@ -1506,7 +1520,7 @@ function unitCostsChartBlock(unitCosts: UnitCosts): HTMLElement {
 
   const plot = document.createElement("div");
   plot.className = "lifetime-plot";
-  plot.append(ticksCol, chartArea, labelsCol);
+  plot.append(ticksCol, chartArea);
 
   const title = document.createElement("p");
   title.className = "lifetime-title";
@@ -1516,9 +1530,17 @@ function unitCostsChartBlock(unitCosts: UnitCosts): HTMLElement {
   axis.className = "lifetime-axis";
   axis.append(span("lifetime-axis-from", dayLabel(points[0].day)), span("lifetime-axis-to", dayLabel(last.day)));
 
+  const main = document.createElement("div");
+  main.className = "lifetime-chart-main";
+  main.append(plot, axis);
+
+  const body = document.createElement("div");
+  body.className = "lifetime-chart-body";
+  body.append(main, labelsCol);
+
   const block = document.createElement("div");
   block.className = "lifetime-chart-block unit-costs";
-  block.append(title, plot, axis);
+  block.append(title, body);
   return block;
 }
 
