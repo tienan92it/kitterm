@@ -420,8 +420,11 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
 .lifetime-tooltip-day { margin: 0; color: var(--ui-text-muted); white-space: nowrap; }
 /* One row per line: the swatch and the name share a column each with every
    other row (an `auto` grid track sizes to the widest cell in it), and the
-   value's own column right-aligns every row's number against the others. */
-.lifetime-tooltip-rows { display: grid; grid-template-columns: auto auto auto; column-gap: var(--space-1); row-gap: var(--space-1); margin: var(--space-1) 0 0; }
+   value's own column right-aligns every row's number against the others.
+   The widest label in a column fills it with no slack of its own, so the
+   column gap is what keeps its value from touching it — one more step than
+   the gap between a mark and a name carries the point. */
+.lifetime-tooltip-rows { display: grid; grid-template-columns: auto auto auto; column-gap: var(--space-2); row-gap: var(--space-1); margin: var(--space-1) 0 0; }
 .lifetime-tooltip-line { display: contents; }
 .lifetime-tooltip-swatch { align-self: center; }
 .lifetime-tooltip-label { color: var(--ui-text-muted); white-space: nowrap; }

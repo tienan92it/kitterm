@@ -274,6 +274,31 @@ describe("the tooltip box", () => {
       "mark bar lifetime-tooltip-swatch data-4",
     ]);
   });
+
+  it("hides on mouseleave and on blur, and shows at most one tooltip at a time", () => {
+    const totalsHit = totalsBlock().querySelector(".lifetime-hit")! as FakeElement;
+    const totalsTooltip = totalsBlock().querySelector(".lifetime-tooltip")! as FakeElement;
+    const unitHit = unitCostsBlock().querySelector(".lifetime-hit")! as FakeElement;
+    const unitTooltip = unitCostsBlock().querySelector(".lifetime-tooltip")! as FakeElement;
+
+    totalsHit.listeners.get("focus")?.[0]({});
+    expect(totalsTooltip.hidden).toBe(false);
+
+    // The other chart's own focus never fires this chart's blur — the two
+    // hit layers share no DOM focus or pointer state — so each chart must
+    // close the other's box itself.
+    unitHit.listeners.get("focus")?.[0]({});
+    expect(unitTooltip.hidden).toBe(false);
+    expect(totalsTooltip.hidden).toBe(true);
+
+    unitHit.listeners.get("mouseleave")?.[0]({});
+    expect(unitTooltip.hidden).toBe(true);
+
+    totalsHit.listeners.get("focus")?.[0]({});
+    expect(totalsTooltip.hidden).toBe(false);
+    totalsHit.listeners.get("blur")?.[0]({});
+    expect(totalsTooltip.hidden).toBe(true);
+  });
 });
 
 describe("the space scale", () => {

@@ -1239,6 +1239,16 @@ function tickLabel(text: string, y: number): HTMLElement {
   return el;
 }
 
+/** The hide function of whichever lifetime tooltip is currently shown, so
+ * showing a second chart's tooltip closes the first (`chart-polish`, round
+ * 7): a chart's own `mouseleave`/`blur` only see its own hit layer, so
+ * hovering one chart with the mouse while Tab moves keyboard focus into the
+ * other — two different interaction paths, neither of which blurs the
+ * other's hit layer — used to leave both boxes open at once.
+ * `lifetimeBlock` resets this to null at the top of every repaint, so a
+ * stale hide from a discarded chart never lingers. */
+let activeLifetimeTooltipHide: (() => void) | null = null;
+
 /** The transparent hit layer and the tooltip it shows: a keyboard and
  * pointer target spanning the chart, so a reader can move a cursor by day
  * (arrow keys) or point (the mouse) and read its tooltip, on hover and on
@@ -1276,9 +1286,15 @@ function lifetimeHit(
   announce.className = "sr-only";
   announce.setAttribute("aria-live", "polite");
   let cursor = points.length - 1;
+  const hide = (): void => {
+    tooltip.hidden = true;
+    if (activeLifetimeTooltipHide === hide) activeLifetimeTooltipHide = null;
+  };
   const show = (index: number): void => {
     if (points.length === 0) return;
     cursor = Math.max(0, Math.min(points.length - 1, index));
+    if (activeLifetimeTooltipHide !== null && activeLifetimeTooltipHide !== hide) activeLifetimeTooltipHide();
+    activeLifetimeTooltipHide = hide;
     const point = points[cursor];
     const dayP = document.createElement("p");
     dayP.className = "lifetime-tooltip-day";
@@ -1301,9 +1317,6 @@ function lifetimeHit(
     tooltip.style.right = onRight ? `${100 - point.x}%` : "auto";
     tooltip.hidden = false;
     announce.textContent = point.announce;
-  };
-  const hide = (): void => {
-    tooltip.hidden = true;
   };
   hit.addEventListener("mousemove", (event) => {
     const rect = hit.getBoundingClientRect?.();
@@ -1512,6 +1525,9 @@ function unitCostsChartBlock(unitCosts: UnitCosts): HTMLElement {
 /** The two charts and the note under the tiles, or the one empty sentence
  * when the fleet has no spend at all (`goal.md` condition 6). */
 function lifetimeBlock(lifetime: LifetimeModel): HTMLElement {
+  // A repaint discards both charts' hit layers and tooltips; a hide
+  // function from the discarded ones must not outlive them.
+  activeLifetimeTooltipHide = null;
   const wrap = document.createElement("div");
   wrap.className = "lifetime";
   if (lifetime.totals.baseDay === null && lifetime.unitCosts.firstSpendDay === null) {

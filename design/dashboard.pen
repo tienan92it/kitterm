@@ -1648,7 +1648,7 @@
                                       "type": "frame",
                                       "id": "ondeN",
                                       "name": "totals tooltip row spend",
-                                      "gap": "$space-1",
+                                      "gap": "$space-2",
                                       "alignItems": "center",
                                       "children": [
                                         {
@@ -1691,7 +1691,7 @@
                                       "type": "frame",
                                       "id": "n9LPg",
                                       "name": "totals tooltip row prs",
-                                      "gap": "$space-1",
+                                      "gap": "$space-2",
                                       "alignItems": "center",
                                       "children": [
                                         {
@@ -1734,7 +1734,7 @@
                                       "type": "frame",
                                       "id": "kAAcY",
                                       "name": "totals tooltip row lines",
-                                      "gap": "$space-1",
+                                      "gap": "$space-2",
                                       "alignItems": "center",
                                       "children": [
                                         {
@@ -1777,7 +1777,7 @@
                                       "type": "frame",
                                       "id": "K7nhs5",
                                       "name": "totals tooltip row releases",
-                                      "gap": "$space-1",
+                                      "gap": "$space-2",
                                       "alignItems": "center",
                                       "children": [
                                         {
@@ -2208,7 +2208,7 @@
                                       "type": "frame",
                                       "id": "n4zYU9",
                                       "name": "unit tooltip row perPR",
-                                      "gap": "$space-1",
+                                      "gap": "$space-2",
                                       "alignItems": "center",
                                       "children": [
                                         {
@@ -2251,7 +2251,7 @@
                                       "type": "frame",
                                       "id": "I9cFY",
                                       "name": "unit tooltip row per1kLines",
-                                      "gap": "$space-1",
+                                      "gap": "$space-2",
                                       "alignItems": "center",
                                       "children": [
                                         {
@@ -2294,7 +2294,7 @@
                                       "type": "frame",
                                       "id": "DwP8j",
                                       "name": "unit tooltip row perRelease",
-                                      "gap": "$space-1",
+                                      "gap": "$space-2",
                                       "alignItems": "center",
                                       "children": [
                                         {
@@ -2337,7 +2337,7 @@
                                       "type": "frame",
                                       "id": "jWFl5",
                                       "name": "unit tooltip row perHour",
-                                      "gap": "$space-1",
+                                      "gap": "$space-2",
                                       "alignItems": "center",
                                       "children": [
                                         {
