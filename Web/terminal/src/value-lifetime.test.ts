@@ -10,13 +10,14 @@ import {
   shorthandDollars,
   stackEndLabels,
   totalsAxisTicks,
-  totalsMultiplesLine,
   totalsRealLine,
   totalsSeries,
+  totalsTooltipRows,
   unitCostAxisTicks,
   unitCostLabel,
   unitCostsLine,
   unitCostsSeries,
+  unitCostsTooltipRows,
 } from "./value-lifetime";
 
 /**
@@ -470,17 +471,7 @@ describe("unitCostAxisTicks", () => {
   });
 });
 
-describe("totalsMultiplesLine and totalsRealLine", () => {
-  it("prints the human's table on 2026-09-20", () => {
-    const point = totalsOn("2026-09-20");
-    expect(totalsMultiplesLine(point)).toBe("spend ×5.7 · PRs ×4.8 · lines ×6.3 · releases ×2.1");
-  });
-
-  it("prints the dash for a null multiple", () => {
-    const point = { multiple: { spend: null, prs: 1, lines: 1, releases: 1 } };
-    expect(totalsMultiplesLine(point)).toBe("spend – · PRs ×1.0 · lines ×1.0 · releases ×1.0");
-  });
-
+describe("totalsRealLine", () => {
   it("prints the real totals in shorthand", () => {
     const point = totalsOn("2026-10-09");
     expect(totalsRealLine(point)).toBe("$6.4k · 244 PRs · 436k lines · 70 releases");
@@ -495,6 +486,37 @@ describe("unitCostsLine", () => {
 
   it("prints the dash for a null count", () => {
     expect(unitCostsLine({ day: "2026-01-01", perPR: null, perKLines: null, perRelease: null, perHour: null })).toBe("–/PR · –/1k lines · –/release · –/hour");
+  });
+});
+
+describe("totalsTooltipRows", () => {
+  it("rows the real totals alone, no multiple anywhere, spend/PRs/lines/releases in slot order", () => {
+    const point = totalsOn("2026-10-09");
+    expect(totalsTooltipRows(point)).toEqual([
+      { slot: 1, label: "spend", value: "$6.4k" },
+      { slot: 2, label: "PRs", value: "244" },
+      { slot: 3, label: "lines", value: "436k" },
+      { slot: 4, label: "releases", value: "70" },
+    ]);
+    // Chartered by corpus/04-chart-polish.md: TOTALS shows no multiple.
+    expect(totalsTooltipRows(point).some((row) => row.value.includes("×"))).toBe(false);
+  });
+});
+
+describe("unitCostsTooltipRows", () => {
+  it("rows the dollars in the corpus's own order: $/PR, $/1k lines, $/release, $/hour", () => {
+    const point = unitCostsOn("2026-10-09");
+    expect(unitCostsTooltipRows(point)).toEqual([
+      { slot: 2, label: "$/PR", value: "$26.40" },
+      { slot: 3, label: "$/1k lines", value: "$14.77" },
+      { slot: 4, label: "$/release", value: "$92.03" },
+      { slot: 1, label: "$/hour", value: "$54.92" },
+    ]);
+  });
+
+  it("prints the dash for a null count", () => {
+    const rows = unitCostsTooltipRows({ day: "2026-01-01", perPR: null, perKLines: null, perRelease: null, perHour: null });
+    expect(rows.map((row) => row.value)).toEqual(["–", "–", "–", "–"]);
   });
 });
 

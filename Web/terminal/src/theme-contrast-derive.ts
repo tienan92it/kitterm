@@ -546,6 +546,8 @@ const BLOCK_SURFACES: Array<{ block: string; stack: string[]; why: string }> = [
   { block: "lifetime-tick", stack: ["var(--ui-bg)"], why: "in .lifetime-ticks, on the body" },
   { block: "lifetime-tooltip", stack: ["var(--ui-surface)"], why: "a tooltip over the chart; it paints --ui-surface itself" },
   { block: "lifetime-tooltip-day", stack: ["var(--ui-surface)"], why: "in .lifetime-tooltip" },
+  { block: "lifetime-tooltip-label", stack: ["var(--ui-surface)"], why: "in .lifetime-tooltip-rows, in .lifetime-tooltip" },
+  { block: "lifetime-tooltip-value", stack: ["var(--ui-surface)"], why: "in .lifetime-tooltip-rows, in .lifetime-tooltip" },
   { block: "lifetime-axis", stack: ["var(--ui-bg)"], why: "in .lifetime-plot's chart block, on the body" },
   { block: "lifetime-note", stack: ["var(--ui-bg)"], why: "in .lifetime, on the body" },
   { block: "lifetime-empty", stack: ["var(--ui-bg)"], why: "in .lifetime, in place of the two charts, on the body" },

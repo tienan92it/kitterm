@@ -89,15 +89,17 @@ import {
   multipleLabel,
   stackEndLabels,
   totalsAxisTicks,
-  totalsMultiplesLine,
   totalsRealLine,
   totalsSeries,
+  totalsTooltipRows,
   unitCostAxisTicks,
   unitCostLabel,
   unitCostsLine,
   unitCostsSeries,
+  unitCostsTooltipRows,
   type LifetimeUsageDay,
   type LifetimeYieldDay,
+  type TooltipRow,
   type Totals,
   type UnitCosts,
 } from "./value-lifetime";
@@ -1242,8 +1244,18 @@ function tickLabel(text: string, y: number): HTMLElement {
  * (arrow keys) or point (the mouse) and read its tooltip, on hover and on
  * focus. `points` is one entry per day in the chart's x order; `purpose`
  * is the hit layer's own `aria-label`, since the chart's single summary
- * sentence sits on the `<svg>` beside it. */
-function lifetimeHit(points: ReadonlyArray<{ x: number; content: () => { day: string; lines: readonly string[] } }>, purpose: string): { hit: HTMLElement; tooltip: HTMLElement; announce: HTMLElement } {
+ * sentence sits on the `<svg>` beside it.
+ *
+ * `day` is the plain day for the visual box's header (`25 Sep`,
+ * `corpus/04-chart-polish.md`); `announce` is the fuller sentence a screen
+ * reader gets instead, which may say more (TOTALS adds "against the base
+ * day"). `rows` are the box's lines: a swatch, a name, a right-aligned
+ * value — the day's real values, never a multiple
+ * (`corpus/04-chart-polish.md`). */
+function lifetimeHit(
+  points: ReadonlyArray<{ x: number; day: string; rows: readonly TooltipRow[]; announce: string }>,
+  purpose: string,
+): { hit: HTMLElement; tooltip: HTMLElement; announce: HTMLElement } {
   const hit = document.createElement("div");
   hit.className = "lifetime-hit";
   hit.tabIndex = 0;
@@ -1251,6 +1263,12 @@ function lifetimeHit(points: ReadonlyArray<{ x: number; content: () => { day: st
   const tooltip = document.createElement("div");
   tooltip.className = "lifetime-tooltip";
   tooltip.hidden = true;
+  // The box sits inside its own chart (`corpus/04-chart-polish.md`): fixed
+  // at the top of the chart area, whose height (`LIFETIME_CHART_H`) is
+  // always taller than the box's few rows, so it never spills into the
+  // next chart block or its title. Only the side (left of the point, or
+  // flipped right near the right edge) ever moves.
+  tooltip.style.top = "0";
   // A screen reader does not see the visible tooltip move: `show` updates
   // this polite live region with the same day and the same lines every
   // time it updates the tooltip, on hover and on the arrow keys alike.
@@ -1262,22 +1280,27 @@ function lifetimeHit(points: ReadonlyArray<{ x: number; content: () => { day: st
     if (points.length === 0) return;
     cursor = Math.max(0, Math.min(points.length - 1, index));
     const point = points[cursor];
-    const { day, lines } = point.content();
     const dayP = document.createElement("p");
     dayP.className = "lifetime-tooltip-day";
-    dayP.textContent = day;
-    const lineEls = lines.map((line) => {
-      const p = document.createElement("p");
-      p.className = "lifetime-tooltip-line";
-      p.textContent = line;
-      return p;
-    });
-    tooltip.replaceChildren(dayP, ...lineEls);
+    dayP.textContent = point.day;
+    const rows = document.createElement("div");
+    rows.className = "lifetime-tooltip-rows";
+    for (const row of point.rows) {
+      const line = document.createElement("div");
+      line.className = "lifetime-tooltip-line";
+      const swatch = document.createElement("span");
+      swatch.className = `mark bar lifetime-tooltip-swatch data-${row.slot}`;
+      swatch.setAttribute("aria-hidden", "true");
+      swatch.style.width = "8px";
+      line.append(swatch, span("lifetime-tooltip-label", row.label), span("lifetime-tooltip-value", row.value));
+      rows.append(line);
+    }
+    tooltip.replaceChildren(dayP, rows);
     const onRight = point.x > 60;
     tooltip.style.left = onRight ? "auto" : `${point.x}%`;
     tooltip.style.right = onRight ? `${100 - point.x}%` : "auto";
     tooltip.hidden = false;
-    announce.textContent = [day, ...lines].join(". ");
+    announce.textContent = point.announce;
   };
   const hide = (): void => {
     tooltip.hidden = true;
@@ -1331,7 +1354,7 @@ function totalsChartBlock(totals: Totals): HTMLElement {
   svg.setAttribute("role", "img");
   svg.setAttribute("preserveAspectRatio", "none");
   svg.setAttribute("viewBox", "0 0 100 100");
-  svg.setAttribute("aria-label", `Totals chart: growth since ${dayLabel(baseDay)} on a log axis. Today, ${totalsMultiplesLine(last)}; the real totals are ${totalsRealLine(last)}.`);
+  svg.setAttribute("aria-label", `Totals chart: growth since ${dayLabel(baseDay)} on a log axis. Today, the real totals are ${totalsRealLine(last)}.`);
   for (const tick of ticks) {
     const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
     line.setAttribute("class", "axis-grid");
@@ -1358,7 +1381,12 @@ function totalsChartBlock(totals: Totals): HTMLElement {
   for (const tick of ticks) ticksCol.append(tickLabel(`×${tick}`, yOf(tick)));
 
   const { hit, tooltip, announce } = lifetimeHit(
-    points.map((p, i) => ({ x: xOf(i), content: () => ({ day: `${dayLabel(p.day)}, against ${dayLabel(baseDay)}`, lines: [totalsMultiplesLine(p), totalsRealLine(p)] }) })),
+    points.map((p, i) => ({
+      x: xOf(i),
+      day: dayLabel(p.day),
+      rows: totalsTooltipRows(p),
+      announce: [`${dayLabel(p.day)}, against ${dayLabel(baseDay)}`, totalsRealLine(p)].join(". "),
+    })),
     `Move with arrow keys to see a day's growth against ${dayLabel(baseDay)}`,
   );
   const chartArea = document.createElement("div");
@@ -1444,7 +1472,7 @@ function unitCostsChartBlock(unitCosts: UnitCosts): HTMLElement {
   for (const tick of ticks) ticksCol.append(tickLabel(`${tick}`, yOf(tick)));
 
   const { hit, tooltip, announce } = lifetimeHit(
-    points.map((p, i) => ({ x: xOf(i), content: () => ({ day: dayLabel(p.day), lines: [unitCostsLine(p)] }) })),
+    points.map((p, i) => ({ x: xOf(i), day: dayLabel(p.day), rows: unitCostsTooltipRows(p), announce: [dayLabel(p.day), unitCostsLine(p)].join(". ") })),
     "Move with arrow keys to see a day's unit costs",
   );
   const chartArea = document.createElement("div");

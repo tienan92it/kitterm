@@ -305,15 +305,6 @@ export function unitCostAxisTicks(max: number): number[] {
 
 const TOOLTIP_DASH = "–";
 
-/** The TOTALS tooltip's multiples line: `spend ×5.7 · PRs ×4.8 · lines
- * ×6.3 · releases ×2.1`, the day's multiples in the chart's measure order
- * (`corpus/03-approved-design.md`). A null multiple (the base day's own
- * value was 0) prints the dash. */
-export function totalsMultiplesLine(point: Pick<TotalsPoint, "multiple">): string {
-  const m = (x: number | null): string => (x === null ? TOOLTIP_DASH : multipleLabel(x));
-  return `spend ${m(point.multiple.spend)} · PRs ${m(point.multiple.prs)} · lines ${m(point.multiple.lines)} · releases ${m(point.multiple.releases)}`;
-}
-
 /** The TOTALS tooltip's second line: the day's real totals in shorthand,
  * `$4.2k · 129 PRs · 105k lines · 36 releases`. */
 export function totalsRealLine(point: Pick<TotalsPoint, "cumulative">): string {
@@ -327,4 +318,34 @@ export function totalsRealLine(point: Pick<TotalsPoint, "cumulative">): string {
 export function unitCostsLine(point: UnitCostPoint): string {
   const p = (x: number | null): string => (x === null ? TOOLTIP_DASH : unitCostLabel(x));
   return `${p(point.perPR)}/PR · ${p(point.perKLines)}/1k lines · ${p(point.perRelease)}/release · ${p(point.perHour)}/hour`;
+}
+
+/** One row of the visual tooltip box (`corpus/04-chart-polish.md`): a
+ * swatch in the measure's data-palette slot, its name, and its value. */
+export type TooltipRow = { slot: 1 | 2 | 3 | 4; label: string; value: string };
+
+/** The TOTALS tooltip's rows: the day's real values alone, no multiple
+ * anywhere (`corpus/04-chart-polish.md`) — spend, PRs, lines, releases, the
+ * chart's own measure and slot order. */
+export function totalsTooltipRows(point: Pick<TotalsPoint, "cumulative">): TooltipRow[] {
+  const c = point.cumulative;
+  return [
+    { slot: 1, label: "spend", value: shorthandDollars(c.spend) },
+    { slot: 2, label: "PRs", value: shorthandCount(c.prs) },
+    { slot: 3, label: "lines", value: shorthandCount(c.lines) },
+    { slot: 4, label: "releases", value: shorthandCount(c.releases) },
+  ];
+}
+
+/** The UNIT COSTS tooltip's rows, in the order `corpus/04-chart-polish.md`
+ * gives: $/PR, $/1k lines, $/release, $/hour. A null count prints the
+ * dash. */
+export function unitCostsTooltipRows(point: UnitCostPoint): TooltipRow[] {
+  const p = (x: number | null): string => (x === null ? TOOLTIP_DASH : unitCostLabel(x));
+  return [
+    { slot: 2, label: "$/PR", value: p(point.perPR) },
+    { slot: 3, label: "$/1k lines", value: p(point.perKLines) },
+    { slot: 4, label: "$/release", value: p(point.perRelease) },
+    { slot: 1, label: "$/hour", value: p(point.perHour) },
+  ];
 }

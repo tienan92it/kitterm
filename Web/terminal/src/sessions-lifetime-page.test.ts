@@ -1,18 +1,21 @@
+import { readFileSync } from "node:fs";
+
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { type FakeElement, installFakePage, type FakePage } from "./fake-page";
+import { dayLabel } from "./sessions-model";
 import { LIFETIME_EMPTY_LINE, LIFETIME_NOTE } from "./sessions-value";
 import {
   logPosition,
   multipleLabel,
   totalsAxisTicks,
-  totalsMultiplesLine,
   totalsRealLine,
   totalsSeries,
+  totalsTooltipRows,
   unitCostAxisTicks,
   unitCostLabel,
-  unitCostsLine,
   unitCostsSeries,
+  unitCostsTooltipRows,
 } from "./value-lifetime";
 
 /**
@@ -75,6 +78,20 @@ const blocks = () => valuePanel().querySelectorAll(".lifetime-chart-block");
 const totalsBlock = () => blocks().find((b) => b.classList.contains("totals"))!;
 const unitCostsBlock = () => blocks().find((b) => b.classList.contains("unit-costs"))!;
 
+/** A tooltip's visible rows, as `{label, value}`, for comparison against
+ * `totalsTooltipRows`/`unitCostsTooltipRows`'s own shape (minus `slot`,
+ * which the swatch test below checks separately). */
+const tooltipRows = (tooltip: FakeElement): Array<{ label: string; value: string }> =>
+  tooltip.querySelectorAll(".lifetime-tooltip-line").map((line) => ({
+    label: line.querySelector(".lifetime-tooltip-label")?.textContent ?? "",
+    value: line.querySelector(".lifetime-tooltip-value")?.textContent ?? "",
+  }));
+
+const withoutSlot = (rows: ReadonlyArray<{ label: string; value: string }>): Array<{ label: string; value: string }> =>
+  rows.map(({ label, value }) => ({ label, value }));
+
+const CSS_SOURCE = readFileSync(new URL("./sessions.css", import.meta.url), "utf8");
+
 // Expectations from the same pure module the page imports.
 const usageDays = fixture.usage as Array<{ day: string; costUSD: number; measuredUSD?: number; apiMs?: number }>;
 const yieldDays = fixture.yield as Array<{ day: string; mergedPullRequests?: number; mergedLines?: number; releases?: number }>;
@@ -130,14 +147,16 @@ describe("TOTALS", () => {
     expect(axis.querySelector(".lifetime-axis-to")?.textContent).toBeTruthy();
   });
 
-  it("carries one summary sentence for a screen reader, naming the chart", () => {
+  it("carries one summary sentence for a screen reader, naming the chart, with no multiple", () => {
     const label = totalsBlock().querySelector("svg")?.getAttribute("aria-label") ?? "";
     expect(label).toContain("Totals chart");
-    expect(label).toContain(totalsMultiplesLine(lastTotals));
     expect(label).toContain(totalsRealLine(lastTotals));
+    // Chartered by corpus/04-chart-polish.md: the screen-reader text drops
+    // the TOTALS multiples too.
+    expect(label).not.toContain("×");
   });
 
-  it("shows the last day's tooltip on focus, moves it with ArrowLeft, and hides it on blur", () => {
+  it("shows the last day's tooltip on focus — a header with the plain day, then one row per measure, real values only — and hides it on blur", () => {
     const hit = totalsBlock().querySelector(".lifetime-hit")! as FakeElement;
     const tooltip = totalsBlock().querySelector(".lifetime-tooltip")!;
     expect(hit.getAttribute("aria-label")).toBeTruthy();
@@ -145,20 +164,23 @@ describe("TOTALS", () => {
 
     hit.listeners.get("focus")?.[0]({});
     expect(tooltip.hidden).toBe(false);
-    expect(tooltip.querySelector(".lifetime-tooltip-line")?.textContent).toBe(totalsMultiplesLine(lastTotals));
-    expect(tooltip.querySelectorAll(".lifetime-tooltip-line")[1]?.textContent).toBe(totalsRealLine(lastTotals));
+    expect(tooltip.querySelector(".lifetime-tooltip-day")?.textContent).toBe(dayLabel(lastTotals.day));
+    expect(tooltipRows(tooltip)).toEqual(withoutSlot(totalsTooltipRows(lastTotals)));
+    // Chartered by corpus/04-chart-polish.md: no multiple anywhere in the box.
+    expect(tooltip.textContent).not.toContain("×");
 
     const prevented: boolean[] = [];
     hit.listeners.get("keydown")?.[0]({ key: "ArrowLeft", preventDefault: () => prevented.push(true) });
     expect(prevented).toEqual([true]);
     const prev = totals.points[totals.points.length - 2];
-    expect(tooltip.querySelector(".lifetime-tooltip-line")?.textContent).toBe(totalsMultiplesLine(prev));
+    expect(tooltip.querySelector(".lifetime-tooltip-day")?.textContent).toBe(dayLabel(prev.day));
+    expect(tooltipRows(tooltip)).toEqual(withoutSlot(totalsTooltipRows(prev)));
 
     hit.listeners.get("blur")?.[0]({});
     expect(tooltip.hidden).toBe(true);
   });
 
-  it("announces the tooltip's day and lines in a polite live region, on focus and on the arrow keys", () => {
+  it("announces the day and the real totals in a polite live region, no multiple, on focus and on the arrow keys", () => {
     // A screen reader does not see the visible tooltip move, so `show`
     // also updates an `aria-live="polite"` sr-only paragraph beside it.
     const hit = totalsBlock().querySelector(".lifetime-hit")! as FakeElement;
@@ -170,16 +192,19 @@ describe("TOTALS", () => {
     // (`show` clamps) so this test starts from a known day, the last one.
     for (let i = 0; i < totals.points.length + 1; i += 1) keydown("ArrowRight");
     hit.listeners.get("focus")?.[0]({});
-    expect(announce.textContent).toContain(totalsMultiplesLine(lastTotals));
+    expect(announce.textContent).toContain(dayLabel(lastTotals.day));
     expect(announce.textContent).toContain(totalsRealLine(lastTotals));
+    // Chartered by corpus/04-chart-polish.md: the live region drops the
+    // TOTALS multiples too.
+    expect(announce.textContent).not.toContain("×");
 
     const prev = totals.points[totals.points.length - 2];
     keydown("ArrowLeft");
-    expect(announce.textContent).toContain(totalsMultiplesLine(prev));
+    expect(announce.textContent).toContain(totalsRealLine(prev));
     // The live region keeps announcing after blur hides the visible
     // tooltip: the last value read stays available, nothing is retracted.
     hit.listeners.get("blur")?.[0]({});
-    expect(announce.textContent).toContain(totalsMultiplesLine(prev));
+    expect(announce.textContent).toContain(totalsRealLine(prev));
   });
 });
 
@@ -207,12 +232,54 @@ describe("UNIT COSTS", () => {
     ]);
   });
 
-  it("shows the last day's one-line tooltip on focus", () => {
+  it("shows the last day's tooltip on focus — a header with the plain day, then one row per measure, in the corpus's $/PR, $/1k lines, $/release, $/hour order", () => {
     const hit = unitCostsBlock().querySelector(".lifetime-hit")! as FakeElement;
     const tooltip = unitCostsBlock().querySelector(".lifetime-tooltip")!;
     hit.listeners.get("focus")?.[0]({});
     expect(tooltip.hidden).toBe(false);
-    expect(tooltip.querySelector(".lifetime-tooltip-line")?.textContent).toBe(unitCostsLine(lastUnitCosts));
+    expect(tooltip.querySelector(".lifetime-tooltip-day")?.textContent).toBe(dayLabel(lastUnitCosts.day));
+    expect(tooltipRows(tooltip)).toEqual(withoutSlot(unitCostsTooltipRows(lastUnitCosts)));
+  });
+});
+
+describe("the tooltip box", () => {
+  it("pins the box to the top of its own chart, never past it, so it cannot cover the other chart or its title", () => {
+    expect((totalsBlock().querySelector(".lifetime-tooltip")! as FakeElement).style.top).toBe("0");
+    expect((unitCostsBlock().querySelector(".lifetime-tooltip")! as FakeElement).style.top).toBe("0");
+  });
+
+  it("flips to the left of the cursor near the right edge, and sits to its right otherwise", () => {
+    const hit = totalsBlock().querySelector(".lifetime-hit")! as FakeElement;
+    const tooltip = totalsBlock().querySelector(".lifetime-tooltip")! as FakeElement;
+
+    // The last day sits at x = 100 (the right edge), past the x > 60 flip.
+    hit.listeners.get("focus")?.[0]({});
+    expect(tooltip.style.left).toBe("auto");
+    expect(tooltip.style.right).not.toBe("auto");
+
+    // The first day sits at x = 0, well inside the flip's threshold.
+    for (let i = 0; i < totals.points.length + 1; i += 1) hit.listeners.get("keydown")?.[0]({ key: "ArrowLeft", preventDefault: () => undefined });
+    expect(tooltip.style.left).toBe("0%");
+    expect(tooltip.style.right).toBe("auto");
+  });
+
+  it("swatches each row in the measure's own data-palette slot, through the mark rule", () => {
+    const tooltip = totalsBlock().querySelector(".lifetime-tooltip")! as FakeElement;
+    totalsBlock().querySelector(".lifetime-hit")!.listeners.get("focus")?.[0]({});
+    const swatches = tooltip.querySelectorAll(".lifetime-tooltip-swatch");
+    expect(swatches.map((s) => s.className)).toEqual([
+      "mark bar lifetime-tooltip-swatch data-1",
+      "mark bar lifetime-tooltip-swatch data-2",
+      "mark bar lifetime-tooltip-swatch data-3",
+      "mark bar lifetime-tooltip-swatch data-4",
+    ]);
+  });
+});
+
+describe("the space scale", () => {
+  it("gives one more step between a chart's title and its plot (corpus/04-chart-polish.md)", () => {
+    const rule = /\.lifetime-plot\s*\{[^}]*margin:\s*var\(--space-(\d)\)/.exec(CSS_SOURCE);
+    expect(rule?.[1]).toBe("2");
   });
 });
 

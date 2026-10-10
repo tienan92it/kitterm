@@ -384,7 +384,9 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
    reaching outside its own column. */
 .lifetime-plot {
   display: grid; grid-template-columns: var(--lifetime-tick-col) minmax(0, 1fr) var(--lifetime-label-col);
-  margin: var(--space-1) 0 0;
+  /* One more step of the space scale below the title than between other
+     stacked lines (`corpus/04-chart-polish.md`). */
+  margin: var(--space-2) 0 0;
 }
 .lifetime-ticks, .lifetime-chart-area, .lifetime-labels { position: relative; }
 .lifetime-tick {
@@ -406,10 +408,24 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
 .lifetime-label { position: absolute; left: 0; width: auto; transform: translateY(-50%); white-space: nowrap; }
 .lifetime-hit { position: absolute; inset: 0; background: none; border: none; padding: 0; cursor: crosshair; }
 .lifetime-hit:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: -2px; }
-.lifetime-tooltip { position: absolute; z-index: 1; max-width: 260px; padding: var(--space-2); background: var(--ui-surface); border: 1px solid var(--ui-border); color: var(--ui-text); pointer-events: none; }
+/* The box sits inside its own chart (`top: 0`, set once in script, never
+   past the chart's own height) and sizes to its content up to a maximum
+   width; only its side (`left`/`right`, set on hover) moves
+   (`corpus/04-chart-polish.md`). */
+.lifetime-tooltip {
+  position: absolute; z-index: 1; max-width: 200px; padding: var(--space-2);
+  background: var(--ui-surface); border: 1px solid var(--ui-border); color: var(--ui-text); pointer-events: none;
+}
 .lifetime-tooltip[hidden] { display: none; }
 .lifetime-tooltip-day { margin: 0; color: var(--ui-text-muted); white-space: nowrap; }
-.lifetime-tooltip-line { margin: var(--space-1) 0 0; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* One row per line: the swatch and the name share a column each with every
+   other row (an `auto` grid track sizes to the widest cell in it), and the
+   value's own column right-aligns every row's number against the others. */
+.lifetime-tooltip-rows { display: grid; grid-template-columns: auto auto auto; column-gap: var(--space-1); row-gap: var(--space-1); margin: var(--space-1) 0 0; }
+.lifetime-tooltip-line { display: contents; }
+.lifetime-tooltip-swatch { align-self: center; }
+.lifetime-tooltip-label { color: var(--ui-text-muted); white-space: nowrap; }
+.lifetime-tooltip-value { color: var(--ui-text); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .lifetime-axis {
   display: flex; justify-content: space-between;
   margin: var(--space-1) var(--lifetime-label-col) 0 var(--lifetime-tick-col);
@@ -434,6 +450,12 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
 .mark.bar.idle { background: var(--ui-text-faint); }
 /* The tile's rule: the bar mark stood on end at the tile's left edge. */
 .mark.bar.rule { position: absolute; left: 0; top: 0; bottom: 0; width: 2px; height: auto; }
+/* The lifetime tooltip's swatch: the data palette as a filled square, not
+   clipped text, so it reads as a shape beside the row it names. */
+.mark.bar.data-1 { background: var(--ui-data-1); }
+.mark.bar.data-2 { background: var(--ui-data-2); }
+.mark.bar.data-3 { background: var(--ui-data-3); }
+.mark.bar.data-4 { background: var(--ui-data-4); }
 .split-spend { flex: none; width: 80px; text-align: right; font-variant-numeric: tabular-nums; color: var(--ui-text); overflow: hidden; }
 .split-count, .split-units, .split-rate { flex: none; text-align: right; color: var(--ui-text-muted); font-variant-numeric: tabular-nums; overflow: hidden; }
 .split-count { width: 68px; }
