@@ -1,14 +1,14 @@
 # STATE: value-lifetime
 
-- Status: done
+- Status: active
 - Round: 2 of 3 in this budget (second budget)
 - Rounds total: 5
 - Last floor: green (2026-10-09, round 5 after: vitest 1724, PR CI on 7a3deb1)
-- Updated: 2026-10-09, the goal is done; PR #188 is ready
+- Updated: 2026-10-10, resumed for one round: chart polish (`corpus/04-chart-polish.md`)
 
 ## Queue
 
-None.
+1. `chart-polish` (`corpus/04-chart-polish.md`)
 
 ## Failures
 
@@ -34,5 +34,5 @@ at least 25% of the median daily spend).
 
 ## Next action
 
-The human merges PR #188; the foreman releases and upgrades, and checks
-the charts on the live page.
+Round 6: `chart-polish`; proof: vitests, screenshots at 1200 and 390,
+and the frames of `design/dashboard.pen` redrawn as built.
