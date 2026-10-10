@@ -8,7 +8,7 @@
 
 ## Queue
 
-1. `chart-polish` (`corpus/04-chart-polish.md`)
+1. `chart-polish` (`corpus/04-chart-polish.md`), PR #189.
 
 ## Failures
 
