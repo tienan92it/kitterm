@@ -72,13 +72,14 @@ describe("a .mark.data-N rule paints each token as a background, clipped to the 
 
 const TOKENS = rootVariables(readSource("tokens.css"));
 
-describe("a .lifetime-legend-swatch overrides the mark's own 16px glyph column (corpus/05-legend-and-range.md)", () => {
-  it("sizes the swatch to a small square, like the tooltip's own swatch, not the 16px a glyph needs", () => {
-    // `.mark { width: 16px }` fits one glyph; the legend's swatch is a
-    // colour square beside a text label, not a glyph, so it takes the
-    // tooltip swatch's own 8px instead.
+describe("no stylesheet rule claims to size .lifetime-legend-swatch (corpus/05-legend-and-range.md)", () => {
+  it("leaves its width to the inline style script sets, since .mark.bar's own width: 0 outranks one class", () => {
+    // A single-class selector cannot outrank `.mark.bar`'s two classes, the
+    // same reason the tooltip's own swatch sets its 8px inline rather than
+    // in the stylesheet (`sessions-lifetime-page.test.ts` pins the inline
+    // value on both swatches).
     const rule = RULES.find((r) => r.selector === ".lifetime-legend-swatch" && r.decls.has("width"));
-    expect(rule?.decls.get("width")).toBe("8px");
+    expect(rule).toBeUndefined();
   });
 });
 

@@ -1360,6 +1360,10 @@ function lifetimeLegend(items: ReadonlyArray<{ slot: 1 | 2 | 3 | 4; word: string
     item.className = "lifetime-legend-item";
     const swatch = document.createElement("span");
     swatch.className = `mark bar lifetime-legend-swatch data-${slot}`;
+    // `.mark.bar` carries `width: 0`, at a higher specificity than a single
+    // class can override in the stylesheet; the tooltip's own swatch sets
+    // this the same way.
+    swatch.style.width = "8px";
     item.append(swatch, span("lifetime-legend-label", word));
     legend.append(item);
   }

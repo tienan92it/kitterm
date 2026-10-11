@@ -145,6 +145,11 @@ describe("TOTALS", () => {
     expect(items.map((i) => i.querySelector(".lifetime-legend-label")?.textContent)).toEqual(["spend", "PRs", "lines", "releases"]);
     // No value anywhere in the row — the human's word was "labels only".
     expect(legend.textContent).not.toMatch(/[×$0-9]/);
+    // `.mark.bar`'s own `width: 0` outranks any single class in the
+    // stylesheet, so the swatch's 8px square is set inline, like the
+    // tooltip's own swatch (`sessions-lifetime-css.test.ts` pins the
+    // stylesheet carries no such rule).
+    expect((items[0].querySelector(".lifetime-legend-swatch") as FakeElement).style.width).toBe("8px");
   });
 
   it("names the axis ends with the first and the last day", () => {

@@ -379,7 +379,8 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
    is the title's next sibling now. */
 .lifetime-legend { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin: var(--space-2) 0 0; }
 .lifetime-legend-item { display: flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
-.lifetime-legend-swatch { width: 8px; }
+/* `.mark.bar`'s own `width: 0` outranks a single class, so the 8px square
+   is set inline in script, the same way the tooltip's swatch is. */
 .lifetime-legend-label { color: var(--ui-text-muted); }
 /* Two columns: the axis ticks and the chart itself. Each is its own
    positioning context, so a tick can sit at the exact height its value
