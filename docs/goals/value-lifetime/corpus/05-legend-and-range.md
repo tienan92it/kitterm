@@ -48,3 +48,17 @@ and asked two questions. The human chose:
   and every five minutes, and a toggle change only recomputes; no
   request on a toggle for these charts.
 - **The tooltip** keeps its shape (day, then one row per line).
+
+## Later the same day: a unit cost starts once it means something
+
+The 30d screenshots of round 7 showed `$/release` near $740 on the
+range's first days (one or two releases had shipped), stretching the
+axis to $800 and flattening the other lines. The foreman offered three
+fixes and recommended the first; the human answered:
+
+> A, with those minimums
+
+So within a range, a UNIT COSTS line starts on the first day its range
+holds at least 5 merged pull requests, 3 releases, 1,000 merged lines or
+1 hour of model time, by line; before that day the line is not drawn and
+its tooltip row reads `–`. TOTALS is unchanged.
