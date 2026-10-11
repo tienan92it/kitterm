@@ -287,19 +287,52 @@ export function logPosition(value: number, axisMax: number): number {
   return Math.log(value) / Math.log(axisMax);
 }
 
-/** A UNIT COSTS axis tick list from 0 to a round dollar amount at or above
- * `max`: a 1-2-5-10 step picked so four to five gridlines cover the range,
- * the same family of round numbers `totalsAxisTicks` climbs. `max` of 0 or
- * less draws the single tick at 0. */
-export function unitCostAxisTicks(max: number): number[] {
-  if (max <= 0) return [0];
-  const rough = max / 4;
-  const magnitude = 10 ** Math.floor(Math.log10(rough));
-  const residual = rough / magnitude;
-  const step = (residual >= 5 ? 10 : residual >= 2 ? 5 : residual >= 1 ? 2 : 1) * magnitude;
-  const ticks: number[] = [0];
-  while (ticks[ticks.length - 1] < max - step * 1e-9) ticks.push(Math.round((ticks[ticks.length - 1] + step) * 100) / 100);
+const LOG_TICK_STEPS = [1, 2, 5] as const;
+
+/** The 1-2-5 family's member at position `n`: three ticks a decade, `n=0`
+ * is $1, `n=1` is $2, `n=2` is $5, `n=3` is $10, `n=-1` is $0.5, and so on
+ * in either direction. */
+function logFamilyTick(n: number): number {
+  const decade = Math.floor(n / 3);
+  const step = LOG_TICK_STEPS[((n % 3) + 3) % 3];
+  return step * 10 ** decade;
+}
+
+/** The largest `n` with `logFamilyTick(n) <= value`, `value` always
+ * positive: `Math.log10` seeds a close guess, then the two loops walk to
+ * the exact member (never more than a step or two away). */
+function logFamilyFloor(value: number): number {
+  let n = Math.round(Math.log10(value) * 3) || 0;
+  while (logFamilyTick(n) > value) n--;
+  while (logFamilyTick(n + 1) <= value) n++;
+  return n;
+}
+
+/** The UNIT COSTS log dollar axis: $1, $2, $5, $10, $20, $50, $100, $200,
+ * $500, $1k, as far as the drawn values need — the lowest tick at or
+ * below the lowest drawn value, the highest at or above the highest
+ * (`corpus/05-legend-and-range.md`, "UNIT COSTS on a log dollar axis").
+ * The family extends under $1 too when a drawn value needs it (the
+ * lifetime series' own $/PR opens at $0.51): `minValue` of 0 or less
+ * falls back to `maxValue`, the single-point case. `maxValue` of 0 or
+ * less (nothing drawn yet) gives the single $1 tick, the same floor
+ * `totalsAxisTicks` keeps for an empty TOTALS chart. */
+export function unitCostAxisTicks(minValue: number, maxValue: number): number[] {
+  if (maxValue <= 0) return [1];
+  const low = minValue > 0 ? minValue : maxValue;
+  const lowN = logFamilyFloor(low);
+  let highN = lowN;
+  while (logFamilyTick(highN) < maxValue) highN++;
+  const ticks: number[] = [];
+  for (let n = lowN; n <= highN; n++) ticks.push(logFamilyTick(n));
   return ticks;
+}
+
+/** `$1`, `$500`, `$1k`, `$0.5`: a UNIT COSTS axis tick's own label, in
+ * dollars — `unitCostLabel` is for the tooltip's exact figures, this is
+ * for the family's round numbers alone. */
+export function unitCostTickLabel(tick: number): string {
+  return tick >= 1000 ? `$${tick / 1000}k` : `$${tick}`;
 }
 
 // --- tooltip text --------------------------------------------------------

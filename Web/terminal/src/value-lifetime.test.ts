@@ -16,6 +16,8 @@ import {
   unitCostsLine,
   unitCostsSeries,
   unitCostsTooltipRows,
+  unitCostTickLabel,
+  type UnitCosts,
 } from "./value-lifetime";
 
 /**
@@ -519,27 +521,30 @@ describe("each UNIT COSTS line's own minimum (corpus/05-legend-and-range.md, \"a
     }
   });
 
-  const unitCostsAxisTop = (points: readonly { perPR: number | null; perKLines: number | null; perRelease: number | null; perHour: number | null }[]): number => {
-    const max = Math.max(0, ...points.flatMap((p) => [p.perPR, p.perKLines, p.perRelease, p.perHour].map((v) => v ?? 0)));
-    return unitCostAxisTicks(max).at(-1)!;
+  const unitCostsAxisTicks = (points: readonly { perPR: number | null; perKLines: number | null; perRelease: number | null; perHour: number | null }[]): number[] => {
+    const drawn = points.flatMap((p) => [p.perPR, p.perKLines, p.perRelease, p.perHour]).filter((v): v is number => v !== null);
+    return unitCostAxisTicks(Math.min(...drawn), Math.max(0, ...drawn));
   };
 
   it("pins the 7d and 30d axis tops the minimum actually produces on this fixture", () => {
     // 7d: every line waits (above), so its own peak — $/hour on 9 Oct,
-    // $104.43 — sets a $150 axis.
+    // $104.43 — sets a $200 log tick (the next member past $104.43).
     const sevenDay = unitCostsSeries(usageDays, yieldDays, "2026-10-03");
-    expect(unitCostsAxisTop(sevenDay.points)).toBe(150);
+    expect(unitCostsAxisTicks(sevenDay.points).at(-1)).toBe(200);
     // 30d: 10 Sep already clears every minimum (above), so the fix draws
     // every line from day one and changes nothing about the range's own
     // volatility later on — $/release still climbs to $358.56 on 19 Sep,
     // a release-count plateau under rising spend between two merges, nine
     // days after the range itself opened past the minimum. The minimum
-    // guards a sparse start, not a mid-range plateau; a $200 axis would
-    // need a second rule this corpus entry does not ask for.
+    // guards a sparse start, not a mid-range plateau; a lower axis top
+    // would need a second rule this corpus entry does not ask for. The
+    // log axis (`corpus/05-legend-and-range.md`, "UNIT COSTS on a log
+    // dollar axis") still tops out at $500, not $1k: the family's next
+    // member past $358.56.
     const thirtyDay = unitCostsSeries(usageDays, yieldDays, "2026-09-10");
     const peak = thirtyDay.points.find((p) => p.day === "2026-09-19")!;
     expect(unitCostLabel(peak.perRelease!)).toBe("$359");
-    expect(unitCostsAxisTop(thirtyDay.points)).toBe(400);
+    expect(unitCostsAxisTicks(thirtyDay.points).at(-1)).toBe(500);
   });
 });
 
@@ -606,21 +611,84 @@ describe("logPosition", () => {
   });
 });
 
-describe("unitCostAxisTicks", () => {
-  it("gives the single 0 tick with no positive value", () => {
-    expect(unitCostAxisTicks(0)).toEqual([0]);
+describe("unitCostAxisTicks (corpus/05-legend-and-range.md, \"UNIT COSTS on a log dollar axis\")", () => {
+  // Chartered by corpus/05-legend-and-range.md: this goal's own four
+  // tests above pinned a linear $0-based axis (a round step covering a
+  // peak); the human chose a log dollar axis instead, on the 1-2-5
+  // family `totalsAxisTicks` already climbs — $1, $2, $5, $10, $20, $50,
+  // $100, $200, $500, $1k, as far as the drawn values need.
+
+  it("gives the single $1 tick with nothing drawn yet", () => {
+    expect(unitCostAxisTicks(0, 0)).toEqual([1]);
   });
 
-  it("picks a round $50 step that covers a peak around $180, the frame's own gridlines", () => {
-    expect(unitCostAxisTicks(180)).toEqual([0, 50, 100, 150, 200]);
+  it("covers a peak around $180 from the family tick at or below the lowest drawn value", () => {
+    expect(unitCostAxisTicks(24, 180)).toEqual([20, 50, 100, 200]);
   });
 
-  it("picks a round $5 step for a peak around $17", () => {
-    expect(unitCostAxisTicks(17)).toEqual([0, 5, 10, 15, 20]);
+  it("extends the family under $1 when a drawn value needs it", () => {
+    // The lifetime series' own $/PR opens at $0.51 on 2026-08-11 (below).
+    expect(unitCostAxisTicks(0.51, 116.49)).toEqual([0.5, 1, 2, 5, 10, 20, 50, 100, 200]);
   });
 
-  it("picks a round $2 step for a peak around $7", () => {
-    expect(unitCostAxisTicks(7)).toEqual([0, 2, 4, 6, 8]);
+  it("gives one tick when the lowest and highest drawn values share a family member", () => {
+    expect(unitCostAxisTicks(24, 24)).toEqual([20, 50]);
+    expect(unitCostAxisTicks(20, 20)).toEqual([20]);
+  });
+
+  it("matches the corpus's own 7d and 30d tick sets on the real fixture", () => {
+    // 7d (from 3 Oct): $4.77 ($/1k lines, the lowest drawn) to $104.43
+    // ($/hour, the highest, both on 9 Oct).
+    const sevenDay = unitCostsSeries(usageDays, yieldDays, "2026-10-03");
+    expect(unitCostAxisTicksOf(sevenDay)).toEqual([2, 5, 10, 20, 50, 100, 200]);
+    // 30d (from 10 Sep): $11.72 ($/PR, 9 Oct) to $358.56 ($/release, 19 Sep).
+    const thirtyDay = unitCostsSeries(usageDays, yieldDays, "2026-09-10");
+    expect(unitCostAxisTicksOf(thirtyDay)).toEqual([10, 20, 50, 100, 200, 500]);
+  });
+});
+
+/** The ticks `unitCostsChartBlock` would draw for a series: the family
+ * from the lowest drawn value to the highest, the same computation
+ * `sessions.ts` makes. */
+function unitCostAxisTicksOf(unitCosts: UnitCosts): number[] {
+  const drawn = unitCosts.points.flatMap((p) => [p.perPR, p.perKLines, p.perRelease, p.perHour]).filter((v): v is number => v !== null);
+  return unitCostAxisTicks(Math.min(...drawn), Math.max(0, ...drawn));
+}
+
+describe("logPosition, reused for UNIT COSTS, normalized to the axis's own lowest tick", () => {
+  it("places a drawn point where its dollar value sits in the log span between the axis's lowest and highest ticks", () => {
+    // 7d's own axis is [2, 5, 10, 20, 50, 100, 200] (above); the 9 Oct
+    // $/1k lines reading, $4.77, sits low in that span.
+    const sevenDay = unitCostsSeries(usageDays, yieldDays, "2026-10-03");
+    const ticks = unitCostAxisTicksOf(sevenDay);
+    const axisMin = ticks[0];
+    const axisMax = ticks[ticks.length - 1];
+    const last = sevenDay.points[sevenDay.points.length - 1];
+    const positionOf = (v: number): number => logPosition(v / axisMin, axisMax / axisMin);
+    expect(positionOf(axisMin)).toBe(0);
+    expect(positionOf(axisMax)).toBe(1);
+    // $4.77/1k lines sits just under a fifth of the way up a $2-to-$200
+    // span; $64.58/release sits past three quarters.
+    expect(positionOf(last.perKLines!)).toBeCloseTo(0.189, 3);
+    expect(positionOf(last.perRelease!)).toBeCloseTo(0.755, 3);
+    expect(positionOf(last.perRelease!)).toBeGreaterThan(positionOf(last.perKLines!));
+  });
+});
+
+describe("unitCostTickLabel", () => {
+  it("prints a whole-dollar tick plainly", () => {
+    expect(unitCostTickLabel(1)).toBe("$1");
+    expect(unitCostTickLabel(200)).toBe("$200");
+    expect(unitCostTickLabel(500)).toBe("$500");
+  });
+
+  it("shortens $1,000 and up to k, matching the corpus's own $1k", () => {
+    expect(unitCostTickLabel(1000)).toBe("$1k");
+    expect(unitCostTickLabel(2000)).toBe("$2k");
+  });
+
+  it("prints a sub-dollar tick with its own decimal", () => {
+    expect(unitCostTickLabel(0.5)).toBe("$0.5");
   });
 });
 

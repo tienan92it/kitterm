@@ -94,6 +94,7 @@ import {
   unitCostsLine,
   unitCostsSeries,
   unitCostsTooltipRows,
+  unitCostTickLabel,
   type LifetimeUsageDay,
   type LifetimeYieldDay,
   type TooltipRow,
@@ -1451,9 +1452,15 @@ const UNIT_COST_MEASURES: readonly UnitCostMeasure[] = ["perHour", "perPR", "per
 const UNIT_COST_SLOT: Record<UnitCostMeasure, 1 | 2 | 3 | 4> = { perHour: 1, perPR: 2, perKLines: 3, perRelease: 4 };
 const UNIT_COST_WORD: Record<UnitCostMeasure, string> = { perPR: "$/PR", perKLines: "$/1k lines", perRelease: "$/release", perHour: "$/hour" };
 
-/** UNIT COSTS: dollars since the start day on one linear axis, the same
+/** UNIT COSTS: dollars since the start day on a log axis, the same
  * four-part geometry as TOTALS — a legend, not end labels
- * (`corpus/05-legend-and-range.md`). The start day is the range toggle's
+ * (`corpus/05-legend-and-range.md`). A release costs several times a PR,
+ * an hour or 1,000 lines, so on a plain dollar axis its own line always
+ * set the scale and flattened the rest; the human chose a log dollar
+ * axis instead ("UNIT COSTS on a log dollar axis"), reusing `logPosition`
+ * — TOTALS' own helper — normalized to the axis's own lowest tick rather
+ * than a fixed ×1, since a unit cost can open under $1 (the lifetime
+ * series' own $/PR opens at $0.51). The start day is the range toggle's
  * own first day, never before the first spend day: `unitCosts.startDay`,
  * not `firstSpendDay`, names what the chart sums from and what its header
  * prints. Only called with at least one point. */
@@ -1461,10 +1468,13 @@ function unitCostsChartBlock(unitCosts: UnitCosts): HTMLElement {
   const startDay = unitCosts.startDay!;
   const points = unitCosts.points;
   const last = points[points.length - 1];
-  const maxValue = Math.max(0, ...points.flatMap((p) => UNIT_COST_MEASURES.map((m) => p[m] ?? 0)));
-  const ticks = unitCostAxisTicks(maxValue);
-  const axisMax = ticks[ticks.length - 1] || 1;
-  const yOf = (v: number): number => 100 - (v / axisMax) * 100;
+  const drawn = points.flatMap((p) => UNIT_COST_MEASURES.map((m) => p[m]).filter((v): v is number => v !== null));
+  const minValue = Math.min(...drawn);
+  const maxValue = Math.max(0, ...drawn);
+  const ticks = unitCostAxisTicks(minValue, maxValue);
+  const axisMin = ticks[0];
+  const axisMax = ticks[ticks.length - 1];
+  const yOf = (v: number): number => 100 - logPosition(v / axisMin, axisMax / axisMin) * 100;
   const xOf = (i: number): number => (points.length > 1 ? (i / (points.length - 1)) * 100 : 0);
 
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -1472,7 +1482,7 @@ function unitCostsChartBlock(unitCosts: UnitCosts): HTMLElement {
   svg.setAttribute("role", "img");
   svg.setAttribute("preserveAspectRatio", "none");
   svg.setAttribute("viewBox", "0 0 100 100");
-  svg.setAttribute("aria-label", `Unit costs chart: dollars since ${dayLabel(startDay)}. Today, ${unitCostsLine(last)}.`);
+  svg.setAttribute("aria-label", `Unit costs chart: dollars since ${dayLabel(startDay)}, log scale. Today, ${unitCostsLine(last)}.`);
   for (const tick of ticks) {
     const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
     line.setAttribute("class", "axis-grid");
@@ -1492,7 +1502,7 @@ function unitCostsChartBlock(unitCosts: UnitCosts): HTMLElement {
   const ticksCol = document.createElement("div");
   ticksCol.className = "lifetime-ticks";
   ticksCol.setAttribute("aria-hidden", "true");
-  for (const tick of ticks) ticksCol.append(tickLabel(`${tick}`, yOf(tick)));
+  for (const tick of ticks) ticksCol.append(tickLabel(unitCostTickLabel(tick), yOf(tick)));
 
   const { hit, tooltip, announce } = lifetimeHit(
     points.map((p, i) => ({ x: xOf(i), day: dayLabel(p.day), rows: unitCostsTooltipRows(p), announce: [dayLabel(p.day), unitCostsLine(p)].join(". ") })),
@@ -1508,7 +1518,7 @@ function unitCostsChartBlock(unitCosts: UnitCosts): HTMLElement {
 
   const title = document.createElement("p");
   title.className = "lifetime-title";
-  title.append(span("lifetime-title-word", "UNIT COSTS"), `   dollars, since ${dayLabel(startDay)}`);
+  title.append(span("lifetime-title-word", "UNIT COSTS"), `   dollars, log scale, since ${dayLabel(startDay)}`);
 
   const legend = lifetimeLegend(UNIT_COST_MEASURES.map((m) => ({ slot: UNIT_COST_SLOT[m], word: UNIT_COST_WORD[m] })));
 

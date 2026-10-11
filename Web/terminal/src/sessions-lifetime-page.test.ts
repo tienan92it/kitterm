@@ -14,6 +14,7 @@ import {
   unitCostAxisTicks,
   unitCostsSeries,
   unitCostsTooltipRows,
+  unitCostTickLabel,
 } from "./value-lifetime";
 
 /**
@@ -220,13 +221,13 @@ describe("TOTALS", () => {
 });
 
 describe("UNIT COSTS", () => {
-  it("prints the title with the start day and draws one tick per unitCostAxisTicks value", () => {
+  it("prints the title with the start day, log scale, and draws one tick per unitCostAxisTicks value", () => {
     const title = unitCostsBlock().querySelector(".lifetime-title")!;
     expect(title.querySelector(".lifetime-title-word")?.textContent).toBe("UNIT COSTS");
-    expect(title.textContent).toContain(`dollars, since ${unitCosts.startDay === "2026-09-01" ? "1 Sep" : unitCosts.startDay}`);
-    const maxValue = Math.max(0, ...unitCosts.points.flatMap((p) => [p.perPR, p.perKLines, p.perRelease, p.perHour].map((v) => v ?? 0)));
-    const ticks = unitCostAxisTicks(maxValue);
-    expect(unitCostsBlock().querySelectorAll(".lifetime-tick").map((t) => t.textContent)).toEqual(ticks.map((t) => `${t}`));
+    expect(title.textContent).toContain(`dollars, log scale, since ${unitCosts.startDay === "2026-09-01" ? "1 Sep" : unitCosts.startDay}`);
+    const drawn = unitCosts.points.flatMap((p) => [p.perPR, p.perKLines, p.perRelease, p.perHour]).filter((v): v is number => v !== null);
+    const ticks = unitCostAxisTicks(Math.min(...drawn), Math.max(0, ...drawn));
+    expect(unitCostsBlock().querySelectorAll(".lifetime-tick").map((t) => t.textContent)).toEqual(ticks.map(unitCostTickLabel));
   });
 
   it("draws one path per measure in $/hour, $/PR, $/1k lines, $/release order", () => {

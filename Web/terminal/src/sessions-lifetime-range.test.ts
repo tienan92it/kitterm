@@ -214,7 +214,7 @@ describe("7d, from 3 Oct", () => {
   });
 
   it("UNIT COSTS: $25.83/PR, $4.77/1k lines, $64.58/release, $38.38/hour, since 3 Oct", () => {
-    expect(unitCostsBlock().querySelector(".lifetime-title")?.textContent).toContain("dollars, since 3 Oct");
+    expect(unitCostsBlock().querySelector(".lifetime-title")?.textContent).toContain("dollars, log scale, since 3 Oct");
     expect(lastTooltipRow(unitCostsBlock(), "$/PR")).toBe("$25.83");
     expect(lastTooltipRow(unitCostsBlock(), "$/1k lines")).toBe("$4.77");
     expect(lastTooltipRow(unitCostsBlock(), "$/release")).toBe("$64.58");
@@ -238,7 +238,7 @@ describe("30d, from 10 Sep", () => {
   });
 
   it("UNIT COSTS: $24.67/PR, $11.72/1k lines, $111/release, $51.15/hour, since 10 Sep", () => {
-    expect(unitCostsBlock().querySelector(".lifetime-title")?.textContent).toContain("dollars, since 10 Sep");
+    expect(unitCostsBlock().querySelector(".lifetime-title")?.textContent).toContain("dollars, log scale, since 10 Sep");
     expect(lastTooltipRow(unitCostsBlock(), "$/PR")).toBe("$24.67");
     expect(lastTooltipRow(unitCostsBlock(), "$/1k lines")).toBe("$11.72");
     expect(lastTooltipRow(unitCostsBlock(), "$/release")).toBe("$111");
