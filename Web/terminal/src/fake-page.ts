@@ -20,7 +20,17 @@ export class FakeElement {
       return true;
     },
   });
-  style = { setProperty(): void {} };
+  /** A plain record, like `CSSStyleDeclaration`: the page sets `left`,
+   * `right`, `top`, `width` directly (never through `setProperty`), so a
+   * test reads them back the same way. */
+  style: {
+    setProperty(property: string, value: string): void;
+    left?: string;
+    right?: string;
+    top?: string;
+    width?: string;
+    [key: string]: string | ((property: string, value: string) => void) | undefined;
+  } = { setProperty(): void {} };
   hidden = false;
   className = "";
   href = "";

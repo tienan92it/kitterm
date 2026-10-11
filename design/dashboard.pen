@@ -1618,9 +1618,9 @@
                                 },
                                 {
                                   "type": "frame",
-                                  "id": "h0f8rW",
+                                  "id": "jw8uD",
                                   "x": 400.9,
-                                  "y": 91,
+                                  "y": 0,
                                   "name": "totals tooltip example",
                                   "fill": "$surface",
                                   "cornerRadius": 2,
@@ -1628,7 +1628,7 @@
                                   "strokeWidth": 1,
                                   "strokeAlignment": "inner",
                                   "layout": "vertical",
-                                  "gap": 2,
+                                  "gap": "$space-1",
                                   "padding": [
                                     5,
                                     7
@@ -1636,33 +1636,185 @@
                                   "children": [
                                     {
                                       "type": "text",
-                                      "id": "V76WK",
+                                      "id": "Jye8g",
                                       "name": "totals tooltip day",
                                       "fill": "$text",
-                                      "content": "20 Sep, against 3 Sep",
+                                      "content": "20 Sep",
                                       "fontFamily": "JetBrains Mono",
                                       "fontSize": 12,
                                       "fontWeight": "600"
                                     },
                                     {
-                                      "type": "text",
-                                      "id": "wNv3R",
-                                      "name": "totals tooltip multiples",
-                                      "fill": "$muted",
-                                      "content": "spend ×5.7 · PRs ×4.8 · lines ×6.3 · releases ×2.1",
-                                      "fontFamily": "JetBrains Mono",
-                                      "fontSize": 12,
-                                      "fontWeight": "normal"
+                                      "type": "frame",
+                                      "id": "ondeN",
+                                      "name": "totals tooltip row spend",
+                                      "gap": "$space-2",
+                                      "alignItems": "center",
+                                      "children": [
+                                        {
+                                          "type": "rectangle",
+                                          "cornerRadius": 1,
+                                          "id": "CAeBe",
+                                          "name": "swatch",
+                                          "fill": "$data-1",
+                                          "width": 8,
+                                          "height": 8
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "DujVj",
+                                          "name": "label",
+                                          "fill": "$muted",
+                                          "textGrowth": "fixed-width",
+                                          "width": 62,
+                                          "content": "spend",
+                                          "fontFamily": "JetBrains Mono",
+                                          "fontSize": 12,
+                                          "fontWeight": "normal"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "hYp3m",
+                                          "name": "value",
+                                          "fill": "$text",
+                                          "textGrowth": "fixed-width",
+                                          "width": 40,
+                                          "content": "$4.2k",
+                                          "textAlign": "right",
+                                          "fontFamily": "JetBrains Mono",
+                                          "fontSize": 12,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
                                     },
                                     {
-                                      "type": "text",
-                                      "id": "SJF0n",
-                                      "name": "totals tooltip values",
-                                      "fill": "$muted",
-                                      "content": "$4.2k · 129 PRs · 105k lines · 36 releases",
-                                      "fontFamily": "JetBrains Mono",
-                                      "fontSize": 12,
-                                      "fontWeight": "normal"
+                                      "type": "frame",
+                                      "id": "n9LPg",
+                                      "name": "totals tooltip row prs",
+                                      "gap": "$space-2",
+                                      "alignItems": "center",
+                                      "children": [
+                                        {
+                                          "type": "rectangle",
+                                          "cornerRadius": 1,
+                                          "id": "DnSRL",
+                                          "name": "swatch",
+                                          "fill": "$data-2",
+                                          "width": 8,
+                                          "height": 8
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "cpGX0",
+                                          "name": "label",
+                                          "fill": "$muted",
+                                          "textGrowth": "fixed-width",
+                                          "width": 62,
+                                          "content": "PRs",
+                                          "fontFamily": "JetBrains Mono",
+                                          "fontSize": 12,
+                                          "fontWeight": "normal"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "EPhfD",
+                                          "name": "value",
+                                          "fill": "$text",
+                                          "textGrowth": "fixed-width",
+                                          "width": 40,
+                                          "content": "129",
+                                          "textAlign": "right",
+                                          "fontFamily": "JetBrains Mono",
+                                          "fontSize": 12,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "frame",
+                                      "id": "kAAcY",
+                                      "name": "totals tooltip row lines",
+                                      "gap": "$space-2",
+                                      "alignItems": "center",
+                                      "children": [
+                                        {
+                                          "type": "rectangle",
+                                          "cornerRadius": 1,
+                                          "id": "h5Jden",
+                                          "name": "swatch",
+                                          "fill": "$data-3",
+                                          "width": 8,
+                                          "height": 8
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "b7lVmu",
+                                          "name": "label",
+                                          "fill": "$muted",
+                                          "textGrowth": "fixed-width",
+                                          "width": 62,
+                                          "content": "lines",
+                                          "fontFamily": "JetBrains Mono",
+                                          "fontSize": 12,
+                                          "fontWeight": "normal"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "TCB9b",
+                                          "name": "value",
+                                          "fill": "$text",
+                                          "textGrowth": "fixed-width",
+                                          "width": 40,
+                                          "content": "105k",
+                                          "textAlign": "right",
+                                          "fontFamily": "JetBrains Mono",
+                                          "fontSize": 12,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "frame",
+                                      "id": "K7nhs5",
+                                      "name": "totals tooltip row releases",
+                                      "gap": "$space-2",
+                                      "alignItems": "center",
+                                      "children": [
+                                        {
+                                          "type": "rectangle",
+                                          "cornerRadius": 1,
+                                          "id": "jeONd",
+                                          "name": "swatch",
+                                          "fill": "$data-4",
+                                          "width": 8,
+                                          "height": 8
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "qyHpP",
+                                          "name": "label",
+                                          "fill": "$muted",
+                                          "textGrowth": "fixed-width",
+                                          "width": 62,
+                                          "content": "releases",
+                                          "fontFamily": "JetBrains Mono",
+                                          "fontSize": 12,
+                                          "fontWeight": "normal"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "deYPv",
+                                          "name": "value",
+                                          "fill": "$text",
+                                          "textGrowth": "fixed-width",
+                                          "width": 40,
+                                          "content": "36",
+                                          "textAlign": "right",
+                                          "fontFamily": "JetBrains Mono",
+                                          "fontSize": 12,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
                                     }
                                   ]
                                 }
@@ -2026,9 +2178,9 @@
                                 },
                                 {
                                   "type": "frame",
-                                  "id": "Aomgq",
+                                  "id": "DgDt8",
                                   "x": 561.3,
-                                  "y": 133.6,
+                                  "y": 0,
                                   "name": "unit tooltip example",
                                   "fill": "$surface",
                                   "cornerRadius": 2,
@@ -2036,7 +2188,7 @@
                                   "strokeWidth": 1,
                                   "strokeAlignment": "inner",
                                   "layout": "vertical",
-                                  "gap": 2,
+                                  "gap": "$space-1",
                                   "padding": [
                                     5,
                                     7
@@ -2044,7 +2196,7 @@
                                   "children": [
                                     {
                                       "type": "text",
-                                      "id": "St8Rl",
+                                      "id": "ovx7D",
                                       "name": "unit tooltip day",
                                       "fill": "$text",
                                       "content": "20 Sep",
@@ -2053,16 +2205,176 @@
                                       "fontWeight": "600"
                                     },
                                     {
-                                      "type": "text",
-                                      "id": "GXp7X",
-                                      "name": "unit tooltip values",
-                                      "fill": "$muted",
-                                      "textGrowth": "fixed-width",
-                                      "width": 195,
-                                      "content": "$32.51/PR · $40.09/1k lines · $116/release · $64.63/hour",
-                                      "fontFamily": "JetBrains Mono",
-                                      "fontSize": 12,
-                                      "fontWeight": "normal"
+                                      "type": "frame",
+                                      "id": "n4zYU9",
+                                      "name": "unit tooltip row perPR",
+                                      "gap": "$space-2",
+                                      "alignItems": "center",
+                                      "children": [
+                                        {
+                                          "type": "rectangle",
+                                          "cornerRadius": 1,
+                                          "id": "rNrKP",
+                                          "name": "swatch",
+                                          "fill": "$data-2",
+                                          "width": 8,
+                                          "height": 8
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "IWFRQ",
+                                          "name": "label",
+                                          "fill": "$muted",
+                                          "textGrowth": "fixed-width",
+                                          "width": 74,
+                                          "content": "$/PR",
+                                          "fontFamily": "JetBrains Mono",
+                                          "fontSize": 12,
+                                          "fontWeight": "normal"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "jfAIM",
+                                          "name": "value",
+                                          "fill": "$text",
+                                          "textGrowth": "fixed-width",
+                                          "width": 46,
+                                          "content": "$32.51",
+                                          "textAlign": "right",
+                                          "fontFamily": "JetBrains Mono",
+                                          "fontSize": 12,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "frame",
+                                      "id": "I9cFY",
+                                      "name": "unit tooltip row per1kLines",
+                                      "gap": "$space-2",
+                                      "alignItems": "center",
+                                      "children": [
+                                        {
+                                          "type": "rectangle",
+                                          "cornerRadius": 1,
+                                          "id": "FOQTN",
+                                          "name": "swatch",
+                                          "fill": "$data-3",
+                                          "width": 8,
+                                          "height": 8
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "L6Mpf",
+                                          "name": "label",
+                                          "fill": "$muted",
+                                          "textGrowth": "fixed-width",
+                                          "width": 74,
+                                          "content": "$/1k lines",
+                                          "fontFamily": "JetBrains Mono",
+                                          "fontSize": 12,
+                                          "fontWeight": "normal"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "z811Fq",
+                                          "name": "value",
+                                          "fill": "$text",
+                                          "textGrowth": "fixed-width",
+                                          "width": 46,
+                                          "content": "$40.09",
+                                          "textAlign": "right",
+                                          "fontFamily": "JetBrains Mono",
+                                          "fontSize": 12,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "frame",
+                                      "id": "DwP8j",
+                                      "name": "unit tooltip row perRelease",
+                                      "gap": "$space-2",
+                                      "alignItems": "center",
+                                      "children": [
+                                        {
+                                          "type": "rectangle",
+                                          "cornerRadius": 1,
+                                          "id": "B385RU",
+                                          "name": "swatch",
+                                          "fill": "$data-4",
+                                          "width": 8,
+                                          "height": 8
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "ktfej",
+                                          "name": "label",
+                                          "fill": "$muted",
+                                          "textGrowth": "fixed-width",
+                                          "width": 74,
+                                          "content": "$/release",
+                                          "fontFamily": "JetBrains Mono",
+                                          "fontSize": 12,
+                                          "fontWeight": "normal"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "U6EeW",
+                                          "name": "value",
+                                          "fill": "$text",
+                                          "textGrowth": "fixed-width",
+                                          "width": 46,
+                                          "content": "$116",
+                                          "textAlign": "right",
+                                          "fontFamily": "JetBrains Mono",
+                                          "fontSize": 12,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "frame",
+                                      "id": "jWFl5",
+                                      "name": "unit tooltip row perHour",
+                                      "gap": "$space-2",
+                                      "alignItems": "center",
+                                      "children": [
+                                        {
+                                          "type": "rectangle",
+                                          "cornerRadius": 1,
+                                          "id": "Ftv6m",
+                                          "name": "swatch",
+                                          "fill": "$data-1",
+                                          "width": 8,
+                                          "height": 8
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "LAXJP",
+                                          "name": "label",
+                                          "fill": "$muted",
+                                          "textGrowth": "fixed-width",
+                                          "width": 74,
+                                          "content": "$/hour",
+                                          "fontFamily": "JetBrains Mono",
+                                          "fontSize": 12,
+                                          "fontWeight": "normal"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "ch77C",
+                                          "name": "value",
+                                          "fill": "$text",
+                                          "textGrowth": "fixed-width",
+                                          "width": 46,
+                                          "content": "$64.63",
+                                          "textAlign": "right",
+                                          "fontFamily": "JetBrains Mono",
+                                          "fontSize": 12,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
                                     }
                                   ]
                                 }
@@ -19494,6 +19806,39 @@
                       "fontWeight": "normal"
                     }
                   ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "WqOoM",
+              "name": "TOOLTIP block",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 2,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "qF2lE",
+                  "name": "h TOOLTIP",
+                  "fill": "$faint",
+                  "content": "LIFETIME · TOOLTIP",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 12,
+                  "fontWeight": "600",
+                  "letterSpacing": 1
+                },
+                {
+                  "type": "text",
+                  "id": "UrmbP",
+                  "name": "tooltip rule",
+                  "fill": "$muted",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "A header names the day. Each row below pairs a swatch in the measure’s data colour, through the mark rule, with its name and its value, right-aligned. The box sizes to its content, up to a maximum width; no text leaves it. TOTALS rows show the real values alone, never the multiple. The box sits inside its own chart, pinned to the top, and flips from the cursor’s right side to its left past the chart’s midpoint.",
+                  "fontFamily": "JetBrains Mono",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
                 }
               ]
             },
