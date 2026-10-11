@@ -348,13 +348,14 @@ describe("merges before the first spend day", () => {
 });
 
 describe("unitCostsSeries", () => {
-  it("matches the human's table on 2026-08-10, the first spend day", () => {
+  it("draws no line on 2026-08-10, the first spend day: every count is under its minimum", () => {
+    // Chartered by corpus/05-legend-and-range.md, "a unit cost starts once
+    // it means something": 2026-08-10 holds 3 PRs, 530 lines, 2 releases
+    // and 0.02 hours, all under their minimums (5, 1,000, 3, 1).
     const unitCosts = unitCostsSeries(usageDays, yieldDays);
     expect(unitCosts.firstSpendDay).toBe("2026-08-10");
     const point = unitCostsOn("2026-08-10");
-    expect(unitCostLabel(point.perPR!)).toBe("$1.02");
-    expect(unitCostLabel(point.perKLines!)).toBe("$5.76");
-    expect(unitCostLabel(point.perRelease!)).toBe("$1.53");
+    expect(point).toEqual({ day: "2026-08-10", perPR: null, perKLines: null, perRelease: null, perHour: null });
   });
 
   it("matches the human's table on 2026-10-09", () => {
@@ -450,6 +451,95 @@ describe("the range toggle (corpus/05-legend-and-range.md)", () => {
     const lifetime = unitCostsSeries(usageDays, yieldDays);
     expect(ranged.startDay).toBe("2026-08-10");
     expect(ranged).toEqual(lifetime);
+  });
+});
+
+describe("each UNIT COSTS line's own minimum (corpus/05-legend-and-range.md, \"a unit cost starts once it means something\")", () => {
+  // The human's own word, 2026-10-11: "within a range, a UNIT COSTS line
+  // starts on the first day its range holds at least 5 merged pull
+  // requests ($/PR), 3 releases ($/release), 1,000 merged lines
+  // ($/1k lines) or 1 hour of model time ($/hour); before that day the
+  // line is not drawn and its tooltip row reads `–`."
+
+  it("draws every line from the range's own first day at 7d: no, each line waits for its own minimum", () => {
+    const unitCosts = unitCostsSeries(usageDays, yieldDays, "2026-10-03");
+    // 3 Oct itself holds no merged PR, line or release, and under an hour
+    // of model time: every line is null.
+    expect(unitCosts.points.find((p) => p.day === "2026-10-03")).toEqual({
+      day: "2026-10-03", perPR: null, perKLines: null, perRelease: null, perHour: null,
+    });
+    const firstDrawn = (key: "perPR" | "perKLines" | "perRelease" | "perHour"): string | undefined =>
+      unitCosts.points.find((p) => p[key] !== null)?.day;
+    // $/hour: 4 Oct's apiMs alone crosses 1 hour (3h 06m by day's end).
+    expect(firstDrawn("perHour")).toBe("2026-10-04");
+    // $/1k lines and $/release both cross their minimum on 5 Oct (29,532
+    // lines that day alone passes 1,000; cumulative releases reaches 3).
+    expect(firstDrawn("perKLines")).toBe("2026-10-05");
+    expect(firstDrawn("perRelease")).toBe("2026-10-05");
+    // $/PR needs 6 Oct to clear 5 merged pull requests (0 on 3-4 Oct, 3 on
+    // 5 Oct, 7 more on 6 Oct).
+    expect(firstDrawn("perPR")).toBe("2026-10-06");
+    // The 9 Oct end values are the same ones the range test above pins.
+    const last = unitCosts.points[unitCosts.points.length - 1];
+    expect(unitCostLabel(last.perPR!)).toBe("$25.83");
+    expect(unitCostLabel(last.perKLines!)).toBe("$4.77");
+    expect(unitCostLabel(last.perRelease!)).toBe("$64.58");
+    expect(unitCostLabel(last.perHour!)).toBe("$38.38");
+  });
+
+  it("draws every line from the range's own first day at 30d: 10 Sep alone already clears every minimum", () => {
+    // Unlike 7d, 10 Sep is itself a heavy day (9 PRs, 3,105 lines, 3
+    // releases, 4h56m of model time), so none of the four lines waits:
+    // the minimum is a floor under a sparse start, not a fixed warm-up.
+    const unitCosts = unitCostsSeries(usageDays, yieldDays, "2026-09-10");
+    const first = unitCosts.points[0];
+    expect(first.day).toBe("2026-09-10");
+    expect(first.perPR).not.toBeNull();
+    expect(first.perKLines).not.toBeNull();
+    expect(first.perRelease).not.toBeNull();
+    expect(first.perHour).not.toBeNull();
+    expect(unitCostLabel(first.perPR!)).toBe("$35.51");
+    expect(unitCostLabel(first.perKLines!)).toBe("$103");
+    expect(unitCostLabel(first.perRelease!)).toBe("$107");
+    expect(unitCostLabel(first.perHour!)).toBe("$64.70");
+  });
+
+  it("draws no line at all for a range whose count never reaches its minimum", () => {
+    const usage: LifetimeUsageDay[] = [
+      { day: "2026-01-01", costUSD: 10, measuredUSD: 10, apiMs: 600_000 },
+      { day: "2026-01-02", costUSD: 10, measuredUSD: 10, apiMs: 600_000 },
+    ];
+    const yld: LifetimeYieldDay[] = [
+      { day: "2026-01-01", mergedPullRequests: 1, mergedLines: 50, releases: 1 },
+      { day: "2026-01-02", mergedPullRequests: 1, mergedLines: 50, releases: 1 },
+    ];
+    const unitCosts = unitCostsSeries(usage, yld);
+    for (const p of unitCosts.points) {
+      expect(p).toEqual({ day: p.day, perPR: null, perKLines: null, perRelease: null, perHour: null });
+    }
+  });
+
+  const unitCostsAxisTop = (points: readonly { perPR: number | null; perKLines: number | null; perRelease: number | null; perHour: number | null }[]): number => {
+    const max = Math.max(0, ...points.flatMap((p) => [p.perPR, p.perKLines, p.perRelease, p.perHour].map((v) => v ?? 0)));
+    return unitCostAxisTicks(max).at(-1)!;
+  };
+
+  it("pins the 7d and 30d axis tops the minimum actually produces on this fixture", () => {
+    // 7d: every line waits (above), so its own peak — $/hour on 9 Oct,
+    // $104.43 — sets a $150 axis.
+    const sevenDay = unitCostsSeries(usageDays, yieldDays, "2026-10-03");
+    expect(unitCostsAxisTop(sevenDay.points)).toBe(150);
+    // 30d: 10 Sep already clears every minimum (above), so the fix draws
+    // every line from day one and changes nothing about the range's own
+    // volatility later on — $/release still climbs to $358.56 on 19 Sep,
+    // a release-count plateau under rising spend between two merges, nine
+    // days after the range itself opened past the minimum. The minimum
+    // guards a sparse start, not a mid-range plateau; a $200 axis would
+    // need a second rule this corpus entry does not ask for.
+    const thirtyDay = unitCostsSeries(usageDays, yieldDays, "2026-09-10");
+    const peak = thirtyDay.points.find((p) => p.day === "2026-09-19")!;
+    expect(unitCostLabel(peak.perRelease!)).toBe("$359");
+    expect(unitCostsAxisTop(thirtyDay.points)).toBe(400);
   });
 });
 

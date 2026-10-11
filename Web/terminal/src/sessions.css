@@ -367,9 +367,14 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
 .lifetime { margin: var(--space-4) 0 0; }
 .lifetime-chart-block {
   /* The tick gutter, named so `.lifetime-plot` and `.lifetime-axis` agree
-     on its width with no bare pixel on a margin. */
+     on its width with no bare pixel on a margin. Reused as the right
+     inset too: the plot now fills the whole panel width (round 7 dropped
+     the end-label column it used to stop short of), so the axis's own
+     end date sat flush against the panel's right edge with no room to
+     breathe, reading as cut off (round 8). */
   --lifetime-tick-col: 28px;
   margin: 0 0 var(--space-4);
+  padding-right: var(--lifetime-tick-col);
 }
 .lifetime-chart-block:last-of-type { margin-bottom: 0; }
 .lifetime-title { margin: 0; color: var(--ui-text-muted); }

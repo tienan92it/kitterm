@@ -83,6 +83,19 @@ describe("no stylesheet rule claims to size .lifetime-legend-swatch (corpus/05-l
   });
 });
 
+describe("the chart block keeps a right inset, mirroring the tick column on the left (round 8)", () => {
+  it("gives .lifetime-chart-block a padding-right of --lifetime-tick-col, so the axis end date never sits flush against the panel's edge", () => {
+    // Round 7 widened the plot to fill the whole panel once the end-label
+    // column went away; with no right inset the axis's own end date (e.g.
+    // `11 Oct`) sat exactly on the panel's right edge and read as cut off.
+    // A real-browser check on a scratch daemon confirms the fix: the text
+    // now ends 28px (24px at 390) inside the panel, the fake DOM here has
+    // no layout engine to pin that measurement itself.
+    const rule = RULES.find((r) => r.selector === ".lifetime-chart-block" && r.decls.has("padding-right"));
+    expect(rule?.decls.get("padding-right")).toBe("var(--lifetime-tick-col)");
+  });
+});
+
 describe("each dark value clears the mark floor, 3:1, against every bundled theme's ground", () => {
   // All 17 bundled themes are dark (facts.md); the light half is the human's
   // own measurement in design/foundation.md ("the full range is 4.50 to

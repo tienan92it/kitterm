@@ -161,10 +161,24 @@ export type UnitCostPoint = { day: string; perPR: number | null; perKLines: numb
 
 export type UnitCosts = { firstSpendDay: string | null; startDay: string | null; points: readonly UnitCostPoint[] };
 
+// The minimum within-range count before a UNIT COSTS line draws
+// (`corpus/05-legend-and-range.md`, "Later the same day: a unit cost
+// starts once it means something" — the human's word, "A, with those
+// minimums"): a line under its minimum swings wildly on too few units
+// (round 7's screenshots showed $/release near $740 on a range's first
+// days, one or two releases in, stretching the axis to $800) and reads
+// as a real number rather than as noise.
+const MIN_PRS_FOR_PER_PR = 5;
+const MIN_RELEASES_FOR_PER_RELEASE = 3;
+const MIN_LINES_FOR_PER_KLINES = 1000;
+const MIN_HOURS_FOR_PER_HOUR = 1;
+
 /**
  * UNIT COSTS: a point per day from the start day to the range's last day.
  * Empty, with null `firstSpendDay`/`startDay`, when no day has recorded
- * spend.
+ * spend. Each line is null until its own count, summed from the start
+ * day, reaches its minimum (`MIN_PRS_FOR_PER_PR` and the rest) — not
+ * drawn, and read as a dash in the tooltip, before that day.
  *
  * `rangeFrom`, when given, is the range toggle's own first day
  * (`corpus/05-legend-and-range.md`, rule 1): "cost within the range", not
@@ -202,10 +216,10 @@ export function unitCostsSeries(usageDays: readonly LifetimeUsageDay[], yieldDay
     const hours = apiMs / 3_600_000;
     points.push({
       day: u.day,
-      perPR: prs > 0 ? spend / prs : null,
-      perKLines: lines > 0 ? spend / (lines / 1000) : null,
-      perRelease: releases > 0 ? spend / releases : null,
-      perHour: hours > 0 ? measured / hours : null,
+      perPR: prs >= MIN_PRS_FOR_PER_PR ? spend / prs : null,
+      perKLines: lines >= MIN_LINES_FOR_PER_KLINES ? spend / (lines / 1000) : null,
+      perRelease: releases >= MIN_RELEASES_FOR_PER_RELEASE ? spend / releases : null,
+      perHour: hours >= MIN_HOURS_FOR_PER_HOUR ? measured / hours : null,
     });
   }
   return { firstSpendDay, startDay, points };
