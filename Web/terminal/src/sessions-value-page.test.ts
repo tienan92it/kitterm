@@ -134,8 +134,11 @@ describe("the panels", () => {
     expect(head.querySelector(".usage-amount")?.title).toBe("if billed at full API rate");
     expect(head.querySelectorAll(".usage-fact").map((f) => f.textContent)).toEqual(["63.10M tokens", "10.0 h model time"]);
     expect(head.querySelector(".usage-span")?.textContent).toBe("30 days");
+    // Chartered by `plan.md` capability 6 (`corpus/05-legend-and-range.md`,
+    // rule 2): the range toggle gains `all`. Old: [["cost", "true"],
+    // ["tokens", "false"], ["7d", "false"], ["30d", "true"], ["90d", "false"]].
     expect(head.querySelectorAll(".usage-toggle").map((b) => [b.textContent, b.getAttribute("aria-checked")])).toEqual([
-      ["cost", "true"], ["tokens", "false"], ["7d", "false"], ["30d", "true"], ["90d", "false"],
+      ["cost", "true"], ["tokens", "false"], ["7d", "false"], ["30d", "true"], ["90d", "false"], ["all", "false"],
     ]);
     expect(usage.querySelectorAll(".usage-title")).toEqual([]);
     expect(usage.querySelectorAll(".usage-qualifier")).toEqual([]);

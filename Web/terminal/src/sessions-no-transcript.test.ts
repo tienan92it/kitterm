@@ -137,7 +137,10 @@ describe("no transcript at all: the range's rollup holds no session", () => {
     // is dropped.
     expect(note.classList.contains("wraps")).toBe(true);
     // The toggles stay: the reader can still pick a range.
-    expect(usage.querySelectorAll(".usage-toggle").map((b) => b.textContent)).toEqual(["cost", "tokens", "7d", "30d", "90d"]);
+    // Chartered by `plan.md` capability 6 (`corpus/05-legend-and-range.md`,
+    // rule 2): the range toggle gains `all`. Old: ["cost", "tokens", "7d",
+    // "30d", "90d"].
+    expect(usage.querySelectorAll(".usage-toggle").map((b) => b.textContent)).toEqual(["cost", "tokens", "7d", "30d", "90d", "all"]);
   });
 
   it("3. MODELS prints one sentence in its content cell and no row", () => {

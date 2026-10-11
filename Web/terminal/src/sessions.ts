@@ -12,6 +12,7 @@ import {
   keptFacts,
   markFamily,
   markGlyph,
+  MAX_RANGE_DAYS,
   needsYouMessage,
   NEEDS_YOU_ID,
   proposalsName,
@@ -85,6 +86,7 @@ import {
   type YieldReport,
 } from "./sessions-value";
 import {
+  baseDayOf,
   logPosition,
   totalsAxisTicks,
   totalsRealLine,
@@ -302,11 +304,6 @@ let lifetimeUsage: UsageDaily | null = null;
 let lifetimeYield: YieldDaily | null = null;
 let lifetimeAskedAt = 0;
 const LIFETIME_REFRESH_MS = 5 * 60_000;
-/** The widest range the daily routes take (`GET /api/usage/daily`,
- * `GET /api/yield/daily`): a bound over 400 days is a 400. The lifetime
- * charts ask for the whole of it; the routes zero-fill the days before the
- * fleet's own first one. */
-const LIFETIME_DAYS = 400;
 /** The `WHERE` panel's grouping, kept across loads like the usage choice. */
 const WHERE_KEY = "kitterm.sessions.where";
 let whereGrouping: WhereGrouping = readWhereGrouping(readStorage(WHERE_KEY));
@@ -343,12 +340,20 @@ function setUsageChoice(change: Partial<UsageChoice>): void {
   void fetchUsage(Date.now()).then(render);
 }
 
+/** The `all` range's own first day: the record's first spend day, from the
+ * lifetime read the page already holds (`baseDayOf`, over `lifetimeUsage`'s
+ * own days, the same reading `lifetimeModel` uses); null before that read
+ * answers, which leaves `usageRange` to fall back to `MAX_RANGE_DAYS`. */
+function allRangeFrom(): string | null {
+  return lifetimeUsage?.ok ? baseDayOf(lifetimeUsage.days).firstSpendDay : null;
+}
+
 /** Ask the route for the chosen range when the range changed or the last
  * answer is `USAGE_REFRESH_MS` old. A 403 (watch), a 404 (old daemon) or a
  * 503 (no rollup) leaves `usage` null, so the panel and every heading's
  * number stay off the page rather than on it as zeros. */
 async function fetchUsage(now: number): Promise<void> {
-  const { from, to } = usageRange(usageChoice.span, now);
+  const { from, to } = usageRange(usageChoice.span, now, allRangeFrom());
   const query = `from=${from}&to=${to}`;
   if (query === usageAsked && now - usageAskedAt < USAGE_REFRESH_MS) return;
   usageAsked = query;
@@ -367,13 +372,13 @@ async function fetchUsage(now: number): Promise<void> {
   }
 }
 
-/** The widest range the daily routes answer, ending today: 400 days, the
- * bound both routes refuse past. The routes zero-fill every day before the
- * fleet's own first one, so one wide request finds the real first day
+/** The widest range the daily routes answer, ending today: `MAX_RANGE_DAYS`,
+ * the bound both routes refuse past. The routes zero-fill every day before
+ * the fleet's own first one, so one wide request finds the real first day
  * without the page needing to know it in advance. */
 function lifetimeRange(now: number): { from: string; to: string } {
   const to = new Date(now);
-  const from = new Date(to.getFullYear(), to.getMonth(), to.getDate() - (LIFETIME_DAYS - 1), 12);
+  const from = new Date(to.getFullYear(), to.getMonth(), to.getDate() - (MAX_RANGE_DAYS - 1), 12);
   return { from: dayKey(from.getTime()), to: dayKey(now) };
 }
 
@@ -449,7 +454,7 @@ const billOf = (id: string): SessionBill | null | undefined => bills.get(id)?.bi
  * answered for the toggles' span, or, before it answers or on a daemon
  * that refuses it, the same span counted back from today on this clock. */
 function chosenRange(now: number): DayRange {
-  return usage?.ok ? { from: usage.from, to: usage.to } : usageRange(usageChoice.span, now);
+  return usage?.ok ? { from: usage.from, to: usage.to } : usageRange(usageChoice.span, now, allRangeFrom());
 }
 
 function setWhereGrouping(grouping: WhereGrouping): void {
@@ -1116,7 +1121,7 @@ function usageToggles(kind: "mode" | "span", panel: UsagePanel): HTMLElement {
     b.addEventListener("click", () => {
       if (toggle.checked) return;
       if (kind === "mode") setUsageChoice({ mode: toggle.label as UsageChoice["mode"] });
-      else setUsageChoice({ span: Number(toggle.label.replace(/d$/, "")) as UsageChoice["span"] });
+      else setUsageChoice({ span: (toggle.label === "all" ? "all" : Number(toggle.label.replace(/d$/, ""))) as UsageChoice["span"] });
     });
     group.append(b);
   }
@@ -1206,7 +1211,7 @@ function lifetimeModel(now: number): LifetimeModel | null {
   if (!lifetimeUsage?.ok || !lifetimeYield?.ok) return null;
   const usageDays: LifetimeUsageDay[] = lifetimeUsage.days.map((d) => ({ day: d.day, costUSD: d.costUSD, measuredUSD: d.measuredUSD, apiMs: d.apiMs }));
   const yieldDays: LifetimeYieldDay[] = lifetimeYield.days.map((d) => ({ day: d.day, mergedPullRequests: d.mergedPullRequests, mergedLines: d.mergedLines, releases: d.releases }));
-  const rangeFrom = usageRange(usageChoice.span, now).from;
+  const rangeFrom = usageRange(usageChoice.span, now, allRangeFrom()).from;
   return { totals: totalsSeries(usageDays, yieldDays, rangeFrom), unitCosts: unitCostsSeries(usageDays, yieldDays, rangeFrom), rangeFrom };
 }
 

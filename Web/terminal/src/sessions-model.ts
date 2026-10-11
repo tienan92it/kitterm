@@ -2102,10 +2102,18 @@ export type UsageDaily = {
 
 /** What the panel plots: dollars, or tokens of every kind. */
 export type UsageMode = "cost" | "tokens";
-/** The ranges the panel offers, in days, today included. */
-export type UsageSpan = 7 | 30 | 90;
-export const USAGE_SPANS: readonly UsageSpan[] = [7, 30, 90];
+/** The ranges the panel offers: three spans in days, today included, and
+ * `all`, the whole record from the first spend day
+ * (`corpus/05-legend-and-range.md`, rule 2). */
+export type UsageSpan = 7 | 30 | 90 | "all";
+export const USAGE_SPANS: readonly UsageSpan[] = [7, 30, 90, "all"];
 export const USAGE_MODES: readonly UsageMode[] = ["cost", "tokens"];
+
+/** The widest range `GET /api/usage/daily` and `GET /api/yield/daily` take
+ * before they refuse with a 400. `all` asks for this whole span until the
+ * page's own lifetime read has found the record's first spend day, which
+ * then narrows the request (`usageRange`). */
+export const MAX_RANGE_DAYS = 400;
 
 /** The reader's choice of mode and span, kept in `localStorage`. */
 export type UsageChoice = { mode: UsageMode; span: UsageSpan };
@@ -2137,9 +2145,17 @@ export function dayKey(epochMs: number): string {
 
 /** The inclusive range for a span ending today: 7 is today and the six
  * days before it. Stepped in local noon-to-noon days, so a daylight-saving
- * change inside the span does not lose a day. */
-export function usageRange(span: UsageSpan, now: number): { from: string; to: string } {
+ * change inside the span does not lose a day. `all` takes `allFrom`, the
+ * record's first spend day from the page's own lifetime read, when the
+ * caller has one; without it (before that read answers) the range reaches
+ * back `MAX_RANGE_DAYS`, the routes' own bound, the same way the lifetime
+ * read itself finds the first day without knowing it in advance. */
+export function usageRange(span: UsageSpan, now: number, allFrom?: string | null): DayRange {
   const to = new Date(now);
+  if (span === "all") {
+    const from = allFrom ?? dayKey(new Date(to.getFullYear(), to.getMonth(), to.getDate() - (MAX_RANGE_DAYS - 1), 12).getTime());
+    return { from, to: dayKey(now) };
+  }
   const from = new Date(to.getFullYear(), to.getMonth(), to.getDate() - (span - 1), 12);
   return { from: dayKey(from.getTime()), to: dayKey(now) };
 }
@@ -2456,7 +2472,7 @@ export function usagePanel(
   return {
     mode,
     span,
-    title: `Usage · last ${span} days`,
+    title: span === "all" ? "Usage · the whole record" : `Usage · last ${span} days`,
     headline: mode === "cost" ? dollars(totals.costUSD) : tokenCount(totalTokens(totals.tokens)),
     qualifier: mode === "cost" ? "if billed at full API rate" : "tokens, every kind, input and output and cache",
     range,
@@ -2467,7 +2483,11 @@ export function usagePanel(
     note: empty ? `No usage recorded from ${range}.` : usageNote(totals, mode),
     age,
     modes: USAGE_MODES.map((m) => ({ label: m, checked: m === mode, name: m === "cost" ? "Show cost" : "Show tokens" })),
-    spans: USAGE_SPANS.map((s) => ({ label: `${s}d`, checked: s === span, name: `Show the last ${s} days` })),
+    spans: USAGE_SPANS.map((s) => ({
+      label: s === "all" ? "all" : `${s}d`,
+      checked: s === span,
+      name: s === "all" ? "Show the whole record" : `Show the last ${s} days`,
+    })),
   };
 }
 
@@ -2631,11 +2651,12 @@ export function bandQuota(limits: UsageLimits | null | undefined, now: number): 
 export function bandSpend(report: UsageDaily | null | undefined, choice: UsageChoice): BandCell {
   if (!report || !report.ok) return { key: "spend", value: "–", noun: "spend", title: "No usage rollup." };
   const total = report.totals?.costUSD ?? 0;
+  const period = choice.span === "all" ? "the whole record" : `the last ${choice.span} days`;
   return {
     key: "spend",
     value: wholeDollars(total),
-    noun: `${choice.span}d`,
-    title: `${dollars(total)}: what the last ${choice.span} days cost, if billed at full API rate.`,
+    noun: choice.span === "all" ? "all" : `${choice.span}d`,
+    title: `${dollars(total)}: what ${period} cost, if billed at full API rate.`,
   };
 }
 

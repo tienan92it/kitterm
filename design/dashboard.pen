@@ -265,7 +265,7 @@
                           "id": "SjPr0",
                           "name": "put",
                           "fill": "$faint",
-                          "content": "[x] cost  [ ] tokens     [ ] 7d  [x] 30d  [ ] 90d",
+                          "content": "[x] cost  [ ] tokens     [ ] 7d  [x] 30d  [ ] 90d  [ ] all",
                           "fontFamily": "JetBrains Mono",
                           "fontSize": 12,
                           "fontWeight": "normal"
@@ -4912,7 +4912,7 @@
                   "id": "2acX3",
                   "name": "ut",
                   "fill": "$faint",
-                  "content": "[x] cost  [ ] tokens     [ ] 7d  [x] 30d  [ ] 90d",
+                  "content": "[x] cost  [ ] tokens\n[ ] 7d  [x] 30d  [ ] 90d  [ ] all",
                   "fontFamily": "JetBrains Mono",
                   "fontSize": 12,
                   "fontWeight": "normal"
@@ -24606,7 +24606,7 @@
                           "id": "nG9QW",
                           "name": "put",
                           "fill": "$faint",
-                          "content": "[x] cost  [ ] tokens     [ ] 7d  [x] 30d  [ ] 90d",
+                          "content": "[x] cost  [ ] tokens     [ ] 7d  [x] 30d  [ ] 90d  [ ] all",
                           "fontFamily": "JetBrains Mono",
                           "fontSize": 12,
                           "fontWeight": "normal"
@@ -26294,7 +26294,7 @@
                           "id": "umP0P",
                           "name": "put",
                           "fill": "$faint",
-                          "content": "[x] cost  [ ] tokens     [ ] 7d  [x] 30d  [ ] 90d",
+                          "content": "[x] cost  [ ] tokens     [ ] 7d  [x] 30d  [ ] 90d  [ ] all",
                           "fontFamily": "JetBrains Mono",
                           "fontSize": 12,
                           "fontWeight": "normal"
