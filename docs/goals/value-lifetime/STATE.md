@@ -8,7 +8,7 @@
 
 ## Queue
 
-1. `legend-and-range` (capability 5)
+1. `legend-and-range` (capability 5), PR #190.
 2. `all-range` (capability 6)
 
 ## Failures
