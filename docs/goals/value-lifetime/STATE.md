@@ -1,14 +1,15 @@
 # STATE: value-lifetime
 
-- Status: done
-- Round: 3 of 3 in this budget (second budget)
+- Status: active
+- Round: 0 of 3 in this budget (third budget)
 - Rounds total: 6
 - Last floor: green (2026-10-10, round 6 after: vitest 1732, PR CI on f3d2751)
-- Updated: 2026-10-10, the chart polish is done; PR #189 is ready
+- Updated: 2026-10-11, a third budget on the human's word: the legend, the range, and `all`
 
 ## Queue
 
-None.
+1. `legend-and-range` (capability 5)
+2. `all-range` (capability 6)
 
 ## Failures
 
@@ -36,4 +37,4 @@ at least 25% of the median daily spend).
 
 ## Next action
 
-The human merges PR #189; the foreman releases and upgrades.
+Round 7: `legend-and-range` from `plan.md` capability 5.

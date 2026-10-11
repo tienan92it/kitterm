@@ -2,8 +2,9 @@
 
 ## Objective
 
-Under the VALUE tiles, the human sees two line charts, whatever
-the 7d/30d/90d toggle says. TOTALS draws how the cumulative spend, merged
+Under the VALUE tiles, the human sees two line charts that follow
+the range toggle (7d, 30d, 90d, and `all`, the whole record, which
+sets every panel on the page; `corpus/05-legend-and-range.md`). TOTALS draws how the cumulative spend, merged
 pull requests, merged lines and releases grew against each other: each
 divided by its own value on 3 Sep, on a log axis, from 3 Sep to today,
 the multiple at the line's end (`×26.2 lines`) and the real totals in
@@ -18,7 +19,7 @@ chart of `corpus/00-request.md`.
 ## Exclusions
 
 - The tiles, the other panels and the tree do not change, but for the
-  room the charts take.
+  room the charts take and the `all` range they gain.
 - No new price, no estimate: spend is the rollup's billed dollars, as
   VALUE uses today.
 - No colour outside the design foundation; the lines differ by dash.
