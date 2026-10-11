@@ -62,3 +62,17 @@ So within a range, a UNIT COSTS line starts on the first day its range
 holds at least 5 merged pull requests, 3 releases, 1,000 merged lines or
 1 hour of model time, by line; before that day the line is not drawn and
 its tooltip row reads `–`. TOTALS is unchanged.
+
+## Later the same day: UNIT COSTS on a log dollar axis
+
+On the live 30d range (from 12 Sep) the minimums moved `$/release`'s
+start from $740 to $547, and a higher minimum still started it at $222
+to $311; a release costs 2 to 10 times a PR, an hour or 1,000 lines, so
+on one plain dollar axis its line always sets the scale. The foreman
+recommended a log dollar axis; the human answered:
+
+> Log axis for UNIT COSTS
+
+UNIT COSTS draws on a log dollar axis with ticks at $1, $2, $5, $10,
+$20, $50, $100, $200, $500 and $1k, as far as the drawn values need;
+the minimums stay; the tooltip keeps the exact dollars.
