@@ -86,14 +86,11 @@ import {
 } from "./sessions-value";
 import {
   logPosition,
-  multipleLabel,
-  stackEndLabels,
   totalsAxisTicks,
   totalsRealLine,
   totalsSeries,
   totalsTooltipRows,
   unitCostAxisTicks,
-  unitCostLabel,
   unitCostsLine,
   unitCostsSeries,
   unitCostsTooltipRows,
@@ -870,7 +867,7 @@ function paint(): void {
   // yield were asked for it, the tree reads it off the rollup, and the
   // round records are filtered to it here.
   const range = chosenRange(now);
-  paintValue(valuePanel(usage, yieldReport, usageChoice.span), lifetimeModel());
+  paintValue(valuePanel(usage, yieldReport, usageChoice.span), lifetimeModel(now));
   paintWhere(wherePanel(whereGrouping, { report: usage, yield: yieldReport, projects, goals, range }));
   // No transcript at all (round 21): MODELS and LEAKS each print one
   // sentence in place of their rows. The pure panels keep their own
@@ -1198,22 +1195,19 @@ function paintQuota(panel: QuotaPanel | null): void {
 
 /** The totals/unit-costs series over the lifetime range, from the two
  * routes `fetchLifetime` asks; null before the first answer, or when
- * either route refused (a watch client, an old daemon). */
-type LifetimeModel = { totals: Totals; unitCosts: UnitCosts };
+ * either route refused (a watch client, an old daemon). Both series are
+ * recomputed from the one lifetime read for the range the `USAGE`/`VALUE`
+ * toggle chose (`rangeFrom`, `corpus/05-legend-and-range.md`): no new
+ * request follows a toggle click, only this recomputation. */
+type LifetimeModel = { totals: Totals; unitCosts: UnitCosts; rangeFrom: string };
 
-function lifetimeModel(): LifetimeModel | null {
+function lifetimeModel(now: number): LifetimeModel | null {
   if (!lifetimeUsage?.ok || !lifetimeYield?.ok) return null;
   const usageDays: LifetimeUsageDay[] = lifetimeUsage.days.map((d) => ({ day: d.day, costUSD: d.costUSD, measuredUSD: d.measuredUSD, apiMs: d.apiMs }));
   const yieldDays: LifetimeYieldDay[] = lifetimeYield.days.map((d) => ({ day: d.day, mergedPullRequests: d.mergedPullRequests, mergedLines: d.mergedLines, releases: d.releases }));
-  return { totals: totalsSeries(usageDays, yieldDays), unitCosts: unitCostsSeries(usageDays, yieldDays) };
+  const rangeFrom = usageRange(usageChoice.span, now).from;
+  return { totals: totalsSeries(usageDays, yieldDays, rangeFrom), unitCosts: unitCostsSeries(usageDays, yieldDays, rangeFrom), rangeFrom };
 }
-
-/** The fixed pixel height of `.lifetime-chart` and the label line height it
- * stacks end labels by, in the same percentage units the chart's `viewBox`
- * uses (0 to 100 over the chart's full height), so `stackEndLabels` moves
- * a label by a real line height and not an arbitrary number. */
-const LIFETIME_CHART_H = 140;
-const LIFETIME_LABEL_LINE_PCT = (16 / LIFETIME_CHART_H) * 100;
 
 /** One SVG `path` `d` string through the defined points, breaking into a
  * new subpath after a gap (a null `y`, a day with no source for that
@@ -1349,11 +1343,37 @@ const TOTALS_MEASURES: readonly TotalsMeasure[] = ["spend", "prs", "lines", "rel
 const TOTALS_SLOT: Record<TotalsMeasure, 1 | 2 | 3 | 4> = { spend: 1, prs: 2, lines: 3, releases: 4 };
 const TOTALS_WORD: Record<TotalsMeasure, string> = { spend: "spend", prs: "PRs", lines: "lines", releases: "releases" };
 
-/** TOTALS: growth since the base day on a log axis, four lines in the data
- * palette, their end labels stacked, a tooltip, the axis, the screen-reader
- * sentence. Only called with at least one point. */
+/** The legend row above a chart's plot, under its title
+ * (`corpus/05-legend-and-range.md`): a swatch in the line's data colour and
+ * the measure's name, no value — the human's word was "labels only". It
+ * wraps on a narrow screen through the row's own `flex-wrap`, not a media
+ * query, so there is nothing width-specific to override there. Hidden from
+ * a screen reader, like the end-label column it replaces was: the chart's
+ * own `aria-label` and the tooltip's rows already name every measure with
+ * its value. */
+function lifetimeLegend(items: ReadonlyArray<{ slot: 1 | 2 | 3 | 4; word: string }>): HTMLElement {
+  const legend = document.createElement("div");
+  legend.className = "lifetime-legend";
+  legend.setAttribute("aria-hidden", "true");
+  for (const { slot, word } of items) {
+    const item = document.createElement("span");
+    item.className = "lifetime-legend-item";
+    const swatch = document.createElement("span");
+    swatch.className = `mark bar lifetime-legend-swatch data-${slot}`;
+    item.append(swatch, span("lifetime-legend-label", word));
+    legend.append(item);
+  }
+  return legend;
+}
+
+/** TOTALS: growth since the start day on a log axis, four lines in the data
+ * palette, a legend, a tooltip, the axis, the screen-reader sentence. The
+ * start day is the range toggle's own first day, never before the base day
+ * (`corpus/05-legend-and-range.md`): `totals.startDay`, not `baseDay`,
+ * names what the chart actually divides by and what its header prints.
+ * Only called with at least one point. */
 function totalsChartBlock(totals: Totals): HTMLElement {
-  const baseDay = totals.baseDay!;
+  const startDay = totals.startDay!;
   const points = totals.points;
   const last = points[points.length - 1];
   const maxMultiple = Math.max(1, ...points.flatMap((p) => TOTALS_MEASURES.map((m) => p.multiple[m] ?? 1)));
@@ -1367,7 +1387,7 @@ function totalsChartBlock(totals: Totals): HTMLElement {
   svg.setAttribute("role", "img");
   svg.setAttribute("preserveAspectRatio", "none");
   svg.setAttribute("viewBox", "0 0 100 100");
-  svg.setAttribute("aria-label", `Totals chart: growth since ${dayLabel(baseDay)} on a log axis. Today, the real totals are ${totalsRealLine(last)}.`);
+  svg.setAttribute("aria-label", `Totals chart: growth since ${dayLabel(startDay)} on a log axis. Today, the real totals are ${totalsRealLine(last)}.`);
   for (const tick of ticks) {
     const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
     line.setAttribute("class", "axis-grid");
@@ -1377,16 +1397,12 @@ function totalsChartBlock(totals: Totals): HTMLElement {
     line.setAttribute("y2", `${yOf(tick)}`);
     svg.append(line);
   }
-  const endPositions: number[] = [];
   for (const m of TOTALS_MEASURES) {
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("class", `lifetime-line data-${TOTALS_SLOT[m]}`);
     path.setAttribute("d", pathFor(points.map((p, i) => ({ x: xOf(i), y: p.multiple[m] === null ? null : yOf(p.multiple[m]!) }))));
     svg.append(path);
-    const lastValue = last.multiple[m];
-    endPositions.push(lastValue === null ? 100 : yOf(lastValue));
   }
-  const stacked = stackEndLabels(endPositions, LIFETIME_LABEL_LINE_PCT);
 
   const ticksCol = document.createElement("div");
   ticksCol.className = "lifetime-ticks";
@@ -1398,25 +1414,13 @@ function totalsChartBlock(totals: Totals): HTMLElement {
       x: xOf(i),
       day: dayLabel(p.day),
       rows: totalsTooltipRows(p),
-      announce: [`${dayLabel(p.day)}, against ${dayLabel(baseDay)}`, totalsRealLine(p)].join(". "),
+      announce: [`${dayLabel(p.day)}, against ${dayLabel(startDay)}`, totalsRealLine(p)].join(". "),
     })),
-    `Move with arrow keys to see a day's growth against ${dayLabel(baseDay)}`,
+    `Move with arrow keys to see a day's growth against ${dayLabel(startDay)}`,
   );
   const chartArea = document.createElement("div");
   chartArea.className = "lifetime-chart-area";
   chartArea.append(svg, hit, tooltip, announce);
-
-  const labelsCol = document.createElement("div");
-  labelsCol.className = "lifetime-labels";
-  labelsCol.setAttribute("aria-hidden", "true");
-  TOTALS_MEASURES.forEach((m, i) => {
-    const label = document.createElement("span");
-    label.className = `lifetime-label mark data-${TOTALS_SLOT[m]}`;
-    label.style.top = `${stacked[i]}%`;
-    const value = last.multiple[m];
-    label.textContent = `${value === null ? "–" : multipleLabel(value)} ${TOTALS_WORD[m]}`;
-    labelsCol.append(label);
-  });
 
   const plot = document.createElement("div");
   plot.className = "lifetime-plot";
@@ -1424,29 +1428,17 @@ function totalsChartBlock(totals: Totals): HTMLElement {
 
   const title = document.createElement("p");
   title.className = "lifetime-title";
-  title.append(span("lifetime-title-word", "TOTALS"), `   growth since ${dayLabel(baseDay)}, log scale`);
+  title.append(span("lifetime-title-word", "TOTALS"), `   growth since ${dayLabel(startDay)}, log scale`);
+
+  const legend = lifetimeLegend(TOTALS_MEASURES.map((m) => ({ slot: TOTALS_SLOT[m], word: TOTALS_WORD[m] })));
 
   const axis = document.createElement("p");
   axis.className = "lifetime-axis";
   axis.append(span("lifetime-axis-from", dayLabel(points[0].day)), span("lifetime-axis-to", dayLabel(last.day)));
 
-  // The axis sits directly under the plot in document order, at every
-  // width, so a reader sees the dates before the legend
-  // (`corpus/04-chart-polish.md` follow-up): `.lifetime-chart-main` holds
-  // the plot and its axis; `.lifetime-chart-body` places that beside the
-  // end-label legend on a wide screen and stacks it above the legend on a
-  // narrow one, in the same order either way.
-  const main = document.createElement("div");
-  main.className = "lifetime-chart-main";
-  main.append(plot, axis);
-
-  const body = document.createElement("div");
-  body.className = "lifetime-chart-body";
-  body.append(main, labelsCol);
-
   const block = document.createElement("div");
   block.className = "lifetime-chart-block totals";
-  block.append(title, body);
+  block.append(title, legend, plot, axis);
   return block;
 }
 
@@ -1455,10 +1447,14 @@ const UNIT_COST_MEASURES: readonly UnitCostMeasure[] = ["perHour", "perPR", "per
 const UNIT_COST_SLOT: Record<UnitCostMeasure, 1 | 2 | 3 | 4> = { perHour: 1, perPR: 2, perKLines: 3, perRelease: 4 };
 const UNIT_COST_WORD: Record<UnitCostMeasure, string> = { perPR: "$/PR", perKLines: "$/1k lines", perRelease: "$/release", perHour: "$/hour" };
 
-/** UNIT COSTS: dollars since the first spend day on one linear axis, the
- * same four-part geometry as TOTALS. Only called with at least one point. */
+/** UNIT COSTS: dollars since the start day on one linear axis, the same
+ * four-part geometry as TOTALS — a legend, not end labels
+ * (`corpus/05-legend-and-range.md`). The start day is the range toggle's
+ * own first day, never before the first spend day: `unitCosts.startDay`,
+ * not `firstSpendDay`, names what the chart sums from and what its header
+ * prints. Only called with at least one point. */
 function unitCostsChartBlock(unitCosts: UnitCosts): HTMLElement {
-  const firstDay = unitCosts.firstSpendDay!;
+  const startDay = unitCosts.startDay!;
   const points = unitCosts.points;
   const last = points[points.length - 1];
   const maxValue = Math.max(0, ...points.flatMap((p) => UNIT_COST_MEASURES.map((m) => p[m] ?? 0)));
@@ -1472,7 +1468,7 @@ function unitCostsChartBlock(unitCosts: UnitCosts): HTMLElement {
   svg.setAttribute("role", "img");
   svg.setAttribute("preserveAspectRatio", "none");
   svg.setAttribute("viewBox", "0 0 100 100");
-  svg.setAttribute("aria-label", `Unit costs chart: dollars since ${dayLabel(firstDay)}. Today, ${unitCostsLine(last)}.`);
+  svg.setAttribute("aria-label", `Unit costs chart: dollars since ${dayLabel(startDay)}. Today, ${unitCostsLine(last)}.`);
   for (const tick of ticks) {
     const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
     line.setAttribute("class", "axis-grid");
@@ -1482,16 +1478,12 @@ function unitCostsChartBlock(unitCosts: UnitCosts): HTMLElement {
     line.setAttribute("y2", `${yOf(tick)}`);
     svg.append(line);
   }
-  const endPositions: number[] = [];
   for (const m of UNIT_COST_MEASURES) {
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("class", `lifetime-line data-${UNIT_COST_SLOT[m]}`);
     path.setAttribute("d", pathFor(points.map((p, i) => ({ x: xOf(i), y: p[m] === null ? null : yOf(p[m]!) }))));
     svg.append(path);
-    const lastValue = last[m];
-    endPositions.push(lastValue === null ? 100 : yOf(lastValue));
   }
-  const stacked = stackEndLabels(endPositions, LIFETIME_LABEL_LINE_PCT);
 
   const ticksCol = document.createElement("div");
   ticksCol.className = "lifetime-ticks";
@@ -1506,46 +1498,31 @@ function unitCostsChartBlock(unitCosts: UnitCosts): HTMLElement {
   chartArea.className = "lifetime-chart-area";
   chartArea.append(svg, hit, tooltip, announce);
 
-  const labelsCol = document.createElement("div");
-  labelsCol.className = "lifetime-labels";
-  labelsCol.setAttribute("aria-hidden", "true");
-  UNIT_COST_MEASURES.forEach((m, i) => {
-    const label = document.createElement("span");
-    label.className = `lifetime-label mark data-${UNIT_COST_SLOT[m]}`;
-    label.style.top = `${stacked[i]}%`;
-    const value = last[m];
-    label.textContent = `${UNIT_COST_WORD[m]}  ${value === null ? "–" : unitCostLabel(value)}`;
-    labelsCol.append(label);
-  });
-
   const plot = document.createElement("div");
   plot.className = "lifetime-plot";
   plot.append(ticksCol, chartArea);
 
   const title = document.createElement("p");
   title.className = "lifetime-title";
-  title.append(span("lifetime-title-word", "UNIT COSTS"), `   dollars, since ${dayLabel(firstDay)}`);
+  title.append(span("lifetime-title-word", "UNIT COSTS"), `   dollars, since ${dayLabel(startDay)}`);
+
+  const legend = lifetimeLegend(UNIT_COST_MEASURES.map((m) => ({ slot: UNIT_COST_SLOT[m], word: UNIT_COST_WORD[m] })));
 
   const axis = document.createElement("p");
   axis.className = "lifetime-axis";
   axis.append(span("lifetime-axis-from", dayLabel(points[0].day)), span("lifetime-axis-to", dayLabel(last.day)));
 
-  const main = document.createElement("div");
-  main.className = "lifetime-chart-main";
-  main.append(plot, axis);
-
-  const body = document.createElement("div");
-  body.className = "lifetime-chart-body";
-  body.append(main, labelsCol);
-
   const block = document.createElement("div");
   block.className = "lifetime-chart-block unit-costs";
-  block.append(title, body);
+  block.append(title, legend, plot, axis);
   return block;
 }
 
-/** The two charts and the note under the tiles, or the one empty sentence
- * when the fleet has no spend at all (`goal.md` condition 6). */
+/** The two charts under the tiles, or the one empty sentence when the
+ * fleet has no spend at all (`goal.md` condition 6). The note on missing
+ * early spend prints only when the chosen range reaches a day before the
+ * base day (`corpus/05-legend-and-range.md`): a 7d or 30d range that never
+ * gets near August carries nothing it would explain. */
 function lifetimeBlock(lifetime: LifetimeModel): HTMLElement {
   // A repaint discards both charts' hit layers and tooltips; a hide
   // function from the discarded ones must not outlive them.
@@ -1561,10 +1538,12 @@ function lifetimeBlock(lifetime: LifetimeModel): HTMLElement {
   }
   if (lifetime.totals.points.length > 0) wrap.append(totalsChartBlock(lifetime.totals));
   if (lifetime.unitCosts.points.length > 0) wrap.append(unitCostsChartBlock(lifetime.unitCosts));
-  const note = document.createElement("p");
-  note.className = "lifetime-note";
-  note.textContent = LIFETIME_NOTE;
-  wrap.append(note);
+  if (lifetime.totals.baseDay !== null && lifetime.rangeFrom < lifetime.totals.baseDay) {
+    const note = document.createElement("p");
+    note.className = "lifetime-note";
+    note.textContent = LIFETIME_NOTE;
+    wrap.append(note);
+  }
   return wrap;
 }
 

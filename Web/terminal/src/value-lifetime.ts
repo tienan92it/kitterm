@@ -5,15 +5,17 @@
  * round draws from what this file computes.
  *
  * TOTALS: each of spend, merged pull requests, merged lines and releases,
- * cumulative from the first day of the range, divided by its own
- * cumulative value on the base day — the first day of the first run of
- * seven consecutive days in which every day's spend is at least a
- * quarter of the median daily spend over the whole record
- * (`corpus/03-approved-design.md`, "The base day, decided"). UNIT COSTS: cumulative spend
- * over cumulative pull requests, over cumulative lines per 1,000, over
- * cumulative releases, from the first day with recorded spend; and
- * cumulative `measuredUSD` over cumulative model hours, the same division
- * the VALUE tiles' hours tile uses.
+ * cumulative from the first spend day, divided by its own cumulative value
+ * on the start day — the base day (the first day of the first run of seven
+ * consecutive days in which every day's spend is at least a quarter of the
+ * median daily spend over the whole record, `corpus/03-approved-design.md`,
+ * "The base day, decided"), or later, the range toggle's own first day,
+ * never earlier (`corpus/05-legend-and-range.md`). UNIT COSTS: spend over
+ * merged pull requests, over merged lines per 1,000, over releases, and
+ * `measuredUSD` over model hours (the same division the VALUE tiles' hours
+ * tile uses), each summed fresh from the start day — the first spend day,
+ * or later, the range toggle's own first day (`corpus/05-legend-and-range.md`,
+ * "cost within the range").
  *
  * A gap in the yield's day (a date the array holds no entry for, or an
  * entry missing one field) has no source for that measure that day: it
@@ -93,22 +95,33 @@ export function baseDayOf(usageDays: readonly LifetimeUsageDay[]): BaseDayResult
 }
 
 /** One day of TOTALS: the cumulative value of every measure since the
- * range's first day, and its multiple over the base day's cumulative
- * value — null where the base day's own cumulative value is 0. */
+ * range's first day, and its multiple over the start day's cumulative
+ * value — null where the start day's own cumulative value is 0. */
 export type TotalsPoint = { day: string; cumulative: Record<Measure, number>; multiple: Record<Measure, number | null> };
 
-export type Totals = { baseDay: string | null; points: readonly TotalsPoint[] };
+export type Totals = { baseDay: string | null; startDay: string | null; points: readonly TotalsPoint[] };
 
 /**
- * TOTALS: a point per day from the base day to the range's last day.
- * Empty, with a null `baseDay`, when no seven-day run of spend exists —
- * the empty state of a fleet with too little recorded spend, or none at
- * all.
+ * TOTALS: a point per day from the start day to the range's last day.
+ * Empty, with null `baseDay`/`startDay`, when no seven-day run of spend
+ * exists — the empty state of a fleet with too little recorded spend, or
+ * none at all.
+ *
+ * `rangeFrom`, when given, is the range toggle's own first day
+ * (`corpus/05-legend-and-range.md`, rule 2): each measure's lifetime
+ * cumulative value on day d divides by its own lifetime cumulative value
+ * on the start day, the later of `rangeFrom` and the base day — never
+ * before the base day, so a range that reaches further back than the base
+ * day (90d, `all`) still divides on the base day, unchanged from the
+ * lifetime reading. Only the denominator and the first emitted point move;
+ * every cumulative total keeps counting from the first spend day, as
+ * before.
  */
-export function totalsSeries(usageDays: readonly LifetimeUsageDay[], yieldDays: readonly LifetimeYieldDay[]): Totals {
+export function totalsSeries(usageDays: readonly LifetimeUsageDay[], yieldDays: readonly LifetimeYieldDay[], rangeFrom?: string): Totals {
   const sorted = [...usageDays].sort((a, b) => cmpDay(a.day, b.day));
   const { firstSpendDay, baseDay } = baseDayOf(sorted);
-  if (baseDay === null) return { baseDay: null, points: [] };
+  if (baseDay === null) return { baseDay: null, startDay: null, points: [] };
+  const startDay = rangeFrom !== undefined && cmpDay(rangeFrom, baseDay) > 0 ? rangeFrom : baseDay;
   // Every cumulative count starts at the first spend day, PRs, lines and
   // releases included: a repository's history reaches back further than
   // the spend record (kitterm's own merges start 2026-07-16, over three
@@ -121,7 +134,7 @@ export function totalsSeries(usageDays: readonly LifetimeUsageDay[], yieldDays: 
   const record = sorted.filter((d) => cmpDay(d.day, firstSpendDay!) >= 0);
   const yieldByDay = new Map(yieldDays.map((y) => [y.day, y]));
   const cumulative: Record<Measure, number> = { spend: 0, prs: 0, lines: 0, releases: 0 };
-  let baseCumulative: Record<Measure, number> | null = null;
+  let startCumulative: Record<Measure, number> | null = null;
   const points: TotalsPoint[] = [];
   for (const u of record) {
     cumulative.spend += u.costUSD;
@@ -129,39 +142,47 @@ export function totalsSeries(usageDays: readonly LifetimeUsageDay[], yieldDays: 
     if (typeof y?.mergedPullRequests === "number") cumulative.prs += y.mergedPullRequests;
     if (typeof y?.mergedLines === "number") cumulative.lines += y.mergedLines;
     if (typeof y?.releases === "number") cumulative.releases += y.releases;
-    if (u.day === baseDay) baseCumulative = { ...cumulative };
-    if (cmpDay(u.day, baseDay) >= 0 && baseCumulative !== null) {
+    if (u.day === startDay) startCumulative = { ...cumulative };
+    if (cmpDay(u.day, startDay) >= 0 && startCumulative !== null) {
       const multiple = {} as Record<Measure, number | null>;
       for (const m of MEASURES) {
-        const base = baseCumulative[m];
+        const base = startCumulative[m];
         multiple[m] = base > 0 ? cumulative[m] / base : null;
       }
       points.push({ day: u.day, cumulative: { ...cumulative }, multiple });
     }
   }
-  return { baseDay, points };
+  return { baseDay, startDay, points };
 }
 
 /** One day of UNIT COSTS: null for a measure whose cumulative count is
  * still 0. */
 export type UnitCostPoint = { day: string; perPR: number | null; perKLines: number | null; perRelease: number | null; perHour: number | null };
 
-export type UnitCosts = { firstSpendDay: string | null; points: readonly UnitCostPoint[] };
+export type UnitCosts = { firstSpendDay: string | null; startDay: string | null; points: readonly UnitCostPoint[] };
 
 /**
- * UNIT COSTS: a point per day from the first spend day to the range's
- * last day. Empty, with a null `firstSpendDay`, when no day has recorded
+ * UNIT COSTS: a point per day from the start day to the range's last day.
+ * Empty, with null `firstSpendDay`/`startDay`, when no day has recorded
  * spend.
+ *
+ * `rangeFrom`, when given, is the range toggle's own first day
+ * (`corpus/05-legend-and-range.md`, rule 1): "cost within the range", not
+ * the lifetime reading — the spend and the units both sum fresh from the
+ * start day, the later of `rangeFrom` and the first spend day, rather than
+ * from the first spend day always. A day's gap in the yield still carries
+ * the running sum forward, as it does without a range.
  */
-export function unitCostsSeries(usageDays: readonly LifetimeUsageDay[], yieldDays: readonly LifetimeYieldDay[]): UnitCosts {
+export function unitCostsSeries(usageDays: readonly LifetimeUsageDay[], yieldDays: readonly LifetimeYieldDay[], rangeFrom?: string): UnitCosts {
   const sorted = [...usageDays].sort((a, b) => cmpDay(a.day, b.day));
   const { firstSpendDay } = baseDayOf(sorted);
-  if (firstSpendDay === null) return { firstSpendDay: null, points: [] };
-  // Every cumulative count starts at the first spend day (see `totalsSeries`):
-  // a PR merged before it is not "delivered from the first spend day to d",
-  // and counting it inflates the denominator under a numerator that is
+  if (firstSpendDay === null) return { firstSpendDay: null, startDay: null, points: [] };
+  const startDay = rangeFrom !== undefined && cmpDay(rangeFrom, firstSpendDay) > 0 ? rangeFrom : firstSpendDay;
+  // Every cumulative count starts at the start day (see `totalsSeries`):
+  // a PR merged before it is not "delivered from the start day to d", and
+  // counting it inflates the denominator under a numerator that is
   // genuinely 0 that early, reading every unit cost too low.
-  const record = sorted.filter((d) => cmpDay(d.day, firstSpendDay) >= 0);
+  const record = sorted.filter((d) => cmpDay(d.day, startDay) >= 0);
   const yieldByDay = new Map(yieldDays.map((y) => [y.day, y]));
   let spend = 0;
   let measured = 0;
@@ -187,14 +208,14 @@ export function unitCostsSeries(usageDays: readonly LifetimeUsageDay[], yieldDay
       perHour: hours > 0 ? measured / hours : null,
     });
   }
-  return { firstSpendDay, points };
+  return { firstSpendDay, startDay, points };
 }
 
 // --- formatters --------------------------------------------------------
 
 /** `244`, `6.4k`, `436k`, `1.2m`: whole under 1,000, else one decimal of
  * `k`/`m`/`b` under ten in that tier, else the tier's whole number. The
- * end labels and the tooltip of both charts, for a count. */
+ * tooltip of both charts, for a count. */
 export function shorthandCount(n: number): string {
   const sign = n < 0 ? "-" : "";
   const abs = Math.abs(n);
@@ -209,51 +230,17 @@ export function shorthandCount(n: number): string {
 }
 
 /** `$6.4k`: the shorthand count with a dollar sign, for the spend line's
- * end label and tooltip. */
+ * tooltip. */
 export function shorthandDollars(usd: number): string {
   return usd < 0 ? `-$${shorthandCount(-usd).slice(1)}` : `$${shorthandCount(usd)}`;
 }
 
 /** `$26.40` under $100, `$116` at $100 or more: the UNIT COSTS lines'
- * end labels and tooltip. */
+ * tooltip. */
 export function unitCostLabel(usd: number): string {
   const sign = usd < 0 ? "-" : "";
   const abs = Math.abs(usd);
   return abs < 100 ? `${sign}$${abs.toFixed(2)}` : `${sign}$${String(Math.round(abs))}`;
-}
-
-/** `×26.2`, `×0.11` under 1: the TOTALS lines' end labels and tooltip,
- * one decimal down to a whole multiple, two once it reads under 1. */
-export function multipleLabel(x: number): string {
-  const sign = x < 0 ? "-" : "";
-  const abs = Math.abs(x);
-  return `${sign}×${abs.toFixed(abs < 1 ? 2 : 1)}`;
-}
-
-// --- end-label stacking --------------------------------------------------
-
-/**
- * Given the four end-label positions on an axis (already placed by the
- * chart's own scale, log or not) and a line height, the positions moved
- * the least so that no two sit closer than one line height apart, their
- * relative order kept. The classic two-pass declutter: push later labels
- * down to clear the gap, then pull earlier ones back up where that
- * overshot. The result is in the same order as `positions`.
- */
-export function stackEndLabels(positions: readonly number[], lineHeight: number): number[] {
-  const order = positions.map((_, i) => i).sort((a, b) => positions[a] - positions[b]);
-  const sorted = order.map((i) => positions[i]);
-  for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i] - sorted[i - 1] < lineHeight) sorted[i] = sorted[i - 1] + lineHeight;
-  }
-  for (let i = sorted.length - 2; i >= 0; i--) {
-    if (sorted[i + 1] - sorted[i] < lineHeight) sorted[i] = sorted[i + 1] - lineHeight;
-  }
-  const result = new Array<number>(positions.length);
-  order.forEach((originalIndex, sortedIndex) => {
-    result[originalIndex] = sorted[sortedIndex];
-  });
-  return result;
 }
 
 // --- chart axes and geometry (capability 4: the charts) ----------------

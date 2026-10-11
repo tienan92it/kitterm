@@ -5,10 +5,8 @@ import {
   logPosition,
   type LifetimeUsageDay,
   type LifetimeYieldDay,
-  multipleLabel,
   shorthandCount,
   shorthandDollars,
-  stackEndLabels,
   totalsAxisTicks,
   totalsRealLine,
   totalsSeries,
@@ -260,18 +258,18 @@ describe("totalsSeries", () => {
 
   it("matches the human's table on 2026-09-20", () => {
     const point = totalsOn("2026-09-20");
-    expect(multipleLabel(point.multiple.spend!)).toBe("×5.7");
-    expect(multipleLabel(point.multiple.prs!)).toBe("×4.8");
-    expect(multipleLabel(point.multiple.lines!)).toBe("×6.3");
-    expect(multipleLabel(point.multiple.releases!)).toBe("×2.1");
+    expect(point.multiple.spend).toBeCloseTo(5.7, 1);
+    expect(point.multiple.prs).toBeCloseTo(4.8, 1);
+    expect(point.multiple.lines).toBeCloseTo(6.3, 1);
+    expect(point.multiple.releases).toBeCloseTo(2.1, 1);
   });
 
   it("matches the human's table on 2026-10-09, the last day", () => {
     const point = totalsOn("2026-10-09");
-    expect(multipleLabel(point.multiple.spend!)).toBe("×8.8");
-    expect(multipleLabel(point.multiple.prs!)).toBe("×9.0");
-    expect(multipleLabel(point.multiple.lines!)).toBe("×26.2");
-    expect(multipleLabel(point.multiple.releases!)).toBe("×4.1");
+    expect(point.multiple.spend).toBeCloseTo(8.8, 1);
+    expect(point.multiple.prs).toBeCloseTo(9.0, 1);
+    expect(point.multiple.lines).toBeCloseTo(26.2, 1);
+    expect(point.multiple.releases).toBeCloseTo(4.1, 1);
     expect(point.cumulative.spend).toBeCloseTo(6442.0228, 4);
     expect({ prs: point.cumulative.prs, lines: point.cumulative.lines, releases: point.cumulative.releases }).toEqual({
       prs: 244,
@@ -282,12 +280,12 @@ describe("totalsSeries", () => {
 
   it("gives an empty series with no seven-day run", () => {
     const short: LifetimeUsageDay[] = usageDays.slice(0, 6).map((d) => ({ ...d, costUSD: 1 }));
-    expect(totalsSeries(short, yieldDays)).toEqual({ baseDay: null, points: [] });
+    expect(totalsSeries(short, yieldDays)).toEqual({ baseDay: null, startDay: null, points: [] });
   });
 
   it("gives the empty state for a fleet with no spend", () => {
     const flat: LifetimeUsageDay[] = usageDays.map((d) => ({ ...d, costUSD: 0 }));
-    expect(totalsSeries(flat, yieldDays)).toEqual({ baseDay: null, points: [] });
+    expect(totalsSeries(flat, yieldDays)).toEqual({ baseDay: null, startDay: null, points: [] });
   });
 
   it("does not let a gap in the yield reset the running total", () => {
@@ -369,7 +367,7 @@ describe("unitCostsSeries", () => {
 
   it("gives the empty state for a fleet with no spend", () => {
     const flat: LifetimeUsageDay[] = usageDays.map((d) => ({ ...d, costUSD: 0 }));
-    expect(unitCostsSeries(flat, yieldDays)).toEqual({ firstSpendDay: null, points: [] });
+    expect(unitCostsSeries(flat, yieldDays)).toEqual({ firstSpendDay: null, startDay: null, points: [] });
   });
 
   it("gives null where a count is still zero", () => {
@@ -377,6 +375,81 @@ describe("unitCostsSeries", () => {
     const yld: LifetimeYieldDay[] = [{ day: "2026-01-01", mergedPullRequests: 0, mergedLines: 0, releases: 0 }];
     const point = unitCostsSeries(usage, yld).points[0];
     expect(point).toEqual({ day: "2026-01-01", perPR: null, perKLines: null, perRelease: null, perHour: null });
+  });
+});
+
+describe("the range toggle (corpus/05-legend-and-range.md)", () => {
+  // The human's own three readings on 2026-10-09, against the real series
+  // this fixture reconstructs: 7d from 3 Oct, 30d from 10 Sep, 90d (and
+  // `all`) from before the base day, which clamps to 3 Sep — the same
+  // multiples and unit costs the lifetime (unranged) series already gives,
+  // because the range never reaches past the base day there.
+
+  it("rebases TOTALS on the range's own first day for 7d, never before it", () => {
+    const totals = totalsSeries(usageDays, yieldDays, "2026-10-03");
+    expect(totals.startDay).toBe("2026-10-03");
+    const last = totals.points[totals.points.length - 1];
+    expect(last.day).toBe("2026-10-09");
+    expect(last.multiple.spend).toBeCloseTo(1.13, 2);
+    expect(last.multiple.prs).toBeCloseTo(1.14, 2);
+    expect(last.multiple.lines).toBeCloseTo(1.59, 2);
+    expect(last.multiple.releases).toBeCloseTo(1.21, 2);
+    // The first emitted point is the start day's own line, ×1 everywhere.
+    expect(totals.points[0].day).toBe("2026-10-03");
+    expect(totals.points[0].multiple).toEqual({ spend: 1, prs: 1, lines: 1, releases: 1 });
+  });
+
+  it("rebases TOTALS on the range's own first day for 30d", () => {
+    const totals = totalsSeries(usageDays, yieldDays, "2026-09-10");
+    expect(totals.startDay).toBe("2026-09-10");
+    const last = totals.points[totals.points.length - 1];
+    expect(last.multiple.spend).toBeCloseTo(2.93, 2);
+    expect(last.multiple.prs).toBeCloseTo(3.59, 2);
+    expect(last.multiple.lines).toBeCloseTo(8.75, 2);
+    expect(last.multiple.releases).toBeCloseTo(2.19, 2);
+  });
+
+  it("clamps TOTALS to the base day for 90d, which reaches before it", () => {
+    // A range whose own first day (90 days back from 9 Oct is 12 Jul) sits
+    // before the base day never moves the denominator past the base day
+    // ("never before the base day"): the same reading as the unranged,
+    // lifetime series.
+    const ranged = totalsSeries(usageDays, yieldDays, "2026-07-12");
+    const lifetime = totalsSeries(usageDays, yieldDays);
+    expect(ranged.startDay).toBe("2026-09-03");
+    expect(ranged).toEqual(lifetime);
+    const last = ranged.points[ranged.points.length - 1];
+    expect(last.multiple.spend).toBeCloseTo(8.81, 2);
+    expect(last.multiple.prs).toBeCloseTo(9.04, 2);
+    expect(last.multiple.lines).toBeCloseTo(26.2, 1);
+    expect(last.multiple.releases).toBeCloseTo(4.12, 2);
+  });
+
+  it("sums UNIT COSTS fresh from the range's own first day for 7d, not the lifetime reading", () => {
+    const unitCosts = unitCostsSeries(usageDays, yieldDays, "2026-10-03");
+    expect(unitCosts.startDay).toBe("2026-10-03");
+    const last = unitCosts.points[unitCosts.points.length - 1];
+    expect(unitCostLabel(last.perPR!)).toBe("$25.83");
+    expect(unitCostLabel(last.perKLines!)).toBe("$4.77");
+    expect(unitCostLabel(last.perRelease!)).toBe("$64.58");
+    expect(unitCostLabel(last.perHour!)).toBe("$38.38");
+  });
+
+  it("sums UNIT COSTS fresh from the range's own first day for 30d", () => {
+    const unitCosts = unitCostsSeries(usageDays, yieldDays, "2026-09-10");
+    expect(unitCosts.startDay).toBe("2026-09-10");
+    const last = unitCosts.points[unitCosts.points.length - 1];
+    expect(unitCostLabel(last.perPR!)).toBe("$24.67");
+    expect(unitCostLabel(last.perKLines!)).toBe("$11.72");
+    expect(unitCostLabel(last.perRelease!)).toBe("$111");
+    expect(unitCostLabel(last.perHour!)).toBe("$51.15");
+  });
+
+  it("clamps UNIT COSTS to the first spend day for a range before it", () => {
+    const ranged = unitCostsSeries(usageDays, yieldDays, "2026-07-12");
+    const lifetime = unitCostsSeries(usageDays, yieldDays);
+    expect(ranged.startDay).toBe("2026-08-10");
+    expect(ranged).toEqual(lifetime);
   });
 });
 
@@ -404,16 +477,6 @@ describe("unitCostLabel", () => {
 
   it("prints whole dollars at $100 or more", () => {
     expect(unitCostLabel(116.49)).toBe("$116");
-  });
-});
-
-describe("multipleLabel", () => {
-  it("prints one decimal at 1 or more", () => {
-    expect(multipleLabel(26.197)).toBe("×26.2");
-  });
-
-  it("prints two decimals under 1", () => {
-    expect(multipleLabel(0.1055)).toBe("×0.11");
   });
 });
 
@@ -517,22 +580,5 @@ describe("unitCostsTooltipRows", () => {
   it("prints the dash for a null count", () => {
     const rows = unitCostsTooltipRows({ day: "2026-01-01", perPR: null, perKLines: null, perRelease: null, perHour: null });
     expect(rows.map((row) => row.value)).toEqual(["–", "–", "–", "–"]);
-  });
-});
-
-describe("stackEndLabels", () => {
-  it("leaves labels alone when they already clear the line height", () => {
-    expect(stackEndLabels([0, 50, 100, 150], 20)).toEqual([0, 50, 100, 150]);
-  });
-
-  it("spreads labels closer than one line height apart, keeping their order", () => {
-    expect(stackEndLabels([100, 102, 140, 300], 20)).toEqual([100, 120, 140, 300]);
-  });
-
-  it("keeps the input order when the positions are not sorted", () => {
-    // The releases line ends highest on the page (smallest y), lines
-    // lowest: the same four positions, given out of order.
-    const result = stackEndLabels([140, 300, 100, 102], 20);
-    expect(result).toEqual([140, 300, 100, 120]);
   });
 });

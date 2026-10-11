@@ -24,21 +24,27 @@ function lifetimeRange(now: number): { from: string; to: string } {
 
 const kitterm = { id: "kitterm", name: "kitterm", root: "/w/kitterm", registered: true, knowledge: "docs/goals" };
 
-/** Ten days of real spend and yield, the same shape `sessions-lifetime-page.test.ts`
- * uses: enough for a seven-day run (`baseDayOf`) and real end-label text,
- * so a test can tell "kept the last good chart" from "lost it" by reading
- * the DOM, not just by counting requests. */
-function lifetimeDays(): { usage: unknown[]; yield: unknown[] } {
+/** Ten days of real spend and yield, ending today (`now`), the same shape
+ * `sessions-lifetime-page.test.ts` uses: enough for a seven-day run
+ * (`baseDayOf`) and real chart geometry, so a test can tell "kept the last
+ * good chart" from "lost it" by reading the DOM, not just by counting
+ * requests. Ending today, not on a fixed date, matters once the charts
+ * follow the range toggle (`corpus/05-legend-and-range.md`): a test here
+ * clicks `7d`, and a 7d range counts back from `now`, not from 2026-09. */
+function lifetimeDays(now: number): { usage: unknown[]; yield: unknown[] } {
   const usage: unknown[] = [];
   const yieldDays: unknown[] = [];
-  for (let i = 1; i <= 10; i += 1) {
-    const day = `2026-09-${String(i).padStart(2, "0")}`;
+  const end = new Date(now);
+  for (let i = 9; i >= 0; i -= 1) {
+    const d = new Date(end.getFullYear(), end.getMonth(), end.getDate() - i, 12);
+    const day = dayKey(d.getTime());
+    const n = 10 - i;
     usage.push({ day, costUSD: 10, apportionedUSD: 0, tokens: { input: 0, output: 0, cacheCreation: 0, cacheRead: 0, requests: 0 }, sessions: 1, unbilledSessions: 0, apiMs: 3_600_000, measuredUSD: 10, projects: [] });
-    yieldDays.push({ day, mergedPullRequests: i, mergedLines: i * 100, releases: 1, projects: [] });
+    yieldDays.push({ day, mergedPullRequests: n, mergedLines: n * 100, releases: 1, projects: [] });
   }
   return { usage, yield: yieldDays };
 }
-const fixture = lifetimeDays();
+const fixture = lifetimeDays(NOW);
 
 /** Whole days between two `YYYY-MM-DD` query bounds, to tell the lifetime
  * route's 400-day request apart from the `USAGE`/`VALUE` toggle's own
@@ -135,17 +141,18 @@ describe("a full-grade client", () => {
   });
 });
 
-/** The chart's end-label text: a stand-in for "the lifetime charts show
- * the last good answer", since this fixture's labels are only present once
- * a good answer has landed. */
-const lifetimeLabels = () => page.root.querySelectorAll(".lifetime-label").map((l) => l.textContent);
+/** The chart lines' own geometry: a stand-in for "the lifetime charts show
+ * the last good answer". The legend carries no value
+ * (`corpus/05-legend-and-range.md`), so it cannot tell a kept answer from a
+ * reset one; a path's `d` attribute can, since it is the series itself. */
+const lifetimeGeometry = () => page.root.querySelectorAll("path").map((p) => p.getAttribute("d"));
 
 describe("a non-ok answer or a thrown request", () => {
   it("keeps the last good charts on a non-ok answer, and waits the full five minutes before asking again", async () => {
     // The previous describe block already landed a good answer; the chart
     // carries real labels, not nothing.
-    const goodLabels = lifetimeLabels();
-    expect(goodLabels.length).toBeGreaterThan(0);
+    const goodGeometry = lifetimeGeometry();
+    expect(goodGeometry.length).toBeGreaterThan(0);
 
     lifetimeBehavior = "fail";
     const failAt = Date.now() + 5 * 60_000 + 1000;
@@ -155,7 +162,7 @@ describe("a non-ok answer or a thrown request", () => {
     // The failing request was made (the cadence allowed it)...
     expect(lifetimeRequests(page, failAt).length).toBe(before + 2); // usage + yield/daily
     // ...but the charts still show the last good answer, not nothing.
-    expect(lifetimeLabels()).toEqual(goodLabels);
+    expect(lifetimeGeometry()).toEqual(goodGeometry);
 
     // Inside five minutes of the failed attempt, no retry: the count of
     // lifetime-range requests does not move on a later 2 s poll.
@@ -168,7 +175,7 @@ describe("a non-ok answer or a thrown request", () => {
   });
 
   it("does not retry before five minutes after a thrown request, then recovers", async () => {
-    const goodLabels = lifetimeLabels();
+    const goodGeometry = lifetimeGeometry();
     lifetimeBehavior = "throw";
     const throwAt = Date.now() + 5 * 60_000 + 1000;
     const before = lifetimeRequests(page, throwAt).length;
@@ -177,7 +184,7 @@ describe("a non-ok answer or a thrown request", () => {
     // Both fetches were attempted (`Promise.all` starts them together);
     // the thrown one does not stop the other's `requests` entry.
     expect(lifetimeRequests(page, throwAt).length).toBe(before + 2);
-    expect(lifetimeLabels()).toEqual(goodLabels); // kept, not reset
+    expect(lifetimeGeometry()).toEqual(goodGeometry); // kept, not reset
 
     // Inside five minutes: no retry.
     const afterThrow = lifetimeRequests(page, throwAt).length;
@@ -191,6 +198,6 @@ describe("a non-ok answer or a thrown request", () => {
     clock.mockReturnValue(recoverAt);
     await page.poll();
     expect(lifetimeRequests(page, recoverAt).length).toBe(afterThrow + 2);
-    expect(lifetimeLabels()).toEqual(goodLabels);
+    expect(lifetimeGeometry()).toEqual(goodGeometry);
   });
 });

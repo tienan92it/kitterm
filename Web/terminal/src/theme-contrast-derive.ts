@@ -543,6 +543,7 @@ const BLOCK_SURFACES: Array<{ block: string; stack: string[]; why: string }> = [
   // --- sessions.css: the two lifetime charts under VALUE's tiles ---
   { block: "lifetime-title", stack: ["var(--ui-bg)"], why: "in .lifetime, on the body" },
   { block: "lifetime-title-word", stack: ["var(--ui-bg)"], why: "in .lifetime-title, on the body" },
+  { block: "lifetime-legend-label", stack: ["var(--ui-bg)"], why: "in .lifetime-legend, on the body" },
   { block: "lifetime-tick", stack: ["var(--ui-bg)"], why: "in .lifetime-ticks, on the body" },
   { block: "lifetime-tooltip", stack: ["var(--ui-surface)"], why: "a tooltip over the chart; it paints --ui-surface itself" },
   { block: "lifetime-tooltip-day", stack: ["var(--ui-surface)"], why: "in .lifetime-tooltip" },

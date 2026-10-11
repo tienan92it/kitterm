@@ -72,13 +72,13 @@ describe("a .mark.data-N rule paints each token as a background, clipped to the 
 
 const TOKENS = rootVariables(readSource("tokens.css"));
 
-describe("a .lifetime-label widens past the mark's own 16px glyph column", () => {
-  it("overrides .mark's width to fit a multiple or a dollar value and its measure word", () => {
-    // `.mark { width: 16px }` fits one glyph; a label without this override
-    // renders its text at a 16px clip and reads as its first character or
-    // two (measured against a live scratch daemon, round 5).
-    const rule = RULES.find((r) => r.selector === ".lifetime-label" && r.decls.has("width"));
-    expect(rule?.decls.get("width")).toBe("auto");
+describe("a .lifetime-legend-swatch overrides the mark's own 16px glyph column (corpus/05-legend-and-range.md)", () => {
+  it("sizes the swatch to a small square, like the tooltip's own swatch, not the 16px a glyph needs", () => {
+    // `.mark { width: 16px }` fits one glyph; the legend's swatch is a
+    // colour square beside a text label, not a glyph, so it takes the
+    // tooltip swatch's own 8px instead.
+    const rule = RULES.find((r) => r.selector === ".lifetime-legend-swatch" && r.decls.has("width"));
+    expect(rule?.decls.get("width")).toBe("8px");
   });
 });
 
