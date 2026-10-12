@@ -1,0 +1,1 @@
+- 2026-10-12 · Every foreman keeps a task list, crew notes start with a fixed first line, and a stalled crew gets one nudge · PR #191 · Cost: $7.27 · 27363k in (99% cached) · 65k out · 0h 45m

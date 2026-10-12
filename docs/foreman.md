@@ -118,7 +118,13 @@ call.
 
 ## The loop
 
-A foreman runs one loop.
+A foreman runs one loop. Beside the package it also keeps a Claude Code
+task list — `TaskCreate`, `TaskUpdate`, `TaskList` — as a view onto the
+open rounds, the chores, and the items that wait on the human; `STATE.md`
+and the chore files stay the record. One task per open round or chore,
+subject `<project> / <slug> round <n>: <queue item> · PR #N` (a chore:
+`<project> / chore <slug>: <what> · PR #N`), with an `activeForm`.
+`examples/foreman/foreman-loop.md`, "Task list", has the full shape.
 
 1. Spawn a crew session for each task. Name it for the task; label it so the
    fleet is attributable:
@@ -158,6 +164,10 @@ A foreman runs one loop.
      works for both. Set `enter:false` only to send bare keystrokes, such as
      Ctrl-C.
 
+     Every message the foreman types into a crew pane starts with
+     `FOREMAN:` and carries one instruction. The crew treats `FOREMAN:`
+     text as the foreman's word.
+
      Send a whole prompt in one call, whatever its size. The daemon types a
      body into `claude` in pieces of 512 bytes, 50ms apart, then presses
      Enter, because Claude Code keeps only the last read of a paste that
@@ -179,8 +189,17 @@ A foreman runs one loop.
      prompt is at the cursor, `claude` reads raw keys and the same call
      goes through. Set `force:true` only when you know the reader takes
      lines under 1 KiB as they come, such as a shell fed a script.
-   - `note` — a crew agent reported progress ("plan ready for review"). Relay
-     it.
+   - `note` — a crew agent reported progress. Every crew note's first line
+     is `<KIND> <slug> r<n>: <one line>` (a chore writes `<KIND> <slug>:
+     <one line>`), and `KIND` is one of `PLAN`, `PROGRESS`, `BLOCKER`, or
+     `DONE`. Relay the first line word for word, as it arrives.
+   - a stall — the crew reports `needs-input` or `completed` with no
+     `BLOCKER` or `DONE` note since its last turn began, or 15 minutes
+     pass with no `PLAN` note. Call `screen_state` and `read_screen`; an
+     API error, a model limit, or a prompt with no question gets one
+     `FOREMAN: continue from <the last step shown>`. One automatic
+     continue per round. A second stall in the round: report it to the
+     human at once and wait for the human's word.
    - `command.failed` — a command exited non-zero in an orchestrated session.
      Read `/commands/<index>/output` (`read_output`). Report it at once when
      it is the crew's floor or a command the round depends on; otherwise let
