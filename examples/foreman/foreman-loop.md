@@ -33,6 +33,9 @@ them, write the round record, commit the package, and report to the human.
   and the diff before you mark a round done.
 - Read before you type. Follow "Read before you type" for every `send_input`
   into a pane that runs `claude`.
+- Every message the foreman types into a crew pane starts with `FOREMAN:`
+  and carries one instruction. The crew treats `FOREMAN:` text as the
+  foreman's word.
 
 ## The package
 
@@ -79,6 +82,27 @@ same surface.
 
 The human names goals. You may run a chore on the human's word without a
 folder, and say so in the digest.
+
+## Task list
+
+Keep a Claude Code task list beside the package, with `TaskCreate`,
+`TaskUpdate`, and `TaskList` (load them with `ToolSearch` when they sit
+deferred). `STATE.md` and the chore files stay the record; the task list
+is a view.
+
+- One task per open round or chore, subject `<project> / <slug> round
+  <n>: <queue item> · PR #N` (a chore: `<project> / chore <slug>: <what>
+  · PR #N`), with an `activeForm`.
+- One task per item that waits on the human: `Merge PR #N`,
+  `Decide: <proposal>`, `Answer: <crew blocker>`.
+- Set a task `in_progress` when its crew starts, and `completed` when the
+  round record or the chore line is pushed, or when the human merges or
+  decides. A killed attempt keeps its task `in_progress`. Never mark a
+  task `completed` while the floor is red.
+
+At "Start", after `kitterm foreman catch-up`, call `TaskList` first, so no
+task is created twice, then rebuild the list from the goals not done, the
+live crews, and the open pull requests.
 
 ## Read before you type
 
@@ -137,6 +161,9 @@ Do this once, before "Scan".
    by their labels, so you continue its work instead of starting over.
 5. Archive the predecessor's pane only when the human says so, and only
    when it sits inside your scope.
+6. Call `TaskList`, then rebuild your task list from the goals not done,
+   the live crews, and the open pull requests ("Task list"), so no task
+   is created twice.
 
 ## Upkeep
 
@@ -240,6 +267,10 @@ case: it spends the budget and it gets a record.
    spawn_session name="<slug> round <n>" cwd="<worktree>" labels={crew:"<slug>", goal:"<slug>", round:"<n>", task:"<queue-item>", pr:"<N>"}
    ```
 
+   Create its task, subject `<project> / <slug> round <n>: <queue item> ·
+   PR #N`, `activeForm` "Running round <n> of <slug>", status
+   `in_progress` ("Task list").
+
    The shell sits at its prompt. Check whether the world already proved the
    base sha before you run the floor (`LOOP.md`, "The floor"): a green run
    on the base branch's own checks (`gh run list --workflow ci.yml
@@ -291,13 +322,17 @@ case: it spends the budget and it gets a record.
    - commit on the branch and push it after each commit, so the human
      watches the diff on the pull request; never push to the base branch,
      never force-push, never merge; do not commit under `docs/goals/`;
-   - the report: the prompt asks for the three notes of "The crew's notes":
-     the plan first, a blocker if one comes, the done note last; a session
-     that dies at its last step still leaves its evidence. Each `post_note`
+   - the report: the prompt asks for the notes of "Crew notes" by name —
+     `PLAN`, `PROGRESS` after each push, `BLOCKER` if one comes, `DONE`
+     last — each starting `<KIND> <slug> r<n>: <one line>`; a session that
+     dies at its last step still leaves its evidence. Each `post_note`
      stays under 1900 bytes;
+   - start the prompt, and every later message into the pane, with
+     `FOREMAN:`;
    - a session the crew spawns inside the round carries `crew:helper` with
      the round's `goal:` and `round:` labels, and the crew ends it;
-   - when a decision needs a human, ask in the pane and stop.
+   - when a decision needs a human, post a `BLOCKER` note and stop
+     ("Crew notes").
 
    Send the whole prompt in one call, whatever its size; the daemon paces it.
    Then run step 5 of "Read before you type" and confirm the prompt sits
@@ -370,8 +405,9 @@ case: it spends the budget and it gets a record.
    ```
 
    Otherwise record the gap, run "Read before you type", send one
-   correction with `send_input`, and count it inside this round. Go back to
-   step 4. A second failure ends the round as failed; archive the session.
+   correction with `send_input`, starting it with `FOREMAN:`, and count it
+   inside this round. Go back to step 4. A second failure ends the round as
+   failed; archive the session.
 
 7. **Reflect.** Answer one question in the record: what cost time that a
    rule or a check could prevent? Sort what you learned by scope: a
@@ -392,8 +428,11 @@ case: it spends the budget and it gets a record.
    on the goal's branch, in one commit that names the goal and the round.
    Push the branch once the pull request's continuous integration on the
    crew's head sha is green (step 4): write and commit while it runs, and
-   push after. When the goal is done, run `gh pr ready <N>`; the human
-   merges. Then report the digest under "Reports".
+   push after. Mark the round's task `completed` once the record and
+   `STATE.md` are pushed ("Task list"). When the goal is done, run
+   `gh pr ready <N>`; the human merges. Create the goal's `Merge PR #N`
+   task and leave it `in_progress` until the human merges. Then report the
+   digest under "Reports".
 
 ### The model
 
@@ -429,8 +468,12 @@ Act on each event, then run "Scan":
   Name the project, the goal, the round, and link the pane. Do not act. When
   the human gives you an answer, run "Read before you type" and pass it on
   with `send_input`.
-- `note`: relay it. The round record is the durable copy; the event ring
-  drops a note on a daemon restart.
+- `note`: relay its first line word for word ("Crew notes"). The round
+  record is the durable copy; the event ring drops a note on a daemon
+  restart. A `BLOCKER` note, or a new entry under "## Proposals waiting
+  on the human", creates its task, `Answer: <crew blocker>` or
+  `Decide: <proposal>` ("Task list"); mark it `completed` when the human
+  answers or decides.
 - `command.failed`: read `/commands/<index>/output` with `read_output`.
   Report it at once when it is the crew's floor or a command the round
   depends on. Otherwise let the crew handle it; never act for the crew.
@@ -447,7 +490,8 @@ Act on each event, then run "Scan":
 - A merge of a goal's or a chore's pull request: delete its branch with
   `git push origin --delete <branch>`, then remove the worktree with
   `git worktree remove` and the local branch with `git branch -D`. A
-  merged branch left on the remote reads as open work.
+  merged branch left on the remote reads as open work. Mark the goal's
+  `Merge PR #N` task `completed`.
 - `session.lingered`, and on every scan: compare `heldSince` with now.
   Archive a crew session that sits at an empty prompt one hour past
   `completed`. The linger clock holds a session with `claude` in the
@@ -484,6 +528,28 @@ Act on each event, then run "Scan":
 
   Commit every direction edit on the goal's branch.
 
+### Stall
+
+A crew is stalled when it reports `needs-input` or `completed` and has
+posted no `BLOCKER` or `DONE` note since its last turn began, and when no
+`PLAN` note came 15 minutes after you sent the round prompt.
+
+On a stall, in the same scan: call `screen_state` and `read_screen`. An
+API error, a model limit, a cut turn, or a prompt that waits with no
+question: send one `FOREMAN: continue from <the last step the screen or
+the notes show>` (through "Read before you type") and tell the human in
+one line. A question on the screen: treat it as a `BLOCKER`, relay it,
+and create its `Answer:` task ("Task list").
+
+One automatic continue per round. A second stall in the round: report it
+to the human at once and wait for the human's word.
+
+`lastOutputAt` stays fresh while Claude Code redraws an idle prompt, so it
+cannot show a stopped crew, and a crew can stop silently on an account's
+model limit (`facts.md`, "Crew pane"). On 2026-10-11 a crew sat at its
+prompt for 3h 32m after an API drop while the foreman's watcher had
+already reported the stall, with no automatic continue to follow it up.
+
 ## Reports
 
 You report in three cases. The shape is the same in each case: what needs
@@ -514,6 +580,15 @@ with `post_note` in one call, then print it in your pane. Send a push
 notification for an "at once" item when the human is away from the terminal.
 Do not narrate events; report the ones that need the human.
 
+### Report latency
+
+- Relay each crew note's first line as it arrives; a `PROGRESS` line goes
+  to the pane, with no push notification.
+- Before any wait longer than two minutes, say in one line what you wait
+  for.
+- When a wait or a watcher returns, read its result before any other
+  work, and act on a stall or a blocker first.
+
 ### Proactive, not on request
 
 The human does not ask for a catch-up. Bring the result:
@@ -537,19 +612,27 @@ The human does not ask for a catch-up. Bring the result:
 A notification is one line the human acts on; the pane carries the rest.
 Never notify for progress inside a round.
 
-### The crew's notes
+### Crew notes
 
-A crew posts three notes, not one, so you relay a blocker while it is
-still cheap:
+A crew posts notes, not a single report, so you relay a blocker or a plan
+while it is still cheap. Every crew note's first line is `<KIND> <slug>
+r<n>: <one line>` (a chore writes `<KIND> <slug>: <one line>`), and
+`KIND` is one of `PLAN`, `PROGRESS`, `BLOCKER`, or `DONE`:
 
-1. **Plan**, within its first minutes: the files it expects to touch, the
+1. **PLAN**, before the first edit: the files it expects to touch, the
    check it will add, and any assertion it believes is chartered. Read it
    and correct the scope before the work, not after.
-2. **Blocker**, when it needs a decision, a permission, or a fact only the
-   human has. It stops after this note. Relay it at once.
-3. **Done**, under 1900 bytes: the shas, the files, the floor, the
+2. **PROGRESS**, one line after each push: the short sha, what changed,
+   and the floor's state.
+3. **BLOCKER**, when it needs a decision, a permission, or a fact only
+   the human has. This note is the only way a crew asks; it posts the
+   note, then stops. Relay it at once.
+4. **DONE**, last, under 1900 bytes: the shas, the files, the floor, the
    assertions replaced and why, the choices where the design was silent.
+   When it needs more room, split it: `DONE 1/3`, `DONE 2/3`, `DONE 3/3`,
+   each with the same first-line shape.
 
-The prompt asks for all three by name. A crew that posts only the last one
-has still done the round; note the missing plan in the record's
+Relay the first line of every note to the human word for word, as it
+arrives. The prompt asks for all four by name. A crew that posts only
+`DONE` has still done the round; note the missing `PLAN` in the record's
 reflection, because the plan is what catches a wrong charter early.

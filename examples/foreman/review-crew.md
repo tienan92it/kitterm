@@ -59,7 +59,9 @@ Do this before every `send_input` into a pane that runs an interactive agent.
    `spawn_session name="review-<dimension>" labels={crew:"review", task:"<dimension>"} input="claude\n"`
    Run "Read before you type", then `send_input` the review prompt: the diff
    to read, the one dimension to judge, and the instruction to post its
-   findings with a note.
+   findings with a note whose first line is `REVIEW <slug> r<n>: <blockers>
+   blockers, <should-fix> should-fix, <nits> nits` (a chore: `REVIEW
+   <slug>: ...`).
 
 3. Wait for the crew with `wait_for_events since=<cursor> epoch=<epoch>`. Each
    session posts its findings as a `note` and then reports `completed`. A

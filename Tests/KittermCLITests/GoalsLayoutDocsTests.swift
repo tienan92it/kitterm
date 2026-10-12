@@ -174,11 +174,12 @@ final class GoalsLayoutDocsTests: XCTestCase {
     /// below are checked against the skill too.
     static let skillRules: [(rule: String, sentence: String)] = [
         (
-            "the crew posts a plan, a blocker and a done note",
+            "the crew posts a plan, a progress note, a blocker and a done note",
             """
-            The prompt asks for the three notes of "The crew's notes": the plan
-            first, a blocker if one comes, the done note last; a session that dies
-            at its last step still leaves its evidence.
+            the prompt asks for the notes of "Crew notes" by name —
+            `PLAN`, `PROGRESS` after each push, `BLOCKER` if one comes, `DONE`
+            last — each starting `<KIND> <slug> r<n>: <one line>`; a session that
+            dies at its last step still leaves its evidence.
             """
         ),
         (

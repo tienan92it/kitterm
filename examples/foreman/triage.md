@@ -65,8 +65,9 @@ Do this before every `send_input` into a pane that runs an interactive agent.
    candidate causes, test the most likely first, and confirm which one the
    evidence supports.
 
-5. Post the finding with `post_note`: the reproduction steps, the confirmed
-   root cause, and the file and line. Then report it to the user.
+5. Post the finding with `post_note`, its first line `TRIAGE <slug>:
+   <reproduced|not reproduced>: <one line>`: the reproduction steps, the
+   confirmed root cause, and the file and line. Then report it to the user.
 
 6. Stop. Do not fix the bug. Ask the user whether to fix it, and wait.
 
