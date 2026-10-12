@@ -1,0 +1,1 @@
+- 2026-10-12 · Every foreman keeps a task list, crew notes start with a fixed first line, and a stalled crew gets one nudge · PR #N · Cost: pending
