@@ -563,7 +563,7 @@ enum ForemanSkills {
         ### Stall
 
         A crew is stalled when it reports `needs-input` or `completed` and has
-        posted no `BLOCKER` or `DONE` note since its last turn began, and when no
+        posted no `BLOCKER` or `DONE` note since its last turn began, or when no
         `PLAN` note came 15 minutes after you sent the round prompt.
 
         On a stall, in the same scan: call `screen_state` and `read_screen`. An
