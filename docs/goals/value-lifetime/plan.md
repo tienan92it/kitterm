@@ -29,3 +29,10 @@ frozen (see `LOOP.md`).
 
 Capability 2 does not depend on the design and runs while the human
 reviews round 1. Capability 3 depends on 2; capability 4 on 1 and 3.
+
+## Third budget (2026-10-11, the human's word, `corpus/05-legend-and-range.md`)
+
+| # | Capability | Proof |
+|---|---|---|
+| 5 | **The legend and the range.** A labels-only legend row above each chart replaces the line-end labels; TOTALS and UNIT COSTS follow the range toggle by the rules of `corpus/05-legend-and-range.md`, recomputed from the lifetime read with no new request; the note shows only for a range that reaches before the base day; `design/dashboard.pen` redrawn headless. | Vitests pinning the 7d and 30d numbers of the corpus file; screenshots at each range; the pen proof. |
+| 6 | **The `all` range.** The toggle gains `all`, kept with the others in `localStorage`, and every panel that follows the range (the band's spend, USAGE, MODELS, VALUE, WHERE, LEAKS, the tree's costs) reads the whole record from the first spend day, within the routes' 400-day bound. | Vitests per panel at `all`; the range tests extended. |

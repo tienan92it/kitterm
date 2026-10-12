@@ -1,10 +1,10 @@
 # STATE: value-lifetime
 
 - Status: done
-- Round: 3 of 3 in this budget (second budget)
-- Rounds total: 6
-- Last floor: green (2026-10-10, round 6 after: vitest 1732, PR CI on f3d2751)
-- Updated: 2026-10-10, the chart polish is done; PR #189 is ready
+- Round: 2 of 3 in this budget (third budget)
+- Rounds total: 8
+- Last floor: green (2026-10-11, round 8 after: vitest 1773, swift test 1192, PR CI on 694d806)
+- Updated: 2026-10-12, round 8 done; the goal waits for the human's merge of PR #190
 
 ## Queue
 
@@ -21,6 +21,10 @@ at least 25% of the median daily spend).
 
 ## Done
 
+- `all-range`, round 8, PR #190. See `rounds/008.md`. The range
+  toggle gains `all`, and every figure follows it.
+- `legend-and-range`, round 7, PR #190. See `rounds/007.md`. A legend
+  row, charts that follow the range, and UNIT COSTS on a log axis.
 - `chart-polish`, round 6, PR #189. See `rounds/006.md`. The titles get
   room, and the tooltip fits, stays in its chart and shows real values.
 - `lifetime-chart`, round 5, PR #188. See `rounds/005.md`. TOTALS and
@@ -36,4 +40,4 @@ at least 25% of the median daily spend).
 
 ## Next action
 
-The human merges PR #189; the foreman releases and upgrades.
+The human merges PR #190. Then the foreman releases and upgrades.

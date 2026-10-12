@@ -14,6 +14,7 @@
 
 import {
   countdown,
+  dayLabel,
   dollars,
   projectUsage,
   roundsInRange,
@@ -128,7 +129,7 @@ export function usageHead(report: UsageDaily | null | undefined, choice: UsageCh
   return {
     amount: choice.mode === "cost" ? cost : tokens.replace(/ tokens$/, ""),
     facts,
-    span: `${choice.span} days`,
+    span: choice.span === "all" ? "all" : `${choice.span} days`,
     title: choice.mode === "cost" ? "if billed at full API rate" : "tokens, every kind, input and output and cache",
   };
 }
@@ -251,7 +252,8 @@ export function valuePanel(report: UsageDaily | null | undefined, yieldReport: Y
     // note names the command that gives them one.
     return { tiles, note: VALUE_REGISTER_NOTE, shortNote: VALUE_REGISTER_NOTE, command: VALUE_REGISTER_COMMAND };
   }
-  const shortNote = [scope.label, `${span} days`].filter((part): part is string => part !== null).join(", ");
+  const spanWord = span === "all" ? `since ${dayLabel(report.from)}` : `${span} days`;
+  const shortNote = [scope.label, spanWord].filter((part): part is string => part !== null).join(", ");
   return { tiles, note: `${shortNote}. ${VALUE_NOTE}`, shortNote };
 }
 

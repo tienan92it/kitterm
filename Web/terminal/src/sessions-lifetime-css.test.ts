@@ -72,13 +72,27 @@ describe("a .mark.data-N rule paints each token as a background, clipped to the 
 
 const TOKENS = rootVariables(readSource("tokens.css"));
 
-describe("a .lifetime-label widens past the mark's own 16px glyph column", () => {
-  it("overrides .mark's width to fit a multiple or a dollar value and its measure word", () => {
-    // `.mark { width: 16px }` fits one glyph; a label without this override
-    // renders its text at a 16px clip and reads as its first character or
-    // two (measured against a live scratch daemon, round 5).
-    const rule = RULES.find((r) => r.selector === ".lifetime-label" && r.decls.has("width"));
-    expect(rule?.decls.get("width")).toBe("auto");
+describe("no stylesheet rule claims to size .lifetime-legend-swatch (corpus/05-legend-and-range.md)", () => {
+  it("leaves its width to the inline style script sets, since .mark.bar's own width: 0 outranks one class", () => {
+    // A single-class selector cannot outrank `.mark.bar`'s two classes, the
+    // same reason the tooltip's own swatch sets its 8px inline rather than
+    // in the stylesheet (`sessions-lifetime-page.test.ts` pins the inline
+    // value on both swatches).
+    const rule = RULES.find((r) => r.selector === ".lifetime-legend-swatch" && r.decls.has("width"));
+    expect(rule).toBeUndefined();
+  });
+});
+
+describe("the chart block keeps a right inset, mirroring the tick column on the left (round 8)", () => {
+  it("gives .lifetime-chart-block a padding-right of --lifetime-tick-col, so the axis end date never sits flush against the panel's edge", () => {
+    // Round 7 widened the plot to fill the whole panel once the end-label
+    // column went away; with no right inset the axis's own end date (e.g.
+    // `11 Oct`) sat exactly on the panel's right edge and read as cut off.
+    // A real-browser check on a scratch daemon confirms the fix: the text
+    // now ends 28px (24px at 390) inside the panel, the fake DOM here has
+    // no layout engine to pin that measurement itself.
+    const rule = RULES.find((r) => r.selector === ".lifetime-chart-block" && r.decls.has("padding-right"));
+    expect(rule?.decls.get("padding-right")).toBe("var(--lifetime-tick-col)");
   });
 });
 

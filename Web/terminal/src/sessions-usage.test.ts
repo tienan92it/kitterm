@@ -113,7 +113,10 @@ describe("the usage panel", () => {
     expect(panel.peak).toEqual({ day: "2026-09-11", value: 99.95 });
     expect(panel.empty).toBe(false);
     expect(panel.modes.map((t) => [t.label, t.checked])).toEqual([["cost", true], ["tokens", false]]);
-    expect(panel.spans.map((t) => [t.label, t.checked])).toEqual([["7d", false], ["30d", true], ["90d", false]]);
+    // Chartered by `plan.md` capability 6 (`corpus/05-legend-and-range.md`,
+    // rule 2): the range toggle gains `all`. Old: [["7d", false],
+    // ["30d", true], ["90d", false]].
+    expect(panel.spans.map((t) => [t.label, t.checked])).toEqual([["7d", false], ["30d", true], ["90d", false], ["all", false]]);
   });
 
   it("says plainly what part is apportioned across midnight and how many sessions have no bill", () => {

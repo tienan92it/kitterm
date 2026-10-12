@@ -3,30 +3,37 @@ import { readFileSync } from "node:fs";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { type FakeElement, installFakePage, type FakePage } from "./fake-page";
-import { dayLabel } from "./sessions-model";
+import { dayLabel, usageRange, USAGE_DEFAULT } from "./sessions-model";
 import { LIFETIME_EMPTY_LINE, LIFETIME_NOTE } from "./sessions-value";
 import {
   logPosition,
-  multipleLabel,
   totalsAxisTicks,
   totalsRealLine,
   totalsSeries,
   totalsTooltipRows,
   unitCostAxisTicks,
-  unitCostLabel,
   unitCostsSeries,
   unitCostsTooltipRows,
+  unitCostTickLabel,
 } from "./value-lifetime";
 
 /**
  * The two lifetime charts drawn under VALUE's tiles (`value-lifetime`,
- * capability 4): the SVG geometry against the series the same pure
- * functions compute, the end labels, the tooltip on keyboard focus, and
- * the empty state. `sessions-lifetime-fetch.test.ts` and
- * `sessions-lifetime-watch.test.ts` cover the poll cadence and the grade.
+ * capability 4; the legend and the range, capability 5): the SVG geometry
+ * against the series the same pure functions compute, the legend, the
+ * tooltip on keyboard focus, and the empty state.
+ * `sessions-lifetime-fetch.test.ts` and `sessions-lifetime-watch.test.ts`
+ * cover the poll cadence and the grade; `sessions-lifetime-range.test.ts`
+ * pins the corpus's own 7d/30d/90d numbers against the real series.
  */
 
-const NOW = new Date(2026, 9, 10, 12, 0, 0).getTime();
+// The default `USAGE`/`VALUE` toggle is 30d (`USAGE_DEFAULT`); its own
+// first day, 29 days back from `NOW`, must sit before the fixture's base
+// day (2026-09-01) so the range clamps to it, the same reading as the
+// unranged lifetime series this file's own `totals`/`unitCosts` below
+// compute `totalsSeries`/`unitCostsSeries` with no `rangeFrom` at all.
+const NOW = new Date(2026, 8, 10, 12, 0, 0).getTime();
+const RANGE_FROM = usageRange(USAGE_DEFAULT.span, NOW).from;
 
 const kitterm = { id: "kitterm", name: "kitterm", root: "/w/kitterm", registered: true, knowledge: "docs/goals" };
 
@@ -92,19 +99,20 @@ const withoutSlot = (rows: ReadonlyArray<{ label: string; value: string }>): Arr
 
 const CSS_SOURCE = readFileSync(new URL("./sessions.css", import.meta.url), "utf8");
 
-// Expectations from the same pure module the page imports.
+// Expectations from the same pure module the page imports, over the same
+// `rangeFrom` the page's default 30d toggle computes.
 const usageDays = fixture.usage as Array<{ day: string; costUSD: number; measuredUSD?: number; apiMs?: number }>;
 const yieldDays = fixture.yield as Array<{ day: string; mergedPullRequests?: number; mergedLines?: number; releases?: number }>;
-const totals = totalsSeries(usageDays, yieldDays);
-const unitCosts = unitCostsSeries(usageDays, yieldDays);
+const totals = totalsSeries(usageDays, yieldDays, RANGE_FROM);
+const unitCosts = unitCostsSeries(usageDays, yieldDays, RANGE_FROM);
 const lastTotals = totals.points[totals.points.length - 1];
 const lastUnitCosts = unitCosts.points[unitCosts.points.length - 1];
 
 describe("TOTALS", () => {
-  it("prints the title with the base day and draws one tick per totalsAxisTicks value", () => {
+  it("prints the title with the start day and draws one tick per totalsAxisTicks value", () => {
     const title = totalsBlock().querySelector(".lifetime-title")!;
     expect(title.querySelector(".lifetime-title-word")?.textContent).toBe("TOTALS");
-    expect(title.textContent).toContain(`growth since ${totals.baseDay === "2026-09-01" ? "1 Sep" : totals.baseDay}, log scale`);
+    expect(title.textContent).toContain(`growth since ${totals.startDay === "2026-09-01" ? "1 Sep" : totals.startDay}, log scale`);
     const maxMultiple = Math.max(1, ...totals.points.flatMap((p) => [p.multiple.spend, p.multiple.prs, p.multiple.lines, p.multiple.releases].map((v) => v ?? 1)));
     const ticks = totalsAxisTicks(maxMultiple);
     expect(totalsBlock().querySelectorAll(".lifetime-tick")).toHaveLength(ticks.length);
@@ -127,18 +135,22 @@ describe("TOTALS", () => {
     });
   });
 
-  it("labels each line with its multiple and its measure word, in the data palette's colour", () => {
-    const labels = totalsBlock().querySelectorAll(".lifetime-label");
-    expect(labels).toHaveLength(4);
-    expect(labels.map((l) => l.className)).toEqual([
-      "lifetime-label mark data-1", "lifetime-label mark data-2", "lifetime-label mark data-3", "lifetime-label mark data-4",
+  it("carries a legend row above the plot, under the title: a swatch and the measure's name, no value (corpus/05-legend-and-range.md)", () => {
+    const legend = totalsBlock().querySelector(".lifetime-legend")!;
+    expect(legend.getAttribute("aria-hidden")).toBe("true");
+    const items = legend.querySelectorAll(".lifetime-legend-item");
+    expect(items).toHaveLength(4);
+    expect(items.map((i) => i.querySelector(".lifetime-legend-swatch")?.className)).toEqual([
+      "mark bar lifetime-legend-swatch data-1", "mark bar lifetime-legend-swatch data-2", "mark bar lifetime-legend-swatch data-3", "mark bar lifetime-legend-swatch data-4",
     ]);
-    expect(labels.map((l) => l.textContent)).toEqual([
-      `${multipleLabel(lastTotals.multiple.spend!)} spend`,
-      `${multipleLabel(lastTotals.multiple.prs!)} PRs`,
-      `${multipleLabel(lastTotals.multiple.lines!)} lines`,
-      `${multipleLabel(lastTotals.multiple.releases!)} releases`,
-    ]);
+    expect(items.map((i) => i.querySelector(".lifetime-legend-label")?.textContent)).toEqual(["spend", "PRs", "lines", "releases"]);
+    // No value anywhere in the row — the human's word was "labels only".
+    expect(legend.textContent).not.toMatch(/[×$0-9]/);
+    // `.mark.bar`'s own `width: 0` outranks any single class in the
+    // stylesheet, so the swatch's 8px square is set inline, like the
+    // tooltip's own swatch (`sessions-lifetime-css.test.ts` pins the
+    // stylesheet carries no such rule).
+    expect((items[0].querySelector(".lifetime-legend-swatch") as FakeElement).style.width).toBe("8px");
   });
 
   it("names the axis ends with the first and the last day", () => {
@@ -209,12 +221,13 @@ describe("TOTALS", () => {
 });
 
 describe("UNIT COSTS", () => {
-  it("prints the title with the first spend day and draws one tick per unitCostAxisTicks value", () => {
+  it("prints the title with the start day, log scale, and draws one tick per unitCostAxisTicks value", () => {
     const title = unitCostsBlock().querySelector(".lifetime-title")!;
     expect(title.querySelector(".lifetime-title-word")?.textContent).toBe("UNIT COSTS");
-    const maxValue = Math.max(0, ...unitCosts.points.flatMap((p) => [p.perPR, p.perKLines, p.perRelease, p.perHour].map((v) => v ?? 0)));
-    const ticks = unitCostAxisTicks(maxValue);
-    expect(unitCostsBlock().querySelectorAll(".lifetime-tick").map((t) => t.textContent)).toEqual(ticks.map((t) => `${t}`));
+    expect(title.textContent).toContain(`dollars, log scale, since ${unitCosts.startDay === "2026-09-01" ? "1 Sep" : unitCosts.startDay}`);
+    const drawn = unitCosts.points.flatMap((p) => [p.perPR, p.perKLines, p.perRelease, p.perHour]).filter((v): v is number => v !== null);
+    const ticks = unitCostAxisTicks(Math.min(...drawn), Math.max(0, ...drawn));
+    expect(unitCostsBlock().querySelectorAll(".lifetime-tick").map((t) => t.textContent)).toEqual(ticks.map(unitCostTickLabel));
   });
 
   it("draws one path per measure in $/hour, $/PR, $/1k lines, $/release order", () => {
@@ -222,14 +235,14 @@ describe("UNIT COSTS", () => {
     expect(svg.querySelectorAll("path").map((p) => p.getAttribute("class"))).toEqual(["lifetime-line data-1", "lifetime-line data-2", "lifetime-line data-3", "lifetime-line data-4"]);
   });
 
-  it("labels each line with its word and its dollar value", () => {
-    const labels = unitCostsBlock().querySelectorAll(".lifetime-label");
-    expect(labels.map((l) => l.textContent)).toEqual([
-      `$/hour  ${unitCostLabel(lastUnitCosts.perHour!)}`,
-      `$/PR  ${unitCostLabel(lastUnitCosts.perPR!)}`,
-      `$/1k lines  ${unitCostLabel(lastUnitCosts.perKLines!)}`,
-      `$/release  ${unitCostLabel(lastUnitCosts.perRelease!)}`,
+  it("carries a legend row above the plot, under the title: a swatch and the measure's word, no value (corpus/05-legend-and-range.md)", () => {
+    const legend = unitCostsBlock().querySelector(".lifetime-legend")!;
+    const items = legend.querySelectorAll(".lifetime-legend-item");
+    expect(items.map((i) => i.querySelector(".lifetime-legend-swatch")?.className)).toEqual([
+      "mark bar lifetime-legend-swatch data-1", "mark bar lifetime-legend-swatch data-2", "mark bar lifetime-legend-swatch data-3", "mark bar lifetime-legend-swatch data-4",
     ]);
+    expect(items.map((i) => i.querySelector(".lifetime-legend-label")?.textContent)).toEqual(["$/hour", "$/PR", "$/1k lines", "$/release"]);
+    expect(legend.textContent).not.toMatch(/\$\d/);
   });
 
   it("shows the last day's tooltip on focus — a header with the plain day, then one row per measure, in the corpus's $/PR, $/1k lines, $/release, $/hour order", () => {
@@ -302,46 +315,34 @@ describe("the tooltip box", () => {
 });
 
 describe("the space scale", () => {
-  it("gives one more step between a chart's title and its plot (corpus/04-chart-polish.md)", () => {
-    // The gap sits on .lifetime-chart-body, the title's next sibling, not
-    // on .lifetime-plot (now nested inside it, beside the axis).
-    const rule = /\.lifetime-chart-body\s*\{[^}]*margin:\s*var\(--space-(\d)\)/.exec(CSS_SOURCE);
+  it("gives one more step between a chart's title and its legend (corpus/04-chart-polish.md)", () => {
+    // The gap sits on .lifetime-legend, the title's next sibling now that
+    // the legend, not the plot, follows it directly
+    // (`corpus/05-legend-and-range.md`).
+    const rule = /\.lifetime-legend\s*\{[^}]*margin:\s*var\(--space-(\d)\)/.exec(CSS_SOURCE);
     expect(rule?.[1]).toBe("2");
   });
 });
 
 describe("the plot, the axis and the legend", () => {
-  it("puts the axis directly under the plot, before the legend, in document order at every width (follow-up to chart-polish)", () => {
+  it("puts the legend directly under the title, then the plot, then the axis, in document order at every width (corpus/05-legend-and-range.md)", () => {
     for (const block of [totalsBlock(), unitCostsBlock()]) {
-      const body = block.querySelector(".lifetime-chart-body")! as FakeElement;
-      const main = body.querySelector(".lifetime-chart-main")! as FakeElement;
-      const plot = main.querySelector(".lifetime-plot")!;
-      const axisEl = main.querySelector(".lifetime-axis")!;
-      const labels = body.querySelector(".lifetime-labels")!;
-      // The plot and the axis share .lifetime-chart-main, ahead of the
-      // legend, which sits in .lifetime-chart-body beside it: collapsing
-      // that body to one column on a narrow screen is what stacks the
-      // legend under the axis, never ahead of it.
-      expect(main.children[0]).toBe(plot);
-      expect(main.children[1]).toBe(axisEl);
-      expect(body.children[0]).toBe(main);
-      expect(body.children[1]).toBe(labels);
+      const title = block.querySelector(".lifetime-title")!;
+      const legend = block.querySelector(".lifetime-legend")!;
+      const plot = block.querySelector(".lifetime-plot")!;
+      const axisEl = block.querySelector(".lifetime-axis")!;
+      expect(block.children).toEqual([title, legend, plot, axisEl]);
     }
   });
 
-  it("collapses the legend into the plot and axis's own single column on a narrow screen, in the CSS too, so stacking never puts it ahead of the axis", () => {
-    // The override drops the label column, so the body's one column holds
-    // .lifetime-chart-main (plot, then axis) followed by .lifetime-labels,
-    // in that document order, both inside a `@media (max-width: 767px)`
-    // block and nowhere else.
-    const override = ".lifetime-chart-body { grid-template-columns: minmax(0, 1fr); }";
-    const idx = CSS_SOURCE.indexOf(override);
-    expect(idx).toBeGreaterThan(-1);
-    expect(CSS_SOURCE.indexOf(override, idx + 1)).toBe(-1);
-    const mediaStart = CSS_SOURCE.lastIndexOf("@media (max-width: 767px)", idx);
-    expect(mediaStart).toBeGreaterThan(-1);
-    const mediaEnd = CSS_SOURCE.indexOf("\n}\n", mediaStart);
-    expect(idx).toBeLessThan(mediaEnd);
+  it("wraps the legend through its own flex-wrap, unconditionally, so a narrow screen wraps it with no media query", () => {
+    const rule = /\.lifetime-legend\s*\{[^}]*\}/.exec(CSS_SOURCE)?.[0] ?? "";
+    expect(rule).toContain("flex-wrap: wrap");
+    // Not inside any `@media` block: the row wraps whenever the chart is
+    // narrow, phone or not, never only below a fixed breakpoint.
+    const mediaStart = CSS_SOURCE.lastIndexOf("@media", CSS_SOURCE.indexOf(rule));
+    const mediaEnd = mediaStart === -1 ? -1 : CSS_SOURCE.indexOf("\n}\n", mediaStart);
+    expect(mediaEnd === -1 || mediaEnd < CSS_SOURCE.indexOf(rule)).toBe(true);
   });
 });
 
