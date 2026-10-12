@@ -148,6 +148,12 @@ decision moves to `docs/adr/`.
 
 ## Crew pane
 
+- A Sonnet 5 crew ended its turn to wait for PR CI in a background
+  shell and posted no `DONE` note; the turn stayed at an empty prompt
+  until the foreman's `FOREMAN: continue`. Ask a crew to wait for
+  `gh pr checks <N> --watch` in the foreground, then post `DONE`
+  (2026-10-12, chore `foreman-protocol`).
+
 - Post a finding in a note **before** the last step, not with it. On
   2026-09-17 a crew lost its whole turn to `API Error: Can't reach the
   API server (ENOTFOUND)` after ten retries over 83 minutes, with
