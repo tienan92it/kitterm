@@ -1,14 +1,14 @@
 # STATE: value-lifetime
 
-- Status: active
-- Round: 1 of 3 in this budget (third budget)
-- Rounds total: 7
-- Last floor: green (2026-10-11, round 7 after: vitest 1754, PR CI on 341e98f)
-- Updated: 2026-10-11, a third budget on the human's word: the legend, the range, and `all`
+- Status: done
+- Round: 2 of 3 in this budget (third budget)
+- Rounds total: 8
+- Last floor: green (2026-10-11, round 8 after: vitest 1773, swift test 1192, PR CI on 694d806)
+- Updated: 2026-10-12, round 8 done; the goal waits for the human's merge of PR #190
 
 ## Queue
 
-1. `all-range` (capability 6), PR #190.
+None.
 
 ## Failures
 
@@ -21,6 +21,8 @@ at least 25% of the median daily spend).
 
 ## Done
 
+- `all-range`, round 8, PR #190. See `rounds/008.md`. The range
+  toggle gains `all`, and every figure follows it.
 - `legend-and-range`, round 7, PR #190. See `rounds/007.md`. A legend
   row, charts that follow the range, and UNIT COSTS on a log axis.
 - `chart-polish`, round 6, PR #189. See `rounds/006.md`. The titles get
@@ -38,4 +40,4 @@ at least 25% of the median daily spend).
 
 ## Next action
 
-Round 8: `all-range` from `plan.md` capability 6.
+The human merges PR #190. Then the foreman releases and upgrades.
