@@ -35,8 +35,23 @@ The rules the draft fixes:
    project's root lies under the user's home directory. Every other
    server folds, whatever project its cwd resolves to.
 
-Still open for the Pen round: the mark (the draft borrowed `◐`, the
-`[build]` mark, at rest), the phone layout, and the empty sentence.
+## The approved frames
 
-The frames in `design/sessions.pen` that carry this design, and their
-commit, are added here once the human approves them.
+2026-10-13, the human approved the SERVERS frames of
+`design/sessions.pen` at commit 852dddb (`rounds/002.md`):
+`Sessions 1200`, `Sessions 390` and the `Servers` part of
+`Sessions components`, with rules 10 to 12 of its `Rules` part, and
+the exports in `design/exports/` at that commit. The same answer
+approved:
+
+5. **The mark** `●` in `--ui-accent` on every server line, listed or
+   folded: a listening server is alive and is no stage. Round 3 adds
+   the row `listening | ● accent | a server row | GET /api/servers` to
+   the state table of `design/foundation.md` and `●` to the SESSIONS
+   legend sentence there, on this word.
+6. **The empty sentence** `No server is listening.`, in the content
+   cell, the shape of `No pull request is ready for review.`
+7. **The link** is underlined on the page, by the foundation's rule
+   for a link, though a saved `.pen` file drops the underline.
+8. **The phone** cuts a long `<project> / <program>` with an ellipsis;
+   the frame writes the cut names as text because Pen has none.

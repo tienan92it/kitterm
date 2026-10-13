@@ -4,7 +4,7 @@
 - Round: 2 of 3 in this budget (first budget)
 - Rounds total: 2
 - Last floor: green (2026-10-13, round 2 after: PR CI on 852dddb)
-- Updated: 2026-10-13, round 2 done; the frames wait on the human
+- Updated: 2026-10-13, the human approved the frames
 
 ## Queue
 
@@ -17,9 +17,8 @@ None.
 
 ## Proposals waiting on the human
 
-- Approve the SERVERS frames of `design/sessions.pen` at 852dddb
-  (`rounds/002.md`), and the row `listening | ● accent | a server
-  row` for `design/foundation.md`.
+None. 2026-10-13: the human approved the frames at 852dddb and the
+`●` mark (`corpus/01-approved-design.md`).
 
 ## Done
 
@@ -32,5 +31,5 @@ None.
 ## Next action
 
 Round 3: `servers-section` from `plan.md` row 3, once the human
-approves the frames: the page draws SERVERS as the frames show, and a
+approved the frames: the page draws SERVERS as the frames show, and a
 probe timeout counts as unknown and is asked again.
