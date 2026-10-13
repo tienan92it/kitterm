@@ -91,7 +91,14 @@ final class ServersEnvironmentRouteTests: XCTestCase {
         cc.standardError = errors
         cc.standardOutput = FileHandle.nullDevice
         try cc.run()
-        cc.waitUntilExit()
+        // A deadline, as every test wait has (`ProcessWaitTests`); this one
+        // runs in the class setUp, where the instance helper is not at hand.
+        let deadline = Date().addingTimeInterval(120)
+        while cc.isRunning, Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
+        guard !cc.isRunning else {
+            cc.terminate()
+            throw NotBuilt(reason: "cc did not exit within 120 s")
+        }
         guard cc.terminationStatus == 0 else {
             let text = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
             throw NotBuilt(reason: "cc exited \(cc.terminationStatus): \(text.split(separator: "\n").first ?? "")")
