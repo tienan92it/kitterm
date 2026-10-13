@@ -10,6 +10,16 @@ decision moves to `docs/adr/`.
 
 ## Toolchain
 
+- On the Linux toolchain `DispatchQueue.concurrentPerform` takes a
+  `@Sendable` closure; macOS accepts an `inout` or pointer capture
+  there and `linux-build` does not. Hand the jobs in as a constant and
+  collect the answers in a `NIOLockedValueBox` (2026-10-13,
+  `running-servers` round 1).
+- `ProcessTable.read` (libproc, every pid's fds) takes 2.3 to 2.8 ms
+  for 476 processes and 35 listeners on this Mac; the 0.5 s HTTP probe
+  is what bounds a read with new listeners (514 ms) (2026-10-13,
+  `running-servers` round 1).
+
 - The Linux docker pipe tars `git ls-files`, so a file that is not in
   the index is absent in the container, with no error: `git add` a new
   file before the run. With `--build-tests` the pipe takes about 90 s
@@ -147,6 +157,11 @@ decision moves to `docs/adr/`.
   event `epoch`; verified again on 2026-09-08 with v0.23.0. (2026-09-07)
 
 ## Crew pane
+
+- A background `nc -k -l … &` in a test pane reads the tty, gets
+  `SIGTTIN` and stops, and a stopped process acts on no `SIGTERM`: two
+  `nc` leaked on the first run. Give such a listener `</dev/null` and
+  `SIGKILL` it in `tearDown` (2026-10-13, `running-servers` round 1).
 
 - A Sonnet 5 crew ended its turn to wait for PR CI in a background
   shell and posted no `DONE` note; the turn stayed at an empty prompt
