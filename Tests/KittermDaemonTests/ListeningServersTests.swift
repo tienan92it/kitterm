@@ -165,10 +165,15 @@ final class ListeningServersTests: XCTestCase {
         var all: [String] { lock.withLock { calls.sorted() } }
     }
 
-    func testTheProbeAsksLoopbackOncePerPidAndPortAndAsksANegativeAgainAfterAMinute() {
+    /// postgres (5432) started 10 s ago and redis (6379) an hour ago; both
+    /// answer no HTTP.
+    func testANegativeVerdictIsAskedAgainAfterAMinuteWhileTheProcessIsYoungAndNeverAfter() {
         let probes = Probes()
         let clock = TestClock()
-        let table = table()
+        var mutable = table()
+        mutable.processes[200]?.startedAt = clock.now.addingTimeInterval(-10)
+        mutable.processes[500]?.startedAt = clock.now.addingTimeInterval(-3600)
+        let table = mutable
         let cache = ListeningServers(
             excludedPids: [50], readTable: { (table, nil) }, probe: { probes.record($0, $1) },
             resolveProject: { _ in nil }, refreshSeconds: 0, clock: { clock.now })
@@ -193,7 +198,30 @@ final class ListeningServersTests: XCTestCase {
         clock.advance(ListeningServers.reprobeSeconds)
         XCTAssertTrue(cache.refreshIfDue(links: [paneA, paneB]))
         ListeningServers.queue.sync {}
-        XCTAssertEqual(probes.all.count, 6, "the two negatives are asked again, the positives are kept")
+        XCTAssertEqual(probes.all.count, 5, "the young negative is asked again; the old one and the positives are kept")
+        XCTAssertEqual(probes.all.filter { $0 == "127.0.0.1:5432" }.count, 2)
+        XCTAssertEqual(probes.all.filter { $0 == "127.0.0.1:6379" }.count, 1)
+
+        clock.advance(ListeningServers.youngProcessSeconds)
+        XCTAssertTrue(cache.refreshIfDue(links: [paneA, paneB]))
+        ListeningServers.queue.sync {}
+        XCTAssertEqual(probes.all.count, 5, "past five minutes the negative is final while the pid and port are listed")
+        XCTAssertEqual(cache.snapshot().servers.map(\.http), [true, true, nil, false, false])
+    }
+
+    func testANegativeVerdictOfAProcessWithNoStartTimeIsFinal() {
+        let probes = Probes()
+        let clock = TestClock()
+        let cache = ListeningServers(
+            excludedPids: [50], readTable: { [table = self.table()] in (table, nil) },
+            probe: { probes.record($0, $1) }, resolveProject: { _ in nil }, refreshSeconds: 0,
+            clock: { clock.now })
+        cache.refreshIfDue(links: [])
+        ListeningServers.queue.sync {}
+        clock.advance(ListeningServers.reprobeSeconds + 1)
+        cache.refreshIfDue(links: [])
+        ListeningServers.queue.sync {}
+        XCTAssertEqual(probes.all.count, 4, "6379 has no start time and is not asked again")
     }
 
     func testTheRefreshBoundHolds() {

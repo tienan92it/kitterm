@@ -18,12 +18,18 @@ import NIOConcurrencyHelpers
 /// shell, else by its parent chain to a session's shell pid, else it is
 /// outside kitterm with the top launcher below launchd. The probe's verdict
 /// is cached per pid and port: a server that answers HTTP keeps the verdict
-/// while it is listed, a server that does not is asked again after
-/// `reprobeSeconds`, because a server still starting accepts before it
-/// answers.
+/// while it is listed; a server that does not is asked again after
+/// `reprobeSeconds` only while its process is younger than
+/// `youngProcessSeconds`, because a server still starting accepts before it
+/// answers, and after that the verdict is final while the pid and port are
+/// listed, because a postgres or a redis asked every minute writes a
+/// protocol error to its own log for each request.
 public final class ListeningServers: @unchecked Sendable {
     public static let refreshSeconds: TimeInterval = 3
     public static let reprobeSeconds: TimeInterval = 60
+    /// How long after its start a process that did not answer HTTP is
+    /// asked again; a process with no start time is never asked again.
+    public static let youngProcessSeconds: TimeInterval = 300
     /// The most parents walked from a server to a session's shell or to
     /// launchd.
     public static let maxChain = 32
@@ -203,23 +209,30 @@ public final class ListeningServers: @unchecked Sendable {
         for (index, server) in servers.enumerated() {
             guard let host = server.addresses.lazy.compactMap(HTTPProbe.loopbackTarget(for:)).first else { continue }
             let key = ProbeKey(pid: server.pid, port: server.port)
-            if let probe = known[key], probe.answers || now.timeIntervalSince(probe.at) < Self.reprobeSeconds {
-                servers[index].http = probe.answers
-                kept[key] = probe
-            } else {
-                pending.append(Pending(index: index, key: key, host: host))
-            }
-        }
-        var verdicts = [Bool](repeating: false, count: pending.count)
-        if !pending.isEmpty {
-            let probe = self.probe
-            verdicts.withUnsafeMutableBufferPointer { buffer in
-                let base = buffer.baseAddress!
-                DispatchQueue.concurrentPerform(iterations: pending.count) { i in
-                    base[i] = probe(pending[i].host, servers[pending[i].index].port)
+            if let probe = known[key] {
+                let young = server.startedAt.map { now.timeIntervalSince($0) < Self.youngProcessSeconds } ?? false
+                let final = probe.answers || !young || now.timeIntervalSince(probe.at) < Self.reprobeSeconds
+                if final {
+                    servers[index].http = probe.answers
+                    kept[key] = probe
+                    continue
                 }
             }
+            pending.append(Pending(index: index, key: key, host: host))
         }
+        // The probes of one read run together, so a read with several new
+        // listeners ends within one timeout. The jobs are a constant and the
+        // answers land in a locked box: the closure is `@Sendable`.
+        let jobs: [(host: String, port: Int)] = pending.map { ($0.host, servers[$0.index].port) }
+        let answers = NIOLockedValueBox([Bool](repeating: false, count: jobs.count))
+        if !jobs.isEmpty {
+            let probe = self.probe
+            DispatchQueue.concurrentPerform(iterations: jobs.count) { i in
+                let answer = probe(jobs[i].host, jobs[i].port)
+                answers.withLockedValue { $0[i] = answer }
+            }
+        }
+        let verdicts = answers.withLockedValue { $0 }
         for (i, item) in pending.enumerated() {
             servers[item.index].http = verdicts[i]
             kept[item.key] = Probe(answers: verdicts[i], at: now)
