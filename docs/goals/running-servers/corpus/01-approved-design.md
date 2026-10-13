@@ -29,6 +29,12 @@ The rules the draft fixes:
 3. **The fold** `▶ N other servers` is the last line, closed by default,
    and opens to rows of the same shape.
 
+4. **What the main list holds** (the human, 2026-10-13, after round 1
+   found Homebrew's redis under a discovered project `homebrew`): a
+   server is listed when a kitterm pane started it, or when its
+   project's root lies under the user's home directory. Every other
+   server folds, whatever project its cwd resolves to.
+
 Still open for the Pen round: the mark (the draft borrowed `◐`, the
 `[build]` mark, at rest), the phone layout, and the empty sentence.
 
