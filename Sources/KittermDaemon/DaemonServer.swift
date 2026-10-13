@@ -230,6 +230,10 @@ public final class DaemonServer: @unchecked Sendable {
         // branch, fetched with `git` on its own queue, at most once a
         // minute per root.
         let knowledgeBase = KnowledgeBase()
+        // The user's listening servers, read from the kernel on their own
+        // queue, at most once every few seconds, probed for HTTP once per
+        // pid and port.
+        let listeningServers = ListeningServers()
         // The model per live session's transcript, one cache for every
         // connection, so a session list reads a transcript only when it grew.
         let transcriptModels = TranscriptModelCache()
@@ -391,6 +395,7 @@ public final class DaemonServer: @unchecked Sendable {
                         pullRequestStatus: pullRequestStatus,
                         knowledgeBase: knowledgeBase,
                         usageLimits: usageLimits,
+                        listeningServers: listeningServers,
                         transcriptModels: transcriptModels,
                         transcriptEstimates: transcriptEstimates
                     )

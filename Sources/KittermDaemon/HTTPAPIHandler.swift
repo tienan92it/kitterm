@@ -73,6 +73,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// The newest quota reading behind `POST` and `GET /api/usage/limits`;
     /// nil in a handler built without one, where the routes answer 503.
     private let usageLimits: UsageLimitsStore?
+    /// The user's listening servers behind `GET /api/servers`; nil in a
+    /// handler built without one, where the route answers 503.
+    private let listeningServers: ListeningServers?
     /// The model per live session's transcript, for the `agentModel` field
     /// of a session row; nil in a handler built without one, where the row
     /// carries no model. One cache per daemon, shared by every connection.
@@ -115,6 +118,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         pullRequestStatus: PullRequestStatus? = nil,
         knowledgeBase: KnowledgeBase? = nil,
         usageLimits: UsageLimitsStore? = nil,
+        listeningServers: ListeningServers? = nil,
         transcriptModels: TranscriptModelCache? = nil,
         transcriptEstimates: TranscriptEstimateCache? = nil
     ) {
@@ -140,6 +144,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.pullRequestStatus = pullRequestStatus
         self.knowledgeBase = knowledgeBase
         self.usageLimits = usageLimits
+        self.listeningServers = listeningServers
         self.transcriptModels = transcriptModels
         self.transcriptEstimates = transcriptEstimates
     }
@@ -413,6 +418,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             serveYieldDaily(grade: grade, head: head, context: context)
         case (.GET, "/api/usage/limits"):
             serveUsageLimits(grade: grade, head: head, context: context)
+        case (.GET, "/api/servers"):
+            serveServers(grade: grade, head: head, context: context)
         case (.POST, "/api/usage/limits"):
             serveUsageLimitsPost(body: body, bodyOverflow: bodyOverflow, grade: grade, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/archives/") && path.hasSuffix("/cost"):
@@ -2193,6 +2200,84 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         let options: JSONSerialization.WritingOptions = [.sortedKeys, .withoutEscapingSlashes]
         let stable = (try? JSONSerialization.data(withJSONObject: item, options: options)) ?? Data()
         if let readAt = snapshot.readAt { item["ageSeconds"] = max(0, Int(now.timeIntervalSince(readAt))) }
+        let data = (try? JSONSerialization.data(withJSONObject: item, options: options)) ?? stable
+        return (data, "\"\(fnv1a(stable))\"")
+    }
+
+    /// `GET /api/servers` — the listening servers of the user's processes,
+    /// `{ok, supported, readAt?, ageSeconds?, reason?, servers}`, from the
+    /// cache `ListeningServers` keeps (`running-servers` round 1): one row
+    /// per pid and port with its addresses, program, start time, cwd,
+    /// project, the session that
+    /// started it (by tty, else by parent chain, with the program between
+    /// the shell and the server as `through`) or the launcher outside
+    /// kitterm, and whether loopback answers HTTP. The request never waits
+    /// for the kernel or a probe: it answers what the cache holds and starts
+    /// a read on `ListeningServers.queue` when the last one ended a few
+    /// seconds ago or more; the shells it joins against come from the
+    /// registry with no kernel read per session. The `ETag` covers the body
+    /// less `readAt` and `ageSeconds`; `If-None-Match` answers 304. Full grade only, like
+    /// the cost routes: the ports and the programs of this machine are not
+    /// what a watch link shows.
+    private func serveServers(grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let servers = listeningServers else {
+            writeJSON(
+                status: .serviceUnavailable,
+                body: #"{"ok":false,"error":"servers unavailable"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let loop = context.eventLoop
+        let bound = NIOLoopBound(context, eventLoop: loop)
+        let promise = loop.makePromise(of: ListeningServers.Snapshot.self)
+        promise.completeWithTask {
+            let links = await self.registry.shellLinks()
+            servers.refreshIfDue(links: links)
+            return servers.snapshot()
+        }
+        promise.futureResult.whenComplete { result in
+            let context = bound.value
+            let snapshot = (try? result.get()) ?? ListeningServers.Snapshot(reason: ListeningServers.notReadReason)
+            let (data, etag) = Self.serversBody(snapshot: snapshot, now: Date())
+            var headers = HTTPHeaders()
+            headers.add(name: "ETag", value: etag)
+            headers.add(name: "Cache-Control", value: "no-cache")
+            if head.headers["if-none-match"].contains(etag) {
+                self.writeBytes(status: .notModified, headers: headers, data: Data(),
+                                context: context, version: head.version, keepAlive: head.isKeepAlive)
+                return
+            }
+            headers.add(name: "Content-Type", value: "application/json")
+            headers.add(name: "X-Content-Type-Options", value: "nosniff")
+            self.writeBytes(status: .ok, headers: headers, data: data,
+                            context: context, version: head.version, keepAlive: head.isKeepAlive)
+        }
+    }
+
+    /// The body of the servers route and its `ETag`. The tag is taken
+    /// before `readAt` and `ageSeconds` go in: the table is read every few
+    /// seconds, so a tag over `readAt` would answer 304 to no poll, and
+    /// what a page paints is the rows.
+    static func serversBody(snapshot: ListeningServers.Snapshot, now: Date) -> (Data, String) {
+        var item: [String: Any] = [
+            "ok": true, "supported": snapshot.supported, "servers": snapshot.servers.map(\.json),
+        ]
+        if let reason = snapshot.reason { item["reason"] = reason }
+        let options: JSONSerialization.WritingOptions = [.sortedKeys, .withoutEscapingSlashes]
+        let stable = (try? JSONSerialization.data(withJSONObject: item, options: options)) ?? Data()
+        if let readAt = snapshot.readAt {
+            item["readAt"] = Int64(readAt.timeIntervalSince1970 * 1000)
+            item["ageSeconds"] = max(0, Int(now.timeIntervalSince(readAt)))
+        }
         let data = (try? JSONSerialization.data(withJSONObject: item, options: options)) ?? stable
         return (data, "\"\(fnv1a(stable))\"")
     }
