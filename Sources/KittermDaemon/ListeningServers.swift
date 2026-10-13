@@ -23,7 +23,11 @@ import NIOConcurrencyHelpers
 /// `youngProcessSeconds`, because a server still starting accepts before it
 /// answers, and after that the verdict is final while the pid and port are
 /// listed, because a postgres or a redis asked every minute writes a
-/// protocol error to its own log for each request.
+/// protocol error to its own log for each request. A verdict the probe
+/// could not reach (`nil`: a timeout, a connect that never completed;
+/// round 3) leaves `http` absent and is asked again after `reprobeSeconds`
+/// whatever the process's age: a server that was slow once is not text for
+/// the life of its process.
 public final class ListeningServers: @unchecked Sendable {
     public static let refreshSeconds: TimeInterval = 3
     public static let reprobeSeconds: TimeInterval = 60
@@ -119,13 +123,14 @@ public final class ListeningServers: @unchecked Sendable {
     }
 
     private struct Probe {
-        var answers: Bool
+        /// Nil when the probe reached no verdict (a timeout).
+        var answers: Bool?
         var at: Date
     }
 
     private let excludedPids: Set<pid_t>
     private let readTable: @Sendable () -> (table: ProcessTable?, reason: String?)
-    private let probe: @Sendable (String, Int) -> Bool
+    private let probe: @Sendable (String, Int) -> Bool?
     private let resolveProject: @Sendable (String) -> ResolvedProject?
     private let refreshSeconds: TimeInterval
     private let clock: @Sendable () -> Date
@@ -141,7 +146,7 @@ public final class ListeningServers: @unchecked Sendable {
     public init(
         excludedPids: Set<pid_t> = [getpid()],
         readTable: @escaping @Sendable () -> (table: ProcessTable?, reason: String?) = { ProcessTable.read() },
-        probe: @escaping @Sendable (String, Int) -> Bool = { HTTPProbe.answersHTTP(host: $0, port: $1) },
+        probe: @escaping @Sendable (String, Int) -> Bool? = { HTTPProbe.answersHTTP(host: $0, port: $1) },
         resolveProject: @escaping @Sendable (String) -> ResolvedProject? = { ProjectStore.shared.resolve(cwd: $0) },
         refreshSeconds: TimeInterval = ListeningServers.refreshSeconds,
         clock: @escaping @Sendable () -> Date = { Date() }
@@ -211,7 +216,15 @@ public final class ListeningServers: @unchecked Sendable {
             let key = ProbeKey(pid: server.pid, port: server.port)
             if let probe = known[key] {
                 let young = server.startedAt.map { now.timeIntervalSince($0) < Self.youngProcessSeconds } ?? false
-                let final = probe.answers || !young || now.timeIntervalSince(probe.at) < Self.reprobeSeconds
+                let fresh = now.timeIntervalSince(probe.at) < Self.reprobeSeconds
+                // A yes is final; a no is final once the process is old; an
+                // unknown is kept only inside the minute.
+                let final: Bool
+                switch probe.answers {
+                case .some(true): final = true
+                case .some(false): final = !young || fresh
+                case .none: final = fresh
+                }
                 if final {
                     servers[index].http = probe.answers
                     kept[key] = probe
@@ -224,7 +237,7 @@ public final class ListeningServers: @unchecked Sendable {
         // listeners ends within one timeout. The jobs are a constant and the
         // answers land in a locked box: the closure is `@Sendable`.
         let jobs: [(host: String, port: Int)] = pending.map { ($0.host, servers[$0.index].port) }
-        let answers = NIOLockedValueBox([Bool](repeating: false, count: jobs.count))
+        let answers = NIOLockedValueBox([Bool?](repeating: nil, count: jobs.count))
         if !jobs.isEmpty {
             let probe = self.probe
             DispatchQueue.concurrentPerform(iterations: jobs.count) { i in

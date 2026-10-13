@@ -541,6 +541,34 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
 }
 .review-rows[hidden] { display: none; }
 
+/* --- the SERVERS section ----------------------------------------------------
+   Between the tree and the folds (`running-servers` round 3, the frames
+   `Sessions 1200` and `Sessions 390` of `design/sessions.pen`, rules 10
+   to 12): under a hairline, `SERVERS` in the same gutter as `REVIEW`, the
+   header with the counts, `5 listening · 4 HTTP · 17 other`, or the
+   sentence with no server; then the rows (`.servers-rows`) on the REVIEW
+   row's grid with their own columns: the address (a link when the server
+   answers HTTP), where it belongs (the name, the one cell that truncates),
+   who started it in grey, `http` or `tcp` in the word column, what it
+   binds, and the age; then `▶ N other servers`, closed. The mark is `●`
+   in the accent (`.mark.listening`): alive, and no stage. */
+.servers-head {
+  display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: var(--space-4); align-items: center;
+  grid-auto-rows: minmax(var(--line-h), auto);
+  margin: var(--space-2) 0 0; border-top: 1px solid var(--ui-border);
+  color: var(--ui-text-muted);
+}
+.servers-head[hidden] { display: none; }
+.servers-label { font-weight: 600; letter-spacing: 0.08em; color: var(--ui-text-muted); }
+.servers { margin: 0; color: var(--ui-text); overflow-wrap: anywhere; }
+.servers-rows {
+  grid-column: 1 / -1; display: flex; flex-direction: column; color: var(--ui-text);
+  --join-w: var(--space-4);
+  --line-cols: [pr] 16ch [name] minmax(0, 30ch) [detail] minmax(0, 1fr) [word] 6ch [cost] 12ch [last] 10ch [end];
+}
+.main > .binds { color: var(--ui-text-muted); }
+.mark.listening { background: var(--ui-accent); -webkit-background-clip: text; background-clip: text; }
+
 /* --- the tree ---------------------------------------------------------------
    Flat lines. One section per workspace or lone project, a hairline between
    sections; no card, no surface fill, no rule per line. The two tokens of
@@ -687,6 +715,11 @@ a.line-name:hover { text-decoration: underline; text-underline-offset: 2px; }
   .pr-word { display: inline; }
   /* A REVIEW row keeps the mark, `#N`, where it belongs and one state word. */
   .review-rows { --join-w: var(--space-3); --line-cols: [pr] 6ch [name] minmax(0, 1fr) [word] 12ch [end]; }
+  /* A SERVERS row keeps the mark, the address, where it belongs and one
+     word (rule 12 of the frame); who started it, the binds and the age
+     drop by the line's own rules. */
+  .servers-head { grid-template-columns: auto minmax(0, 1fr); column-gap: var(--space-3); }
+  .servers-rows { --join-w: var(--space-3); --line-cols: [pr] 15ch [name] minmax(0, 1fr) [word] 5ch [end]; }
   /* An approval's line keeps its name and its pane link; the arguments
      are what drops. */
   .line-approval-what { min-width: 0; }

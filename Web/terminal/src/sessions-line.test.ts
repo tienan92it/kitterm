@@ -309,8 +309,11 @@ describe("the page's lines", () => {
       "mark running rest", "mark attention rest", "mark idle rest",
     ]);
     // Above the tree and under the panels, at the page's top level.
+    // Chartered in round 3 of `running-servers` (`goal.md` condition 1,
+    // the frames `Sessions 1200` and `Sessions 390`): the SERVERS section
+    // sits between the tree and the folds; it read `tree, folds` before.
     const order = page.root.children.filter((c): c is FakeElement => typeof c !== "string").map((c) => c.className.split(" ")[0]);
-    expect(order.slice(order.indexOf("tree-head"))).toEqual(["tree-head", "tree", "folds"]);
+    expect(order.slice(order.indexOf("tree-head"))).toEqual(["tree-head", "tree", "servers-head", "folds"]);
   });
 
   it("shows a goal's last done tasks at both widths and folds none of them", async () => {

@@ -120,6 +120,7 @@ import {
   type ReviewPull,
   type StagedSummary,
 } from "./sessions-stage";
+import { othersLabel, pageHostOf, serversHead, serversSection, SERVERS_NONE, type ServerLine, type ServersAnswer } from "./sessions-servers";
 import { FRAME_MS, frameAt, QUADRANT } from "./spinner";
 import { loadSettings } from "./settings-store";
 import { applyThemeTokens } from "./theme-tokens";
@@ -216,6 +217,10 @@ const KNOWLEDGE_RETRY_POLLS = 30;
 /** How often the page asks the pulls route for a project. The daemon reads
  * `gh` once a minute per repository, so a faster poll shows nothing sooner. */
 const PULLS_REFRESH_MS = 10_000;
+/** How often the page asks the servers route (`running-servers`, round
+ * 3). The daemon reads the kernel every 3 s, so a faster poll shows
+ * nothing sooner; a slower one lets a server that just started wait. */
+const SERVERS_REFRESH_MS = 5_000;
 /** The runs whose restart line the human dismissed, `restartDismissKey`s in
  * `localStorage`. A dismissal keys on the epoch, so it dies with the run it
  * answers. A proposal has no dismissal (round 11): the page holds no
@@ -556,7 +561,7 @@ async function poll(): Promise<void> {
   if (knowledgeInFlight) return;
   knowledgeInFlight = true;
   try {
-    await Promise.all([fetchKnowledge(), fetchPulls(Date.now())]);
+    await Promise.all([fetchKnowledge(), fetchPulls(Date.now()), fetchServers(Date.now())]);
     render();
   } finally {
     knowledgeInFlight = false;
@@ -653,6 +658,47 @@ async function fetchPulls(now: number): Promise<void> {
       }
     }),
   );
+}
+
+/** The listening servers as last fetched (`GET /api/servers`), with the
+ * ETag and when the page asked; null before the first answer. Never
+ * asked on a watch page (`goal.md` condition 5: a watch page shows no
+ * SERVERS section, as it shows no cost), and its 403 stops the asking
+ * (`serversRefused`). */
+let servers: { etag: string | null; answer: ServersAnswer | null; at: number } | null = null;
+let serversRefused = false;
+
+/** One servers request every `SERVERS_REFRESH_MS`, conditional on the ETag
+ * and aborted after `POLL_MS`, after the fleet painted, beside the
+ * knowledge requests. Never before the page knows its grade
+ * (`gradeKnown`), never for a watch client, and a 403 stops the asking.
+ * Any other failure keeps the last answer and moves only the time, so the
+ * page asks again after `SERVERS_REFRESH_MS`, not on the next poll. */
+async function fetchServers(now: number): Promise<void> {
+  if (!gradeKnown || watchOnly || serversRefused) return;
+  if (servers && now - servers.at < SERVERS_REFRESH_MS) return;
+  const entry = servers;
+  try {
+    const headers: Record<string, string> = { accept: "application/json" };
+    if (entry?.etag) headers["if-none-match"] = entry.etag;
+    const res = await fetch("/api/servers", { headers, signal: AbortSignal.timeout(POLL_MS) });
+    if (res.status === 304 && entry) {
+      entry.at = now;
+      return;
+    }
+    if (res.status === 403) {
+      serversRefused = true;
+      servers = null;
+      return;
+    }
+    if (!res.ok) {
+      servers = { etag: entry?.etag ?? null, answer: entry?.answer ?? null, at: now };
+      return;
+    }
+    servers = { etag: res.headers.get("etag"), answer: (await res.json()) as ServersAnswer, at: now };
+  } catch {
+    servers = { etag: entry?.etag ?? null, answer: entry?.answer ?? null, at: now };
+  }
 }
 
 /** What the pulls route last answered for a project, for the tree. A
@@ -777,6 +823,25 @@ function treeLegend(): Node[] {
  * list of lines. */
 const treeBlock = document.createElement("div");
 treeBlock.className = "tree";
+/** The SERVERS section between the tree and the folds (`running-servers`
+ * round 3, the frames `Sessions 1200` and `Sessions 390`): `SERVERS` in
+ * the gutter, the header with the counts, then the rows and the fold
+ * (`paintServers`). Hidden on a watch page and before the first answer. */
+const serversBlock = document.createElement("div");
+serversBlock.className = "servers-head";
+const serversLabel = document.createElement("span");
+serversLabel.className = "servers-label";
+serversLabel.textContent = "SERVERS";
+const serversBody = document.createElement("p");
+serversBody.className = "servers";
+const serversRows = document.createElement("div");
+serversRows.className = "servers-rows";
+serversBlock.append(serversLabel, serversBody, serversRows);
+serversBlock.hidden = true;
+let serversPainted = "";
+/** Whether `▶ N other servers` is open; in memory across repaints, like
+ * `reviewDraftsOpen`. */
+let serversOtherOpen = false;
 /** The folds at the foot: the archives, the idle shells, the push switch. */
 const foldsBlock = document.createElement("div");
 foldsBlock.className = "folds";
@@ -788,7 +853,7 @@ function mountSkeleton(): void {
   treeHead.replaceChildren(...treeLegend());
   root.replaceChildren(
     announce, bandBlock, restartLine, usageBlock, quotaBlock, modelsBlock,
-    panelDivider, valueBlock, whereBlock, leaksBlock, treeHead, treeBlock, foldsBlock,
+    panelDivider, valueBlock, whereBlock, leaksBlock, treeHead, treeBlock, serversBlock, foldsBlock,
   );
 }
 
@@ -821,6 +886,9 @@ function render(): void {
     // `ageSeconds` moves every second; the ETag covers the rest.
     [...pulls].map(([id, entry]) => [id, entry.etag, entry.answer?.reason, entry.answer?.readAt]),
     pullsRefused,
+    // The section's lines, whose ages move once a minute at most, and its fold.
+    serversModel(now),
+    serversOtherOpen,
     [...restartDismissed],
     [...toggledRows],
     started,
@@ -884,6 +952,7 @@ function paint(): void {
   // Every session is a line once: in the tree, or in the idle fold.
   const built = tree({ rows: sessions, projects, goalsOf: (id) => knowledge.get(id)?.goals, approvals, proposed, usage, billOf, pullsOf: pullsReader(), now });
   paintReview();
+  paintServers(now);
   if (built.sections.length === 0) {
     const empty = document.createElement("p");
     empty.className = "empty";
@@ -2161,6 +2230,131 @@ function reviewFold(label: string): HTMLElement {
     reviewDraftsOpen = !reviewDraftsOpen;
     paintReview();
     restoreFocus("fold:review-drafts");
+  });
+  el.append(b);
+  const main = document.createElement("div");
+  main.className = "main";
+  const name = span("line-name", label);
+  name.dataset.name = "";
+  main.append(name);
+  el.append(main);
+  return el;
+}
+
+/** The section's lines from the last answer, read where the page came
+ * from (`pageHostOf`): null when the section is off the page — a watch
+ * page, a refused route, no answer yet, or a daemon with no reader
+ * (`supported: false`). */
+function serversModel(now: number): ReturnType<typeof serversSection> | null {
+  if (watchOnly || serversRefused || !servers?.answer || !servers.answer.supported) return null;
+  return serversSection(servers.answer, pageHostOf(typeof location === "undefined" ? undefined : location.hostname), now);
+}
+
+/** The SERVERS section (`corpus/01-approved-design.md`): the header
+ * counts what the list shows, how many answer HTTP and the folded rest,
+ * `5 listening · 4 HTTP · 17 other`, the first count a mark; then one
+ * row per listed server on the line grid, by port (`serverRow`), then
+ * `▶ N other servers`, closed by default, which opens to rows of the
+ * same shape (`serversFold`); with no server, one sentence. Hidden on a
+ * watch page and until the route answered. Rebuilt only when its content
+ * changes, so a link a keyboard user sits on survives the polls. */
+function paintServers(now: number): void {
+  const model = serversModel(now);
+  const signature = JSON.stringify([model, serversOtherOpen]);
+  if (signature === serversPainted) return;
+  serversPainted = signature;
+  serversBlock.hidden = model === null;
+  if (model === null) {
+    serversBody.replaceChildren();
+    serversRows.replaceChildren();
+    return;
+  }
+  if (model.head === null) {
+    serversBody.replaceChildren(SERVERS_NONE);
+    serversRows.replaceChildren();
+    return;
+  }
+  const head = serversHead(model.head);
+  serversBody.replaceChildren(span("mark listening wide", String(model.head.listening)), head.slice(String(model.head.listening).length));
+  const rows: HTMLElement[] = model.listed.map(serverRow);
+  if (model.folded.length > 0) {
+    rows.push(serversFold(othersLabel(model.folded.length)));
+    if (serversOtherOpen) rows.push(...model.folded.map(serverRow));
+  }
+  serversRows.replaceChildren(...rows);
+}
+
+/** One row of the SERVERS section, on the REVIEW row's grid (rule 1):
+ * the `●` mark in the accent in the left column (rule 5), the address
+ * (a link like `PR #N` when the server answers HTTP, rule 7, plain text
+ * otherwise), where it belongs as the name (it truncates with an
+ * ellipsis, rule 8), who started it in grey, `http` or `tcp` in the word
+ * column, what it binds, and its age. A phone keeps the mark, the
+ * address, where it belongs and the one word. */
+function serverRow(line: ServerLine): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "line line-review line-server";
+  el.style.setProperty("--depth", "0");
+  const dot = span("mark listening", "●");
+  dot.setAttribute("aria-hidden", "true");
+  el.append(dot);
+  const main = document.createElement("div");
+  main.className = "main";
+  const address = span("pr", "");
+  address.dataset.col = "3";
+  if (line.href) {
+    const a = document.createElement("a");
+    a.className = "pr-link";
+    a.href = line.href;
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.dataset.focus = line.key;
+    a.append(span("mark link wide", line.address));
+    address.append(a);
+  } else {
+    address.textContent = line.address;
+    if (line.addressTitle) address.title = line.addressTitle;
+  }
+  main.append(address);
+  const where = span("line-name", line.where);
+  where.dataset.name = "";
+  where.title = line.where;
+  main.append(where);
+  const who = span("line-detail", line.who);
+  who.title = line.who;
+  main.append(who);
+  main.append(span("state", line.kind));
+  const binds = span("binds", line.binds);
+  binds.dataset.col = "2";
+  main.append(binds);
+  const age = span("since", line.age);
+  age.dataset.col = "4";
+  main.append(age);
+  el.append(main);
+  return el;
+}
+
+/** The `▶ N other servers` line (rule 3): a disclosure button like the
+ * drafts fold's, which opens the folded rows under it and folds them
+ * again; `serversOtherOpen` keeps it across repaints. Not an action: it
+ * moves nothing but the page. */
+function serversFold(label: string): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "line line-review line-fold";
+  el.style.setProperty("--depth", "0");
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "mark disclosure";
+  b.textContent = disclosureGlyph(serversOtherOpen);
+  b.setAttribute("aria-expanded", String(serversOtherOpen));
+  b.setAttribute("aria-label", `${serversOtherOpen ? "Fold" : "Open"} the ${label}`);
+  b.dataset.focus = "fold:servers-other";
+  b.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    serversOtherOpen = !serversOtherOpen;
+    paintServers(Date.now());
+    restoreFocus("fold:servers-other");
   });
   el.append(b);
   const main = document.createElement("div");

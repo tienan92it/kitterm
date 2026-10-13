@@ -9,10 +9,15 @@ import Foundation
 /// server behind it speaks HTTP (`running-servers` round 1): the fleet
 /// view links such a server and prints the others as text. A
 /// non-blocking connect, `HEAD / HTTP/1.0`, and the first bytes of the
-/// reply, all under one timeout; a server that answers anything that
-/// does not start with `HTTP/` (postgres, redis, `nc`) or nothing at all
-/// is not HTTP. Blocking, so a caller runs it off the event loop;
-/// `ListeningServers` does, on its own queue, and caches the verdict.
+/// reply, all under one timeout. The verdict has three values (round 3):
+/// `true` for a reply that starts with `HTTP/`; `false` for a reply that
+/// does not (postgres, redis), or a connection the server closed before
+/// any byte (`nc` at its end); `nil`, unknown, for a timeout at any step,
+/// a connect that never completes, or a socket error. Round 1 read a
+/// timeout as `false`, and a port-forward whose first answer took over
+/// half a second was final text for the life of its process. Blocking, so
+/// a caller runs it off the event loop; `ListeningServers` does, on its
+/// own queue, caches the verdict and asks an unknown one again.
 public enum HTTPProbe {
     public static let timeoutSeconds: TimeInterval = 0.5
     static let request = "HEAD / HTTP/1.0\r\nHost: localhost\r\n\r\n"
@@ -28,9 +33,10 @@ public enum HTTPProbe {
         }
     }
 
-    /// True when `host:port` answers the request with an HTTP status line
-    /// before the timeout.
-    public static func answersHTTP(host: String, port: Int, timeout: TimeInterval = timeoutSeconds) -> Bool {
+    /// True when `host:port` answers the request with an HTTP status line,
+    /// false when it answers something else or closes first, nil when the
+    /// timeout ran out before it said either.
+    public static func answersHTTP(host: String, port: Int, timeout: TimeInterval = timeoutSeconds) -> Bool? {
         let deadline = Date().addingTimeInterval(timeout)
         let isV6 = host.contains(":")
         #if canImport(Darwin)
@@ -39,7 +45,7 @@ public enum HTTPProbe {
         let stream = Int32(SOCK_STREAM.rawValue)
         #endif
         let fd = socket(isV6 ? AF_INET6 : AF_INET, stream, 0)
-        guard fd >= 0 else { return false }
+        guard fd >= 0 else { return nil }
         defer { _ = close(fd) }
         _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
         #if canImport(Darwin)
@@ -51,7 +57,7 @@ public enum HTTPProbe {
             var addr = sockaddr_in6()
             addr.sin6_family = sa_family_t(AF_INET6)
             addr.sin6_port = in_port_t(UInt16(port).bigEndian)
-            guard inet_pton(AF_INET6, host, &addr.sin6_addr) == 1 else { return false }
+            guard inet_pton(AF_INET6, host, &addr.sin6_addr) == 1 else { return nil }
             connected = withUnsafePointer(to: &addr) {
                 $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                     connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in6>.size)) == 0
@@ -61,18 +67,20 @@ public enum HTTPProbe {
             var addr = sockaddr_in()
             addr.sin_family = sa_family_t(AF_INET)
             addr.sin_port = in_port_t(UInt16(port).bigEndian)
-            guard inet_pton(AF_INET, host, &addr.sin_addr) == 1 else { return false }
+            guard inet_pton(AF_INET, host, &addr.sin_addr) == 1 else { return nil }
             connected = withUnsafePointer(to: &addr) {
                 $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                     connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) == 0
                 }
             }
         }
+        // A connect that never completes, or fails, says nothing about the
+        // protocol: unknown, asked again.
         if !connected {
-            guard errno == EINPROGRESS, wait(fd, events: Int16(POLLOUT), until: deadline) else { return false }
+            guard errno == EINPROGRESS, wait(fd, events: Int16(POLLOUT), until: deadline) else { return nil }
             var error: Int32 = 0
             var length = socklen_t(MemoryLayout<Int32>.size)
-            guard getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &length) == 0, error == 0 else { return false }
+            guard getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &length) == 0, error == 0 else { return nil }
         }
         let sent = request.utf8CString.withUnsafeBufferPointer { buffer -> Int in
             #if canImport(Darwin)
@@ -81,15 +89,19 @@ public enum HTTPProbe {
             return send(fd, buffer.baseAddress, buffer.count - 1, Int32(MSG_NOSIGNAL))
             #endif
         }
-        guard sent > 0 else { return false }
+        guard sent > 0 else { return nil }
         var reply = [UInt8](repeating: 0, count: 16)
         var count = 0
         while count < 5 {
-            guard wait(fd, events: Int16(POLLIN), until: deadline) else { return false }
+            guard wait(fd, events: Int16(POLLIN), until: deadline) else { return nil }
             let got = reply.withUnsafeMutableBytes { raw in
                 recv(fd, raw.baseAddress! + count, raw.count - count, 0)
             }
-            guard got > 0 else { return false }
+            // A close before any byte is a server that took the request and
+            // said nothing: not HTTP. A close after some bytes that are not
+            // a status line is the same. An error is unknown.
+            if got == 0 { return false }
+            guard got > 0 else { return nil }
             count += got
         }
         return reply.starts(with: Array("HTTP/".utf8))
