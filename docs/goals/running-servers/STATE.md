@@ -8,7 +8,7 @@
 
 ## Queue
 
-1. `servers-route` (capability 1)
+1. `servers-route` (capability 1), PR #192.
 2. `servers-design` (capability 2)
 3. `servers-section` (capability 3)
 
