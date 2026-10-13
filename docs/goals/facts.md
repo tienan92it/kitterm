@@ -10,6 +10,16 @@ decision moves to `docs/adr/`.
 
 ## Toolchain
 
+- macOS gives another process's environment (`KERN_PROCARGS2`, the
+  strings after argv) to the same user for a non-platform binary only:
+  `env FOOX=1 /bin/sleep` reads no `FOOX`, a `cc`-built binary does.
+  `kubectl`, `postgres`, `node` and Homebrew `python` servers carry the
+  pane's `KITTERM_SESSION_ID`; build a test's listener with `cc`, not
+  `/bin/sleep` or `/usr/bin/nc` (2026-10-13, `running-servers` round 3).
+- `ps -wwE` prints no environment for a process that rewrote its title
+  (`next-server`), while the raw `KERN_PROCARGS2` buffer still holds it;
+  read the buffer, not `ps` (2026-10-13, `running-servers` round 3).
+
 - On the Linux toolchain `DispatchQueue.concurrentPerform` takes a
   `@Sendable` closure; macOS accepts an `inout` or pointer capture
   there and `linux-build` does not. Hand the jobs in as a constant and

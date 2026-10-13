@@ -1,15 +1,14 @@
 # STATE: running-servers
 
-- Status: active
-- Round: 2 of 3 in this budget (first budget)
-- Rounds total: 2
-- Last floor: green (2026-10-13, round 2 after: PR CI on 852dddb)
-- Updated: 2026-10-13, the human approved the frames
+- Status: done
+- Round: 3 of 3 in this budget (first budget)
+- Rounds total: 3
+- Last floor: green (2026-10-13, round 3 after: vitest 1809, swift test 1225, PR CI on a4ad1a2)
+- Updated: 2026-10-13, round 3 done; the goal waits for the human's merge of PR #192
 
 ## Queue
 
-1. `servers-section` (capability 3), PR #192. It also makes a
-   probe timeout count as unknown, asked again (`rounds/001.md`, Gap).
+None.
 
 ## Failures
 
@@ -22,6 +21,8 @@ None. 2026-10-13: the human approved the frames at 852dddb and the
 
 ## Done
 
+- `servers-section`, round 3, PR #192. See `rounds/003.md`. SERVERS
+  on `/sessions`, the environment rule, and a timeout as unknown.
 - `servers-design`, round 2, PR #192. See `rounds/002.md`. SERVERS
   in `Sessions 1200`, `Sessions 390` and `Sessions components`.
 - `servers-route`, round 1, PR #192. See `rounds/001.md`.
@@ -30,6 +31,6 @@ None. 2026-10-13: the human approved the frames at 852dddb and the
 
 ## Next action
 
-Round 3: `servers-section` from `plan.md` row 3, once the human
-approved the frames: the page draws SERVERS as the frames show, and a
-probe timeout counts as unknown and is asked again.
+None. The human merges PR #192; the foreman releases, upgrades, and
+checks the section's words on the live page. Reopen with a new
+`goal.md` line or a chore on this surface.
