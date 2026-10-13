@@ -567,6 +567,9 @@ a.band-cell:hover .band-noun { color: var(--ui-text); }
   --line-cols: [pr] 16ch [name] minmax(0, 30ch) [detail] minmax(0, 1fr) [word] 6ch [cost] 12ch [last] 10ch [end];
 }
 .main > .binds { color: var(--ui-text-muted); }
+/* The fold's label follows its triangle, as the frame draws it, rather
+   than standing in the name column behind an empty address cell. */
+.servers-rows .line-fold .line-name { grid-column: pr / end; }
 .mark.listening { background: var(--ui-accent); -webkit-background-clip: text; background-clip: text; }
 
 /* --- the tree ---------------------------------------------------------------

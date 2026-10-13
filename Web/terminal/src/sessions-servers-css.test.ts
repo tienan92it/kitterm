@@ -44,6 +44,9 @@ describe("the block", () => {
     expect(wide(".line-review > .main").get("grid-column")).toBe("pr / end");
     expect(["3", "2", "4"].map((n) => wide(`.main > [data-col="${n}"]`).get("grid-column"))).toEqual(["pr", "cost", "last"]);
     expect(wide(".main > .binds").get("color")).toBe("var(--ui-text-muted)");
+    // The fold's label follows its triangle (`▶ 17 other servers`), in grey.
+    expect(wide(".servers-rows .line-fold .line-name").get("grid-column")).toBe("pr / end");
+    expect(wide(".line-fold .line-name").get("color")).toBe("var(--ui-text-muted)");
     for (const selector of [".servers-rows", ".main > .binds"]) {
       for (const prop of ["min-height", "height", "line-height", "padding"]) expect(wide(selector).has(prop), `${selector} ${prop}`).toBe(false);
     }
