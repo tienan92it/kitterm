@@ -274,6 +274,16 @@ public actor SessionRegistry {
         sessions[id].map { makeSummary(id: id, session: $0) }
     }
 
+    /// The running sessions' shells, for `GET /api/servers`: the id, the
+    /// name and the shell's pid, with no kernel read per session. A session
+    /// whose shell exited matches nothing, and its pid may already be
+    /// another process's, so it is left out.
+    public func shellLinks() -> [ListeningServers.ShellLink] {
+        sessions.compactMap { id, session in
+            session.isRunning ? ListeningServers.ShellLink(id: id, name: session.name, pid: session.pid) : nil
+        }
+    }
+
     private func makeSummary(id: UUID, session: PtySession) -> SessionSummary {
         let size = session.paneSize
         let cwd = session.liveCwd

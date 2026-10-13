@@ -116,12 +116,14 @@ describe("the panels", () => {
     // divider, VALUE, WHERE, LEAKS; the header and the tree follow, then
     // the folds. No notice line: the page holds no action that could
     // fail. Chartered: round 10's order (VALUE, WHERE, MODELS, LEAKS) and
-    // its notice.
+    // its notice. Chartered again in round 3 of `running-servers`
+    // (`goal.md` condition 1, the frames): the SERVERS section sits
+    // between the tree and the folds; it read `div.tree, div.folds` before.
     const order = page.root.children
       .filter((child): child is Exclude<typeof child, string> => typeof child !== "string")
       .map((child) => `${child.tagName.toLowerCase()}.${child.className.split(" ")[0]}`);
     expect(order.slice(order.indexOf("section.band"))).toEqual([
-      "section.band", "p.restart", "section.panel", "section.panel", "section.panel", "hr.panel-divider", "section.panel", "section.panel", "section.panel", "div.tree-head", "div.tree", "div.folds",
+      "section.band", "p.restart", "section.panel", "section.panel", "section.panel", "hr.panel-divider", "section.panel", "section.panel", "section.panel", "div.tree-head", "div.tree", "div.servers-head", "div.folds",
     ]);
     expect(panels().map((p) => p.querySelector(".panel-label")?.textContent)).toEqual(["USAGE", "QUOTA", "MODELS", "VALUE", "WHERE", "LEAKS"]);
     expect(panels().map((p) => p.querySelector(".panel-label")?.tagName)).toEqual(["H2", "H2", "H2", "H2", "H2", "H2"]);

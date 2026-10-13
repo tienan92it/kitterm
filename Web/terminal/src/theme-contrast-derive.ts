@@ -566,6 +566,11 @@ const BLOCK_SURFACES: Array<{ block: string; stack: string[]; why: string }> = [
   { block: "review-long", stack: ["var(--ui-bg)"], why: "in .review, on the body" },
   { block: "review-rows", stack: ["var(--ui-bg)"], why: "the REVIEW rows in .tree-head, on the body; it paints nothing" },
   { block: "line-review", stack: ["var(--ui-bg)"], why: "a REVIEW row in .review-rows, on the body" },
+  // The SERVERS section (`running-servers` round 3), between the tree and the folds.
+  { block: "servers-head", stack: ["var(--ui-bg)"], why: "under the tree, on the body; it paints a hairline and nothing else" },
+  { block: "servers-label", stack: ["var(--ui-bg)"], why: "in .servers-head, on the body" },
+  { block: "servers", stack: ["var(--ui-bg)"], why: "the SERVERS header in .servers-head, on the body" },
+  { block: "servers-rows", stack: ["var(--ui-bg)"], why: "the SERVERS rows in .servers-head, on the body; it paints nothing" },
   { block: "tree", stack: ["var(--ui-bg)"], why: "the tree, on the body; no card, no surface" },
   { block: "tree-section", stack: ["var(--ui-bg)"], why: "in .tree, on the body" },
   { block: "line", stack: ["var(--ui-bg)"], why: "a line of the tree, on the body" },

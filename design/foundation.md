@@ -107,6 +107,7 @@ A task's state comes from one place each:
 | failed | `!` danger | `[failed]` | the slug appears in `## Failures` |
 | idle | `–` faint | `[idle]` | a session with no agent holding the tty |
 | waiting | `?` warning | `[waiting]` | a goal whose budget is spent |
+| listening | `●` accent | a server row | `GET /api/servers` |
 
 **A state always reads as a bracketed word, never as a bare one.** The
 brackets are the `tag` component and they are what makes a state
@@ -115,7 +116,7 @@ The mark carries the colour; the word carries the meaning; neither
 appears without the other.
 
 The `SESSIONS` panel header prints the whole vocabulary above the tree,
-so a reader never has to infer a mark.
+so a reader never has to infer a mark; `●` marks a server row under it.
 
 ## The model
 
