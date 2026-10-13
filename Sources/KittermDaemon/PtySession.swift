@@ -1332,21 +1332,9 @@ public final class PtySession: @unchecked Sendable {
     /// A process's `argv[0]` as the kernel holds it, or nil for any failure.
     private static func argv0(ofPID pid: pid_t) -> String? {
         #if canImport(Darwin)
-        // The buffer holds an Int32 argc, the exec path, NUL padding, then
-        // the argv strings and the environment, each NUL-terminated.
-        var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
-        var size = 0
-        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return nil }
-        var buffer = [UInt8](repeating: 0, count: size)
-        guard sysctl(&mib, 3, &buffer, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return nil }
-        let argc = buffer.withUnsafeBytes { $0.load(as: Int32.self) }
-        guard argc > 0 else { return nil }
-        var index = MemoryLayout<Int32>.size
-        while index < size, buffer[index] != 0 { index += 1 }
-        while index < size, buffer[index] == 0 { index += 1 }
-        guard index < size else { return nil }
-        let end = buffer[index..<size].firstIndex(of: 0) ?? size
-        return String(decoding: buffer[index..<end], as: UTF8.self)
+        guard let args = procArgs(ofPID: pid) else { return nil }
+        let end = args.buffer[args.strings..<args.buffer.count].firstIndex(of: 0) ?? args.buffer.count
+        return String(decoding: args.buffer[args.strings..<end], as: UTF8.self)
         #else
         let fd = open("/proc/\(pid)/cmdline", O_RDONLY | O_CLOEXEC)
         guard fd >= 0 else { return nil }
@@ -1362,6 +1350,70 @@ public final class PtySession: @unchecked Sendable {
         return bytes.isEmpty ? nil : String(decoding: bytes, as: UTF8.self)
         #endif
     }
+
+    /// The value of `name` in a process's environment as the kernel holds
+    /// it, or nil for a reaped pid, a variable it does not carry, or any
+    /// failure (`running-servers` round 3): a pane's shell exports
+    /// `KITTERM_SESSION_ID`, and a server keeps it after it leaves the
+    /// terminal and its starter exits, so the variable attributes a server
+    /// no tty and no parent chain can. The same `KERN_PROCARGS2` buffer as
+    /// `argv0`: the strings after the `argc` argv strings are the
+    /// environment. `/proc/<pid>/environ` on Linux.
+    static func environmentValue(ofPID pid: pid_t, name: String) -> String? {
+        let prefix = Array("\(name)=".utf8)
+        #if canImport(Darwin)
+        guard let args = procArgs(ofPID: pid) else { return nil }
+        var index = args.strings
+        var skipped = 0
+        // Past the argv strings, then one environment string at a time.
+        while index < args.buffer.count {
+            let end = args.buffer[index..<args.buffer.count].firstIndex(of: 0) ?? args.buffer.count
+            if skipped < args.argc {
+                skipped += 1
+            } else if args.buffer[index..<end].starts(with: prefix) {
+                return String(decoding: args.buffer[(index + prefix.count)..<end], as: UTF8.self)
+            }
+            index = end + 1
+        }
+        return nil
+        #else
+        let fd = open("/proc/\(pid)/environ", O_RDONLY | O_CLOEXEC)
+        guard fd >= 0 else { return nil }
+        defer { _ = close(fd) }
+        var bytes: [UInt8] = []
+        var chunk = [UInt8](repeating: 0, count: 4096)
+        while true {
+            let count = read(fd, &chunk, chunk.count)
+            guard count > 0 else { break }
+            bytes.append(contentsOf: chunk[0..<count])
+        }
+        for entry in bytes.split(separator: 0) where entry.starts(with: prefix) {
+            return String(decoding: entry.dropFirst(prefix.count), as: UTF8.self)
+        }
+        return nil
+        #endif
+    }
+
+    #if canImport(Darwin)
+    /// The `KERN_PROCARGS2` buffer of a process: an Int32 `argc`, the exec
+    /// path, NUL padding, then the argv strings and the environment, each
+    /// NUL-terminated; `strings` is the offset of the first argv string.
+    /// Nil for a reaped pid or any failure.
+    private static func procArgs(ofPID pid: pid_t) -> (buffer: [UInt8], argc: Int, strings: Int)? {
+        var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
+        var size = 0
+        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return nil }
+        var buffer = [UInt8](repeating: 0, count: size)
+        guard sysctl(&mib, 3, &buffer, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return nil }
+        let argc = buffer.withUnsafeBytes { $0.load(as: Int32.self) }
+        guard argc > 0 else { return nil }
+        var index = MemoryLayout<Int32>.size
+        while index < size, buffer[index] != 0 { index += 1 }
+        while index < size, buffer[index] == 0 { index += 1 }
+        guard index < size else { return nil }
+        return (Array(buffer[0..<size]), Int(argc), index)
+    }
+    #endif
 
     /// The executable a process is running, or nil for a reaped pid or any
     /// failure. The same kind of kernel-state read as `currentDirectory`.

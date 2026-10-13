@@ -54,6 +54,10 @@ describe("what the main list holds (rule 4)", () => {
   it("folds a server with no pane and no project", () => {
     expect(isListed(row({ project: undefined }))).toBe(false);
   });
+
+  it("lists a server whose pane ended, by the id it still carries", () => {
+    expect(isListed(row({ project: undefined, endedSession: pane.id }))).toBe(true);
+  });
 });
 
 describe("the link", () => {
@@ -98,6 +102,8 @@ describe("where it belongs and who started it", () => {
     expect(startedBy(row({ session: { id: pane.id } }))).toBe("kitterm pane 7F3C2A10");
     expect(startedBy(row({ session: { id: pane.id, name: "foreman", through: "claude" } }))).toBe("claude in foreman");
     expect(startedBy(row({ session: { id: pane.id, through: "claude" } }))).toBe("claude in 7F3C2A10");
+    expect(startedBy(row({ endedSession: pane.id, launcher: undefined }))).toBe("kitterm pane that ended");
+    expect(startedBy(row({ endedSession: pane.id, launcher: "node" }))).toBe("kitterm pane that ended");
     expect(startedBy(row({ launcher: "node" }))).toBe("outside kitterm · node");
     expect(startedBy(row({ launcher: undefined }))).toBe("outside kitterm");
   });

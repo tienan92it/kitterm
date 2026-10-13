@@ -240,7 +240,16 @@ final class ListeningServersRouteTests: XCTestCase {
         XCTAssertEqual(row["http"] as? Bool, true, "the test's own HTTP server answers the probe")
         XCTAssertEqual(row["addresses"] as? [String], ["127.0.0.1"])
         XCTAssertNotNil(row["program"])
-        if getppid() > 1 {
+        // Chartered in round 3 of `running-servers` (the human's correction:
+        // the environment is the first join rule): a test process started
+        // from a kitterm pane carries that pane's `KITTERM_SESSION_ID`, which
+        // this test's own registry does not hold, so its row is a pane that
+        // ended, not a server outside kitterm. It read the two assertions
+        // of the `else` branch unconditionally before.
+        if let exported = ProcessInfo.processInfo.environment[ProcessTable.sessionVariable] {
+            XCTAssertEqual(row["endedSession"] as? String, exported)
+            XCTAssertNil(row["launcher"])
+        } else if getppid() > 1 {
             XCTAssertEqual(row["parent"] as? String, PtySession.invocationName(ofPID: getppid()))
             XCTAssertNotNil(row["launcher"])
         }

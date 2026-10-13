@@ -20,6 +20,9 @@ export type ServerRow = {
   project?: ProjectRef;
   /** The pane that started it, through a program (`claude`) or not. */
   session?: { id: string; name?: string; through?: string };
+  /** The id of a pane that ended, carried in the server's environment,
+   * when no live session has it. */
+  endedSession?: string;
   /** The top ancestor below launchd, for a server outside kitterm. */
   launcher?: string;
   parent?: string;
@@ -107,23 +110,28 @@ function hostForUrl(hostname: string): string {
   return hostname.includes(":") && !hostname.startsWith("[") ? `[${hostname}]` : hostname;
 }
 
+/** The words of a server whose pane ended. */
+export const PANE_ENDED = "kitterm pane that ended";
+
 /** Who started the server, in the words round 3 pins: `kitterm pane
  * <name>` (the session's name, else its short id), `<through> in <name>`,
+ * `kitterm pane that ended` for an exported id no live session has,
  * `outside kitterm · <launcher>`, or `outside kitterm`. */
 export function startedBy(row: ServerRow): string {
   if (row.session) {
     const name = row.session.name || row.session.id.slice(0, 8);
     return row.session.through ? `${row.session.through} in ${name}` : `kitterm pane ${name}`;
   }
+  if (row.endedSession) return PANE_ENDED;
   return row.launcher ? `outside kitterm · ${row.launcher}` : "outside kitterm";
 }
 
-/** Rule 4: a server is listed when a pane started it, or when its
- * project's root lies under the reader's home (`homePath` rewrites such
- * a root to `~/…`); every other server folds, Homebrew's `/opt/homebrew`
- * included. */
+/** Rule 4: a server is listed when a pane started it (a pane that ended
+ * too), or when its project's root lies under the reader's home
+ * (`homePath` rewrites such a root to `~/…`); every other server folds,
+ * Homebrew's `/opt/homebrew` included. */
 export function isListed(row: ServerRow): boolean {
-  if (row.session) return true;
+  if (row.session || row.endedSession) return true;
   const root = row.project?.root;
   return root !== undefined && homePath(root) !== root;
 }

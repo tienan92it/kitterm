@@ -14,9 +14,17 @@ import NIOConcurrencyHelpers
 /// A request reads `snapshot` under the lock and calls `refreshIfDue`, which
 /// starts one read when none runs and the last one ended `refreshSeconds`
 /// ago or more; no request waits for the kernel or a probe. A listener is
-/// joined to a session first by its controlling tty against the session's
-/// shell, else by its parent chain to a session's shell pid, else it is
-/// outside kitterm with the top launcher below launchd. The probe's verdict
+/// joined to a session first by the `KITTERM_SESSION_ID` in its environment
+/// (round 3: the pane's shell exported it and a server keeps it after it
+/// leaves the terminal and its starter exits; an id that names no live
+/// session is `endedSession`), else by its controlling tty against the
+/// session's shell, else by its parent chain to a session's shell pid, else
+/// it is outside kitterm with the top launcher below launchd. The kernel
+/// withholds the environment of an Apple platform binary (`/usr/bin/nc`,
+/// `/bin/sleep`, `postgres` from the system) from every other process and
+/// shows that of a binary built or installed by the user (measured
+/// 2026-10-13 with `ps -wwE` on macOS 26.6.2), so the tty and the chain
+/// rules are the fallback for a platform binary. The probe's verdict
 /// is cached per pid and port: a server that answers HTTP keeps the verdict
 /// while it is listed; a server that does not is asked again after
 /// `reprobeSeconds` only while its process is younger than
@@ -77,6 +85,10 @@ public final class ListeningServers: @unchecked Sendable {
         /// Set when a session started the server; `launcher` and `parent`
         /// are then nil.
         public var session: SessionLink?
+        /// The `KITTERM_SESSION_ID` the server carries when it names no live
+        /// session: a pane that ended started it. `session`, `launcher` and
+        /// `parent` are then nil.
+        public var endedSession: UUID?
         /// The top ancestor below launchd, for a server outside kitterm;
         /// nil when the server is that ancestor itself.
         public var launcher: String?
@@ -99,6 +111,7 @@ public final class ListeningServers: @unchecked Sendable {
                 if let through = session.through { link["through"] = through }
                 item["session"] = link
             }
+            if let endedSession { item["endedSession"] = endedSession.uuidString }
             if let launcher { item["launcher"] = launcher }
             if let parent { item["parent"] = parent }
             if let http { item["http"] = http }
@@ -269,6 +282,7 @@ public final class ListeningServers: @unchecked Sendable {
             addresses[Key(pid: listener.pid, port: listener.port), default: []].insert(listener.address)
         }
         let shells = Dictionary(links.map { ($0.pid, $0) }, uniquingKeysWith: { first, _ in first })
+        let byID = Dictionary(links.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var ttys: [UInt32: ShellLink] = [:]
         for link in links {
             if let tty = table.processes[link.pid]?.tty, ttys[tty] == nil { ttys[tty] = link }
@@ -288,19 +302,31 @@ public final class ListeningServers: @unchecked Sendable {
                 program: name(pid), startedAt: table.processes[pid]?.startedAt, cwd: table.cwd(pid)
             )
             server.project = server.cwd.flatMap(resolveProject)
-            // The tty first: a server whose starter has exited keeps the
-            // pane's terminal (postgres from a pane, reparented to launchd).
-            var link = table.processes[pid]?.tty.flatMap { ttys[$0] }
             let shellIndex = chain.firstIndex { shells[$0] != nil }
+            // The environment first: the pane's shell exported its id, and
+            // the server keeps it after setsid and after its starter exited
+            // (kubectl under Claude Code's detached bg-pty-host). A platform
+            // binary's environment is not readable, so the rules below are
+            // its fallback.
+            let exported = table.sessionID(pid).flatMap(UUID.init(uuidString:))
+            var link = exported.flatMap { byID[$0] }
+            // Then the tty: a server whose starter has exited keeps the
+            // pane's terminal (postgres from a pane, reparented to launchd).
+            if link == nil { link = table.processes[pid]?.tty.flatMap { ttys[$0] } }
             if link == nil, let shellIndex { link = shells[chain[shellIndex]] }
             if let link {
                 // The program under the shell on the chain, when the server
-                // is not the shell's own child.
+                // is not the shell's own child; with the shell off the chain,
+                // the top program below launchd that is not the server.
                 var through: String?
-                if let shellIndex, shells[chain[shellIndex]]?.id == link.id, shellIndex > 1 {
-                    through = name(chain[shellIndex - 1])
+                if let shellIndex, shells[chain[shellIndex]]?.id == link.id {
+                    if shellIndex > 1 { through = name(chain[shellIndex - 1]) }
+                } else if chain.count > 1 {
+                    through = name(chain[chain.count - 1])
                 }
-                server.session = SessionLink(id: link.id, name: link.name, through: through)
+                server.session = SessionLink(id: link.id, name: link.name, through: through.flatMap(Self.firstWord))
+            } else if let exported {
+                server.endedSession = exported
             } else {
                 if chain.count > 1 {
                     let top = chain[chain.count - 1]
@@ -310,6 +336,13 @@ public final class ListeningServers: @unchecked Sendable {
             }
             return server
         }
+    }
+
+    /// The first word of a program's name: `claude` from the title
+    /// `claude bg-pty-host` Claude Code gives its detached host.
+    static func firstWord(_ name: String) -> String? {
+        let word = name.split(whereSeparator: { $0 == " " || $0 == "\t" }).first.map(String.init)
+        return word?.isEmpty == false ? word : nil
     }
 
     /// `pid`, its parent, and so on, up to the process whose parent is

@@ -62,16 +62,25 @@ public struct ProcessTable: Sendable {
     public var name: @Sendable (pid_t) -> String?
     /// A process's working directory, nil for a reaped pid or any failure.
     public var cwd: @Sendable (pid_t) -> String?
+    /// The `KITTERM_SESSION_ID` a process carries in its environment
+    /// (`running-servers` round 3): the pane's shell exported it, and a
+    /// server keeps it after it leaves the terminal and its starter exits.
+    /// Nil for a process with none, a reaped pid or any failure.
+    public var sessionID: @Sendable (pid_t) -> String?
+
+    public static let sessionVariable = "KITTERM_SESSION_ID"
 
     public init(
         processes: [pid_t: Process], listeners: [Listener],
         name: @escaping @Sendable (pid_t) -> String?,
-        cwd: @escaping @Sendable (pid_t) -> String?
+        cwd: @escaping @Sendable (pid_t) -> String?,
+        sessionID: @escaping @Sendable (pid_t) -> String? = { _ in nil }
     ) {
         self.processes = processes
         self.listeners = listeners
         self.name = name
         self.cwd = cwd
+        self.sessionID = sessionID
     }
 
     /// The live table, or nil with the reason on a platform with no reader.
@@ -111,7 +120,8 @@ public struct ProcessTable: Sendable {
                 PtySession.invocationName(ofPID: pid)
                     ?? PtySession.executablePath(ofPID: pid).map { URL(fileURLWithPath: $0).lastPathComponent }
             },
-            cwd: { pid in PtySession.currentDirectory(ofPID: pid) }
+            cwd: { pid in PtySession.currentDirectory(ofPID: pid) },
+            sessionID: { pid in PtySession.environmentValue(ofPID: pid, name: sessionVariable) }
         )
     }
 
