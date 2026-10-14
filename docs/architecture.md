@@ -432,15 +432,17 @@ takes no input).
 
 Two charts under the tiles, `TOTALS` and `UNIT COSTS`, read a second route,
 `GET /api/yield/daily?from=&to=` (`RepositoryYields.dailyReport`): the
-day-by-day counts behind a lifetime view that ignores the 7d/30d/90d toggle.
-`TOTALS` indexes spend, merged PRs, merged lines, and releases to their value
-on a base day (the first run of seven days whose spend is at least a quarter
-of the median) and plots their growth on a log axis. `UNIT COSTS` plots the
-lifetime dollar-per-PR, dollar-per-1k-lines, dollar-per-release, and
-dollar-per-hour from the first recorded spend day. The `USAGE` toggle also
-gains an `all` range, which starts at that same first spend day (or reaches
-back 400 days until the lifetime route answers) and drives every other
-figure on the page the same way 7d, 30d, and 90d do.
+day-by-day counts behind two lifetime views, and both follow the `USAGE`
+range like every other panel. `TOTALS` indexes spend, merged PRs, merged
+lines, and releases to their value at the later of the range's first day and
+a base day (the first run of seven days whose spend is at least a quarter of
+the median), and plots their growth on a log axis. `UNIT COSTS` plots the
+dollar-per-PR, dollar-per-1k-lines, dollar-per-release, and dollar-per-hour
+within the range, on a log dollar axis, each line drawn only once its range
+holds 5 PRs, 3 releases, 1,000 lines, or 1 model hour. The `USAGE` toggle
+also gains an `all` range, which starts at the first spend day (or reaches
+back 400 days until the lifetime route answers) and drives every figure on
+the page the same way 7d, 30d, and 90d do.
 
 ### The pull requests and the knowledge
 
@@ -480,8 +482,9 @@ its environment (it survives past the server's own starter exiting), then by
 its controlling tty, then by its parent chain to a session's shell pid; the
 tty and the chain are the fallback for an Apple platform binary (`/bin/sleep`,
 `/usr/bin/nc`), because the kernel withholds another process's environment
-from one it did not build or install. Full grade only; `supported: false` on
-Linux, where no reader exists yet.
+only for such a binary; a `cc`-built or a Homebrew or npm binary of the same
+user is readable. Full grade only; `supported: false` on Linux, where no
+reader exists yet.
 
 ## Security model
 
