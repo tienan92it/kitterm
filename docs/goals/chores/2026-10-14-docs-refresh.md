@@ -1,0 +1,1 @@
+- 2026-10-14 · README, docs/architecture.md and docs/foreman.md describe v0.36 to v0.41: SERVERS, REVIEW, the stage tree, the lifetime charts, the `all` range, screen_state, the foreman scope and protocol · PR #N · Cost: pending
