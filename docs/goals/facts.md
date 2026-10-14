@@ -10,6 +10,11 @@ decision moves to `docs/adr/`.
 
 ## Toolchain
 
+- `PreviousRunReportTests.testAKilledRunIsReportedAsUnrecordedWithItsPidTimeAndSessions`
+  failed once on PR CI with "Could not connect to the server" on a docs-only
+  PR and passed on the rerun: a real-daemon start race. Rerun it before you
+  treat it as a regression (2026-10-14, chore `docs-refresh`).
+
 - macOS gives another process's environment (`KERN_PROCARGS2`, the
   strings after argv) to the same user for a non-platform binary only:
   `env FOOX=1 /bin/sleep` reads no `FOOX`, a `cc`-built binary does.

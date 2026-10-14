@@ -26,7 +26,11 @@ The design holds three properties.
   stream, so an unwatched session still has a command index.
   A rendered screen exists for the foreman (`read_screen`), but the MCP bridge
   renders it in its own process from the raw tail the daemon serves. See ADR 0001
-  (`adr/0001-read-screen-in-the-bridge.md`).
+  (`adr/0001-read-screen-in-the-bridge.md`). `screen_state`, the same bridge, runs
+  rules over that render and the session's `foregroundProgram` and answers one of
+  eight states (`prompt-empty`, `working`, `trust-dialog`, and so on) with no
+  further daemon call; it logs each answer to `~/.kitterm/screen-state.log`,
+  which `kitterm screen-state stats` reads.
 - **Durability by design.** Every output byte flows through a 4 MiB ring
   (`SessionLog`) with absolute stream offsets. A reconnect replays the exact bytes the
   client missed. State lives in `~/.kitterm/`, so a restart restores each pane.
@@ -140,6 +144,28 @@ Two properties make this robust.
 - **A named command.** Most shells emit OSC 133 marks but never say what ran. A command
   submitted through `POST /input` names the command it creates, so `command` is not null
   on a normal setup. A command line that the shell does report always wins.
+
+### Hooks and the pane join
+
+`POST /api/hooks` is where a Claude Code session reports on itself and asks a
+human. `PreToolUse`, `Notification`, and `Stop` record the pane's agent state
+and answer at once. `PermissionRequest` is the one held event: it fires only
+when Claude would show a dialog, so an auto-allowed tool never reaches the
+daemon. The daemon holds the response until a human allows or denies it from
+any device, and the decision travels back in the JSON body. No decision is an
+answer: on expiry the agent shows its own dialog.
+
+The same route joins a pane to its Claude Code session. Every hook payload
+carries `session_id` and `transcript_path`; the pane keeps both as
+`agentSessionId` and `agentTranscript` from whichever hook arrives first. A
+pane that already holds a join refuses a hook whose `cwd` resolves outside
+that join's project (`PtySession.admitAgentJoin`): the pane keeps its old
+join and status, a `PermissionRequest` from the stranger is never held, and
+the event feed records one `agent.join-mismatch` per refused `session_id`
+per pane. This closes a real failure: a background process that inherited
+the pane's `KITTERM_SESSION_ID` environment variable can host an unrelated
+`claude` conversation, and without the check its hooks silently took over
+the pane's reported state.
 
 ### The bill
 
@@ -403,6 +429,62 @@ refuses what the research refuses: no quality
 rate (every round on record says `done`), no rework rate (two fix commits are noise),
 and no money value for the human's time (nothing here knows their rate, and the page
 takes no input).
+
+Two charts under the tiles, `TOTALS` and `UNIT COSTS`, read a second route,
+`GET /api/yield/daily?from=&to=` (`RepositoryYields.dailyReport`): the
+day-by-day counts behind two lifetime views, and both follow the `USAGE`
+range like every other panel. `TOTALS` indexes spend, merged PRs, merged
+lines, and releases to their value at the later of the range's first day and
+a base day (the first run of seven days whose spend is at least a quarter of
+the median), and plots their growth on a log axis. `UNIT COSTS` plots the
+dollar-per-PR, dollar-per-1k-lines, dollar-per-release, and dollar-per-hour
+within the range, on a log dollar axis, each line drawn only once its range
+holds 5 PRs, 3 releases, 1,000 lines, or 1 model hour. The `USAGE` toggle
+also gains an `all` range, which starts at the first spend day (or reaches
+back 400 days until the lifetime route answers) and drives every figure on
+the page the same way 7d, 30d, and 90d do.
+
+### The pull requests and the knowledge
+
+The fleet view's `REVIEW` rows and each goal's pull-request state come from
+`GET /api/projects/<id>/pulls`. `PullRequestStatus` runs `gh pr list
+--state all` for the project's GitHub repository on its own queue
+(`kitterm.pulls`), under a 20 s timeout with its own process group, and
+never on the loop: a request answers the cached list and triggers a refresh
+when the last one ended 60 seconds ago or more. `ci` reduces
+`statusCheckRollup` to one word (`failing`, `pending`, `passing`, or absent
+with no checks). A failed read keeps the last good list and reports why
+(`gh is not installed`, `gh is not logged in`, a timeout, an exit code) with
+the age of that last read. Full grade only.
+
+`GET /api/projects/<id>/knowledge` used to read `docs/goals/` from the
+working tree, which nobody pulls after a merge. `KnowledgeBase` now reads it
+from `origin/<base>` instead: one `git fetch` of the base branch and any open
+`goal/<slug>` branch, on the serial queue `kitterm.knowledge-base`, with
+`GIT_TERMINAL_PROMPT=0` and the branch name validated before it ever reaches
+a `git` argument. The summaries then come from `git ls-tree` and
+`git cat-file` against the fetched commit, with no working tree, no index,
+and no `HEAD` touched. A goal still open on its own branch reads from that
+branch; everything else reads from the base. A fetch that fails keeps the
+last good read and reports why, with that read's age. Watch grade, like the
+rest of the knowledge routes.
+
+### The servers
+
+`GET /api/servers` lists the user's listening TCP sockets, for the `SERVERS`
+section of the fleet view. `ProcessTable` reads them from the kernel with
+`libproc` (a few milliseconds for hundreds of processes), and `HTTPProbe`
+asks one `HEAD / HTTP/1.0` per server; both run on `ListeningServers`'s own
+queue (`kitterm.servers`), never on the loop, and a request answers the
+three-second cache without waiting for a read or a probe. A server is joined
+to a session first by the `KITTERM_SESSION_ID` its pane's shell exported into
+its environment (it survives past the server's own starter exiting), then by
+its controlling tty, then by its parent chain to a session's shell pid; the
+tty and the chain are the fallback for an Apple platform binary (`/bin/sleep`,
+`/usr/bin/nc`), because the kernel withholds another process's environment
+only for such a binary; a `cc`-built or a Homebrew or npm binary of the same
+user is readable. Full grade only; `supported: false` on Linux, where no
+reader exists yet.
 
 ## Security model
 
