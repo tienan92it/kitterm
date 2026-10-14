@@ -1,1 +1,1 @@
-- 2026-10-14 · README, docs/architecture.md and docs/foreman.md describe v0.36 to v0.41: SERVERS, REVIEW, the stage tree, the lifetime charts, the `all` range, screen_state, the foreman scope and protocol · PR #193 · Cost: pending
+- 2026-10-14 · README, docs/architecture.md and docs/foreman.md describe v0.36 to v0.41: SERVERS, REVIEW, the stage tree, the lifetime charts, the `all` range, screen_state, the foreman scope and protocol · PR #193 · Cost: $6.29 · 22688k in (99% cached) · 50k out · 0h 42m
