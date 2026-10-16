@@ -36,9 +36,27 @@ The rules the draft fixes:
    `[x] rendered [ ] source`, then `open full width` as a link, then
    the close button.
 
-Still open for the Pen round: the `/md` page's own header and width,
-the 390 px layout, the light theme, the cut notice of `goal.md`
-condition 7, and the empty and error states.
+## The approved frames
 
-The frames in `design/markdown.pen` that carry this design, and their
-commit, are added here once the human approves them.
+2026-10-16, the human approved the six frames of `design/markdown.pen`
+at commit d4c0b2f (`rounds/002.md`) and their exports in
+`design/exports/markdown-*.png` at that commit: `Markdown overlay 1200`
+and `390`, `Markdown page 1200` and `390`, `Markdown page 1200 light`,
+and `Markdown components` with its 13 rules. The same answers approved:
+
+6. **The words.** The cut header `<size> · the first <cap> shown` and
+   the last line `Showing the first <cap> of <size>.`; the error
+   `Cannot read <path>: <reason>.` (`the daemon answered 404`); the
+   empty file `<name> is empty.`
+7. **The `/md` header** is one bar: the path in mono and the size at
+   the left, the toggle at the right, no close; the column is at most
+   72 characters and centred, full width on a phone.
+8. **The foundation**, on the human's word: round 3 adds to
+   `design/foundation.md` a `ui` font token (`--font-ui`) for prose
+   pages; `surface-2` and `sunken` as named tokens with a light value
+   each, and `tokens.css` gives `--ui-bg-sunken` a light value, so a
+   code well is light on a light theme; and the `md-*` sizes (14, 22,
+   17, 15, 12.5; the 72-character measure) as the one exception to the
+   three-size type scale, for prose only.
+9. **The link** is underlined on the page, by the foundation's rule,
+   though a saved `.pen` file drops the underline.

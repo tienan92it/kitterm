@@ -4,7 +4,7 @@
 - Round: 2 of 3 in this budget (first budget)
 - Rounds total: 2
 - Last floor: green (2026-10-16, round 2 after: PR CI on d4c0b2f)
-- Updated: 2026-10-16, round 2 done; the frames wait on the human
+- Updated: 2026-10-16, the human approved the frames and the foundation proposals
 
 ## Queue
 
@@ -16,11 +16,8 @@ None.
 
 ## Proposals waiting on the human
 
-- Approve the frames of `design/markdown.pen` at d4c0b2f and the words
-  for the cut, error and empty states (`rounds/002.md`).
-- `design/foundation.md`: a `ui` font token, `surface-2` and `sunken`
-  with light values, and the `md-*` sizes as the prose exception
-  (`rounds/002.md`, Proposals).
+None. 2026-10-16: the human approved the frames at d4c0b2f, the
+words, and the three foundation proposals (`corpus/01-approved-design.md`).
 
 ## Done
 
@@ -31,5 +28,5 @@ None.
 
 ## Next action
 
-Round 3: `markdown-views` from `plan.md` row 3, once the human approves
-the frames and decides the three foundation proposals.
+Round 3: `markdown-views` from `plan.md` row 3, with the foundation
+additions of `corpus/01-approved-design.md` rule 8.
