@@ -106,6 +106,18 @@ describe("the query forms", () => {
     expect(root.querySelector("h1")?.textContent).toBe("Goal: Markdown");
   });
 
+  it("prints a path under the home directory as ~/…, with the full path as the title", async () => {
+    const { pageHeading } = await md();
+    expect(pageHeading({ kind: "file", path: "/Users/antran/Workspace/kitterm/README.md" })).toBe("~/Workspace/kitterm/README.md");
+    expect(pageHeading({ kind: "file", path: "/home/an/notes.md" })).toBe("~/notes.md");
+    expect(pageHeading({ kind: "file", path: "/opt/x/notes.md" })).toBe("/opt/x/notes.md");
+    expect(pageHeading({ kind: "knowledge", project: "kitterm", path: "g/goal.md" })).toBe("kitterm / g/goal.md");
+    routes["/api/files/content?path=%2FUsers%2Fantran%2FREADME.md"] = { body: "# a\n", headers: fileHeaders(4) };
+    const { root } = await boot("?path=/Users/antran/README.md");
+    const path = root.querySelector(".md-page-path");
+    expect([path?.textContent, path?.title]).toEqual(["~/README.md", "/Users/antran/README.md"]);
+  });
+
   it("says when the query names no file", async () => {
     const { pageTarget, NO_TARGET } = await md();
     expect(pageTarget("")).toBeNull();

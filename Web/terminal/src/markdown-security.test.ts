@@ -60,7 +60,9 @@ describe("raw HTML is text", () => {
     "<a href=\"javascript:alert(1)\">x</a>",
     "<svg><script>alert(1)</script></svg>",
     "text with <b onmouseover=\"alert(1)\">bold</b> inside",
-    "<!-- comment --> <?php echo 1 ?> <![CDATA[x]]>",
+    // Chartered in round 3: a comment renders nothing (see "HTML comments"
+    // below); every other declaration and instruction stays text.
+    "<!DOCTYPE html> <?php echo 1 ?> <![CDATA[x]]>",
     "<div>\n<script>alert(1)</script>\n</div>",
     "<style>body{display:none}</style>",
   ];
@@ -207,6 +209,52 @@ describe("every rendered node", () => {
     ].join("\n");
     const root = render(source);
     expect(elements(root).length).toBeGreaterThan(30);
+    assertClean(root);
+  });
+});
+
+describe("HTML comments", () => {
+  // The foreman's correction of round 3: GitHub and CommonMark never show a
+  // comment, and a `<!-- markdownlint … -->` line printed as text.
+  const html = (root: FakeElement): string => root.children.map((c) => (typeof c === "string" ? c : `<${c.tagName.toLowerCase()}>${c.textContent}</${c.tagName.toLowerCase()}>`)).join("");
+
+  it("renders no node for a comment on a line of its own", () => {
+    const root = render("<!-- markdownlint-disable-next-line MD013 -->");
+    expect(root.children).toEqual([]);
+    assertClean(root);
+  });
+
+  it("hides what a comment hides, a script included", () => {
+    const root = render("<!-- <script>alert(1)</script> onload=x -->");
+    expect(root.children).toEqual([]);
+    expect(textOf(root)).not.toContain("script");
+    const inline = render("a <!-- <script>alert(1)</script> --> b");
+    expect(html(inline)).toBe("<p>a  b</p>");
+    assertClean(inline);
+  });
+
+  it("drops a comment that spans lines, and keeps the paragraphs around it", () => {
+    const root = render("before\n\n<!-- one\ntwo -->\n\nafter");
+    expect(html(root)).toBe("<p>before</p><p>after</p>");
+    const inside = render("x <!-- a\nb --> y");
+    expect(html(inside)).toBe("<p>x  y</p>");
+  });
+
+  it("keeps an unclosed <!-- as text to the end of its paragraph", () => {
+    const root = render("a <!-- not closed\nstill text\n\n<p>next</p>");
+    expect(html(root)).toBe("<p>a <!-- not closed\nstill text</p><p><p>next</p></p>");
+    assertClean(root);
+  });
+
+  it("reads <!--> and <!---> as comments, per CommonMark", () => {
+    expect(render("<!-->").children).toEqual([]);
+    expect(render("<!--->").children).toEqual([]);
+    expect(html(render("a <!--> b <!---> c"))).toBe("<p>a  b  c</p>");
+  });
+
+  it("leaves every other raw HTML as text", () => {
+    const root = render("<!DOCTYPE html> <div onload=x> <![CDATA[ x ]]> <?php ?>");
+    expect(html(root)).toBe("<p><!DOCTYPE html> <div onload=x> <![CDATA[ x ]]> <?php ?></p>");
     assertClean(root);
   });
 });

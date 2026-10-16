@@ -47,6 +47,7 @@ import {
   type MarkdownView,
 } from "./markdown-view";
 import { knowledgeUrl } from "./sessions-model";
+import { homePath } from "./sessions-tree";
 import { loadSettings } from "./settings-store";
 import { applyThemeTokens } from "./theme-tokens";
 import { findThemeById } from "./themes";
@@ -82,9 +83,15 @@ export function sourceUrl(target: PageTarget): string {
   return target.kind === "file" ? fileContentUrl(target.path) : knowledgeUrl(target.project, target.path);
 }
 
-/** What the header prints: the path, or `<project> / <path>` for a knowledge file (rule 11). */
+/** What names the file in a sentence: the path, or `<project> / <path>` for a knowledge file. */
 export function pageLabel(target: PageTarget): string {
   return target.kind === "file" ? target.path : `${target.project} / ${target.path}`;
+}
+
+/** What the header prints (rule 11): a path under the home directory as
+ * `~/…`, the fleet view's rule; the label's full form is the element's title. */
+export function pageHeading(target: PageTarget): string {
+  return target.kind === "file" ? homePath(target.path) : pageLabel(target);
 }
 
 /** The sentence for a page with no target. */
@@ -125,7 +132,8 @@ export async function bootMarkdownPage(
 
   const label = pageLabel(target);
   const filename = basename(target.path);
-  path.textContent = label;
+  path.textContent = pageHeading(target);
+  path.title = label;
   document.title = `${filename} — kitterm`;
 
   let response: Response;

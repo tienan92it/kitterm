@@ -3,7 +3,9 @@
  *
  * **Raw HTML is never parsed as HTML.** An HTML block and an inline tag are
  * text: `<script>` in a file is the eight characters `<script>` on screen. The
- * parser has no HTML rule, and the renderer builds every node with
+ * parser has one HTML rule, for a comment, and it renders nothing (round 3:
+ * GitHub shows no comment, and a `markdownlint` directive printed as text).
+ * The renderer builds every node with
  * `document.createElement`, sets text with `textContent` (or `append` of a
  * string, which makes a text node), and sets only the attributes
  * `RENDERED_ATTRIBUTES` names. A file's bytes never become markup, the rule
@@ -150,8 +152,11 @@ class BlockParser {
         start = end + 1;
       }
     }
-    blocks.push(...this.parseBlocks(lines.slice(start), 0));
+    const body = this.parseBlocks(lines.slice(start), 0);
+    // The deferred inline parses run before the body is copied: a paragraph
+    // that parses to nothing takes itself out of the array it sits in.
     for (const fn of this.deferred) fn();
+    blocks.push(...body);
     return blocks;
   }
 
@@ -161,15 +166,26 @@ class BlockParser {
     });
   }
 
+  /** A paragraph of `text` at the end of `blocks`. One whose text was
+   * nothing but HTML comments parses to no inline and is then no block, so
+   * a comment on a line of its own renders no node, as on GitHub. */
+  private paragraph(text: string, blocks: Block[]): void {
+    const block: Block = { type: "paragraph", children: [] };
+    blocks.push(block);
+    this.deferred.push(() => {
+      block.children.push(...parseInline(text, this.definitions));
+      if (block.children.length === 0) {
+        const at = blocks.indexOf(block);
+        if (at >= 0) blocks.splice(at, 1);
+      }
+    });
+  }
+
   private parseBlocks(lines: string[], depth: number): Block[] {
     const blocks: Block[] = [];
     if (depth >= MAX_DEPTH) {
       const text = lines.filter((line) => !isBlank(line)).map((line) => line.trim()).join("\n");
-      if (text) {
-        const block: Block = { type: "paragraph", children: [] };
-        this.inlines(text, block.children);
-        blocks.push(block);
-      }
+      if (text) this.paragraph(text, blocks);
       return blocks;
     }
     let i = 0;
@@ -438,8 +454,13 @@ class BlockParser {
       if (level) blocks.push({ type: "paragraph", children: [] });
       return j;
     }
-    const block: Block = level ? { type: "heading", level, children: [] } : { type: "paragraph", children: [] };
-    this.inlines(text.replace(/[ \t]+$/, ""), block.children);
+    const trimmed = text.replace(/[ \t]+$/, "");
+    if (!level) {
+      this.paragraph(trimmed, blocks);
+      return j;
+    }
+    const block: Block = { type: "heading", level, children: [] };
+    this.inlines(trimmed, block.children);
     blocks.push(block);
     return j;
   }
@@ -556,6 +577,10 @@ interface Bracket {
 const UNICODE_PUNCT = /[\p{P}\p{S}]/u;
 const TEXT_RUN = /[^\\`*_~[\]!<&\nh]+/y;
 const AUTOLINK = /<([a-zA-Z][a-zA-Z0-9+.-]{1,31}:[^\s<>]*)>/y;
+/** An HTML comment (CommonMark 0.31): `<!-->`, `<!--->`, or `<!--`, any text
+ * without `-->`, and `-->`, across lines. The one piece of raw HTML the
+ * parser recognises, and it renders nothing, as GitHub shows none. */
+const HTML_COMMENT = /<!--(?:>|->|[\s\S]*?-->)/y;
 const EMAIL_AUTOLINK =
   /<([a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*)>/y;
 const BARE_URL = /https?:\/\/[^\s<]*[^\s<?!.,:*_~'"]/y;
@@ -877,6 +902,14 @@ class InlineParser {
 
   private angle(): void {
     const src = this.source;
+    HTML_COMMENT.lastIndex = this.position;
+    const comment = HTML_COMMENT.exec(src);
+    if (comment) {
+      // Nothing is appended: what a comment hides stays hidden, `<script>`
+      // included. An unclosed `<!--` is text to the end of the paragraph.
+      this.position = HTML_COMMENT.lastIndex;
+      return;
+    }
     AUTOLINK.lastIndex = this.position;
     const link = AUTOLINK.exec(src);
     if (link) {
