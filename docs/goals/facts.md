@@ -10,6 +10,10 @@ decision moves to `docs/adr/`.
 
 ## Toolchain
 
+- `tokens.css` derives `--ui-bg-sunken` by mixing `--ui-bg` 75 % toward
+  black, so on a light theme a sunken well (the preview's code) is dark
+  under dark text (2026-10-16, `markdown-preview` round 2).
+
 - `PreviousRunReportTests.testAKilledRunIsReportedAsUnrecordedWithItsPidTimeAndSessions`
   failed once on PR CI with "Could not connect to the server" on a docs-only
   PR and passed on the rerun: a real-daemon start race. Rerun it before you
@@ -277,6 +281,11 @@ decision moves to `docs/adr/`.
   two rounds running, though the brief asked for it first; check that
   the PLAN note arrived before the crew's first edit (2026-10-07,
   `screen-state` rounds 2 and 3).
+- `pen interactive --out <new file>` starts a new `.pen` from an empty
+  canvas, and six exports at scale 2 took 12 s; a variable is refused
+  as `x`, `y` or a frame width (numbers only), and a horizontal row does
+  not wrap, so a line with inline code is broken by hand per width
+  (2026-10-16, `markdown-preview` round 2).
 - The pen.dev CLI edits a `.pen` file headless, with no desktop window:
   `pen interactive --in <file> --out <file>` takes the same `execute`
   calls as the Pencil MCP, and `save()` writes the file. It does not
