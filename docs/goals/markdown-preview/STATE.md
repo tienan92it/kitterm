@@ -1,14 +1,14 @@
 # STATE: markdown-preview
 
-- Status: active
-- Round: 2 of 3 in this budget (first budget)
-- Rounds total: 2
-- Last floor: green (2026-10-16, round 2 after: PR CI on d4c0b2f)
-- Updated: 2026-10-16, the human approved the frames and the foundation proposals
+- Status: done
+- Round: 3 of 3 in this budget (first budget)
+- Rounds total: 3
+- Last floor: green (2026-10-16, round 3 after: vitest 1978, swift test 1227, PR CI on cb76d38)
+- Updated: 2026-10-16, round 3 done; the goal waits for the human's merge of PR #194
 
 ## Queue
 
-1. `markdown-views` (capability 3), PR #194.
+None.
 
 ## Failures
 
@@ -21,6 +21,8 @@ words, and the three foundation proposals (`corpus/01-approved-design.md`).
 
 ## Done
 
+- `markdown-views`, round 3, PR #194. See `rounds/003.md`. The overlay,
+  `/md`, and the fleet view's links render Markdown.
 - `markdown-design`, round 2, PR #194. See `rounds/002.md`. Six frames
   in `design/markdown.pen`.
 - `markdown-renderer`, round 1, PR #194. See `rounds/001.md`. A pure
@@ -28,5 +30,6 @@ words, and the three foundation proposals (`corpus/01-approved-design.md`).
 
 ## Next action
 
-Round 3: `markdown-views` from `plan.md` row 3, with the foundation
-additions of `corpus/01-approved-design.md` rule 8.
+None. The human merges PR #194; the foreman releases, upgrades, and
+checks a `.md` file in a pane and on `/md` live. Reopen with a new
+`goal.md` line or a chore on this surface.
