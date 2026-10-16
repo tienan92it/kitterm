@@ -1513,11 +1513,9 @@ export class TerminalPane {
    * come to disagree.
    */
   private async previewFile(path: string): Promise<void> {
-    const params = new URLSearchParams({ path });
-    if (this.sessionIdValue) params.set("session", this.sessionIdValue);
     let response: Response;
     try {
-      response = await fetch(`/api/files/content?${params.toString()}`, {
+      response = await fetch(this.fileContentUrl(path), {
         credentials: "same-origin",
       });
     } catch {
@@ -1537,10 +1535,26 @@ export class TerminalPane {
     const body = await response.blob();
     if (this.disposed) return;
     this.preview?.close();
-    this.preview = showPreview(this.containerEl, meta, body, () => {
-      this.preview = null;
-      this.focus();
-    });
+    this.preview = showPreview(
+      this.containerEl,
+      meta,
+      body,
+      () => {
+        this.preview = null;
+        this.focus();
+      },
+      // The overlay reaches a linked `.md` file and an image through the
+      // same session, so a relative path inside the file resolves where the
+      // shell would resolve it.
+      { path, contentUrl: (linked) => this.fileContentUrl(linked) },
+    );
+  }
+
+  /** The preview route for `path`, relative to this session's cwd. */
+  private fileContentUrl(path: string): string {
+    const params = new URLSearchParams({ path });
+    if (this.sessionIdValue) params.set("session", this.sessionIdValue);
+    return `/api/files/content?${params.toString()}`;
   }
 
   /** Copy selection: ⌘C, or Ctrl+Shift+C — never bare Ctrl+C, which is an

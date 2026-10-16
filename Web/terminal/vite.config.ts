@@ -23,6 +23,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, "index.html"),
         sessions: resolve(__dirname, "sessions.html"),
+        md: resolve(__dirname, "md.html"),
       },
     },
   },

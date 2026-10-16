@@ -687,9 +687,10 @@ body,
 
 .preview-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px 12px;
   padding: 12px 14px;
   border-bottom: 1px solid var(--ui-border);
 }
@@ -721,6 +722,48 @@ body,
 }
 
 .preview-close:hover { color: var(--ui-text); border-color: var(--ui-accent); }
+
+/* The controls of a Markdown file (`design/markdown.pen`, rule 10): the
+   toggle in the mono font, `open full width` as a link, then the close
+   button. Below 768 px the row wraps under the name, as the 390 frame draws
+   it. The toggle prints `[x]`/`[ ]` as text, like the fleet view's. */
+.preview-controls {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+@media (max-width: 767px) {
+  .preview-controls { flex-basis: 100%; }
+}
+
+.view-toggle {
+  display: flex;
+  gap: 8px;
+  font: 12.5px/1.6 var(--font-mono);
+}
+
+.view-choice {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ui-text-muted);
+  font: inherit;
+  white-space: pre;
+  cursor: pointer;
+}
+
+.view-choice[aria-checked="true"] { color: var(--ui-text); }
+
+.preview-open-full {
+  color: var(--ui-accent);
+  font: 12px/1.6 var(--font-ui);
+  text-decoration: underline;
+}
+
+.preview-controls .preview-close { margin-left: 4px; }
 
 /* The one scrolling region. Wide content scrolls inside here rather than
    stretching the card past the pane. */
@@ -804,6 +847,220 @@ body,
   font: 13px/1.5 var(--font-ui);
   text-align: center;
 }
+
+/* --- a Markdown file, rendered -----------------------------------------------
+   `design/markdown.pen` (`markdown-preview` round 2, approved at d4c0b2f) and
+   the 13 rules of its `Markdown components` frame. Prose is set in --font-ui
+   at the md-* sizes, the one exception `design/foundation.md` makes to its
+   three-size scale, in a column of at most 72 characters. The sheet below
+   the overlay's well is the card's surface; code sits in the well. Every
+   element here comes from `markdown.ts`, which builds it with `textContent`
+   and sets only the attributes it names. */
+:root {
+  --md-body: 14px;
+  --md-h1: 22px;
+  --md-h2: 17px;
+  --md-h3: 15px;
+  --md-code: 12.5px;
+  --md-measure: 72ch;
+}
+
+/* The rendered view lifts the body out of the well onto the card. */
+.preview-body-rendered { background: var(--ui-surface); }
+
+.md-sheet {
+  min-height: 100%;
+  background: var(--ui-surface);
+}
+
+.md-sheet .md-body {
+  padding: 24px 24px 8px;
+}
+
+@media (max-width: 767px) {
+  .md-sheet .md-body { padding: 16px 16px 8px; }
+}
+
+.md-body {
+  max-width: var(--md-measure);
+  color: var(--ui-text);
+  font: 400 var(--md-body)/1.6 var(--font-ui);
+  overflow-wrap: anywhere;
+  background: var(--ui-surface);
+}
+
+/* Rule 9: $space-4 between blocks, a step more above a heading. */
+.md-body > * + * { margin-top: 16px; }
+.md-body > * + h1,
+.md-body > * + h2,
+.md-body > * + h3,
+.md-body > * + h4,
+.md-body > * + h5,
+.md-body > * + h6 { margin-top: 24px; }
+
+.md-body h1,
+.md-body h2,
+.md-body h3,
+.md-body h4,
+.md-body h5,
+.md-body h6 {
+  margin: 0;
+  color: var(--ui-text);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.md-body h1 {
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ui-border);
+  font-size: var(--md-h1);
+}
+
+.md-body h2 {
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ui-border);
+  font-size: var(--md-h2);
+}
+
+.md-body h3 { font-size: var(--md-h3); }
+.md-body h4,
+.md-body h5,
+.md-body h6 { font-size: var(--md-body); }
+
+.md-body p { margin: 0; }
+
+/* Rule 3: inline code in a small box on --ui-surface-2 with a hairline. */
+.md-body code {
+  padding: 1px 5px;
+  border: 1px solid var(--ui-border);
+  border-radius: 2px;
+  background: var(--ui-surface-2);
+  color: var(--ui-text);
+  font: var(--md-code)/1.4 var(--font-mono);
+}
+
+/* Rule 4: a code block in the well, coloured by the tok-* classes; a wide
+   block scrolls inside itself under a 2 px thumb. */
+.md-body .md-code {
+  margin: 0;
+  padding: 12px 16px;
+  border: 1px solid var(--ui-border);
+  border-radius: 2px;
+  background: var(--ui-bg-sunken);
+  color: var(--ui-text);
+  font: var(--md-code)/1.6 var(--font-mono);
+  overflow-x: auto;
+  /* The 2 px thumb of the frame, as far as `scrollbar-width` reaches: the
+     `::-webkit-scrollbar` form reads to the contrast derivation as a text
+     surface, so it is not written. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-text-faint) transparent;
+}
+
+.md-body .md-code code {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font: inherit;
+}
+
+/* Rule 9: $space-1 between items; nested lists indent by the bullet column. */
+.md-body ul,
+.md-body ol {
+  margin: 0;
+  padding-left: 24px;
+}
+
+.md-body li + li { margin-top: 4px; }
+.md-body li > ul,
+.md-body li > ol,
+.md-body li > p + p { margin-top: 4px; }
+
+/* Rule 6: a task item is a disabled 14 px checkbox on --ui-surface-2, the
+   check in the muted grey. */
+.md-body li.md-task { list-style: none; }
+.md-body li.md-task > input[type="checkbox"] {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin: 0 8px 0 -22px;
+  border: 1px solid var(--ui-border);
+  border-radius: 2px;
+  background: var(--ui-surface-2);
+  vertical-align: -2px;
+}
+
+.md-body li.md-task > input[type="checkbox"]:checked::after {
+  content: "✓";
+  display: block;
+  color: var(--ui-text-muted);
+  font: 11px/12px var(--font-mono);
+  text-align: center;
+}
+
+/* Rule 7: a block quote behind a 2 px rule, its text muted. */
+.md-body blockquote {
+  margin: 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--ui-border);
+  color: var(--ui-text-muted);
+}
+
+.md-body hr {
+  height: 0;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--ui-border);
+}
+
+/* Rule 5: hairline cells, the header row on --ui-surface-2; a wide table
+   scrolls inside itself. */
+.md-body table {
+  display: block;
+  max-width: 100%;
+  border-collapse: collapse;
+  overflow-x: auto;
+  font-size: 13px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-text-faint) transparent;
+}
+
+.md-body th,
+.md-body td {
+  padding: 6px 10px;
+  border: 1px solid var(--ui-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.md-body th {
+  background: var(--ui-surface-2);
+  color: var(--ui-text);
+  font-weight: 600;
+}
+
+.md-body th[data-align="center"],
+.md-body td[data-align="center"] { text-align: center; }
+.md-body th[data-align="right"],
+.md-body td[data-align="right"] { text-align: right; }
+
+/* Rule 8: a link in the accent, underlined; an address the renderer kept as
+   text is muted beside its words; an image fits the column. */
+.md-body a {
+  color: var(--ui-accent);
+  text-decoration: underline;
+}
+
+.md-body .md-image-text { color: var(--ui-text-muted); }
+
+.md-body img {
+  display: block;
+  max-width: 100%;
+  border: 1px solid var(--ui-border);
+}
+
+.md-body strong { font-weight: 600; }
 
 /* The paste route where the clipboard cannot be read: the user's own paste
    gesture into a real field. Centred and above everything, because it is

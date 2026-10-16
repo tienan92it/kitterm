@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0d1117" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="kitterm" />
+    <!-- Credentials mode, for the reason given in index.html. -->
+    <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
+    <!-- The same icon the fleet view links, for the same reason: without it
+         the browser asks for /favicon.ico, which the daemon does not serve. -->
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <title>kitterm — markdown</title>
+  </head>
+  <body>
+    <main id="md" aria-label="Markdown"></main>
+    <script type="module" src="/src/md.ts"></script>
+  </body>
+</html>

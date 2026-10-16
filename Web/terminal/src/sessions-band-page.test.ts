@@ -139,7 +139,7 @@ describe("the band replaces the strip", () => {
     // a goal whose proposals wait is `[blocked]`, on a person.
     expect(goal.querySelector(".state")?.textContent).toBe("[blocked]");
     // The name opens the record the proposals wait in; the count is its tooltip.
-    expect(goal.querySelector(".line-name")?.href).toBe("/api/projects/kitterm/knowledge/agent-dashboard/rounds/003.md");
+    expect(goal.querySelector(".line-name")?.href).toBe("/md?project=kitterm&path=agent-dashboard/rounds/003.md");
     expect(goal.querySelector(".line-name")?.title, "the decision line joins it when it proposes").toBe("2 proposals");
     expect(goal.querySelectorAll(".actions")).toEqual([]);
     expect(goal.querySelectorAll("button").map((b) => b.className)).toEqual(["mark disclosure"]);

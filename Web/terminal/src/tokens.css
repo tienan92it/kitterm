@@ -73,11 +73,20 @@
      #000000-#010203 on all 17 themes, so it no longer carries the page's hue:
      the syntax colours carry the theme, and the well gives them room. Its
      separation from --ui-bg rises to 1.11 on github-dark and 1.66 on nord,
-     about where --ui-border sits above the page. On a light theme this well
-     would be dark grey under dark text; no bundled theme is light, and the
-     polarity test in `theme-contrast.test.ts` names the day one arrives.
-     `KNOWN_BELOW` records the 6 that stay. */
-  --ui-bg-sunken: color-mix(in oklab, var(--ui-bg) 25%, black);
+     about where --ui-border sits above the page. `KNOWN_BELOW` records the
+     6 that stay.
+
+     On a light theme that formula gave a near-black well under dark text
+     (`markdown-preview` round 2), so the well has a light value of its own,
+     a step under --ui-surface-2 toward black, which reads #e3e9eb on the
+     light frame of `design/markdown.pen`. `light-dark()` follows the
+     `color-scheme` the theme layer sets on the root; no bundled theme is
+     light, so the dark value is the one `theme-contrast.test.ts` measures,
+     and `markdown-css.test.ts` pins the light one by its luminance. */
+  --ui-bg-sunken: light-dark(
+    color-mix(in oklab, var(--ui-bg) 90%, black),
+    color-mix(in oklab, var(--ui-bg) 25%, black)
+  );
   --ui-surface: color-mix(in oklab, var(--ui-bg) 97%, var(--ui-lift));
   --ui-surface-2: color-mix(in oklab, var(--ui-bg) 94%, var(--ui-lift));
   --ui-hover: color-mix(in oklab, var(--ui-bg) 91%, var(--ui-lift));
