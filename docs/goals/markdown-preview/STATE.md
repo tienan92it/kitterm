@@ -8,7 +8,7 @@
 
 ## Queue
 
-1. `markdown-renderer` (capability 1)
+1. `markdown-renderer` (capability 1), PR #194.
 2. `markdown-design` (capability 2)
 3. `markdown-views` (capability 3)
 
