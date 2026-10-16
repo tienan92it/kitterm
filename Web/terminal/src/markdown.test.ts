@@ -4,6 +4,7 @@ import { FakeElement } from "./fake-page";
 import { languageForFence } from "./highlight";
 import {
   MAX_DEPTH,
+  fragmentTarget,
   parseMarkdown,
   renderMarkdown,
   resolveLink,
@@ -357,12 +358,18 @@ describe("CommonMark corner cases", () => {
 });
 
 describe("slugify", () => {
-  it("follows GitHub's rule", () => {
+  it("follows GitHub's rule for the slug", () => {
     expect(slugify("Hello, World!")).toBe("hello-world");
     expect(slugify("A & B")).toBe("a--b");
     expect(slugify("snake_case keeps_underscores")).toBe("snake_case-keeps_underscores");
     expect(slugify("Ünïcödé 123")).toBe("ünïcödé-123");
     expect(slugify("!!!")).toBe("");
+  });
+
+  it("puts a fragment under the heading prefix", () => {
+    expect(fragmentTarget("#the-mcp-bridge")).toBe("md-the-mcp-bridge");
+    expect(fragmentTarget("the-mcp-bridge")).toBe("md-the-mcp-bridge");
+    expect(fragmentTarget("#")).toBe("");
   });
 });
 
@@ -405,8 +412,14 @@ describe("languageForFence", () => {
 });
 
 describe("renderMarkdown", () => {
-  it("renders headings with slug ids, numbered on a repeat", () => {
-    expect(render("# A & B\n\n## A & B\n\n### !!!")).toBe('<h1 id="a--b">A & B</h1><h2 id="a--b-1">A & B</h2><h3>!!!</h3>');
+  it("renders headings with prefixed slug ids, numbered on a repeat", () => {
+    expect(render("# A & B\n\n## A & B\n\n### !!!")).toBe('<h1 id="md-a--b">A & B</h1><h2 id="md-a--b-1">A & B</h2><h3>!!!</h3>');
+  });
+
+  it("points a fragment link at the prefixed id", () => {
+    expect(render("[s](#setup) [o](o.md#setup) [n](n.md)")).toBe(
+      '<p><a href="#md-setup" data-markdown="#setup" class="md-link">s</a> <a href="o.md#md-setup" data-markdown="o.md#setup" class="md-link">o</a> <a href="n.md" data-markdown="n.md" class="md-link">n</a></p>',
+    );
   });
 
   it("renders a tight list without paragraphs and a loose one with them", () => {
@@ -441,7 +454,7 @@ describe("renderMarkdown", () => {
 
   it("renders links by the default rule", () => {
     expect(render('[e](https://a.b "T") [m](o.md#s) [t](ftp://x)')).toBe(
-      '<p><a href="https://a.b" target="_blank" rel="noopener noreferrer" title="T">e</a> <a href="o.md#s" data-markdown="o.md#s" class="md-link">m</a> <span class="md-unlinked">t</span> (ftp://x)</p>',
+      '<p><a href="https://a.b" target="_blank" rel="noopener noreferrer" title="T">e</a> <a href="o.md#md-s" data-markdown="o.md#s" class="md-link">m</a> <span class="md-unlinked">t</span> (ftp://x)</p>',
     );
   });
 

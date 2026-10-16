@@ -1077,9 +1077,9 @@ export function parseMarkdown(text: string): Block[] {
 // MARK: - Slugs
 
 /**
- * GitHub's heading id: lower case, punctuation dropped, each space a `-`
- * (so `A & B` is `a--b`, as on GitHub), and `-1`, `-2` for a repeat. The
- * empty slug gets no id.
+ * GitHub's slug: lower case, punctuation dropped, each space a `-` (so
+ * `A & B` is `a--b`, as on GitHub), and `-1`, `-2` for a repeat. The empty
+ * slug gets no id.
  */
 export function slugify(text: string): string {
   return text
@@ -1087,6 +1087,32 @@ export function slugify(text: string): string {
     .trim()
     .replace(/[^\p{L}\p{N}\s_-]/gu, "")
     .replace(/\s/g, "-");
+}
+
+/**
+ * Every heading id carries this prefix, because a bare id is a global on
+ * the page it lands on (DOM clobbering: a heading named `location`,
+ * `document` or `sessions` would shadow `window.location` or the page's own
+ * element). GitHub prefixes `user-content-` for the same reason.
+ */
+export const HEADING_ID_PREFIX = "md-";
+
+/**
+ * The element id a `#fragment` link scrolls to: the fragment, with or
+ * without its `#`, under the heading prefix. `#the-mcp-bridge` and
+ * `the-mcp-bridge` both give `md-the-mcp-bridge`. The views of round 3 call
+ * this when they open a `.md#fragment` link.
+ */
+export function fragmentTarget(fragment: string): string {
+  const bare = fragment.startsWith("#") ? fragment.slice(1) : fragment;
+  return bare === "" ? "" : `${HEADING_ID_PREFIX}${bare}`;
+}
+
+/** `path#fragment` with the fragment moved under the heading prefix; a path with no fragment is unchanged. */
+function withFragmentTarget(path: string): string {
+  const hash = path.indexOf("#");
+  if (hash < 0 || hash === path.length - 1) return path;
+  return `${path.slice(0, hash)}#${fragmentTarget(path.slice(hash))}`;
 }
 
 // MARK: - Rendering
@@ -1153,7 +1179,7 @@ class Renderer {
       case "heading": {
         const el = document.createElement(`h${block.level}`);
         const slug = this.uniqueSlug(slugify(plainText(block.children)));
-        if (slug) el.setAttribute("id", slug);
+        if (slug) el.setAttribute("id", `${HEADING_ID_PREFIX}${slug}`);
         this.inlines(block.children, el);
         return el;
       }
@@ -1300,7 +1326,9 @@ class Renderer {
       a.setAttribute("target", "_blank");
       a.setAttribute("rel", "noopener noreferrer");
     } else {
-      a.setAttribute("href", target.path);
+      // The href's fragment names the prefixed heading id, so a `#fragment`
+      // link scrolls on its own; `data-markdown` keeps the path as written.
+      a.setAttribute("href", withFragmentTarget(target.path));
       a.setAttribute("data-markdown", target.path);
       a.setAttribute("class", "md-link");
     }
@@ -1328,8 +1356,8 @@ class Renderer {
 
 /**
  * The DOM for `blocks`, built with `createElement` and `textContent` only.
- * A heading carries its slug as `id`; a link and an image go where
- * `options` say, or where the default rules say.
+ * A heading carries its slug as `id` under `HEADING_ID_PREFIX`; a link and
+ * an image go where `options` say, or where the default rules say.
  */
 export function renderMarkdown(blocks: Block[], options: RenderOptions = {}): DocumentFragment {
   const fragment = document.createDocumentFragment();

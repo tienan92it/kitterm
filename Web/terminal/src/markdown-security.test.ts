@@ -42,6 +42,8 @@ function assertClean(root: FakeElement): void {
       expect(ALLOWED_ATTRIBUTES.has(name), `attribute ${name} on ${el.tagName}`).toBe(true);
       expect(name.toLowerCase().startsWith("on"), `handler ${name}`).toBe(false);
       expect(value.toLowerCase().replace(/\s/g, "")).not.toMatch(/^(javascript|data|vbscript):/);
+      // A bare id is a global on the page: every id wears the heading prefix.
+      if (name === "id") expect(value, `id ${value}`).toMatch(/^md-./);
     }
     if (el.tagName === "A") {
       const href = el.getAttribute("href") ?? "";
@@ -173,7 +175,25 @@ describe("an event handler anywhere is text", () => {
     const [pre] = root.querySelectorAll("pre");
     expect(pre.getAttribute("data-language")).toBe("<script>alert(1)</script>");
     expect(pre.querySelector("code")?.hasAttribute("class")).toBe(false);
-    expect(root.querySelector("h1")?.getAttribute("id")).toBe("img-onerror1");
+    expect(root.querySelector("h1")?.getAttribute("id")).toBe("md-img-onerror1");
+    assertClean(root);
+  });
+});
+
+describe("a heading id never clobbers a global", () => {
+  it("prefixes every id, so a heading named for a global or an element is not one", () => {
+    // `# __proto__` is strong emphasis around `proto`, as on GitHub, so the
+    // literal name needs its underscores escaped.
+    const root = render("# location\n\n# document\n\n# sessions\n\n# __proto__\n\n# \\_\\_proto\\_\\_\n\n# constructor\n\n# location");
+    const ids = root.querySelectorAll("h1").map((h) => h.getAttribute("id"));
+    expect(ids).toEqual(["md-location", "md-document", "md-sessions", "md-proto", "md-__proto__", "md-constructor", "md-location-1"]);
+    for (const id of ids) expect(id).toMatch(/^md-/);
+    assertClean(root);
+  });
+
+  it("sends a fragment link to the prefixed id", () => {
+    const root = render("[go](#location)");
+    expect(root.querySelector("a")?.getAttribute("href")).toBe("#md-location");
     assertClean(root);
   });
 });
