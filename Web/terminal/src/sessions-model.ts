@@ -690,6 +690,15 @@ export function knowledgeUrl(projectId: string, path: string): string {
   return `/api/projects/${encodeURIComponent(projectId)}/knowledge/${encoded}`;
 }
 
+/** The `/md` page for one file of a project's package: where a goal's name
+ * and its record link open since `markdown-preview` round 3, in place of
+ * the raw `text/plain` the knowledge route serves. The path's segments are
+ * encoded and its slashes kept, so the link reads as the path does. */
+export function knowledgePageUrl(projectId: string, path: string): string {
+  const encoded = path.split("/").map(encodeURIComponent).join("/");
+  return `/md?project=${encodeURIComponent(projectId)}&path=${encoded}`;
+}
+
 /** What Dismiss stores for one proposal: the project, the goal's slug and
  * the round, so the next round's proposal from the same goal, and another
  * goal's proposal of the same round number, show again. The slug is ""

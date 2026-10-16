@@ -436,3 +436,34 @@ export function languageFor(filename: string): Language {
   if (dot <= 0) return "plain";
   return BY_EXTENSION[name.slice(dot + 1)] ?? "plain";
 }
+
+/**
+ * Which grammar a fenced code block's info string asks for.
+ *
+ * A fence names a language, not a file: ```ts, ```python, ```console. The
+ * first word of the info string is read as a language name when the table
+ * below knows it, else as an extension through `languageFor`. An unknown word,
+ * and an empty info string, get no colour at all, for the same reason an
+ * unknown filename does.
+ */
+const BY_LANGUAGE_NAME: Record<string, Language> = {
+  javascript: "c-like", typescript: "c-like", java: "c-like", kotlin: "c-like",
+  swift: "c-like", golang: "c-like", rust: "c-like", cpp: "c-like", "c++": "c-like",
+  csharp: "c-like", "c#": "c-like", objc: "c-like", objectivec: "c-like", scala: "c-like",
+  dart: "c-like", groovy: "c-like", css: "c-like", scss: "c-like", sql: "c-like",
+  python: "hash", ruby: "hash", perl: "hash", yaml: "hash", toml: "hash", ini: "hash",
+  dockerfile: "hash", makefile: "hash", terraform: "hash", hcl: "hash",
+  bash: "shell", sh: "shell", shell: "shell", zsh: "shell", fish: "shell",
+  console: "shell", shellsession: "shell",
+  json: "json", jsonc: "json", json5: "json",
+  html: "xml", xml: "xml", svg: "xml", vue: "xml",
+  markdown: "md", md: "md",
+  log: "log", diff: "diff", patch: "diff",
+  text: "plain", plain: "plain", txt: "plain",
+};
+
+export function languageForFence(info: string): Language {
+  const word = info.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+  if (word === "") return "plain";
+  return BY_LANGUAGE_NAME[word] ?? languageFor(`fence.${word}`);
+}

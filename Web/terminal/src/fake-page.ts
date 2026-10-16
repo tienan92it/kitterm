@@ -35,6 +35,8 @@ export class FakeElement {
   className = "";
   href = "";
   title = "";
+  target = "";
+  rel = "";
   classList = {
     add: (...names: string[]) => {
       const set = new Set(this.className.split(/\s+/).filter(Boolean));
@@ -114,6 +116,9 @@ export class FakeElement {
     for (const fn of this.listeners.get("click") ?? []) fn({ preventDefault(): void {}, stopPropagation(): void {}, target: this });
   }
   focus(): void {}
+  scrollIntoView(): void {}
+  /** A fake element is never detached: the page's "still shown?" checks pass. */
+  isConnected = true;
   closest(): null {
     return null;
   }

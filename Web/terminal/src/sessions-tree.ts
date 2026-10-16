@@ -55,7 +55,7 @@ import {
   goalOf,
   goalTitle,
   isIdleShell,
-  knowledgeUrl,
+  knowledgePageUrl,
   latestDoneGoal,
   levels,
   markFamily,
@@ -432,7 +432,7 @@ export function tree<R extends ModelRow>(input: TreeInput<R>): Tree<R> {
       project,
       summary,
       children: children.length > 0,
-      href: knowledgeUrl(project.id, item?.path ?? recordPath(summary) ?? statePath(summary)),
+      href: knowledgePageUrl(project.id, item?.path ?? recordPath(summary) ?? statePath(summary)),
       proposed: item,
       stage: staged,
     };

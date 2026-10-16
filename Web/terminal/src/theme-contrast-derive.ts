@@ -282,6 +282,13 @@ export const resolveColor = (expr: string, vars: Map<string, string>, seen: stri
     const [b, pb] = part(rest[1]);
     return colorMix(space, a, pa, b, pb);
   }
+  if (fn?.name === "light-dark") {
+    // The theme layer publishes `--ui-lift` as black on a light theme and
+    // sets `color-scheme` beside it, so the lift is the polarity the
+    // browser reads `light-dark()` by.
+    const light = (vars.get("--ui-lift") ?? "#fff").trim().toLowerCase() === "#000";
+    return resolveColor(fn.args[light ? 0 : 1], vars, seen);
+  }
   throw new UnresolvedColor(`cannot evaluate ${value}`);
 };
 
@@ -675,7 +682,20 @@ const BLOCK_SURFACES: Array<{ block: string; stack: string[]; why: string }> = [
   { block: "preview-code", stack: ["var(--ui-bg-sunken)"], why: "in .preview-body, which paints --ui-bg-sunken" },
   { block: "code-gutter", stack: ["var(--ui-bg-sunken)"], why: "in .preview-code; it repaints --ui-bg-sunken" },
   { block: "code-text", stack: ["var(--ui-bg-sunken)"], why: "in .preview-code, on --ui-bg-sunken" },
-  { block: "preview-note", stack: ["var(--ui-bg-sunken)"], why: "in .preview-body, on --ui-bg-sunken" },
+  { block: "preview-note", stack: ["var(--ui-bg-sunken)"], why: "in .preview-body, on --ui-bg-sunken (under a rendered Markdown file it sits in .md-sheet, on --ui-surface, a pair the header's own text already measures)" },
+  { block: "preview-controls", stack: ["var(--ui-surface)"], why: "in .preview-header" },
+  { block: "view-toggle", stack: ["var(--ui-surface)"], why: "in .preview-controls" },
+  { block: "view-choice", stack: ["var(--ui-surface)"], why: "in .view-toggle" },
+  { block: "preview-open-full", stack: ["var(--ui-surface)"], why: "in .preview-controls" },
+  { block: "md-sheet", stack: ["var(--ui-surface)"], why: "the rendered Markdown file in .preview-body; it paints --ui-surface itself" },
+  { block: "md-body", stack: ["var(--ui-surface)"], why: "in .md-sheet; it paints --ui-surface itself" },
+  { block: "md-code", stack: ["var(--ui-bg-sunken)"], why: "a code block of .md-body; it paints --ui-bg-sunken itself" },
+  // --- md.css: the Markdown page, on the body ---
+  { block: "md-page-header", stack: ["var(--ui-bg)"], why: "the page's bar; it paints --ui-bg itself" },
+  { block: "md-page-name", stack: ["var(--ui-bg)"], why: "in .md-page-header" },
+  { block: "md-page-path", stack: ["var(--ui-bg)"], why: "in .md-page-name" },
+  { block: "md-page-size", stack: ["var(--ui-bg)"], why: "in .md-page-name" },
+  { block: "md-page-main", stack: ["var(--ui-bg)"], why: "the page's column, on the body" },
   { block: "tok-comment", stack: ["var(--ui-bg-sunken)"], why: "a token of .code-text, on --ui-bg-sunken" },
   { block: "tok-string", stack: ["var(--ui-bg-sunken)"], why: "a token of .code-text, on --ui-bg-sunken" },
   { block: "tok-number", stack: ["var(--ui-bg-sunken)"], why: "a token of .code-text, on --ui-bg-sunken" },

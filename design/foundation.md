@@ -182,6 +182,15 @@ One scale. No rule writes a raw pixel for space.
 --space-5: 24px;  /* between the band and the tree */
 ```
 
+### Font
+
+Two families. `mono` (`--font-mono`) is the terminal's own font, published
+by the page, and every dashboard line is set in it. `ui` (`--font-ui`) is
+the system sans, for a prose page: a rendered Markdown file is read, not
+scanned, and a paragraph of monospace at 72 characters reads slower than
+the same paragraph in a proportional face. Approved by the human on
+2026-10-16 (`markdown-preview`, `corpus/01-approved-design.md` rule 8).
+
 ### Type
 
 Three sizes. Hierarchy comes from weight and colour, not from a fourth
@@ -201,6 +210,23 @@ the ratchet:
 | `--ui-text` | a name, a value a reader acts on |
 | `--ui-text-muted` | a fact beside a name: a state word, a cost |
 | `--ui-text-faint` | a time, a unit, a qualifier |
+
+**The one exception: prose.** A rendered Markdown file (the pane overlay
+and `/md`, `design/markdown.pen`) is not a dashboard line, and it keeps
+its own sizes in `--font-ui`, the `md-*` tokens of the design file and of
+`styles.css`:
+
+| Token | Size | Use |
+|---|---|---|
+| `md-body` | 14px | paragraphs, lists, table cells, at a line height of 1.6 |
+| `md-h1` | 22px | a level-1 heading, semibold, with a hairline under it |
+| `md-h2` | 17px | a level-2 heading, semibold, with a hairline under it |
+| `md-h3` | 15px | a level-3 heading, semibold |
+| `md-code` | 12.5px | inline code and a code block, in `--font-mono` |
+| `md-measure` | 72ch | the width of the prose column, centred on `/md` |
+
+They apply to prose only; nothing on the dashboard uses them. Approved by
+the human on 2026-10-16 (`corpus/01-approved-design.md` rule 8).
 
 ### Density
 
@@ -236,6 +262,20 @@ palette on 2026-09-17 and amended it on 2026-09-19; the values are the
 
 They paint a mark: a glyph, a bar, the tile's rule, or the one run of
 text that carries a state. They never paint a background or a border.
+
+Two more surfaces are named, because the prose views sit things on them
+and a light theme needs a value of its own for one (approved 2026-10-16,
+`corpus/01-approved-design.md` rule 8):
+
+| Token | Dark | Light | Where |
+|---|---|---|---|
+| `surface-2` | `--ui-bg` lifted 6% toward white | `--ui-bg` lifted 6% toward black | inline code, a table's header row, a task's checkbox |
+| `sunken` | `--ui-bg` mixed 75% toward black | `--ui-bg` mixed 10% toward black, `#e3e9eb` on the light frame | a code block, the source view's well |
+
+`surface-2` keeps deriving from the ground, as the other surfaces do.
+`sunken` used to derive one way for both polarities, which on a light
+theme put a near-black well under dark text (`markdown-preview` round 2);
+`tokens.css` now gives it its light value through `light-dark()`.
 
 ### Data palette
 

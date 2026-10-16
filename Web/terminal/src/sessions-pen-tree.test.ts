@@ -221,10 +221,10 @@ describe("the tree over a fleet shaped like the frame", () => {
     expect(blocked.kind === "session" && [blocked.needs, blocked.approvals.map((a) => a.id), blocked.mark]).toEqual([false, ["a-1"], "attention"]);
     const waiting = section.lines[3];
     expect(waiting.kind === "goal" && [waiting.children, waiting.state?.family, waiting.href, waiting.title]).toEqual([
-      true, "attention", "/api/projects/kitterm/knowledge/agent-dashboard/STATE.md", "r0/3 · next: Round 10, `the-page-is-the-pen-design`.",
+      true, "attention", "/md?project=kitterm&path=agent-dashboard/STATE.md", "r0/3 · next: Round 10, `the-page-is-the-pen-design`.",
     ]);
     const done = section.lines[9];
-    expect(done.kind === "goal" && [done.children, done.href]).toEqual([true, "/api/projects/kitterm/knowledge/workspace-ledger/rounds/006.md"]);
+    expect(done.kind === "goal" && [done.children, done.href]).toEqual([true, "/md?project=kitterm&path=workspace-ledger/rounds/006.md"]);
     const folded = section.lines[12];
     expect(folded.kind === "fold" && folded.lines.map((l) => l.kind === "goal" && l.children)).toEqual([false, false]);
   });
@@ -389,7 +389,7 @@ describe("the painted tree", () => {
     expect(approvalLine.getAttribute("data-needs")).toBe("approval");
     // A goal name opens its record or its STATE.md in a new tab.
     const goal = page.root.querySelectorAll(".goal-line")[0];
-    expect(goal.querySelector(".line-name")?.href).toBe("/api/projects/kitterm/knowledge/agent-dashboard/STATE.md");
+    expect(goal.querySelector(".line-name")?.href).toBe("/md?project=kitterm&path=agent-dashboard/STATE.md");
   });
 
   it("folds the archives and the idle shells at the page's foot beside the push switch, and lists the idle shell as a row there", () => {
@@ -462,7 +462,7 @@ describe("a done goal inside the N done fold", () => {
     ]);
     expect(fold.kind === "fold" && fold.lines.map((l) => l.title)).toEqual(["r2/3", "round 2 · PR #5", "round 1 · PR #4", "round 1", "r1/3"]);
     const [bars, , , , bare] = fold.kind === "fold" ? fold.lines : [];
-    expect(bars.kind === "goal" && [bars.children, bars.closed, bars.href]).toEqual([true, true, "/api/projects/mt5/knowledge/bars/STATE.md"]);
+    expect(bars.kind === "goal" && [bars.children, bars.closed, bars.href]).toEqual([true, true, "/md?project=mt5&path=bars/STATE.md"]);
     expect(bare.kind === "goal" && [bare.children, bare.closed]).toEqual([false, true]);
     // The goal outside the fold starts open, as before.
     const latest = section.lines[1];

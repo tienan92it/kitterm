@@ -542,6 +542,11 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             // shell". Extensionless URL, static file behind it.
             serveStatic(path: "/sessions.html", head: head, context: context, authCookie: authCookie,
                         secureCookie: cookiesMayBeSecure(head: head, context: context))
+        case (.GET, "/md"):
+            // The Markdown page, the same way: `?path=` or `?project=&path=`
+            // name the file, and the page reads it through the API.
+            serveStatic(path: "/md.html", head: head, context: context, authCookie: authCookie,
+                        secureCookie: cookiesMayBeSecure(head: head, context: context))
         case (.GET, _):
             serveStatic(path: path, head: head, context: context, authCookie: authCookie,
                         secureCookie: cookiesMayBeSecure(head: head, context: context))
