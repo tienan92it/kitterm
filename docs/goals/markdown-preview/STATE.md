@@ -8,7 +8,7 @@
 
 ## Queue
 
-1. `wider-column` (`corpus/02-wider-column.md`)
+1. `wider-column` (`corpus/02-wider-column.md`), PR #195.
 
 ## Failures
 
