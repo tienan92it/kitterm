@@ -1,14 +1,14 @@
 # STATE: markdown-preview
 
-- Status: done
-- Round: 3 of 3 in this budget (first budget)
+- Status: active
+- Round: 0 of 1 in this budget (second budget, a chore on the done goal)
 - Rounds total: 3
 - Last floor: green (2026-10-16, round 3 after: vitest 1978, swift test 1227, PR CI on cb76d38)
-- Updated: 2026-10-16, round 3 done; the goal waits for the human's merge of PR #194
+- Updated: 2026-10-17, resumed for one round on the human's word (`corpus/02-wider-column.md`)
 
 ## Queue
 
-None.
+1. `wider-column` (`corpus/02-wider-column.md`)
 
 ## Failures
 
@@ -30,6 +30,5 @@ words, and the three foundation proposals (`corpus/01-approved-design.md`).
 
 ## Next action
 
-None. The human merges PR #194; the foreman releases, upgrades, and
-checks a `.md` file in a pane and on `/md` live. Reopen with a new
-`goal.md` line or a chore on this surface.
+Round 4: `wider-column`: the 980 px column and tables that do not break,
+then `Status: done` again.
