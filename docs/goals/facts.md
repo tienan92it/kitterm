@@ -308,6 +308,12 @@ decision moves to `docs/adr/`.
 
 ## Fleet view
 
+- `overflow-wrap: anywhere` on a prose container lowers every word's
+  min-content width to one character, so a table inside it shrinks its
+  auto-sized columns letter by letter (`Sender` stacked one letter per
+  line); use `break-word` on the prose and `normal` on `th, td`
+  (2026-10-17, `markdown-preview` round 4).
+
 - Photograph a page that lists the repository's own records against the
   real records at least once a goal, not only against a fixture. Every
   test drove two or three goals; the page only failed with eleven, and
