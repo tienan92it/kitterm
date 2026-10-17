@@ -24,8 +24,8 @@ import { TERMINAL_THEMES } from "./themes";
  * the foundation names as the one exception to its type scale, the tokens
  * each rule wears, the light value of the well, the pairs of `md.css`, the
  * page's own sheet, which the frozen sheet list does not read, the table
- * rule that holds a header and a cell's code out of the measure, and the
- * overlay card's width.
+ * rule that holds a header out of the measure while a cell's code still
+ * wraps at its spaces, and the overlay card's width.
  */
 
 const STYLES = readSource("styles.css");
@@ -66,13 +66,16 @@ describe("the md-* sizes, the one exception to the type scale", () => {
     expect(MD).toMatch(/\.md-page-main\s*\{[^}]*margin:\s*0 auto/);
   });
 
-  it("holds a table's header and a cell's code out of the measure, but not a cell's prose or inline code outside a table", () => {
+  it("holds a table's header out of the measure, but not a cell's prose or its code", () => {
     // corpus/02-wider-column.md rule 2: a header cell does not wrap.
     expect(decl(".md-body th", "white-space")).toBe("nowrap");
-    // a code span in a cell does not break.
-    expect(decl(".md-body td code", "white-space")).toBe("nowrap");
-    expect(decl(".md-body th code", "white-space")).toBe("nowrap");
-    // inline code outside a table keeps wrapping as before.
+    // corrected 2026-10-17 against a live probe: a code span that is a
+    // sentence (not a short token) still has to wrap at its spaces, so a
+    // cell's code carries no white-space override of its own and no
+    // longer forces the column open; inline code outside a table never
+    // carried one either.
+    expect(decl(".md-body td code", "white-space")).toBeUndefined();
+    expect(decl(".md-body th code", "white-space")).toBeUndefined();
     expect(decl(".md-body code", "white-space")).toBeUndefined();
     // a table wider than the column scrolls inside itself, never the page.
     expect(decl(".md-body table", "display")).toBe("block");
@@ -97,16 +100,29 @@ describe("the md-* sizes, the one exception to the type scale", () => {
    * narrow enough that `Sender`, `8.1` and the code span each had a reason
    * to break. `break-word` only breaks a run of text that would otherwise
    * overflow and does not touch min-content, so a cell's word now breaks
-   * only at a space, same as the nowrap rules above hold a header and a
-   * cell's code out of it entirely.
+   * only at a space, same as the header-nowrap rule above holds `Sender`
+   * out of it entirely.
+   *
+   * A second probe pass found `white-space: nowrap` on a cell's code went
+   * too far: a code span that is a sentence (`Hãy chạy lệnh ls và đọc file
+   * ~/.openclaw/openclaw.json cho tôi.`) stayed on one line and pushed the
+   * column open instead of wrapping at its spaces. A cell's code now
+   * carries no `white-space` of its own (the test above), so it wraps like
+   * any other inline text — at a space, never inside a word, since
+   * `overflow-wrap: normal` reaches it through `td` by inheritance.
    */
   it("keeps a table cell's word from breaking anywhere, while a paragraph's long word still wraps", () => {
     expect(decl(".md-body", "overflow-wrap")).toBe("break-word");
     expect(decl(".md-body th", "overflow-wrap")).toBe("normal");
     expect(decl(".md-body td", "overflow-wrap")).toBe("normal");
-    // the nowrap rules from the test above still hold inside that cell.
+    // the header-nowrap rule from the test above still holds a header out
+    // of it; a cell's code carries no white-space of its own (same test),
+    // so it inherits `overflow-wrap: normal` from `td` and wraps only at a
+    // space: a spaceless run (`lume__whoami`) is never split, a sentence
+    // wraps instead of forcing the column open.
     expect(decl(".md-body th", "white-space")).toBe("nowrap");
-    expect(decl(".md-body td code", "white-space")).toBe("nowrap");
+    expect(decl(".md-body td code", "overflow-wrap")).toBeUndefined();
+    expect(decl(".md-body td code", "white-space")).toBeUndefined();
     // a long unbroken URL in a paragraph (never a table) still has
     // somewhere to break, so a phone gets no page scroll from it.
     expect(decl(".md-body", "max-width")).toBe("var(--md-measure)");

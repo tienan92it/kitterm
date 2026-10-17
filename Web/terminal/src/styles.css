@@ -1041,8 +1041,14 @@ body,
   vertical-align: top;
   /* `.md-body`'s `break-word` still lowers a cell's min-content width to
      one character once a column is forced to shrink; turn it off here so
-     a word (or `8.1`, or a code span's `white-space: nowrap`) breaks only
-     at a space. The table's own `overflow-x: auto` takes the overflow. */
+     a word (`8.1`, `lume__whoami`, `127.0.0.1:8790`) breaks only at a
+     space, inside a code span too (inherited by it below). A sentence set
+     as code (`Hãy chạy lệnh ls và đọc file ~/.openclaw/openclaw.json cho
+     tôi.`) still wraps at its spaces rather than forcing the column open;
+     a spaceless run is never split, it just asks the table's own
+     `overflow-x: auto` for the room. `corpus/02-wider-column.md` rule 2,
+     corrected 2026-10-17 against a live probe: `white-space: nowrap` on a
+     cell's code span kept a whole sentence on one line instead. */
   overflow-wrap: normal;
 }
 
@@ -1051,14 +1057,6 @@ body,
   color: var(--ui-text);
   font-weight: 600;
   /* `corpus/02-wider-column.md` rule 2: a header cell does not wrap. */
-  white-space: nowrap;
-}
-
-/* `corpus/02-wider-column.md` rule 2: a code span in a cell does not break;
-   prose in the cell still wraps, and inline code outside a table (plain
-   `.md-body code`) keeps wrapping as before. */
-.md-body td code,
-.md-body th code {
   white-space: nowrap;
 }
 
