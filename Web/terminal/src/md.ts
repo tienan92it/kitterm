@@ -10,7 +10,7 @@
  *
  * The page is the overlay without the card: one header bar with the path
  * and the size at the left and `[x] rendered [ ] source` at the right, then
- * the file in a column of at most 72 characters, centred. The rendered view,
+ * the file in a column of at most 980 px, centred. The rendered view,
  * the source view, the toggle's key and the words of rule 6 are the shared
  * ones in `markdown-view.ts`. A `.md` link inside the file navigates within
  * the page in the same form, so a knowledge file's links stay on the

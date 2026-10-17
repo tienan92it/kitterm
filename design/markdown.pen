@@ -97,7 +97,7 @@
               "id": "d7tM9k",
               "name": "preview card",
               "clip": true,
-              "width": 720,
+              "width": 1028,
               "fill": "$surface",
               "cornerRadius": 2,
               "stroke": "$border",
@@ -5149,7 +5149,7 @@
               "type": "frame",
               "id": "V0A1IO",
               "name": "md body",
-              "width": 608,
+              "width": 980,
               "layout": "vertical",
               "gap": "$space-4",
               "children": [
@@ -8555,7 +8555,7 @@
               "type": "frame",
               "id": "issHU",
               "name": "md body",
-              "width": 608,
+              "width": 980,
               "layout": "vertical",
               "gap": "$space-4",
               "children": [
@@ -12918,7 +12918,7 @@
                   "fill": "$muted",
                   "textGrowth": "fixed-width",
                   "width": "fill_container",
-                  "content": "1. Prose: $ui (--font-ui) at $md-body 14 px, line height 1.6, $text; the text column at most 72 characters ($md-measure 608 px), centred on /md, full width in the overlay.",
+                  "content": "1. Prose: $ui (--font-ui) at $md-body 14 px, line height 1.6, $text; the text column at most 980 px ($md-measure), GitHub’s content width, centred on /md, full width in the overlay.",
                   "lineHeight": 1.6,
                   "fontFamily": "$mono",
                   "fontSize": "$type-body",
@@ -12970,7 +12970,7 @@
                   "fill": "$muted",
                   "textGrowth": "fixed-width",
                   "width": "fill_container",
-                  "content": "5. Table: 1 px $border outside and between cells, the header row on $surface-2 at weight 600, cells 13 px with 6 px 10 px padding; a wide table scrolls inside itself.",
+                  "content": "5. Table: 1 px $border outside and between cells, the header row on $surface-2 at weight 600, cells 13 px with 6 px 10 px padding; a header cell does not wrap and a code span in a cell does not break; a wide table scrolls inside itself.",
                   "lineHeight": 1.6,
                   "fontFamily": "$mono",
                   "fontSize": "$type-body",
@@ -13555,7 +13555,7 @@
     },
     "md-measure": {
       "type": "number",
-      "value": 608
+      "value": 980
     },
     "mono": {
       "type": "string",

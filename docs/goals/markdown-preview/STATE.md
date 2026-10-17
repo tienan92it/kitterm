@@ -1,10 +1,10 @@
 # STATE: markdown-preview
 
 - Status: done
-- Round: 3 of 3 in this budget (first budget)
-- Rounds total: 3
-- Last floor: green (2026-10-16, round 3 after: vitest 1978, swift test 1227, PR CI on cb76d38)
-- Updated: 2026-10-16, round 3 done; the goal waits for the human's merge of PR #194
+- Round: 1 of 1 in this budget (second budget, a chore on the done goal)
+- Rounds total: 4
+- Last floor: green (2026-10-17, round 4 after: vitest 1981, PR CI on 2b2c59f)
+- Updated: 2026-10-17, round 4 done; the goal waits for the human's merge of PR #195
 
 ## Queue
 
@@ -21,6 +21,8 @@ words, and the three foundation proposals (`corpus/01-approved-design.md`).
 
 ## Done
 
+- `wider-column`, round 4, PR #195. See `rounds/004.md`. A 980 px
+  column; no word breaks in a table cell.
 - `markdown-views`, round 3, PR #194. See `rounds/003.md`. The overlay,
   `/md`, and the fleet view's links render Markdown.
 - `markdown-design`, round 2, PR #194. See `rounds/002.md`. Six frames
@@ -30,6 +32,5 @@ words, and the three foundation proposals (`corpus/01-approved-design.md`).
 
 ## Next action
 
-None. The human merges PR #194; the foreman releases, upgrades, and
-checks a `.md` file in a pane and on `/md` live. Reopen with a new
-`goal.md` line or a chore on this surface.
+None. The human merges PR #195; the foreman releases, upgrades, and
+checks the human's file live.

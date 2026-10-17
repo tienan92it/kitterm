@@ -223,10 +223,17 @@ its own sizes in `--font-ui`, the `md-*` tokens of the design file and of
 | `md-h2` | 17px | a level-2 heading, semibold, with a hairline under it |
 | `md-h3` | 15px | a level-3 heading, semibold |
 | `md-code` | 12.5px | inline code and a code block, in `--font-mono` |
-| `md-measure` | 72ch | the width of the prose column, centred on `/md` |
+| `md-measure` | 980px | the width of the prose column, centred on `/md` |
 
 They apply to prose only; nothing on the dashboard uses them. Approved by
-the human on 2026-10-16 (`corpus/01-approved-design.md` rule 8).
+the human on 2026-10-16 (`corpus/01-approved-design.md` rule 8); the
+measure widened from 72 characters to 980 px, GitHub's content width, on
+2026-10-17 (`corpus/02-wider-column.md` rule 1).
+
+**A table is not held to the measure.** A header cell does not wrap and a
+code span in a cell does not break; a table wider than the column scrolls
+inside itself, never the page. Prose in a cell still wraps. Approved by
+the human on 2026-10-17 (`corpus/02-wider-column.md` rule 2).
 
 ### Density
 

@@ -1,9 +1,10 @@
 /* The `/md` page: one file, full width (`design/markdown.pen`, the frames
    `Markdown page 1200`, `Markdown page 390` and `Markdown page 1200 light`;
-   `corpus/01-approved-design.md`, rules 7 and 11). It loads after
+   `corpus/01-approved-design.md`, rules 7 and 11; the column widened to
+   980 px by `corpus/02-wider-column.md` rule 1). It loads after
    `styles.css`, which it shares with the pane for the rendered body, the
    source view, the toggle and the note, so the page is the overlay without
-   the card: one header bar, then a column of at most 72 characters, centred
+   the card: one header bar, then a column of at most 980 px, centred
    at 1200 px and full width at 390 px. */
 
 /* `styles.css` locks the terminal page against scrolling; a document scrolls. */
