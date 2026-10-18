@@ -308,6 +308,11 @@ decision moves to `docs/adr/`.
 
 ## Fleet view
 
+- The human's zsh loads iTerm2's shell integration, which sends OSC 133
+  marks but no command line (OSC 633;E), so the daemon cannot name a
+  command the human types there; `gh pr list` of this repository takes
+  about 2 to 3 s (2026-10-18, `sessions-workflow` round 8).
+
 - `overflow-wrap: anywhere` on a prose container lowers every word's
   min-content width to one character, so a table inside it shrinks its
   auto-sized columns letter by letter (`Sender` stacked one letter per

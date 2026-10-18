@@ -1,14 +1,14 @@
 # STATE: sessions-workflow
 
-- Status: active
-- Round: 0 of 1 in this budget (resumed on the human's word, a third time)
-- Rounds total: 7
-- Last floor: green (2026-10-06, round 7 after: vitest 1633, PR CI on 9155c4a)
-- Updated: 2026-10-18, resumed for one round: the REVIEW section keeps up (`corpus/03-faster-pull-sync.md`)
+- Status: done
+- Round: 1 of 1 in this budget (resumed on the human's word, a third time)
+- Rounds total: 8
+- Last floor: green (2026-10-18, round 8 after: swift test 1241, vitest 1985, PR CI on c6b68ab)
+- Updated: 2026-10-18, round 8 done; the goal waits for the human's merge of PR #196
 
 ## Queue
 
-1. `faster-pull-sync` (`corpus/03-faster-pull-sync.md`), PR #196.
+None.
 
 ## Failures
 
@@ -22,6 +22,8 @@ None.
 
 ## Done
 
+- `faster-pull-sync`, round 8, PR #196. See `rounds/008.md`. A change
+  from a command reaches the page in about 2 s.
 - `review-rows`, round 7, PR #186. See `rounds/007.md`. REVIEW is a
   header with the counts and one row per ready pull request, with the
   drafts folded.
@@ -46,5 +48,5 @@ None.
 
 ## Next action
 
-Round 8: `faster-pull-sync`, options 1 to 3 of
-`corpus/03-faster-pull-sync.md`, then `Status: done` again.
+None. The human merges PR #196; the foreman releases, upgrades, and
+watches a PR change reach the REVIEW section live.
