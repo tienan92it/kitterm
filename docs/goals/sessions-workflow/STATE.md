@@ -1,14 +1,14 @@
 # STATE: sessions-workflow
 
-- Status: done
-- Round: 1 of 1 in this budget (resumed on the human's word)
+- Status: active
+- Round: 0 of 1 in this budget (resumed on the human's word, a third time)
 - Rounds total: 7
 - Last floor: green (2026-10-06, round 7 after: vitest 1633, PR CI on 9155c4a)
-- Updated: 2026-10-06, resumed for one round: the REVIEW rows (`corpus/02-review-rows.md`)
+- Updated: 2026-10-18, resumed for one round: the REVIEW section keeps up (`corpus/03-faster-pull-sync.md`)
 
 ## Queue
 
-None.
+1. `faster-pull-sync` (`corpus/03-faster-pull-sync.md`)
 
 ## Failures
 
@@ -46,4 +46,5 @@ None.
 
 ## Next action
 
-The human merges PR #186; the foreman releases and upgrades.
+Round 8: `faster-pull-sync`, options 1 to 3 of
+`corpus/03-faster-pull-sync.md`, then `Status: done` again.
