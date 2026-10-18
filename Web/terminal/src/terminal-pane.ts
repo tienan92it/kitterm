@@ -19,6 +19,7 @@ import {
 import { canReadClipboard, readClipboard, writeClipboard } from "./clipboard";
 import { promptForPaste, type PastePromptHandle } from "./paste-prompt";
 import type { FaviconState } from "./favicon";
+import { decrqmReply, type KnownModes } from "./decrqm";
 import { splitLineSuffix } from "./editor-link";
 import { dragMayCarryFiles, insertionText, quoteForShell, readDrop, uploadDroppedFiles } from "./file-drop";
 import { FilePicker } from "./file-picker";
@@ -70,6 +71,9 @@ const ITERM_OSC_PAYLOAD_LIMIT = 4096;
 
 /** Prompt markers kept per pane for ⌘↑/⌘↓ navigation. */
 const MAX_PROMPT_MARKERS = 200;
+/** How long a fresh shell gets to mark its first prompt before the split's
+ * command is typed as type-ahead instead. */
+const INITIAL_COMMAND_FALLBACK_MS = 2500;
 
 /**
  * One shell: an xterm instance, its WebSocket, and its reconnect state.
@@ -190,8 +194,11 @@ export class TerminalPane {
   private pastePrompt: PastePromptHandle | null = null;
   /** Paths in output, confirmed against the daemon before they become links. */
   private pathLinks: PathLinks | null = null;
-  /** A command owed to the shell at the first open; null once typed. */
+  /** A command owed to the shell at its first prompt; null once typed. */
   private initialCommand: string | null;
+  /** The fallback for a shell that marks no prompt: typed this long after
+   * the socket opens. */
+  private initialCommandTimer: number | null = null;
   /** The program asked for SGR mouse reports (`CSI ? 1006 h`); off, a
    * wheel report takes the X10 form. Tracked here because xterm's `modes`
    * says whether the mouse is reported, not how. */
@@ -286,7 +293,7 @@ export class TerminalPane {
         this.setConnectionState("connected");
         this.scheduleFit();
         this.scheduleCommandScrollFallback();
-        this.typeInitialCommand();
+        this.scheduleInitialCommand();
       },
       onFrame: (frame) => this.handleFrame(frame),
       onClose: (event) => this.handleDisconnect(event),
@@ -304,6 +311,7 @@ export class TerminalPane {
     });
     this.registerKittyHandlers();
     this.registerMouseEncodingHandlers();
+    this.registerModeQueryHandlers();
     this.registerClipboardHandler();
     this.registerCwdHandlers();
     this.registerMarkHandlers();
@@ -1051,6 +1059,8 @@ export class TerminalPane {
     // too, because none of this leaves the page.
     if (parsed.kind === MarkKind.promptStart) {
       this.addPromptMarker();
+      // The shell is reading: the split's command goes in now, echoed once.
+      this.typeInitialCommand();
     } else if (
       parsed.kind === MarkKind.commandEnd &&
       parsed.exit !== null &&
@@ -1218,6 +1228,48 @@ export class TerminalPane {
     });
   }
 
+  /**
+   * DECRQM, answered here because xterm.js 6.0.0's own answer throws in the
+   * bundle (`i is not defined` in `requestMode`, measured 2026-10-18 on this
+   * build and on main's) and the parser's write loop ends with it: lazygit
+   * asks about four modes before its first frame, so the pane froze on the
+   * shell's last line. The reply goes through `Terminal.input`, so the pane's
+   * `onData` policy (the replay guard, read-only) applies as to any reply.
+   * `decrqm.ts` holds the table.
+   */
+  private registerModeQueryHandlers(): void {
+    const answer = (params: (number | number[])[], isPrivate: boolean): boolean => {
+      this.terminal.input(decrqmReply(params, isPrivate, this.knownModes()), false);
+      return true;
+    };
+    this.terminal.parser.registerCsiHandler({ intermediates: "$", final: "p" }, (params) =>
+      answer(params, false),
+    );
+    this.terminal.parser.registerCsiHandler(
+      { prefix: "?", intermediates: "$", final: "p" },
+      (params) => answer(params, true),
+    );
+  }
+
+  /** The terminal's modes as the public API and this pane's tracking know them. */
+  private knownModes(): KnownModes {
+    const modes = this.terminal.modes;
+    return {
+      applicationCursorKeys: modes.applicationCursorKeysMode,
+      applicationKeypad: modes.applicationKeypadMode,
+      bracketedPaste: modes.bracketedPasteMode,
+      insert: modes.insertMode,
+      mouseTracking: modes.mouseTrackingMode,
+      origin: modes.originMode,
+      reverseWraparound: modes.reverseWraparoundMode,
+      sendFocus: modes.sendFocusMode,
+      wraparound: modes.wraparoundMode,
+      alternateScreen: this.terminal.buffer.active.type === "alternate",
+      sgrMouse: this.sgrMouse,
+      cursorBlink: this.terminal.options.cursorBlink === true,
+    };
+  }
+
   /** DECSET / DECRST 1006: whether the program wants SGR mouse reports. The
    * handlers return false so xterm keeps its own mode tracking. */
   private registerMouseEncodingHandlers(): void {
@@ -1303,14 +1355,31 @@ export class TerminalPane {
     this.clipboardOffer = bar;
   }
 
-  /** The split's command, typed once the fresh shell's socket is open. The
-   * bytes wait in the tty until the shell reads them, the way the daemon's
-   * own profile command does, so no prompt has to be seen first. */
+  /**
+   * The split's command is typed at the shell's first prompt mark (OSC 133
+   * A), so the shell echoes it once. Typed before the prompt, the tty echoes
+   * the bytes as they land and the shell's line editor prints them again, so
+   * the pane opened on the same line twice. A shell with no integration marks
+   * no prompt; for it the command goes in a moment after the socket opens and
+   * waits in the tty, the way the daemon's own profile command does.
+   */
+  private scheduleInitialCommand(): void {
+    if (this.initialCommand === null || this.initialCommandTimer !== null) return;
+    this.initialCommandTimer = window.setTimeout(() => {
+      this.initialCommandTimer = null;
+      this.typeInitialCommand();
+    }, INITIAL_COMMAND_FALLBACK_MS);
+  }
+
   private typeInitialCommand(): void {
     const command = this.initialCommand;
     if (command === null) return;
     this.initialCommand = null;
-    if (this.exitedValue || this.readOnlyValue) return;
+    if (this.initialCommandTimer !== null) {
+      window.clearTimeout(this.initialCommandTimer);
+      this.initialCommandTimer = null;
+    }
+    if (this.disposed || this.exitedValue || this.readOnlyValue || !this.session.ready) return;
     this.session.sendInput(`${command}\n`);
   }
 
