@@ -268,7 +268,10 @@ final class KnowledgeBranchRouteTests: XCTestCase {
         try fixture.write("docs/goals/beta/STATE.md", GitFixture.state("beta", status: "done", round: 3))
         try fixture.push("the merge")
         try setPulls([(12, "goal/beta", "MERGED")])
-        clock.advance(KnowledgeBase.refreshSeconds + 1)
+        // Chartered by `sessions-workflow` round 8: the pulls cache read the
+        // merge after its minute; a repository with no open work now reads
+        // every `PullRequestStatus.idleSeconds`.
+        clock.advance(max(KnowledgeBase.refreshSeconds, PullRequestStatus.idleSeconds) + 1)
         _ = try get(summary)
         settle()
         clock.advance(KnowledgeBase.refreshSeconds + 1)

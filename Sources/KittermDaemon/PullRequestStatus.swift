@@ -13,14 +13,42 @@ import NIOConcurrencyHelpers
 ///
 /// Every `gh` runs on `queue`, never on the event loop, with a timeout. A
 /// request reads `snapshot` under the lock and calls `refreshIfDue`, which
-/// starts a read of a repository when none runs and the last one ended
-/// `refreshSeconds` ago or more; no request waits for `gh`. The minute
-/// counts from the end of a read, not from its start, so a repository whose
-/// `gh` takes its whole timeout to fail is not due again when it ends. A
-/// read that fails keeps the last good list with its `readAt` and adds the
+/// starts a read of a repository when none runs and the last one ended its
+/// interval ago or more; no request waits for `gh`. The interval counts
+/// from the end of a read, not from its start, so a repository whose `gh`
+/// takes its whole timeout to fail is not due again when it ends. A read
+/// that fails keeps the last good list with its `readAt` and adds the
 /// reason.
+///
+/// **The schedule is adaptive** (`sessions-workflow` round 8,
+/// `corpus/03-faster-pull-sync.md`). `interval` is pure: a repository with
+/// open work reads every `activeSeconds` (15), else every `idleSeconds`
+/// (180). Open work is an open pull request whose `ci` is `pending`, a pull
+/// request whose `updatedAt` is under `recentSeconds` (5 min) old, or a live
+/// session labelled `pr:<N>` for one of its open pull requests (the
+/// registry hands the labels to the route, which hands them here). A
+/// `nudge` reads at once, `nudgeGapSeconds` (5) after the last read's
+/// start at the earliest, one read at a time; a nudge while a read runs
+/// queues exactly one more. **The ceiling**: `readsPerMinute` (24) list
+/// reads a minute daemon-wide, nudges included; past it a read waits for
+/// the next slot. The rate budget: 7 repositories all active at 15 s is
+/// 1,680 GraphQL calls an hour against the account's 5,000-point budget,
+/// which every crew's `gh` shares; the ceiling caps the daemon at 1,440 an
+/// hour, so the crews keep most of the budget whatever the fleet does. A
+/// read whose pulls or reason differ from the last appends `pulls.changed`
+/// with each project that asked for the repository to the event feed,
+/// never on an unchanged read, so the page asks at once.
 public final class PullRequestStatus: @unchecked Sendable {
-    public static let refreshSeconds: TimeInterval = 60
+    /// The interval of a repository with open work.
+    public static let activeSeconds: TimeInterval = 15
+    /// The interval of a repository with none.
+    public static let idleSeconds: TimeInterval = 180
+    /// How recent a pull request's `updatedAt` counts as open work.
+    public static let recentSeconds: TimeInterval = 300
+    /// The least time between two reads' starts of one repository.
+    public static let nudgeGapSeconds: TimeInterval = 5
+    /// The most list reads a minute, over every repository.
+    public static let readsPerMinute = 24
     public static let timeoutSeconds: TimeInterval = 20
     /// How long a `gh` that got `SIGTERM` at the timeout has before `SIGKILL`.
     public static let killGraceSeconds: TimeInterval = 1
@@ -116,27 +144,105 @@ public final class PullRequestStatus: @unchecked Sendable {
     /// start. `keepOutput` false sends its stdout to `/dev/null`.
     public typealias Runner = @Sendable (_ executable: String, _ args: [String], _ keepOutput: Bool) -> RunResult?
 
+    /// What a repository's last list says about its open work, computed
+    /// once per read so a request's `interval` is a few comparisons.
+    public struct Activity: Equatable, Sendable {
+        /// An open pull request whose `ci` is `pending`.
+        public var pendingCI = false
+        /// The newest `updatedAt` of any pull request, open or not.
+        public var lastUpdatedAt: Date?
+        /// The numbers of the open pull requests.
+        public var openNumbers: Set<Int> = []
+
+        public init(pendingCI: Bool = false, lastUpdatedAt: Date? = nil, openNumbers: Set<Int> = []) {
+            self.pendingCI = pendingCI
+            self.lastUpdatedAt = lastUpdatedAt
+            self.openNumbers = openNumbers
+        }
+
+        public static func of(pulls: [Pull]) -> Activity {
+            var activity = Activity()
+            for pull in pulls {
+                if pull.state == "open" {
+                    activity.openNumbers.insert(pull.number)
+                    if pull.ci == "pending" { activity.pendingCI = true }
+                }
+                if let updated = pull.updatedAt.flatMap(PullRequestStatus.date(iso8601:)),
+                   activity.lastUpdatedAt.map({ updated > $0 }) ?? true {
+                    activity.lastUpdatedAt = updated
+                }
+            }
+            return activity
+        }
+    }
+
+    /// A live session's `pr:<N>` label with the project the session belongs
+    /// to, as the registry hands them to the route (`labelledPulls()`).
+    public struct LabelledPull: Equatable, Sendable {
+        public var project: String
+        public var number: Int
+
+        public init(project: String, number: Int) {
+            self.project = project
+            self.number = number
+        }
+    }
+
+    /// Runs `work` after `delay`; the default is `queue.asyncAfter`, a test
+    /// hands one it fires by hand.
+    public typealias Scheduler = @Sendable (_ delay: TimeInterval, _ work: @escaping @Sendable () -> Void) -> Void
+
+    private enum ReadState {
+        /// No read claimed.
+        case idle
+        /// A read is claimed and waits for the nudge gap or a slot under
+        /// the ceiling; a nudge now changes nothing, the read sees it.
+        case waiting
+        /// `gh` runs; a nudge now queues one more read.
+        case running
+    }
+
     private struct Entry {
         var snapshot = Snapshot(reason: PullRequestStatus.notReadReason)
+        var activity = Activity()
+        /// The `pr:` labels last handed for the repository; a caller with
+        /// no news (the knowledge route) keeps them.
+        var labelledPulls: Set<Int> = []
+        /// The projects that asked for the repository, each named on
+        /// `pulls.changed`.
+        var projects: Set<String> = []
+        var startedAt: Date?
         var endedAt: Date?
-        var reading = false
+        var state = ReadState.idle
+        var nudgePending = false
     }
 
     private let searchPath: String
     private let run: Runner
     private let clock: @Sendable () -> Date
+    private let schedule: Scheduler
+    private let eventLog: EventLog?
     private let lock = NIOLock()
     private var cache: [String: Entry] = [:]
+    /// When each list read of the last minute started, oldest first: the
+    /// ceiling's window.
+    private var starts: [Date] = []
 
     /// `searchPath` is where `gh` is looked for, in `PATH` form. The default
     /// is the daemon's `PATH`, then the directories a `gh` is installed in:
     /// launchd starts the service with `/usr/bin:/bin:/usr/sbin:/sbin`.
     public init(
         searchPath: String = PullRequestStatus.defaultSearchPath, run: Runner? = nil,
-        clock: @escaping @Sendable () -> Date = { Date() }
+        clock: @escaping @Sendable () -> Date = { Date() },
+        schedule: Scheduler? = nil,
+        eventLog: EventLog? = nil
     ) {
         self.searchPath = searchPath
         self.clock = clock
+        self.schedule = schedule ?? { delay, work in
+            PullRequestStatus.queue.asyncAfter(deadline: .now() + delay, execute: work)
+        }
+        self.eventLog = eventLog
         self.run = run ?? { executable, args, keepOutput in
             PullRequestStatus.run(
                 executable: executable, args: args, searchPath: searchPath,
@@ -156,32 +262,125 @@ public final class PullRequestStatus: @unchecked Sendable {
         lock.withLock { cache[repository]?.snapshot ?? Snapshot(reason: Self.notReadReason) }
     }
 
-    /// Start one read of `repository` on `queue` when none runs and the last
-    /// one ended `refreshSeconds` ago or more. True when a read started.
-    @discardableResult
-    public func refreshIfDue(repository: String) -> Bool {
+    /// The interval between two reads of a repository: `activeSeconds` with
+    /// open work, else `idleSeconds`. Pure; `labelledPulls` are the `pr:`
+    /// labels of the live sessions of the repository's projects.
+    public static func interval(activity: Activity, labelledPulls: Set<Int>, now: Date) -> TimeInterval {
+        if activity.pendingCI { return activeSeconds }
+        if let updated = activity.lastUpdatedAt, now.timeIntervalSince(updated) < recentSeconds { return activeSeconds }
+        if !activity.openNumbers.isDisjoint(with: labelledPulls) { return activeSeconds }
+        return idleSeconds
+    }
+
+    /// The interval a repository reads at now, from what the cache holds.
+    public func interval(repository: String) -> TimeInterval {
         let now = clock()
-        let due: Bool = lock.withLock {
+        return lock.withLock {
+            let entry = cache[repository] ?? Entry()
+            return Self.interval(activity: entry.activity, labelledPulls: entry.labelledPulls, now: now)
+        }
+    }
+
+    /// Start one read of `repository` on `queue` when none is claimed and
+    /// the last one ended its `interval` ago or more. `project` is named on
+    /// `pulls.changed` for the repository; `labelledPulls` replaces the
+    /// labels the interval reads, nil keeps the last ones. True when a read
+    /// was claimed (it may wait for a slot under the ceiling).
+    @discardableResult
+    public func refreshIfDue(repository: String, project: String? = nil, labelledPulls: Set<Int>? = nil) -> Bool {
+        let now = clock()
+        let claimed: Bool = lock.withLock {
             var entry = cache[repository] ?? Entry()
-            if entry.reading { return false }
-            if let last = entry.endedAt, now.timeIntervalSince(last) < Self.refreshSeconds { return false }
-            entry.reading = true
-            cache[repository] = entry
+            defer { cache[repository] = entry }
+            if let project { entry.projects.insert(project) }
+            if let labelledPulls { entry.labelledPulls = labelledPulls }
+            guard entry.state == .idle else { return false }
+            if let last = entry.endedAt {
+                let interval = Self.interval(activity: entry.activity, labelledPulls: entry.labelledPulls, now: now)
+                if now.timeIntervalSince(last) < interval { return false }
+            }
+            entry.state = .waiting
             return true
         }
-        guard due else { return false }
-        Self.queue.async { self.refresh(repository: repository) }
+        guard claimed else { return false }
+        begin(repository: repository, now: now)
         return true
     }
 
+    /// Read `repository` at once: a session of one of its projects finished
+    /// a `git push` or a `gh pr` command, or posted a `PROGRESS` or `DONE`
+    /// note (`PullNudge`). The read starts `nudgeGapSeconds` after the last
+    /// read's start at the earliest; while one runs, exactly one more is
+    /// queued after it; while one waits, nothing changes, because that read
+    /// sees what the nudge announces.
+    public func nudge(repository: String) {
+        let now = clock()
+        let delay: TimeInterval?? = lock.withLock {
+            var entry = cache[repository] ?? Entry()
+            defer { cache[repository] = entry }
+            switch entry.state {
+            case .running:
+                entry.nudgePending = true
+                return nil
+            case .waiting:
+                return nil
+            case .idle:
+                entry.state = .waiting
+                return .some(Self.gapLeft(since: entry.startedAt, now: now))
+            }
+        }
+        guard case .some(let gap) = delay else { return }
+        if let gap {
+            schedule(gap) { self.begin(repository: repository, now: self.clock()) }
+        } else {
+            begin(repository: repository, now: now)
+        }
+    }
+
+    /// What is left of the nudge gap after a read that started at `started`;
+    /// nil when it has passed or no read started.
+    private static func gapLeft(since started: Date?, now: Date) -> TimeInterval? {
+        guard let started else { return nil }
+        let left = nudgeGapSeconds - now.timeIntervalSince(started)
+        return left > 0 ? left : nil
+    }
+
+    /// Start the claimed read of `repository`, or wait for the next slot
+    /// under the ceiling: `readsPerMinute` starts in the last minute over
+    /// every repository, and the slot opens a minute after the oldest.
+    private func begin(repository: String, now: Date) {
+        let wait: TimeInterval? = lock.withLock {
+            starts.removeAll { now.timeIntervalSince($0) >= 60 }
+            if starts.count >= Self.readsPerMinute, let oldest = starts.first {
+                return max(0.01, 60 - now.timeIntervalSince(oldest))
+            }
+            starts.append(now)
+            var entry = cache[repository] ?? Entry()
+            entry.state = .running
+            entry.startedAt = now
+            cache[repository] = entry
+            return nil
+        }
+        if let wait {
+            schedule(wait) { self.begin(repository: repository, now: self.clock()) }
+            return
+        }
+        Self.queue.async { self.refresh(repository: repository) }
+    }
+
     /// One read, on `queue`: `gh pr list`, and `gh auth token` only after
-    /// a list that failed, to say which failure it was.
+    /// a list that failed, to say which failure it was. Then the
+    /// `pulls.changed` events for a changed answer, and the read a nudge
+    /// queued meanwhile.
     private func refresh(repository: String) {
         let outcome = Self.fetch(repository: repository, searchPath: searchPath, run: run)
         let ended = clock()
+        var changedProjects: [String] = []
+        var again: TimeInterval?? = nil
         lock.withLock {
             var entry = cache[repository] ?? Entry()
-            entry.reading = false
+            let before = entry.snapshot
+            entry.state = .idle
             entry.endedAt = ended
             switch outcome {
             case .success(let pulls):
@@ -189,8 +388,57 @@ public final class PullRequestStatus: @unchecked Sendable {
             case .failure(let failure):
                 entry.snapshot.reason = failure.reason
             }
+            entry.activity = Activity.of(pulls: entry.snapshot.pulls)
+            // The answer less `readAt` and `ageSeconds`: a read that found
+            // the same list again is not a change.
+            if entry.snapshot.pulls != before.pulls || entry.snapshot.reason != before.reason {
+                changedProjects = entry.projects.sorted()
+            }
+            if entry.nudgePending {
+                entry.nudgePending = false
+                entry.state = .waiting
+                again = .some(Self.gapLeft(since: entry.startedAt, now: ended))
+            }
             cache[repository] = entry
         }
+        for project in changedProjects {
+            eventLog?.append(type: "pulls.changed", session: nil, data: ["project": project])
+        }
+        guard case .some(let gap) = again else { return }
+        if let gap {
+            schedule(gap) { self.begin(repository: repository, now: self.clock()) }
+        } else {
+            begin(repository: repository, now: ended)
+        }
+    }
+
+    /// A `gh` time, `2026-10-06T08:10:36Z` (a fraction of a second is
+    /// accepted and dropped); nil for any other string. Parsed by hand
+    /// through `timegm`, so no formatter is shared between threads.
+    public static func date(iso8601 string: String) -> Date? {
+        var tm = tm()
+        let fields: [(start: Int, count: Int)] = [(0, 4), (5, 2), (8, 2), (11, 2), (14, 2), (17, 2)]
+        let separators: [(index: Int, char: Character)] = [(4, "-"), (7, "-"), (10, "T"), (13, ":"), (16, ":")]
+        let chars = Array(string)
+        guard chars.count >= 20, chars.last == "Z" else { return nil }
+        for separator in separators where chars[separator.index] != separator.char { return nil }
+        var values: [Int32] = []
+        for field in fields {
+            let digits = chars[field.start..<field.start + field.count]
+            guard digits.allSatisfy(\.isNumber), let value = Int32(String(digits)) else { return nil }
+            values.append(value)
+        }
+        let rest = chars[19..<chars.count - 1]
+        if !rest.isEmpty, rest.first != "." || !rest.dropFirst().allSatisfy(\.isNumber) { return nil }
+        tm.tm_year = values[0] - 1900
+        tm.tm_mon = values[1] - 1
+        tm.tm_mday = values[2]
+        tm.tm_hour = values[3]
+        tm.tm_min = values[4]
+        tm.tm_sec = values[5]
+        let seconds = timegm(&tm)
+        guard seconds != -1 || values == [1969, 12, 31, 23, 59, 59] else { return nil }
+        return Date(timeIntervalSince1970: TimeInterval(seconds))
     }
 
     struct Failure: Error, Equatable {

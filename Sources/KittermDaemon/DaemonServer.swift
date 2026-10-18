@@ -224,8 +224,12 @@ public final class DaemonServer: @unchecked Sendable {
         // with `git` on its own queue and kept five minutes per root.
         let remoteOrigins = RemoteOrigins()
         // Each GitHub repository's pull requests, read with `gh` on its own
-        // queue, at most once a minute per repository.
-        let pullRequestStatus = PullRequestStatus()
+        // queue, every 15 s with open work and every 180 s without, under
+        // a daemon-wide ceiling; a changed answer lands on the event feed.
+        let pullRequestStatus = PullRequestStatus(eventLog: eventLog)
+        // A `git push` or a `gh pr` command that ends in a pane, and a
+        // crew's `PROGRESS` or `DONE` note, read its repository at once.
+        let pullNudger = PullNudger(status: pullRequestStatus, origins: remoteOrigins)
         // Each registered project's knowledge package on its merged base
         // branch, fetched with `git` on its own queue, at most once a
         // minute per root.
@@ -245,7 +249,12 @@ public final class DaemonServer: @unchecked Sendable {
         // `usage-limits.json` so its age is true after a restart.
         let usageLimits = UsageLimitsStore(file: DaemonPaths.usageLimitsFile)
         let observed = group.next().makePromise(of: Void.self)
-        observed.completeWithTask { await registry.setObserver(pushNotifier) }
+        observed.completeWithTask {
+            await registry.setObserver(pushNotifier)
+            await registry.setCommandEndedListener { session, command in
+                pullNudger.commandEnded(in: session, command: command)
+            }
+        }
         try observed.futureResult.wait()
         // One spawn path for a browser tab and the HTTP route alike.
         let spawnService = SessionSpawnService(
@@ -393,6 +402,7 @@ public final class DaemonServer: @unchecked Sendable {
                         repositoryYields: repositoryYields,
                         remoteOrigins: remoteOrigins,
                         pullRequestStatus: pullRequestStatus,
+                        pullNudger: pullNudger,
                         knowledgeBase: knowledgeBase,
                         usageLimits: usageLimits,
                         listeningServers: listeningServers,

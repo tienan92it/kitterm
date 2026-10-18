@@ -451,7 +451,15 @@ The fleet view's `REVIEW` rows and each goal's pull-request state come from
 --state all` for the project's GitHub repository on its own queue
 (`kitterm.pulls`), under a 20 s timeout with its own process group, and
 never on the loop: a request answers the cached list and triggers a refresh
-when the last one ended 60 seconds ago or more. `ci` reduces
+when the last one ended the repository's interval ago or more. The interval
+is 15 s while the repository has open work (a pull request whose checks
+run, one changed in the last five minutes, or a live session labelled
+`pr:<N>` for an open one) and 180 s otherwise, under a ceiling of 24 reads
+a minute over every repository. A `git push` or a `gh pr` command that ends
+in a pane of the project, and a crew's `PROGRESS` or `DONE` note, nudge a
+read at once (`PullNudge`), five seconds after the last one at the
+earliest. A read that changes the answer appends `pulls.changed` to the
+event feed, and the fleet view asks that project at once. `ci` reduces
 `statusCheckRollup` to one word (`failing`, `pending`, `passing`, or absent
 with no checks). A failed read keeps the last good list and reports why
 (`gh is not installed`, `gh is not logged in`, a timeout, an exit code) with

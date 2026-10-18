@@ -345,19 +345,23 @@ final class PullRequestStatusTests: XCTestCase {
         XCTAssertGreaterThan(try XCTUnwrap(again.readAt), try XCTUnwrap(good.readAt))
     }
 
-    // MARK: - the one-minute bound
+    // MARK: - the bound between two reads
 
-    func testOneReadAMinutePerRepository() {
+    /// Chartered by `sessions-workflow` round 8 (`corpus/03-faster-pull-sync.md`,
+    /// option 1): the bound was 60 s for every repository; it is the
+    /// repository's interval now, 15 s here because the fake list has a
+    /// check running (`PullRequestStatus.activeSeconds`).
+    func testOneReadAnIntervalPerRepository() {
         let status = makeStatus()
         XCTAssertTrue(status.refreshIfDue(repository: repository))
         PullRequestStatus.queue.sync {}
-        for step in [0.0, 1, 29, 29.9] {
+        for step in [0.0, 1, 7, 6.9] {
             clock.advance(step)
             XCTAssertFalse(status.refreshIfDue(repository: repository), "\(step)")
         }
         XCTAssertEqual(gh.listCalls, 1)
         clock.advance(0.1)
-        XCTAssertTrue(status.refreshIfDue(repository: repository), "60 s after the read ended")
+        XCTAssertTrue(status.refreshIfDue(repository: repository), "15 s after the read ended")
         PullRequestStatus.queue.sync {}
         XCTAssertEqual(gh.listCalls, 2)
         XCTAssertTrue(status.refreshIfDue(repository: "o/other"), "the bound is per repository")
@@ -374,17 +378,19 @@ final class PullRequestStatusTests: XCTestCase {
         XCTAssertEqual(gh.listCalls, 1)
     }
 
-    /// The minute counts from the end of a read: a read that started 100 s
-    /// ago and ended now is not due.
-    func testTheMinuteCountsFromTheEndOfARead() throws {
+    /// The interval counts from the end of a read: a read that started 200 s
+    /// ago and ended now is not due. Chartered by `sessions-workflow` round
+    /// 8: the bound was 60 s; a repository with no list is idle, 180 s
+    /// (`PullRequestStatus.idleSeconds`).
+    func testTheIntervalCountsFromTheEndOfARead() throws {
         try gh.set(mode: "slow")
         let status = makeStatus(timeout: 0.3)
         XCTAssertTrue(status.refreshIfDue(repository: repository))
-        clock.advance(100)
+        clock.advance(200)
         PullRequestStatus.queue.sync {}
         XCTAssertEqual(status.snapshot(repository: repository).reason, "gh pr list timed out after 20 s")
         XCTAssertFalse(status.refreshIfDue(repository: repository), "due at once under a bound from the start")
-        clock.advance(59)
+        clock.advance(179)
         XCTAssertFalse(status.refreshIfDue(repository: repository))
         clock.advance(1)
         XCTAssertTrue(status.refreshIfDue(repository: repository))
