@@ -1,10 +1,10 @@
 # STATE: code-editor
 
-- Status: active
+- Status: done
 - Round: 2 of 2 in this budget (first budget)
 - Rounds total: 2
 - Last floor: green (2026-10-18, round 2 after: PR CI on 01ac6ff)
-- Updated: 2026-10-18, round 2 done; the frames wait on the human
+- Updated: 2026-10-18, the human approved the frames; this budget is done
 
 ## Queue
 
@@ -16,11 +16,8 @@ None.
 
 ## Proposals waiting on the human
 
-- Approve the frames of `design/editor.pen` at 01ac6ff and the state
-  words (`rounds/002.md`).
-- `design/foundation.md`: the diff line colours, `md-code` as the
-  editor size, the phone key bar (`rounds/002.md`, Proposals).
-- `[ compare ]`: in the editor area or a second column.
+None. 2026-10-18: the human approved the frames at 01ac6ff, the words,
+the three foundation additions, and compare in the editor area.
 
 ## Done
 
@@ -31,5 +28,6 @@ None.
 
 ## Next action
 
-The human approves the frames and decides the proposals; then the goal
-is done for this budget, and phases 2 to 4 wait for the direction check.
+None for this budget. Phases 2 to 4 of `docs/adr/0005-…` (the `/edit`
+page with the jailed save route, git reads, git writes) open as a new
+budget on the human's word.

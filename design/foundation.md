@@ -235,6 +235,11 @@ code span in a cell does not break; a table wider than the column scrolls
 inside itself, never the page. Prose in a cell still wraps. Approved by
 the human on 2026-10-17 (`corpus/02-wider-column.md` rule 2).
 
+**The editor uses `md-code`.** The `/edit` page (`design/editor.pen`) sets
+its code in `--font-mono` at `md-code` (12.5 px), the size of the source
+view, and adds no size token. Approved by the human on 2026-10-18
+(`docs/goals/code-editor/corpus/02-approved-design.md`).
+
 ### Density
 
 Two modes, chosen by width, never by a control. The 44 px tap target
@@ -269,6 +274,12 @@ palette on 2026-09-17 and amended it on 2026-09-19; the values are the
 
 They paint a mark: a glyph, a bar, the tile's rule, or the one run of
 text that carries a state. They never paint a background or a border.
+
+**One exception: a diff line.** In a unified diff (the `/edit` page's git
+view), a `+` line is set in `--ui-success` and a `−` line in
+`--ui-danger` over its whole text, and a hunk header in the link colour;
+it is the one place a state colours a run of code. Approved by the human
+on 2026-10-18 (`docs/goals/code-editor/corpus/02-approved-design.md`).
 
 Two more surfaces are named, because the prose views sit things on them
 and a light theme needs a value of its own for one (approved 2026-10-16,
@@ -335,7 +346,7 @@ second time. Three rules the frames cannot carry:
 
 ## Components
 
-Ten. Nothing else is added without a change to this file. Every class
+Eleven. Nothing else is added without a change to this file. Every class
 name carries its component's prefix, which replaces the 100 ad-hoc names
 the page has today with about 30.
 
@@ -351,6 +362,7 @@ the page has today with about 30.
 | Fold | `fold-` | a closed group with a count |
 | Tag | `tag-` | a bracketed word: `[new]`, `[done]`, `[PR #118]` |
 | Note | `note-` | a paragraph of explanation under a block |
+| Keys | `keys-` | the phone's 44 px key bar above the soft keyboard: `[ save ]`, tab, the arrows, undo (`design/editor.pen`, approved 2026-10-18) |
 
 ### The line, in detail
 

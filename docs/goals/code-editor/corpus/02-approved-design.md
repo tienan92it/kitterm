@@ -36,10 +36,25 @@ The rules the draft fixes:
    source view; everything in the monospace font, hairlines, no radius
    above 2 px, no transition (`design/foundation.md`).
 
-Still open for the Pen round: the 390 px layout (the research's
-`files | edit | git` tabs), the states (a file changed on disk, a
-save refused with 412, a read-only file, the empty tree, a git command
-that failed), and the stage control per file.
+## The approved frames
 
-The frames in `design/editor.pen` that carry this design, and their
-commit, are added here once the human approves them.
+2026-10-18, the human approved the six frames of `design/editor.pen`
+at commit 01ac6ff (`rounds/002.md`) and their exports in
+`design/exports/editor-*.png` at that commit: `Editor 1200`,
+`Editor 1200 git`, `Editor 390`, `Editor 390 files`, `Editor 390 git`
+and `Editor components` with its 16 rules. The same answers approved:
+
+6. **The words.** The buffer states `● edited`, `◐ saving`, `✓ saved`,
+   `– read only`; the bar `? Changed on disk since you opened it.
+   [ reload ] [ compare ] [ keep mine ]` and, on a refused save,
+   `! Not saved: changed on disk since you opened it.` with the same
+   three actions; the read-only reasons, the empty tree, the missing
+   project, a failed git command and the in-flight states as
+   `rounds/002.md` lists them.
+7. **Stage control**: a `[ ]`/`[x]` toggle per changed file stages the
+   whole file; hunk staging stays in lazygit.
+8. **Compare** shows the buffer-against-disk diff in the editor area,
+   unified, as the git view does, until `[ reload ]` or `[ keep mine ]`.
+9. **The foundation** gains, on the human's word: the diff line colours,
+   `md-code` as the editor's size, and the phone key bar as the `keys-`
+   component (`design/foundation.md`).
