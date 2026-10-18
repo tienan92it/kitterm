@@ -8,7 +8,7 @@
 
 ## Queue
 
-1. `terminal-stack` (capability 1)
+1. `terminal-stack` (capability 1), PR #197.
 2. `editor-design` (capability 2)
 
 ## Failures
