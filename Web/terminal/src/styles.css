@@ -652,6 +652,18 @@ body,
   box-shadow: inset 0 0 0 1px var(--ui-accent);
 }
 
+/* A program's copy (OSC 52) the browser refused: the same bar, with what it
+   is and the one button that copies inside the tap. */
+.clipboard-offer-label {
+  align-self: center;
+  padding: 0 8px 0 10px;
+  color: var(--ui-text-muted);
+  font: 13px/1 var(--font-ui);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* An observer pane already owns that slot with its "Take control" button, and
    copying from a shared session on a phone is exactly when both want it. Drop
    below the button rather than cover it. */
@@ -763,6 +775,16 @@ body,
   color: var(--ui-accent);
   font: 12px/1.6 var(--font-ui);
   text-decoration: underline;
+}
+
+.preview-open-editor {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ui-accent);
+  font: 12px/1.6 var(--font-ui);
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .preview-controls .preview-close { margin-left: 4px; }

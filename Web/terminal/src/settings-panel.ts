@@ -26,6 +26,8 @@ export type SettingsPanelCallbacks = {
   onCopyWatchLink: () => void;
   /** Reopen the getting-started card. */
   onShowHelp: () => void;
+  /** Lay the focused pane out as an editor, lazygit and a shell. */
+  onEditorLayout: () => void;
 };
 
 export class SettingsPanel {
@@ -139,6 +141,9 @@ export class SettingsPanel {
         <a class="settings-link" href="/sessions" target="_blank" rel="noopener" title="Every session, grouped by project, with what needs you first">▤ All sessions</a>
         <button type="button" id="settings-help">? Shortcuts &amp; gestures</button>
       </div>
+      <div class="settings-share">
+        <button type="button" id="settings-editor-layout" title="Split the focused pane into $EDITOR (micro), lazygit and a shell, all in its folder">⌸ Editor, lazygit and a shell</button>
+      </div>
       <div class="settings-about" id="settings-about" hidden>
         <span id="settings-version"></span>
         <span id="settings-version-update" class="settings-about-update" hidden></span>
@@ -172,6 +177,11 @@ export class SettingsPanel {
       // panel that asked for it.
       this.close();
       this.callbacks.onShowHelp();
+    });
+    this.dialog.querySelector("#settings-editor-layout")?.addEventListener("click", () => {
+      // Close first, so the new panes take the focus the panel held.
+      this.close();
+      this.callbacks.onEditorLayout();
     });
 
     if (this.tabTitleInput) {

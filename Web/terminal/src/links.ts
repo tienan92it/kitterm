@@ -91,7 +91,8 @@ export function looksLikePath(token: string): boolean {
     return true;
   }
   // Otherwise it must carry a separator or an extension to be worth a look.
-  return token.includes("/") || /\.[A-Za-z0-9]{1,8}$/.test(token);
+  // The extension is read before a `:12` or `:12:3` a compiler appended.
+  return token.includes("/") || /\.[A-Za-z0-9]{1,8}(?::\d+){0,2}$/.test(token);
 }
 
 /**

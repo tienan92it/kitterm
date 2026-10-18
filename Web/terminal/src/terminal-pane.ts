@@ -19,11 +19,13 @@ import {
 import { canReadClipboard, readClipboard, writeClipboard } from "./clipboard";
 import { promptForPaste, type PastePromptHandle } from "./paste-prompt";
 import type { FaviconState } from "./favicon";
+import { splitLineSuffix } from "./editor-link";
 import { dragMayCarryFiles, insertionText, quoteForShell, readDrop, uploadDroppedFiles } from "./file-drop";
 import { FilePicker } from "./file-picker";
 import { OutputFlowControl } from "./flow-control";
 import { showPreview, type PreviewHandle, type PreviewMeta } from "./file-preview";
 import { contentShiftPx, inputModeFor } from "./soft-keyboard";
+import { parseOsc52 } from "./osc52";
 import { PathLinks, type PathStat } from "./path-links";
 import { resolveFontFamily } from "./fonts";
 import { isModifierKey, matchPaneCommand, type PaneCommand } from "./pane-keys";
@@ -129,6 +131,10 @@ export type TerminalPaneOptions = {
   /** This pane came from a watch-only link (`?watch=1`). Enforcement is the
    * server's; this only hides the take-control affordance. */
   watchHint?: boolean;
+  /** One line typed into the fresh shell when its socket first opens: the
+   * editor or lazygit of a split this pane was made for. Typed once, never
+   * persisted, so a reload reattaches without typing it again. */
+  initialCommand?: string | null;
 };
 
 export class TerminalPane {
@@ -184,6 +190,15 @@ export class TerminalPane {
   private pastePrompt: PastePromptHandle | null = null;
   /** Paths in output, confirmed against the daemon before they become links. */
   private pathLinks: PathLinks | null = null;
+  /** A command owed to the shell at the first open; null once typed. */
+  private initialCommand: string | null;
+  /** The program asked for SGR mouse reports (`CSI ? 1006 h`); off, a
+   * wheel report takes the X10 form. Tracked here because xterm's `modes`
+   * says whether the mouse is reported, not how. */
+  private sgrMouse = false;
+  /** Text a program copied (OSC 52) that the browser refused to take: the
+   * bar that offers it for one tap. */
+  private clipboardOffer: HTMLElement | null = null;
   private preview: PreviewHandle | null = null;
   private readonly watchHint: boolean;
   private folderValue: string | null = null;
@@ -229,6 +244,7 @@ export class TerminalPane {
     this.profileValue = options.profile ?? null;
     this.pendingCommandScroll = options.commandScroll ?? null;
     this.watchHint = options.watchHint ?? false;
+    this.initialCommand = options.initialCommand ?? null;
 
     const settings = this.host.settings;
     const theme = findThemeById(settings.themeId);
@@ -270,6 +286,7 @@ export class TerminalPane {
         this.setConnectionState("connected");
         this.scheduleFit();
         this.scheduleCommandScrollFallback();
+        this.typeInitialCommand();
       },
       onFrame: (frame) => this.handleFrame(frame),
       onClose: (event) => this.handleDisconnect(event),
@@ -282,10 +299,12 @@ export class TerminalPane {
     this.suppressAutofill();
     this.pathLinks = new PathLinks(this.terminal, {
       stat: (paths) => this.statPaths(paths),
-      onOpen: (stat, text) => this.openPath(stat, text),
+      onOpen: (stat, text, inEditor) => this.openPath(stat, text, inEditor),
       cwd: () => this.cwd,
     });
     this.registerKittyHandlers();
+    this.registerMouseEncodingHandlers();
+    this.registerClipboardHandler();
     this.registerCwdHandlers();
     this.registerMarkHandlers();
     this.registerNotifyHandlers();
@@ -1199,6 +1218,102 @@ export class TerminalPane {
     });
   }
 
+  /** DECSET / DECRST 1006: whether the program wants SGR mouse reports. The
+   * handlers return false so xterm keeps its own mode tracking. */
+  private registerMouseEncodingHandlers(): void {
+    const names = (params: (number | number[])[]): boolean =>
+      params.some((param) => (typeof param === "number" ? param === 1006 : param.includes(1006)));
+    this.terminal.parser.registerCsiHandler({ prefix: "?", final: "h" }, (params) => {
+      if (names(params)) this.sgrMouse = true;
+      return false;
+    });
+    this.terminal.parser.registerCsiHandler({ prefix: "?", final: "l" }, (params) => {
+      if (names(params)) this.sgrMouse = false;
+      return false;
+    });
+  }
+
+  /**
+   * OSC 52, write only: a program's copy lands on this device's clipboard.
+   *
+   * micro, lazygit and tmux write it; without this a copy on a phone over
+   * `--lan` went to the Mac's clipboard through `pbcopy`, or nowhere. A read
+   * (`?`) is refused with no answer, and the handler returns true so xterm
+   * answers nothing either. Replayed bytes are skipped: a reconnect must not
+   * copy again what the program copied before the gap.
+   *
+   * The browser refuses the write when the page is not focused, on a plain
+   * HTTP origin, or on Safari, which wants a user gesture for every write.
+   * The text is then kept and offered on a bar whose one tap copies it inside
+   * the gesture, so a refused write is never a silent loss.
+   */
+  private registerClipboardHandler(): void {
+    this.terminal.parser.registerOscHandler(52, (data) => {
+      const verdict = parseOsc52(data);
+      if (verdict.kind !== "write" || this.replayGuard.active || this.disposed) return true;
+      void writeClipboard(verdict.text).then((copied) => {
+        if (this.disposed) return;
+        if (copied) this.host.paneFlash("Copied from the terminal");
+        else this.showClipboardOffer(verdict.text);
+      });
+      return true;
+    });
+  }
+
+  /** The bar for a copy the browser refused: the same shape as the selection
+   * bar, with the one button that writes inside the tap. */
+  private showClipboardOffer(text: string): void {
+    this.clipboardOffer?.remove();
+    const bar = document.createElement("div");
+    bar.className = "selection-bar clipboard-offer";
+    bar.setAttribute("role", "toolbar");
+    bar.setAttribute("aria-label", "Copied from the terminal");
+    const label = document.createElement("span");
+    label.className = "clipboard-offer-label";
+    label.textContent = "Copied from the terminal — tap to copy";
+    const dismiss = (): void => {
+      bar.remove();
+      if (this.clipboardOffer === bar) this.clipboardOffer = null;
+    };
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "selection-action";
+    copy.textContent = "Copy";
+    copy.addEventListener("click", (event) => {
+      event.preventDefault();
+      // Synchronous in the gesture: Safari's user-activation check holds here.
+      void writeClipboard(text).then((copied) => {
+        this.host.paneFlash(copied ? "Copied" : "Copy failed — clipboard unavailable");
+      });
+      dismiss();
+      this.focus();
+    });
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "selection-action";
+    close.textContent = "✕";
+    close.setAttribute("aria-label", "Dismiss");
+    close.addEventListener("click", (event) => {
+      event.preventDefault();
+      dismiss();
+      this.focus();
+    });
+    bar.append(label, copy, close);
+    this.containerEl.append(bar);
+    this.clipboardOffer = bar;
+  }
+
+  /** The split's command, typed once the fresh shell's socket is open. The
+   * bytes wait in the tty until the shell reads them, the way the daemon's
+   * own profile command does, so no prompt has to be seen first. */
+  private typeInitialCommand(): void {
+    const command = this.initialCommand;
+    if (command === null) return;
+    this.initialCommand = null;
+    if (this.exitedValue || this.readOnlyValue) return;
+    this.session.sendInput(`${command}\n`);
+  }
+
   private wireInput(): void {
     this.terminal.onData((data) => {
       if (this.replayGuard.shouldDrop(data)) return;
@@ -1424,6 +1539,7 @@ export class TerminalPane {
           steps,
           this.cellAt(touch.clientX, touch.clientY, rect),
           this.terminal.modes.applicationCursorKeysMode,
+          this.sgrMouse ? "sgr" : "x10",
         );
         if (input) this.session.sendInput(input);
       },
@@ -1496,13 +1612,24 @@ export class TerminalPane {
   }
 
   /** A confirmed path was clicked: a directory opens the browser there, a file
-   * opens a preview. */
-  private openPath(stat: PathStat, text: string): void {
+   * opens a preview, or the editor when the modifier was held. */
+  private openPath(stat: PathStat, text: string, inEditor: boolean): void {
+    const at = splitLineSuffix(text);
     if (stat.dir) {
-      void this.ensureFilePicker().show(stat.resolved || text);
+      void this.ensureFilePicker().show(stat.resolved || at.path);
       return;
     }
-    void this.previewFile(stat.resolved || text);
+    if (inEditor) {
+      this.openInEditor(stat.resolved || at.path, at.line);
+      return;
+    }
+    void this.previewFile(stat.resolved || at.path, at.line);
+  }
+
+  /** Open `path` in the editor: a split beside this pane whose shell types
+   * `$EDITOR` at the path. The app owns the tree, so it makes the split. */
+  private openInEditor(path: string, line?: number): void {
+    this.host.paneCommand(this, { type: "open-editor", path, line });
   }
 
   /**
@@ -1512,7 +1639,7 @@ export class TerminalPane {
    * it decided what was safe to render, and a second guess here is how the two
    * come to disagree.
    */
-  private async previewFile(path: string): Promise<void> {
+  private async previewFile(path: string, line?: number): Promise<void> {
     let response: Response;
     try {
       response = await fetch(this.fileContentUrl(path), {
@@ -1546,7 +1673,13 @@ export class TerminalPane {
       // The overlay reaches a linked `.md` file and an image through the
       // same session, so a relative path inside the file resolves where the
       // shell would resolve it.
-      { path, contentUrl: (linked) => this.fileContentUrl(linked) },
+      {
+        path,
+        contentUrl: (linked) => this.fileContentUrl(linked),
+        // A linked `.md` file shown in place keeps the first file's line; the
+        // editor opens that file at its top when the path differs.
+        onOpenInEditor: (shown) => this.openInEditor(shown, shown === path ? line : undefined),
+      },
     );
   }
 

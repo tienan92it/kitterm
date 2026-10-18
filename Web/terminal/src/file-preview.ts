@@ -64,6 +64,10 @@ export interface PreviewOptions {
    * a `.md` link opened in place and for an image. Without it a `.md` link
    * does nothing and every image is text. */
   contentUrl?: (path: string) => string;
+  /** Open the shown file in the pane's editor (a split that types
+   * `$EDITOR`). Without it the header offers no such control: a watch page
+   * and the `/md` page have no shell to type into. */
+  onOpenInEditor?: (path: string) => void;
 }
 
 /** `/md?path=<file>`: the page that shows the same file full width. */
@@ -139,12 +143,26 @@ export function showPreview(
   openFull.textContent = "open full width";
   openFull.target = "_blank";
   openFull.rel = "noopener";
+  // "open in editor" sits beside the other controls, for the device that
+  // has no modifier to click a path link with. A phone opens the preview
+  // with a tap and reaches the editor from here.
+  const openInEditor = document.createElement("button");
+  openInEditor.type = "button";
+  openInEditor.className = "preview-open-editor";
+  openInEditor.textContent = "open in editor";
+  openInEditor.hidden = true;
+  openInEditor.addEventListener("click", () => {
+    if (current.path === null || !options.onOpenInEditor) return;
+    const path = current.path;
+    dismiss();
+    options.onOpenInEditor(path);
+  });
   const close = document.createElement("button");
   close.type = "button";
   close.className = "preview-close";
   close.textContent = "✕";
   close.setAttribute("aria-label", "Close preview");
-  controls.append(toggle, openFull, close);
+  controls.append(toggle, openFull, openInEditor, close);
   header.append(heading, controls);
 
   const bodyEl = document.createElement("div");
@@ -225,6 +243,8 @@ export function showPreview(
     toggle.hidden = !markdown;
     openFull.hidden = !markdown || path === null;
     if (path !== null) openFull.href = fullWidthUrl(path);
+    // A text file only: an image or a PDF has no line to edit.
+    openInEditor.hidden = meta.kind !== "text" || path === null || !options.onOpenInEditor;
     render(afterText);
   };
 

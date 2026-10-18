@@ -1,4 +1,5 @@
 import { writeClipboard } from "./clipboard";
+import { editorCommand, editorLayoutPlan } from "./editor-link";
 import { ExtraKeysBar, isTouchPrimary } from "./extra-keys";
 import { KeyboardToggle } from "./keyboard-toggle";
 import {
@@ -238,10 +239,16 @@ export class TerminalApp implements PaneHost {
     return `p${this.paneCounter}`;
   }
 
-  private createPane(id: PaneId, session: PaneSession, delayMs = 0): TerminalPane {
+  private createPane(
+    id: PaneId,
+    session: PaneSession,
+    delayMs = 0,
+    initialCommand?: string,
+  ): TerminalPane {
     const element = this.view.paneElement(id);
     const pane = new TerminalPane({
       id,
+      initialCommand: initialCommand ?? null,
       container: element,
       host: this,
       isMac: this.isMac,
@@ -378,6 +385,16 @@ export class TerminalApp implements PaneHost {
         break;
       case "show-help":
         this.showIntroCard();
+        break;
+      case "editor-layout":
+        this.applyEditorLayout(pane.id);
+        break;
+      case "open-editor":
+        // Beside the pane that showed the path, in its cwd, so a relative
+        // path the output printed names the same file in the new shell.
+        this.splitFocused(pane.id, "row", {
+          command: editorCommand({ path: command.path, line: command.line }),
+        });
         break;
       case "new-tab": {
         // Synchronous with the keydown gesture — any await/rAF here and the
@@ -534,22 +551,57 @@ export class TerminalApp implements PaneHost {
 
   // MARK: Pane tree
 
-  private splitFocused(target: PaneId, dir: "row" | "column"): void {
+  /**
+   * Split `target` and open a fresh shell in the new pane. `command` is one
+   * line that shell types at its first open (the editor, lazygit); `ratio` is
+   * the fraction `target` keeps; `focus` false leaves the focus where it is,
+   * for a preset that makes several splits and focuses one at the end.
+   */
+  private splitFocused(
+    target: PaneId,
+    dir: "row" | "column",
+    options: { command?: string; ratio?: number; focus?: boolean } = {},
+  ): PaneId {
     const source = this.panes.get(target);
     const id = this.nextPaneId();
-    this.root = splitPane(this.root, target, dir, id);
+    this.root = splitPane(this.root, target, dir, id, options.ratio);
     // A new pane starts where the one it came from is, matching tmux — and a
     // split of a profile pane opens another shell of that profile (iTerm2
     // semantics): splitting an ssh pane should give a second remote shell,
     // not a local one stranded at a remote-looking path.
-    this.createPane(id, {
-      sessionId: null,
-      cwd: source?.lastCwd ?? undefined,
-      profile: source?.profile ?? undefined,
-    });
+    this.createPane(
+      id,
+      {
+        sessionId: null,
+        cwd: source?.lastCwd ?? undefined,
+        profile: source?.profile ?? undefined,
+      },
+      0,
+      options.command,
+    );
     this.view.render(this.root);
-    this.setFocus(id);
+    if (options.focus !== false) this.setFocus(id);
     for (const pane of this.panes.values()) pane.scheduleFit();
+    return id;
+  }
+
+  /**
+   * The editor layout: the focused pane keeps its shell and gains an editor
+   * on the right and lazygit below, both in its cwd. The plan is data
+   * (`editorLayoutPlan`); each split's shell types its own line. Focus ends
+   * on the editor, the pane the layout is for.
+   */
+  private applyEditorLayout(target: PaneId): void {
+    let editor: PaneId | null = null;
+    for (const step of editorLayoutPlan()) {
+      const id = this.splitFocused(target, step.dir, {
+        command: step.command,
+        ratio: step.ratio,
+        focus: false,
+      });
+      editor ??= id;
+    }
+    if (editor) this.setFocus(editor);
   }
 
   private closePane(id: PaneId): void {
@@ -707,6 +759,7 @@ export class TerminalApp implements PaneHost {
       onCopySessionLink: () => this.copySessionLink(),
       onCopyWatchLink: () => this.copyWatchLink(),
       onShowHelp: () => this.showIntroCard(),
+      onEditorLayout: () => this.applyEditorLayout(this.focusedId),
     });
   }
 

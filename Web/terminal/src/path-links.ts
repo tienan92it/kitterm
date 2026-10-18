@@ -30,6 +30,7 @@
 
 import type { IBufferRange, ILink, ILinkProvider, Terminal } from "@xterm/xterm";
 
+import { splitLineSuffix } from "./editor-link";
 import { pathCandidates, type Candidate } from "./links";
 
 /** What the daemon says about one path. */
@@ -105,8 +106,10 @@ export function rangeFor(candidate: Candidate, bufferRow: number): IBufferRange 
 export interface PathLinkOptions {
   /** Ask the daemon about a batch of paths. */
   stat: StatBatch;
-  /** A confirmed path was clicked. */
-  onOpen: (stat: PathStat, text: string) => void;
+  /** A confirmed path was clicked. `text` is the token as the output printed
+   * it, position and all; `stat` is the file it names. `inEditor` is a click
+   * with ⌘ (Ctrl elsewhere) held: open it in the editor rather than preview. */
+  onOpen: (stat: PathStat, text: string, inEditor: boolean) => void;
   /** The pane's current directory, for cache keying. */
   cwd: () => string | null;
 }
@@ -157,12 +160,20 @@ export class PathLinks {
     const unknown = this.cache.unknown(tokens);
     if (unknown.length === 0) return;
 
+    // The daemon is asked about the file, not the token: `src/a.ts:12:3`
+    // names `src/a.ts` at a position, and the position is the link's to keep.
+    const lookups = new Map<string, string>();
+    for (const token of unknown) lookups.set(token, splitLineSuffix(token).path);
+
     this.pending = true;
     try {
-      const answers = await this.options.stat(unknown);
+      const answers = await this.options.stat([...new Set(lookups.values())]);
       for (const token of unknown) {
         // Absent answers are cached as "no", so repeated output asks once.
-        this.cache.set(token, answers.get(token) ?? { exists: false, dir: false, resolved: "" });
+        this.cache.set(
+          token,
+          answers.get(lookups.get(token) ?? token) ?? { exists: false, dir: false, resolved: "" },
+        );
       }
     } catch {
       // The daemon is unreachable or the pane lost its session. Leave the cache
@@ -205,7 +216,7 @@ export class PathLinks {
             text: candidate.text,
             activate: (event) => {
               event.preventDefault();
-              this.options.onOpen(stat, candidate.text);
+              this.options.onOpen(stat, candidate.text, event.metaKey || event.ctrlKey);
             },
           });
         }
