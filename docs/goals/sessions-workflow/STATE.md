@@ -8,7 +8,7 @@
 
 ## Queue
 
-1. `faster-pull-sync` (`corpus/03-faster-pull-sync.md`)
+1. `faster-pull-sync` (`corpus/03-faster-pull-sync.md`), PR #196.
 
 ## Failures
 
