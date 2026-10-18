@@ -66,6 +66,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// `GET /api/projects/<id>/pulls`; nil in a handler built without one,
     /// where the route answers 503.
     private let pullRequestStatus: PullRequestStatus?
+    /// Reads a repository at once after a crew's `PROGRESS` or `DONE` note
+    /// (`POST /api/sessions/<id>/events`); nil in a handler built without
+    /// one.
+    private let pullNudger: PullNudger?
     /// Each registered project's knowledge package on its merged base
     /// branch, behind the two knowledge routes; nil in a handler built
     /// without one, where both routes read the working tree.
@@ -116,6 +120,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         repositoryYields: RepositoryYields? = nil,
         remoteOrigins: RemoteOrigins? = nil,
         pullRequestStatus: PullRequestStatus? = nil,
+        pullNudger: PullNudger? = nil,
         knowledgeBase: KnowledgeBase? = nil,
         usageLimits: UsageLimitsStore? = nil,
         listeningServers: ListeningServers? = nil,
@@ -142,6 +147,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.repositoryYields = repositoryYields
         self.remoteOrigins = remoteOrigins
         self.pullRequestStatus = pullRequestStatus
+        self.pullNudger = pullNudger
         self.knowledgeBase = knowledgeBase
         self.usageLimits = usageLimits
         self.listeningServers = listeningServers
@@ -2121,8 +2127,11 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// pulls}`, from the cache `PullRequestStatus` keeps (`sessions-workflow`
     /// round 2). The request never waits for `gh`: it answers what the
     /// cache holds and starts a read on `PullRequestStatus.queue` when the
-    /// last one ended a minute ago or more. A project with no GitHub
-    /// remote answers an empty list and the reason. The project is a
+    /// last one ended the repository's interval ago or more, 15 s with
+    /// open work and 180 s without (`PullRequestStatus.interval`, round 8);
+    /// the `pr:` labels of the live sessions, one of the three signs of
+    /// open work, come from the registry in one call. A project with no
+    /// GitHub remote answers an empty list and the reason. The project is a
     /// registered id or one the store discovered from a session's cwd in
     /// this run (`ProjectStore.discoveredRoot`); any other id is 404, an id
     /// only a `project:` label names included. The `ETag` covers the body
@@ -2167,7 +2176,11 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             guard let repository = base.flatMap(PullRequestStatus.repository(pullRequestBase:)) else {
                 return PullRequestStatus.Snapshot(reason: PullRequestStatus.noRemoteReason)
             }
-            status.refreshIfDue(repository: repository)
+            let labelled = await self.registry.labelledPulls()
+            status.refreshIfDue(
+                repository: repository, project: id,
+                labelledPulls: Set(labelled.filter { $0.project == id }.map(\.number))
+            )
             return status.snapshot(repository: repository)
         }
         promise.futureResult.whenComplete { result in
@@ -2367,7 +2380,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                     }
                 }
                 if let repository = pullBase.flatMap(PullRequestStatus.repository(pullRequestBase:)) {
-                    status.refreshIfDue(repository: repository)
+                    status.refreshIfDue(repository: repository, project: id)
                     branches = KnowledgeBase.goalBranches(pulls: status.snapshot(repository: repository).pulls)
                 }
             }
@@ -3315,7 +3328,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// ("plan ready for review"). The counterpart to `/api/hooks`: an agent
     /// *reporting*, not driving, so full grade without `--agent-control`. The
     /// note lands as a `note` event and, in a foreman loop, wakes the parked
-    /// `/api/events`.
+    /// `/api/events`. A note whose first line starts with `PROGRESS ` or
+    /// `DONE ` follows a push, so it nudges the pull request cache of the
+    /// session's repository (`PullNudger.noted`).
     private func serveNote(
         path: String,
         body: Data,
@@ -3358,10 +3373,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 data[key] = (value as? String).map { String($0.prefix(KittermConstants.maxEventNoteLength)) }
             }
         }
-        let promise = context.eventLoop.makePromise(of: Bool.self)
-        promise.completeWithTask { await self.registry.session(id) != nil }
+        let promise = context.eventLoop.makePromise(of: PtySession?.self)
+        promise.completeWithTask { await self.registry.session(id) }
         promise.futureResult.whenComplete { result in
-            guard (try? result.get()) == true else {
+            guard let session = (try? result.get()) ?? nil else {
                 self.writeJSON(
                     status: .notFound,
                     body: #"{"ok":false,"error":"no such session"}"#,
@@ -3370,6 +3385,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 return
             }
             self.eventLog.append(type: "note", session: id, data: data)
+            self.pullNudger?.noted(in: session, message: message)
             self.writeJSON(
                 status: .ok,
                 body: #"{"ok":true}"#,

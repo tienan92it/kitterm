@@ -214,8 +214,11 @@ type PullsEntry = { etag: string | null; answer: PullsAnswer | null; at: number 
 
 const POLL_MS = 2000;
 const KNOWLEDGE_RETRY_POLLS = 30;
-/** How often the page asks the pulls route for a project. The daemon reads
- * `gh` once a minute per repository, so a faster poll shows nothing sooner. */
+/** How often the page asks the pulls route for a project when no event
+ * says it changed: the fallback. The daemon appends `pulls.changed` to the
+ * event feed when a read changed a project's answer (`sessions-workflow`
+ * round 8), and the watcher then marks that project's entry stale
+ * (`markPullsStale`), so the poll it starts asks at once. */
 const PULLS_REFRESH_MS = 10_000;
 /** How often the page asks the servers route (`running-servers`, round
  * 3). The daemon reads the kernel every 3 s, so a faster poll shows
@@ -277,6 +280,14 @@ const knowledge = new Map<string, KnowledgeEntry>();
 const pulls = new Map<string, PullsEntry>();
 /** The pulls route refused this client (403). The page stops asking. */
 let pullsRefused = false;
+
+/** `pulls.changed` named `project`: its next `fetchPulls` asks whatever
+ * the time, with the ETag it holds. A project the page never asked (a
+ * watch page, one with no GitHub remote) has no entry and nothing changes. */
+function markPullsStale(project: string): void {
+  const entry = pulls.get(project);
+  if (entry) entry.at = 0;
+}
 
 let restartDismissed: Set<string> = loadDismissed(RESTART_DISMISSED_KEY);
 /** The last `daemon.started` the event feed carried: the run's epoch and the
@@ -2853,8 +2864,17 @@ document.addEventListener("visibilitychange", () => {
  * answers 404 once and the watcher stops; the 2 s poll still covers it.
  */
 /** One event of `GET /api/events`. The page reads the type and the data of
- * `daemon.started` and nothing else; the rest are a signal to repaint. */
+ * `daemon.started` and of `pulls.changed` and nothing else; the rest are a
+ * signal to repaint. */
 type FeedEvent = { type?: string; data?: Record<string, string> };
+
+/** Mark the projects whose pull requests changed, so the poll that follows
+ * the batch asks them at once (`markPullsStale`). */
+function readPullsChanged(events: FeedEvent[]): void {
+  for (const event of events) {
+    if (event.type === "pulls.changed" && event.data?.project) markPullsStale(event.data.project);
+  }
+}
 
 /**
  * Keep the run's own `daemon.started`, the event that carries how the run
@@ -2902,6 +2922,7 @@ async function watchEvents(): Promise<void> {
       if (typeof data.next === "number") eventCursor = data.next;
       if (typeof data.epoch === "string") eventEpoch = data.epoch;
       readStarted(data.events ?? [], data.epoch);
+      readPullsChanged(data.events ?? []);
       if (data.pruned || (data.events?.length ?? 0) > 0) void poll();
     } catch {
       // Network blip or daemon restart: back off, then resume the watch.

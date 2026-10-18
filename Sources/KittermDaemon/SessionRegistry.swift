@@ -51,9 +51,20 @@ public actor SessionRegistry {
     /// exercise it. Set before the port opens, so every admitted session
     /// carries its handler from the start.
     private var observer: (any SessionRegistryObserver)?
+    /// Hears every paired command that ended in any session, with the
+    /// session (`PullNudger.commandEnded`); nil in the tests that do not
+    /// exercise it.
+    private var commandEnded: (@Sendable (PtySession, SessionCommand) -> Void)?
 
     public func setObserver(_ observer: (any SessionRegistryObserver)?) {
         self.observer = observer
+        for (_, session) in sessions { wire(session) }
+    }
+
+    /// Set, or clear, the command-ended listener; every admitted session is
+    /// rewired.
+    public func setCommandEndedListener(_ listener: (@Sendable (PtySession, SessionCommand) -> Void)?) {
+        commandEnded = listener
         for (_, session) in sessions { wire(session) }
     }
 
@@ -84,6 +95,14 @@ public actor SessionRegistry {
             }
         } else {
             session.setCommandFailedHandler(nil)
+        }
+        if let commandEnded {
+            session.setCommandEndedHandler { [weak session] command in
+                guard let session else { return }
+                commandEnded(session, command)
+            }
+        } else {
+            session.setCommandEndedHandler(nil)
         }
     }
     private var lingerTasks: [UUID: Task<Void, Never>] = [:]
@@ -281,6 +300,20 @@ public actor SessionRegistry {
     public func shellLinks() -> [ListeningServers.ShellLink] {
         sessions.compactMap { id, session in
             session.isRunning ? ListeningServers.ShellLink(id: id, name: session.name, pid: session.pid) : nil
+        }
+    }
+
+    /// The `pr:<N>` label of every live session that has one, with the
+    /// session's project (the cached resolution under a `project:` label,
+    /// the row's rule), for the pulls route's interval: one call per
+    /// request, a lock take per labelled session, no kernel read.
+    public func labelledPulls() -> [PullRequestStatus.LabelledPull] {
+        sessions.compactMap { _, session in
+            let labels = session.labels.values
+            guard let value = labels[SessionLabels.prKey], let number = Int(value),
+                  let project = ProjectStore.shared.project(labels: labels, resolved: session.project)
+            else { return nil }
+            return PullRequestStatus.LabelledPull(project: project.id, number: number)
         }
     }
 

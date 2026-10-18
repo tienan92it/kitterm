@@ -163,6 +163,13 @@ public final class PtySession: @unchecked Sendable {
     /// that listener's path is untouched; nil, exit 0, or a browser session
     /// pays nothing, and a stray end that pairs to no command fires nothing.
     private var onCommandFailed: ((SessionCommand) -> Void)?
+    /// Called, with the lock released, for every `commandEnd` mark that
+    /// closes a paired command, whatever its exit, with the command as
+    /// `/commands` numbers it. The registry sets it so a `git push` or a
+    /// `gh pr` command nudges the pull request cache (`PullNudger`). Nil
+    /// pays nothing; set, a chunk with a `commandEnd` mark pays the one
+    /// pairing pass the waiters and the failure event already share.
+    private var onCommandEnded: ((SessionCommand) -> Void)?
     /// Live cwd tracking: a low-frequency poll of the shell's own directory via
     /// `proc_pidinfo`, so the client learns `cd`s even when the shell emits no
     /// OSC 7 (a bare macOS zsh does not). Diff-gated to one frame per change.
@@ -639,6 +646,8 @@ public final class PtySession: @unchecked Sendable {
         // The `commandEnd` marks of this chunk that carry a non-zero exit, when
         // this session reports failures: paired below, once, with the waiters.
         var failedEnds: [(offset: UInt64, exit: Int32)] = []
+        var closedCommands: [(handler: (SessionCommand) -> Void, command: SessionCommand)] = []
+        var closedEnds: [UInt64] = []
         let dispatch: (recorder: SessionRecorder?,
                        logStore: SessionLogStore?,
                        observers: [(Data) -> Void],
@@ -670,6 +679,9 @@ public final class PtySession: @unchecked Sendable {
                 if hit.kind == .commandEnd, let handler = onCommandEnd {
                     endedCommands.append((handler, hit.exit ?? 0))
                 }
+                if hit.kind == .commandEnd, onCommandEnded != nil {
+                    closedEnds.append(hit.offset)
+                }
                 // The failure event. Only a non-zero exit in an orchestrated
                 // session (a program's, not a browser tab's) with a listener
                 // is a candidate; a browser tab, exit 0 and a prompt mark cost
@@ -684,7 +696,7 @@ public final class PtySession: @unchecked Sendable {
             // entirely for the prompt marks that make up most traffic, and
             // runs once for a chunk that needs it for both.
             let sawEnd = markHits.contains(where: { $0.kind == .commandEnd })
-            if (sawEnd && !commandWaiters.isEmpty) || !failedEnds.isEmpty {
+            if (sawEnd && !commandWaiters.isEmpty) || !failedEnds.isEmpty || !closedEnds.isEmpty {
                 let commands = SessionCommands.pair(
                     from: markStore.marks,
                     firstIndex: markStore.firstRetainedIndex
@@ -710,6 +722,12 @@ public final class PtySession: @unchecked Sendable {
                         failedCommands.append((handler, failed))
                     }
                 }
+                if let handler = onCommandEnded {
+                    for offset in closedEnds {
+                        guard let closed = commands.first(where: { $0.endOffset == offset }) else { continue }
+                        closedCommands.append((handler, closed))
+                    }
+                }
             }
             let observerOutputs = observers.values.map(\.onOutput)
             let controller = attached ? onOutput : nil
@@ -721,6 +739,7 @@ public final class PtySession: @unchecked Sendable {
         for failed in failedCommands { failed.handler(failed.command) }
         for promise in readyWaiters { promise.succeed(()) }
         for ended in endedCommands { ended.handler(ended.exit) }
+        for closed in closedCommands { closed.handler(closed.command) }
         guard let dispatch else { return }
 
         dispatch.recorder?.recordOutput(chunk)
@@ -1083,6 +1102,12 @@ public final class PtySession: @unchecked Sendable {
     /// registry when it admits the session.
     public func setCommandFailedHandler(_ handler: ((SessionCommand) -> Void)?) {
         stateLock.withLock { onCommandFailed = handler }
+    }
+
+    /// Set, or clear, the listener for every paired command that ended
+    /// (`PullNudger`). Called by the registry when it admits the session.
+    public func setCommandEndedHandler(_ handler: ((SessionCommand) -> Void)?) {
+        stateLock.withLock { onCommandEnded = handler }
     }
 
     public func marksSnapshot() -> [SessionMark] {
