@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed (2026-10-18). The research is
+Accepted (2026-10-18, the owner's word after the research). The research is
 `docs/goals/code-editor/corpus/01-research.md`.
 
 ## Context

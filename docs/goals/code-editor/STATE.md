@@ -17,8 +17,8 @@ None.
 
 ## Proposals waiting on the human
 
-- `docs/adr/0005-editor-terminal-first-then-codemirror.md`, status
-  `Proposed`: accept or amend it.
+None. 2026-10-18: the human accepted ADR 0005 and chose draft B of
+`/edit` (`corpus/02-approved-design.md`).
 
 ## Done
 
