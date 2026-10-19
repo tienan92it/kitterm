@@ -545,6 +545,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             serveFileStat(grade: grade, head: head, context: context)
         case (.GET, "/api/files/content"):
             serveFileContent(grade: grade, head: head, context: context)
+        case (.GET, "/api/files/project"):
+            serveFileProject(grade: grade, head: head, context: context)
         case (.PUT, "/api/files/content"):
             serveFileSave(
                 body: body,
@@ -574,6 +576,11 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             // The Markdown page, the same way: `?path=` or `?project=&path=`
             // name the file, and the page reads it through the API.
             serveStatic(path: "/md.html", head: head, context: context, authCookie: authCookie,
+                        secureCookie: cookiesMayBeSecure(head: head, context: context))
+        case (.GET, "/edit"):
+            // The editor page (`code-editor` round 4): `?path=` and `?session=`
+            // name the file, and the page reads and saves it through the API.
+            serveStatic(path: "/edit.html", head: head, context: context, authCookie: authCookie,
                         secureCookie: cookiesMayBeSecure(head: head, context: context))
         case (.GET, _):
             serveStatic(path: path, head: head, context: context, authCookie: authCookie,
@@ -4388,6 +4395,20 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 )
                 return
             }
+            // The editor polls for an outside change with the tag it holds:
+            // the same bytes answer 304 and nothing else, so a poll every
+            // few seconds costs no body. A truncated read has no tag, so it
+            // never matches.
+            let etag = payload.truncated ? nil : FileEdit.etag(payload.data)
+            if let etag, let given = head.headers["if-none-match"].first,
+               FileEdit.matches(ifMatch: given, etag: etag) {
+                var headers = HTTPHeaders()
+                headers.add(name: "ETag", value: etag)
+                headers.add(name: "Cache-Control", value: "no-store")
+                self.writeBytes(status: .notModified, headers: headers, data: Data(),
+                                context: context, version: head.version, keepAlive: head.isKeepAlive)
+                return
+            }
             var headers = HTTPHeaders()
             headers.add(name: "Content-Type", value: payload.contentType)
             // Never guess past what we chose, never let the response fetch
@@ -4407,14 +4428,96 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             // The save's precondition: the tag of the whole file, so only a
             // read that saw every byte gets one. A truncated read sends none,
             // and the editor refuses to edit what it cannot save whole.
-            if !payload.truncated {
-                headers.add(name: "ETag", value: FileEdit.etag(payload.data))
+            if let etag {
+                headers.add(name: "ETag", value: etag)
             }
             if let mode = payload.mode {
                 headers.add(name: "X-Kitterm-Mode", value: String(mode, radix: 8))
             }
             self.writeBytes(status: .ok, headers: headers, data: payload.data,
                             context: context, version: head.version, keepAlive: head.isKeepAlive)
+        }
+    }
+
+    /// `GET /api/files/project?path=<file>&session=<id>` — where a file sits
+    /// for the editor page: the path resolved as the save route resolves it
+    /// (lexically, `~` and the session's cwd), and the project that holds it
+    /// by the save route's own rule (`FileEdit.jail`: the project of the
+    /// parent's real path, the nearest checkout or registered root). Answers
+    /// `{ok, path, project {id, name, root, relative}}`, where `relative` is
+    /// the file's path under the root as the walk sees it, or `{ok, path}`
+    /// alone for a file under no project, so the page says so and still
+    /// shows the file. 404 when the parent directory does not exist. Full
+    /// grade, like the listing; the resolution runs on the edit queue, off
+    /// the loop, because `realpath` and the store's `.git` walk touch the
+    /// disk.
+    private func serveFileProject(
+        grade: TokenGrade,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let requested = DaemonServer.queryValue("path", fromRequestURI: head.uri), !requested.isEmpty else {
+            writeJSON(
+                status: .badRequest,
+                body: #"{"ok":false,"error":"no path given"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let sessionID = DaemonServer.queryValue("session", fromRequestURI: head.uri)
+            .flatMap(UUID.init(uuidString:))
+
+        let loop = context.eventLoop
+        let boundContext = NIOLoopBound(context, eventLoop: loop)
+        let projects = self.projects
+        let promise = loop.makePromise(of: (String, FileEdit.Located?)?.self)
+        promise.completeWithTask {
+            let cwd: String? = sessionID == nil
+                ? nil
+                : await self.registry.session(sessionID!)?.liveCwd
+            let path = FileEdit.resolve(requested, base: cwd)
+            return await withCheckedContinuation { continuation in
+                FileEdit.queue.async {
+                    guard let located = FileEdit.locate(path, projects: projects) else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    continuation.resume(returning: (path, located.project))
+                }
+            }
+        }
+        promise.futureResult.whenComplete { result in
+            let context = boundContext.value
+            guard case .success(.some((let path, let located))) = result else {
+                self.writeJSON(
+                    status: .notFound,
+                    body: #"{"ok":false,"error":"no such directory"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+                return
+            }
+            var payload: [String: Any] = ["ok": true, "path": path]
+            if let located {
+                payload["project"] = [
+                    "id": located.id, "name": located.name, "root": located.root,
+                    "relative": located.relative,
+                ]
+            }
+            let text = (try? JSONSerialization.data(withJSONObject: payload))
+                .flatMap { String(data: $0, encoding: .utf8) }
+                ?? #"{"ok":false,"error":"encoding failed"}"#
+            self.writeJSON(
+                status: .ok, body: text, context: context,
+                version: head.version, keepAlive: head.isKeepAlive
+            )
         }
     }
 

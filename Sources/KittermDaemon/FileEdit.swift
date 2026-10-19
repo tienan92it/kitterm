@@ -164,6 +164,41 @@ public enum FileEdit {
         return Jail(root: root, components: parts)
     }
 
+    /// Where a file sits, for the editor page: the project that would jail
+    /// its save, and its path under that root.
+    public struct Located: Sendable, Equatable {
+        /// The project's id, name and real root, as `ProjectStore` names them.
+        public let id: String
+        public let name: String
+        public let root: String
+        /// The components below the root, joined: `Web/terminal/src/md.ts`.
+        public let relative: String
+    }
+
+    /// The outcome of locating the lexical `path`: `project` is nil for a
+    /// file under no project, and the whole answer is nil when the parent
+    /// directory does not exist. Blocking (`realpath`, the `.git` walk):
+    /// the caller runs it off the loop.
+    public struct Location: Sendable, Equatable {
+        public let project: Located?
+    }
+
+    /// `jail`'s resolution with the project's identity kept, so the page
+    /// can name the project and draw its tree from the root. The same two
+    /// steps as `jail`, so the page and the save never disagree on where a
+    /// file is.
+    public static func locate(_ path: String, projects: ProjectStore) -> Location? {
+        let parent = (path as NSString).deletingLastPathComponent
+        guard let realParent = realPath(parent) else { return nil }
+        guard let project = projects.resolve(cwd: realParent), project.root != nil,
+              let jail = try? jail(for: path, projects: projects)
+        else { return Location(project: nil) }
+        return Location(project: Located(
+            id: project.id, name: project.name, root: jail.root,
+            relative: jail.components.joined(separator: "/")
+        ))
+    }
+
     /// `realpath(3)`, or nil when the path names nothing.
     static func realPath(_ path: String) -> String? {
         var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))

@@ -24,6 +24,7 @@ export default defineConfig({
         main: resolve(__dirname, "index.html"),
         sessions: resolve(__dirname, "sessions.html"),
         md: resolve(__dirname, "md.html"),
+        edit: resolve(__dirname, "edit.html"),
       },
     },
   },

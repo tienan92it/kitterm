@@ -1,0 +1,501 @@
+/* The `/edit` page: the frames `Editor 1200`, `Editor 390`, `Editor 390
+   files` and the 16 rules of `Editor components` in `design/editor.pen`
+   (approved at 01ac6ff, `corpus/02-approved-design.md`), on the contract of
+   `design/foundation.md`. The ground and the three greys keep deriving from
+   `tokens.css`; this sheet owns the four colours that mark a state, the
+   space scale, the three type shorthands, the two mark sizes and the line
+   height by width, as `sessions.css` does. `edit-css.test.ts` pins the
+   absences: no bare pixel for margin, padding or gap, no `font-size` but
+   the two mark tokens, no radius above 2 px, no shadow, no transition, and
+   the owned colours on a mark's background, never on `color`.
+
+   Two columns at 1200 px: a sidebar of 280 px with a hairline at its right
+   and the editor (rule 1); one column at 390 px, where `[ ] files [x] edit`
+   chooses what the column shows and a 44 px key bar sits above the soft
+   keyboard (rule 15). */
+
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+
+  --type-heading: 600 13px/1.5 var(--font-mono);
+  --type-body: 400 12px/1.5 var(--font-mono);
+  /* The editor's own size: `md-code`, the source view's (foundation). */
+  --type-code: 400 12.5px/1.6 var(--font-mono);
+
+  --mark-size: 14px;
+  --mark-size-disclosure: 11px;
+
+  --line-h: 44px;
+  --sidebar-w: 280px;
+  --gutter-w: 36px;
+  --keyboard-height: 0px;
+
+  --ui-accent: light-dark(#1d7268, #2a9d8f);
+  --ui-success: light-dark(#2d6a4f, #52b788);
+  --ui-warning: light-dark(#8a6415, #e9c46a);
+  --ui-danger: light-dark(#b0472c, #e76f51);
+}
+
+@media (min-width: 768px) {
+  :root {
+    --line-h: 28px;
+    --gutter-w: 48px;
+  }
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--ui-bg);
+  color: var(--ui-text);
+  font: var(--type-body);
+}
+
+/* The page: the header, the body, and the key bar's room on a phone. */
+#edit {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding-bottom: var(--keyboard-height);
+  box-sizing: border-box;
+}
+
+/* `hidden` wins over a block's own display: the bar, the editor and the
+   diff take turns in the editor area. */
+#edit [hidden] { display: none; }
+
+/* --- the header (rule 2) ------------------------------------------------ */
+.edit-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-3);
+  height: var(--line-h);
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--ui-border);
+  background: var(--ui-bg);
+  white-space: nowrap;
+}
+
+.edit-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font: var(--type-heading);
+}
+
+.edit-project,
+.edit-separator { color: var(--ui-text-muted); }
+.edit-path { color: var(--ui-text); }
+
+.edit-facts {
+  color: var(--ui-text-faint);
+  font: var(--type-body);
+}
+
+.edit-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-left: auto;
+  font: var(--type-body);
+}
+
+/* A control in the accent: `[ save ⌘S ]`, `open in terminal`, the bar's
+   three, `open file` on the diff. The accent is a mark's background, not
+   `color`, so a control is a run of text clipped to its glyphs. */
+.edit-save,
+.edit-terminal,
+.edit-bar-button,
+.edit-diff-back,
+.edit-key-save {
+  padding: 0;
+  border: 0;
+  background: var(--ui-accent);
+  font: inherit;
+  white-space: pre;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.edit-terminal { text-decoration: underline; text-decoration-color: var(--ui-accent); }
+
+/* `[ save ⌘S ]` in the faint grey while the buffer equals the disk or is
+   read only (rule 3); it still answers a click, as ⌘S does. */
+.edit-save.edit-quiet,
+.edit-save:disabled,
+.edit-key-save.edit-quiet,
+.edit-key-save:disabled { background: var(--ui-text-faint); }
+
+/* --- the marks (rule 3, rule 16) ---------------------------------------- */
+/* A one-character mark or the run of text that carries a state wears an
+   owned colour as a clipped background. */
+.edit-mark {
+  display: inline-block;
+  min-width: var(--mark-size);
+  text-align: center;
+  font-size: var(--mark-size);
+  line-height: 1;
+  background: var(--ui-text-faint);
+}
+.edit-mark.warning { background: var(--ui-warning); }
+.edit-mark.accent { background: var(--ui-accent); }
+.edit-mark.success { background: var(--ui-success); }
+.edit-mark.danger { background: var(--ui-danger); }
+.edit-mark.faint { background: var(--ui-text-faint); }
+
+.edit-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font: var(--type-body);
+  white-space: pre;
+}
+
+.edit-state-word {
+  background: var(--ui-text-faint);
+}
+.edit-state-word.warning { background: var(--ui-warning); }
+.edit-state-word.accent { background: var(--ui-accent); }
+.edit-state-word.success { background: var(--ui-success); }
+.edit-state-word.faint { background: var(--ui-text-faint); }
+
+/* The one thing that moves: the saving mark turns. */
+@keyframes edit-turn {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.edit-state.accent .edit-mark { animation: edit-turn 0.9s steps(4) infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .edit-state.accent .edit-mark { animation: none; }
+}
+
+/* --- the body ------------------------------------------------------------ */
+.edit-body {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+/* The tabs: in the sidebar's head at 1200 px, one row across the page at
+   390 px (rule 1). */
+.edit-tabs {
+  display: flex;
+  grid-column: 1;
+  grid-row: 1;
+  align-items: center;
+  gap: var(--space-4);
+  height: var(--line-h);
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border-right: 1px solid var(--ui-border);
+  border-bottom: 1px solid var(--ui-border);
+  font: var(--type-body);
+}
+
+.edit-tab {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ui-text-muted);
+  font: inherit;
+  white-space: pre;
+  cursor: pointer;
+}
+.edit-tab[aria-checked="true"] { color: var(--ui-text); }
+
+.edit-sidebar {
+  grid-column: 1;
+  grid-row: 2;
+  min-height: 0;
+  overflow: auto;
+  border-right: 1px solid var(--ui-border);
+}
+
+.edit-main {
+  display: flex;
+  flex-direction: column;
+  grid-column: 2;
+  grid-row: 1 / 3;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* --- the tree (rule 4, rule 12) ----------------------------------------- */
+.edit-tree { padding: var(--space-2) 0; }
+
+.edit-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  height: var(--line-h);
+  padding: 0 var(--space-4) 0 calc(var(--space-4) + var(--depth, 0) * var(--space-3));
+  border: 0;
+  background: none;
+  color: var(--ui-text);
+  font: var(--type-body);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.edit-row.open { background: var(--ui-surface-2); }
+
+.edit-triangle {
+  flex: none;
+  width: var(--space-4);
+  text-align: center;
+  font-size: var(--mark-size-disclosure);
+  background: var(--ui-text-faint);
+}
+
+.edit-row-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* One sentence under a folder with nothing in it, at its row's indent, and
+   the sentence of a tree with no project (rule 12). */
+.edit-note {
+  margin: 0;
+  padding: var(--space-2) var(--space-4) var(--space-2) calc(var(--space-4) + var(--depth, 0) * var(--space-3));
+  color: var(--ui-text-faint);
+  font: var(--type-body);
+}
+.edit-row-empty { padding-left: calc(var(--space-4) + var(--space-4) + var(--depth, 0) * var(--space-3)); }
+.edit-main .edit-note { color: var(--ui-text-muted); }
+
+/* --- the bars (rules 10 and 11) ----------------------------------------- */
+.edit-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--ui-border);
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  font: var(--type-body);
+}
+
+.edit-bar-text { min-width: 0; }
+
+.edit-bar-controls {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+  white-space: pre;
+}
+
+/* --- the editor (rule 6) ------------------------------------------------ */
+.edit-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  background: var(--ui-bg-sunken);
+}
+
+.edit-editor .cm-editor {
+  height: 100%;
+  background: var(--ui-bg-sunken);
+  color: var(--ui-text);
+  font: var(--type-code);
+}
+.edit-editor .cm-editor.cm-focused { outline: none; }
+.edit-editor .cm-scroller {
+  font: inherit;
+  line-height: 1.6;
+}
+.edit-editor .cm-content {
+  padding: var(--space-2) 0;
+  caret-color: var(--ui-text);
+}
+.edit-editor .cm-line { padding: 0 var(--space-3); }
+.edit-editor .cm-gutters {
+  min-width: var(--gutter-w);
+  border-right: 1px solid var(--ui-border);
+  background: var(--ui-bg-sunken);
+  color: var(--ui-text-faint);
+}
+.edit-editor .cm-lineNumbers .cm-gutterElement {
+  min-width: var(--gutter-w);
+  padding: 0 var(--space-2) 0 var(--space-1);
+  box-sizing: border-box;
+  text-align: right;
+}
+.edit-editor .cm-cursor { border-left-color: var(--ui-text); }
+.edit-editor .cm-selectionBackground,
+.edit-editor .cm-focused .cm-selectionBackground { background: var(--ui-active); }
+.edit-editor .cm-selectionMatch { background: var(--ui-surface-2); }
+.edit-editor .cm-matchingBracket { outline: 1px solid var(--ui-border); }
+.edit-editor .cm-panels {
+  border-top: 1px solid var(--ui-border);
+  background: var(--ui-surface);
+  color: var(--ui-text);
+}
+.edit-editor .cm-panel input,
+.edit-editor .cm-panel button {
+  border: 1px solid var(--ui-border);
+  border-radius: 2px;
+  background: var(--ui-bg);
+  color: var(--ui-text);
+  font: var(--type-body);
+}
+
+/* The source view's colours, on CodeMirror's tokens. */
+.tok-comment { color: var(--code-comment); }
+.tok-string { color: var(--code-string); }
+.tok-number { color: var(--code-number); }
+.tok-keyword { color: var(--code-keyword); }
+.tok-name { color: var(--code-name); }
+.tok-attr { color: var(--code-attr); }
+.tok-link { color: var(--code-link); text-decoration: underline; }
+.tok-error { color: var(--code-error); }
+.tok-punct { color: var(--code-punct); }
+
+/* --- the diff (rule 9) -------------------------------------------------- */
+.edit-diff {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  background: var(--ui-bg-sunken);
+  font: var(--type-code);
+}
+
+.edit-diff-top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: var(--line-h);
+  min-height: 28px;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--ui-border);
+  color: var(--ui-text);
+  white-space: nowrap;
+}
+.edit-diff-counts { color: var(--ui-text-muted); }
+.edit-diff-what { color: var(--ui-text-faint); }
+.edit-diff-back { margin-left: auto; }
+
+.edit-diff-rows { padding: var(--space-2) 0; }
+
+.edit-diff-line {
+  display: flex;
+  color: var(--ui-text);
+  white-space: pre;
+}
+.edit-diff-gutter {
+  flex: none;
+  min-width: var(--gutter-w);
+  padding: 0 var(--space-2) 0 var(--space-1);
+  box-sizing: border-box;
+  border-right: 1px solid var(--ui-border);
+  color: var(--ui-text-faint);
+  text-align: right;
+}
+.edit-diff-text { padding: 0 var(--space-3); }
+/* The one place a state colours a run of code (foundation): the diff's
+   `+` and `−` lines, and the hunk line in the link colour. */
+.edit-diff-line.add .edit-diff-text { color: var(--ui-success); }
+.edit-diff-line.del .edit-diff-text { color: var(--ui-danger); }
+.edit-diff-line.hunk .edit-diff-text { color: var(--code-link); }
+
+/* --- the key bar (rule 15) ---------------------------------------------- */
+.edit-keys {
+  display: none;
+  position: fixed;
+  right: 0;
+  bottom: var(--keyboard-height);
+  left: 0;
+  align-items: center;
+  height: 44px;
+  padding: 0 var(--space-3);
+  border-top: 1px solid var(--ui-border);
+  background: var(--ui-surface);
+  font: var(--type-body);
+}
+
+/* Seven targets of 44 px side by side fit a 390 px row with no gap; the
+   save key is as wide as its word, and undo sits at the right. */
+.edit-key {
+  flex: none;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  color: var(--ui-text-muted);
+  font: inherit;
+  white-space: pre;
+  cursor: pointer;
+}
+/* The other keys paint no background of their own; `[ save ]` keeps the
+   accent it was given above. */
+.edit-key:not(.edit-key-save) { background: none; }
+.edit-key-save { min-width: 0; padding: 0 var(--space-1); }
+.edit-key-undo { margin-left: auto; }
+
+/* --- the phone (rule 1, rule 15) ---------------------------------------- */
+@media (max-width: 767px) {
+  .edit-header { gap: var(--space-2); }
+  .edit-facts,
+  .edit-save,
+  .edit-separator,
+  .edit-path-dir,
+  .edit-project { display: none; }
+  .edit-body { grid-template-columns: minmax(0, 1fr); }
+  .edit-tabs { grid-column: 1; border-right: 0; }
+  .edit-sidebar { grid-column: 1; grid-row: 2; border-right: 0; }
+  .edit-main { grid-column: 1; grid-row: 2; }
+  #edit[data-tab="edit"] .edit-sidebar { display: none; }
+  #edit[data-tab="files"] .edit-main { display: none; }
+  .edit-keys { display: flex; }
+  #edit { padding-bottom: calc(44px + var(--keyboard-height)); }
+  .edit-bar { flex-wrap: wrap; padding: var(--space-2) var(--space-4); }
+  .edit-bar-controls { margin-left: 0; }
+}
+
+@media (min-width: 768px) {
+  .edit-tab-edit { display: none; }
+}
+
+/* --- the clip --------------------------------------------------------------
+   Every mark, triangle, state word and accent control above is a run of text
+   whose colour is its background. The clip comes last and at each rule's own
+   specificity, because the `background` shorthand resets it, and a run whose
+   background is not clipped to its glyphs paints a box (`sessions.css`). */
+.edit-mark,
+.edit-mark.warning,
+.edit-mark.accent,
+.edit-mark.success,
+.edit-mark.danger,
+.edit-mark.faint,
+.edit-state-word,
+.edit-state-word.warning,
+.edit-state-word.accent,
+.edit-state-word.success,
+.edit-state-word.faint,
+.edit-triangle,
+.edit-save,
+.edit-terminal,
+.edit-bar-button,
+.edit-diff-back,
+.edit-key-save,
+.edit-save.edit-quiet,
+.edit-save:disabled,
+.edit-key-save.edit-quiet,
+.edit-key-save:disabled {
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
