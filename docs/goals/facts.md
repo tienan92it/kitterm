@@ -10,6 +10,14 @@ decision moves to `docs/adr/`.
 
 ## Toolchain
 
+- xterm.js 6.0.0's DECRQM answer (`requestMode`) throws `ReferenceError: i
+  is not defined` in the Vite bundle (not in `lib/xterm.mjs`), and the throw
+  ends the parser's write loop: the pane freezes on its last line. Any
+  `CSI ? Ps $ p` triggers it, and lazygit sends four before its first frame,
+  so lazygit never drew in a pane on main. The pane answers DECRQM itself
+  from `Terminal.modes` (`decrqm.ts`) and returns true (2026-10-18,
+  `code-editor` round 1).
+
 - `tokens.css` derives `--ui-bg-sunken` by mixing `--ui-bg` 75 % toward
   black, so on a light theme a sunken well (the preview's code) is dark
   under dark text (2026-10-16, `markdown-preview` round 2).
@@ -176,6 +184,17 @@ decision moves to `docs/adr/`.
   event `epoch`; verified again on 2026-09-08 with v0.23.0. (2026-09-07)
 
 ## Crew pane
+
+- A headless Chromium screenshot of the terminal page at
+  `device_scale_factor=2` paints no pane text (the canvases stay blank); at
+  scale 1 the same page paints. Take the 1200 px and 390 px shots at scale
+  1 (2026-10-18, `code-editor` round 1).
+- The Python Playwright 1.57 on this machine (`python3 -m playwright`,
+  browsers under `~/Library/Caches/ms-playwright`) drives a touch drag with
+  a CDP session: `Input.dispatchTouchEvent` `touchStart`, `touchMove` per
+  step, `touchEnd` on a `has_touch` context; `page.mouse.click` takes no
+  `modifiers` there, so a ⌘-click is `keyboard.down("Meta")`, the click,
+  `keyboard.up("Meta")` (2026-10-18, `code-editor` round 1).
 
 - A background `nc -k -l … &` in a test pane reads the tty, gets
   `SIGTTIN` and stops, and a stopped process acts on no `SIGTERM`: two

@@ -62,6 +62,7 @@ export const introSections = (isMac: boolean, touch: boolean): IntroSection[] =>
           { keys: "Long-press", what: "Select text, then copy or paste" },
           { keys: "Swipe", what: "Scroll — or move inside vim, less, htop" },
           { keys: "Drag a file in", what: "Its path lands at your cursor" },
+          { keys: "Tap a path", what: "Preview it; `open in editor` is in the header" },
         ],
       },
       {
@@ -71,7 +72,7 @@ export const introSections = (isMac: boolean, touch: boolean): IntroSection[] =>
           { keys: "＋", what: "Attach a file from this device" },
           { keys: "⌸", what: "Browse the machine kitterm runs on" },
           { keys: "⧉", what: "Share the session — others watch it live" },
-          { keys: "⚙", what: "Theme, font, tab name" },
+          { keys: "⚙", what: "Theme, font, tab name — and the editor layout" },
         ],
       },
     ];
@@ -84,6 +85,7 @@ export const introSections = (isMac: boolean, touch: boolean): IntroSection[] =>
         { keys: "⌘⌥↑ / ⌘⌥↓", what: "Move between panes" },
         { keys: "⌘⌥W", what: "Close this pane" },
         { keys: "⌘⌥T", what: "New tab" },
+        { keys: "⌘⌥E", what: "Editor, lazygit and a shell in this folder" },
       ]
     : [
         { keys: "Ctrl+Shift+D", what: "Split right" },
@@ -91,6 +93,7 @@ export const introSections = (isMac: boolean, touch: boolean): IntroSection[] =>
         { keys: "Ctrl+Shift+↑ / ↓", what: "Move between panes" },
         { keys: "Ctrl+Shift+Alt+W", what: "Close this pane" },
         { keys: "Ctrl+Shift+Alt+T", what: "New tab" },
+        { keys: "Ctrl+Shift+Alt+E", what: "Editor, lazygit and a shell in this folder" },
       ];
 
   const inThePane: IntroRow[] = isMac
@@ -99,12 +102,14 @@ export const introSections = (isMac: boolean, touch: boolean): IntroSection[] =>
         { keys: "⌘↑ / ⌘↓", what: "Jump between prompts" },
         { keys: "⌘C", what: "Copy the selection — Ctrl+C still interrupts" },
         { keys: "⌘⌥O", what: "Browse files on this machine" },
+        { keys: "⌘-click a path", what: "Open it in $EDITOR, at its :line" },
         { keys: "⌘, / ⌘/", what: "Settings, and this card" },
       ]
     : [
         { keys: "Ctrl+Shift+F", what: "Find in the scrollback" },
         { keys: "Ctrl+Shift+C", what: "Copy the selection — Ctrl+C still interrupts" },
         { keys: "Ctrl+Shift+Alt+O", what: "Browse files on this machine" },
+        { keys: "Ctrl-click a path", what: "Open it in $EDITOR, at its :line" },
         { keys: "Ctrl+, / Ctrl+Shift+/", what: "Settings, and this card" },
       ];
 

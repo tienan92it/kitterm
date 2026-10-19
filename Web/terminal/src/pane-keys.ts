@@ -28,7 +28,11 @@ export type PaneCommand =
   | { type: "close" }
   | { type: "new-tab" }
   | { type: "browse-files" }
-  | { type: "show-help" };
+  | { type: "show-help" }
+  /** The focused pane becomes an editor, lazygit and a shell in its cwd. */
+  | { type: "editor-layout" }
+  /** A path link, clicked with the modifier: open it in the pane's editor. */
+  | { type: "open-editor"; path: string; line?: number };
 
 /** The subset of KeyboardEvent this module needs, so tests need no DOM. */
 export type ChordEvent = Pick<
@@ -100,6 +104,9 @@ export const matchPaneCommand = (event: ChordEvent, isMac: boolean): PaneCommand
       if (letter === "t") return { type: "new-tab" };
       // ⌘⌥O — "open", for picking a file or folder to hand to what is running.
       if (letter === "o") return { type: "browse-files" };
+      // ⌘⌥E — the editor layout. Safari's Develop menu, when it is shown,
+      // binds the same chord to "Empty Caches"; Chrome and Firefox leave it.
+      if (letter === "e") return { type: "editor-layout" };
     }
     return null;
   }
@@ -121,6 +128,8 @@ export const matchPaneCommand = (event: ChordEvent, isMac: boolean): PaneCommand
     if (chordLetter(event) === "t") return { type: "new-tab" };
     // Ctrl+Shift+Alt+O — "open", matching the mac chord.
     if (chordLetter(event) === "o") return { type: "browse-files" };
+    // Ctrl+Shift+Alt+E — the editor layout; Ctrl+Shift+E is the split.
+    if (chordLetter(event) === "e") return { type: "editor-layout" };
   }
   return null;
 };

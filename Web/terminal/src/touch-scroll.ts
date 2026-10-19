@@ -34,11 +34,36 @@ function arrowDown(appCursorKeys: boolean): string {
   return appCursorKeys ? "\x1bOB" : "\x1b[B";
 }
 
-/** SGR (1006) mouse wheel at 1-based (col,row); button 64 = up, 65 = down. */
-export function mouseWheelSequence(up: boolean, col: number, row: number): string {
+/**
+ * How the program asked for mouse reports. SGR (`CSI ? 1006 h`) carries the
+ * cell as decimal parameters; the X10 form, what a program gets when it turns
+ * reporting on (`CSI ? 1000 h`) and nothing more, carries each value as one
+ * byte offset by 32, so it cannot name a column past 223. lazygit and micro
+ * ask for SGR; less (at `--mouse`) and older curses programs take X10 alone,
+ * and an SGR report there arrives as the three characters `<64`.
+ */
+export type WheelEncoding = "sgr" | "x10";
+
+/** The X10 form names a value as one byte, `32 + value`, up to 255. */
+const X10_MAX = 223;
+
+/** Mouse wheel at 1-based (col,row); button 64 = up, 65 = down. */
+export function mouseWheelSequence(
+  up: boolean,
+  col: number,
+  row: number,
+  encoding: WheelEncoding = "sgr",
+): string {
   const button = up ? 64 : 65;
   const c = Math.max(1, col);
   const r = Math.max(1, row);
+  if (encoding === "x10") {
+    return `\x1b[M${String.fromCharCode(
+      32 + button,
+      32 + Math.min(c, X10_MAX),
+      32 + Math.min(r, X10_MAX),
+    )}`;
+  }
   return `\x1b[<${button};${c};${r}M`;
 }
 
@@ -82,6 +107,7 @@ export function swipeToInput(
   steps: number,
   position: { col: number; row: number } = { col: 1, row: 1 },
   appCursorKeys = false,
+  encoding: WheelEncoding = "sgr",
 ): string {
   if (steps === 0 || target === "scrollback") return "";
   const count = Math.abs(steps);
@@ -91,5 +117,5 @@ export function swipeToInput(
     return (fingerDown ? arrowUp(appCursorKeys) : arrowDown(appCursorKeys)).repeat(count);
   }
   // mouse: finger down → wheel up.
-  return mouseWheelSequence(fingerDown, position.col, position.row).repeat(count);
+  return mouseWheelSequence(fingerDown, position.col, position.row, encoding).repeat(count);
 }

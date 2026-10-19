@@ -672,6 +672,7 @@ const BLOCK_SURFACES: Array<{ block: string; stack: string[]; why: string }> = [
   // --- styles.css: the touch selection bar and the file preview ---
   { block: "selection-bar", stack: ["var(--ui-bg)"], why: "over the grid; it paints --ui-surface-2 itself" },
   { block: "selection-action", stack: ["var(--ui-surface-2)"], why: "in .selection-bar, which paints --ui-surface-2" },
+  { block: "clipboard-offer-label", stack: ["var(--ui-surface-2)"], why: "in .selection-bar, which paints --ui-surface-2" },
   { block: "preview-card", stack: ["var(--ui-surface)"], why: "the card paints --ui-surface" },
   { block: "preview-header", stack: ["var(--ui-surface)"], why: "in .preview-card" },
   { block: "preview-heading", stack: ["var(--ui-surface)"], why: "in .preview-header" },
@@ -687,6 +688,7 @@ const BLOCK_SURFACES: Array<{ block: string; stack: string[]; why: string }> = [
   { block: "view-toggle", stack: ["var(--ui-surface)"], why: "in .preview-controls" },
   { block: "view-choice", stack: ["var(--ui-surface)"], why: "in .view-toggle" },
   { block: "preview-open-full", stack: ["var(--ui-surface)"], why: "in .preview-controls" },
+  { block: "preview-open-editor", stack: ["var(--ui-surface)"], why: "in .preview-controls" },
   { block: "md-sheet", stack: ["var(--ui-surface)"], why: "the rendered Markdown file in .preview-body; it paints --ui-surface itself" },
   { block: "md-body", stack: ["var(--ui-surface)"], why: "in .md-sheet; it paints --ui-surface itself" },
   { block: "md-code", stack: ["var(--ui-bg-sunken)"], why: "a code block of .md-body; it paints --ui-bg-sunken itself" },
