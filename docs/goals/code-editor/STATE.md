@@ -1,15 +1,15 @@
 # STATE: code-editor
 
 - Status: active
-- Round: 1 of 4 in this budget (second budget)
-- Rounds total: 3
-- Last floor: green (2026-10-19, round 3 after: swift test 1267, KittermBench PASS, PR CI on 574a142)
-- Updated: 2026-10-19, round 3 done
+- Round: 2 of 4 in this budget (second budget)
+- Rounds total: 4
+- Last floor: green (2026-10-19, round 4 after: vitest 2081, swift test 1274, PR CI on 6685d6d)
+- Updated: 2026-10-19, round 4 done
 
 ## Queue
 
-1. `edit-page` (capability 4), PR #198.
-2. `git-read` (capability 5), PR #198.
+1. `git-read` (capability 5), PR #198. It also fixes the `[ ] files`
+   tab that reads unchecked while shown (`rounds/004.md`, Gap).
 3. `git-write` (capability 6), PR #198.
 
 ## Failures
@@ -23,6 +23,8 @@ the three foundation additions, and compare in the editor area.
 
 ## Done
 
+- `edit-page`, round 4, PR #198. See `rounds/004.md`. The `/edit` page
+  on CodeMirror 6.
 - `save-route`, round 3, PR #198. See `rounds/003.md`. The jailed atomic
   `PUT /api/files/content` and the `ETag` on the read.
 - `editor-design`, round 2, PR #197. See `rounds/002.md`. Six frames in
@@ -32,4 +34,4 @@ the three foundation additions, and compare in the editor area.
 
 ## Next action
 
-Round 4: `edit-page` from `plan.md` row 4.
+Round 5: `git-read` from `plan.md` row 5.
