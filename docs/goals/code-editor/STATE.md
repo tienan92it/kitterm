@@ -1,17 +1,16 @@
 # STATE: code-editor
 
 - Status: active
-- Round: 0 of 4 in this budget (second budget)
-- Rounds total: 2
-- Last floor: green (2026-10-18, round 2 after: PR CI on 01ac6ff)
-- Updated: 2026-10-19, the second budget opens on the human's word (`corpus/03-all-phases.md`)
+- Round: 1 of 4 in this budget (second budget)
+- Rounds total: 3
+- Last floor: green (2026-10-19, round 3 after: swift test 1267, KittermBench PASS, PR CI on 574a142)
+- Updated: 2026-10-19, round 3 done
 
 ## Queue
 
-1. `save-route` (capability 3), PR #198.
-2. `edit-page` (capability 4)
-3. `git-read` (capability 5)
-4. `git-write` (capability 6)
+1. `edit-page` (capability 4), PR #198.
+2. `git-read` (capability 5), PR #198.
+3. `git-write` (capability 6), PR #198.
 
 ## Failures
 
@@ -24,6 +23,8 @@ the three foundation additions, and compare in the editor area.
 
 ## Done
 
+- `save-route`, round 3, PR #198. See `rounds/003.md`. The jailed atomic
+  `PUT /api/files/content` and the `ETag` on the read.
 - `editor-design`, round 2, PR #197. See `rounds/002.md`. Six frames in
   `design/editor.pen`.
 - `terminal-stack`, round 1, PR #197. See `rounds/001.md`. OSC 52, touch
@@ -31,4 +32,4 @@ the three foundation additions, and compare in the editor area.
 
 ## Next action
 
-Round 3: `save-route` from `plan.md` row 3.
+Round 4: `edit-page` from `plan.md` row 4.
