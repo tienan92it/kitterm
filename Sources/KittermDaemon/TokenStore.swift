@@ -129,6 +129,15 @@ public final class CachedTokenStore: @unchecked Sendable {
         return tokens.first { $0.hash == hash }?.grade
     }
 
+    /// The name of a presented token, or nil if it matches nothing; what
+    /// the edit audit log writes for a named token.
+    public func name(of presented: String) -> String? {
+        reloadIfChanged()
+        guard !tokens.isEmpty else { return nil }
+        let hash = TokenStore.hash(presented)
+        return tokens.first { $0.hash == hash }?.name
+    }
+
     private func reloadIfChanged() {
         let mtime = (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate])
             as? Date

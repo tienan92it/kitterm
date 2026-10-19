@@ -204,6 +204,21 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         return path.hasPrefix("/api/sessions/") && path.hasSuffix("/files")
     }
 
+    /// `PUT /api/files/content` — the body is the new bytes of a file, so
+    /// the cap is the read cap (`FileEdit.maxBytes`), not a command line's.
+    private static func isEditorSave(_ head: HTTPRequestHead) -> Bool {
+        guard head.method == .PUT else { return false }
+        let path = head.uri.split(separator: "?", maxSplits: 1).first.map(String.init) ?? head.uri
+        return path == "/api/files/content"
+    }
+
+    /// How much body a request may carry, by the route its head names.
+    private static func bodyLimit(for head: HTTPRequestHead) -> Int {
+        if isDropUpload(head) { return KittermConstants.maxDropBytes }
+        if isEditorSave(head) { return FileEdit.maxBytes }
+        return KittermConstants.maxInputBytes
+    }
+
     /// Whether an auth cookie set on this request may carry `Secure`.
     ///
     /// True on the TLS listener. Also true when a trusted proxy reports it
@@ -230,8 +245,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             pendingHead = head
             pendingBody.removeAll(keepingCapacity: true)
             bodyOverflow = false
-            bodyLimit = Self.isDropUpload(head) ? KittermConstants.maxDropBytes
-                                               : KittermConstants.maxInputBytes
+            bodyLimit = Self.bodyLimit(for: head)
         case .body(let buffer):
             guard !bodyOverflow else { break }
             if pendingBody.count + buffer.readableBytes > bodyLimit {
@@ -531,6 +545,14 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             serveFileStat(grade: grade, head: head, context: context)
         case (.GET, "/api/files/content"):
             serveFileContent(grade: grade, head: head, context: context)
+        case (.PUT, "/api/files/content"):
+            serveFileSave(
+                body: body,
+                bodyOverflow: bodyOverflow,
+                grade: grade,
+                head: head,
+                context: context
+            )
         case (.GET, _) where Self.pullsProjectID(path: path) != nil:
             servePulls(id: Self.pullsProjectID(path: path) ?? "", grade: grade, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/projects/"):
@@ -4382,8 +4404,196 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             headers.add(name: "X-Kitterm-Total-Bytes", value: "\(payload.totalBytes)")
             headers.add(name: "X-Kitterm-Truncated", value: payload.truncated ? "1" : "0")
             headers.add(name: "X-Kitterm-Kind", value: payload.kind)
+            // The save's precondition: the tag of the whole file, so only a
+            // read that saw every byte gets one. A truncated read sends none,
+            // and the editor refuses to edit what it cannot save whole.
+            if !payload.truncated {
+                headers.add(name: "ETag", value: FileEdit.etag(payload.data))
+            }
+            if let mode = payload.mode {
+                headers.add(name: "X-Kitterm-Mode", value: String(mode, radix: 8))
+            }
             self.writeBytes(status: .ok, headers: headers, data: payload.data,
                             context: context, version: head.version, keepAlive: head.isKeepAlive)
+        }
+    }
+
+    /// `PUT /api/files/content?path=<path>&session=<id>` — replace the bytes
+    /// of one existing regular file inside a project (`FileEdit`). The first
+    /// route that writes outside `~/.kitterm/` (ADR 0005, phase 2a).
+    ///
+    /// Full grade, no `--agent-control`: a person saving their own file in
+    /// their own browser, the drop route's and `PATCH /api/sessions`'s
+    /// argument. Against a cross-site request the route wants two things a
+    /// form or a navigation cannot send: `X-Kitterm-Editor: 1` and an
+    /// `Origin` equal to this request's own scheme and host; it answers no
+    /// CORS header, so a script on another origin reads nothing. `If-Match`
+    /// is required (428): the tag the read gave, so an outside edit answers
+    /// 412 with the current tag and the page can compare. The body is the
+    /// bytes as sent, capped at the read cap (413). Every attempt past the
+    /// grade check leaves one line in `edits.log` (`EditLog`).
+    private func serveFileSave(
+        body: Data,
+        bodyOverflow: Bool,
+        grade: TokenGrade,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let tokenKind = policy.tokenKind(
+            remote: context.channel.remoteAddress, headers: head.headers, uri: head.uri
+        )
+        let requested = DaemonServer.queryValue("path", fromRequestURI: head.uri) ?? ""
+        let newHash = FileEdit.hashName(body)
+        let bytes = body.count
+        // A refusal decided here, before any file is touched: answered at
+        // once, logged on the edit queue with the path as requested.
+        let refuse: (HTTPResponseStatus, String) -> Void = { status, error in
+            FileEdit.queue.async {
+                EditLog.append(EditLog.Entry(
+                    at: Date(), token: tokenKind, path: requested, bytes: bytes,
+                    oldHash: nil, newHash: newHash, status: Int(status.code)
+                ))
+            }
+            let payload: [String: Any] = ["ok": false, "error": error]
+            let text = (try? JSONSerialization.data(withJSONObject: payload))
+                .flatMap { String(data: $0, encoding: .utf8) }
+                ?? #"{"ok":false,"error":"encoding failed"}"#
+            self.writeJSON(status: status, body: text, context: context, version: head.version, keepAlive: false)
+        }
+        guard head.headers["x-kitterm-editor"].first?.trimmingCharacters(in: .whitespaces) == "1" else {
+            refuse(.forbidden, "X-Kitterm-Editor: 1 is required")
+            return
+        }
+        let scheme = cookiesMayBeSecure(head: head, context: context) ? "https" : "http"
+        guard let host = head.headers["host"].first,
+              let origin = head.headers["origin"].first,
+              origin == "\(scheme)://\(host)"
+        else {
+            refuse(.forbidden, "Origin must equal the request's own \(scheme)://<host>")
+            return
+        }
+        guard !bodyOverflow else {
+            refuse(.payloadTooLarge, "body exceeds \(FileEdit.maxBytes) bytes")
+            return
+        }
+        guard !requested.isEmpty else {
+            refuse(.badRequest, "no path given")
+            return
+        }
+        guard let ifMatch = head.headers["if-match"].first else {
+            refuse(.preconditionRequired, "If-Match is required: the ETag the read gave")
+            return
+        }
+        let sessionID = DaemonServer.queryValue("session", fromRequestURI: head.uri)
+            .flatMap(UUID.init(uuidString:))
+
+        let loop = context.eventLoop
+        let boundContext = NIOLoopBound(context, eventLoop: loop)
+        let projects = self.projects
+        let promise = loop.makePromise(of: (String, Result<FileEdit.Saved, any Error>).self)
+        promise.completeWithTask {
+            let cwd: String? = sessionID == nil
+                ? nil
+                : await self.registry.session(sessionID!)?.liveCwd
+            let path = FileEdit.resolve(requested, base: cwd)
+            // The walk, the hash, the write and the audit line, one after
+            // another on the one edit queue: never on the loop, and never
+            // two saves at once.
+            return await withCheckedContinuation { continuation in
+                FileEdit.queue.async {
+                    let result = Result {
+                        let jail = try FileEdit.jail(for: path, projects: projects)
+                        return try FileEdit.save(
+                            root: jail.root, components: jail.components, ifMatch: ifMatch, data: body
+                        )
+                    }
+                    let (status, _, _) = Self.saveAnswer(result)
+                    let oldHash: String?
+                    switch result {
+                    case .success(let saved): oldHash = FileEdit.bare(saved.previousEtag)
+                    case .failure(let error):
+                        if case FileEdit.Failure.preconditionFailed(let current) = error {
+                            oldHash = current.map(FileEdit.bare)
+                        } else {
+                            oldHash = nil
+                        }
+                    }
+                    EditLog.append(EditLog.Entry(
+                        at: Date(), token: tokenKind, path: path, bytes: bytes,
+                        oldHash: oldHash, newHash: newHash, status: Int(status.code)
+                    ))
+                    continuation.resume(returning: (path, result))
+                }
+            }
+        }
+        promise.futureResult.whenComplete { outcome in
+            let context = boundContext.value
+            guard case .success((let path, let result)) = outcome else {
+                self.writeJSON(
+                    status: .internalServerError,
+                    body: #"{"ok":false,"error":"save failed"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+                return
+            }
+            let (status, payload, etag) = Self.saveAnswer(result)
+            var fields = payload
+            fields["path"] = path
+            var headers = HTTPHeaders()
+            headers.add(name: "Content-Type", value: "application/json")
+            headers.add(name: "Cache-Control", value: "no-store")
+            if let etag { headers.add(name: "ETag", value: etag) }
+            let text = (try? JSONSerialization.data(withJSONObject: fields))
+                .flatMap { String(data: $0, encoding: .utf8) }
+                ?? #"{"ok":false,"error":"encoding failed"}"#
+            self.writeBytes(
+                status: status, headers: headers, data: Data(text.utf8),
+                context: context, version: head.version, keepAlive: status == .ok && head.isKeepAlive
+            )
+        }
+    }
+
+    /// The status, the JSON fields and the `ETag` header for a save's
+    /// outcome: 200 with the new tag, 412 with the current one, and the
+    /// refusals of `FileEdit.Failure` with their one sentence.
+    private static func saveAnswer(
+        _ result: Result<FileEdit.Saved, any Error>
+    ) -> (HTTPResponseStatus, [String: Any], String?) {
+        switch result {
+        case .success(let saved):
+            return (.ok, ["ok": true, "etag": saved.etag, "bytes": saved.bytes], saved.etag)
+        case .failure(let error):
+            guard let failure = error as? FileEdit.Failure else {
+                return (.internalServerError, ["ok": false, "error": "\(error)"], nil)
+            }
+            switch failure {
+            case .outsideProject:
+                return (.forbidden, ["ok": false, "error": "outside every project"], nil)
+            case .symlink:
+                return (.forbidden, ["ok": false, "error": "a symlink in the path"], nil)
+            case .gitDirectory:
+                return (.forbidden, ["ok": false, "error": "under .git"], nil)
+            case .notFound:
+                return (.notFound, ["ok": false, "error": "no such file"], nil)
+            case .notRegular:
+                return (.conflict, ["ok": false, "error": "not a regular file"], nil)
+            case .hardLinked:
+                return (.conflict, ["ok": false, "error": "hard-linked file"], nil)
+            case .preconditionFailed(let current):
+                var fields: [String: Any] = ["ok": false, "error": "If-Match does not name the current content"]
+                if let current { fields["etag"] = current }
+                return (.preconditionFailed, fields, current)
+            case .ioFailed(let text):
+                return (.internalServerError, ["ok": false, "error": text], nil)
+            }
         }
     }
 

@@ -538,6 +538,18 @@ can reach it has a shell. The controls below decide who can reach it.
 - **`--agent-control` is a separate switch.** It adds the one write route
   (`POST /input`). Default off. It stops a program from driving your shell; it is not
   about a person dropping a file into their own browser.
+- **One write outside `~/.kitterm/`.** Every HTTP route that writes to disk writes under
+  `~/.kitterm/`, except `PUT /api/files/content`, the editor's save (ADR 0005, phase 2a).
+  It writes one existing regular file inside a project. The jail root is the project
+  root of the file's parent directory; every component below it is opened from the
+  root's descriptor with `O_NOFOLLOW_ANY` (`O_NOFOLLOW` on Linux), so a symlink below the
+  root is refused; `.git` is refused by name in any case and by inode; a hard link and a
+  FIFO are refused; the save is a temporary file beside the target and a rename;
+  `If-Match` carries the SHA-256 the read gave as `ETag`, 412 on a mismatch and 428 when
+  missing; `X-Kitterm-Editor: 1` and an `Origin` equal to the request's own scheme and
+  host are required; and one JSON line per attempt lands in `~/.kitterm/edits.log` with
+  the token kind, the path, the size and both hashes, never the content. Full grade
+  only, no `--agent-control`: a person saving their own file in their own browser.
 
 ## Reaching the daemon from a phone
 
@@ -798,9 +810,12 @@ State lives in `~/.kitterm/`. The default port is 3418.
 ├── vapid.json                the VAPID key pair every subscription is bound to (0600)
 ├── takeover/                 live-upgrade handoff, between execv and adoption
 ├── web-root                  the web bundle the running daemon pinned
-└── screen-state.log[.1]      one JSON line per `screen_state` answer (0600,
-                              rotated past 1 MiB, one old file kept); read by
-                              `kitterm screen-state stats`
+├── screen-state.log[.1]      one JSON line per `screen_state` answer (0600,
+│                             rotated past 1 MiB, one old file kept); read by
+│                             `kitterm screen-state stats`
+└── edits.log[.1]             one JSON line per `PUT /api/files/content` attempt (0600,
+                              rotated past 1 MiB, one old file kept): the audit of the one
+                              route that writes outside this directory; never the content
 ```
 
 The order is the order `DaemonPaths.swift` declares them.

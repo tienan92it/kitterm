@@ -171,6 +171,14 @@ public enum DaemonPaths: Sendable {
         stateDirectory.appendingPathComponent("screen-state.log")
     }
 
+    /// One JSON line per `PUT /api/files/content` attempt (`EditLog`),
+    /// `0600`, bounded at 1 MiB with one rotated file kept as
+    /// `edits.log.1`: the audit of the one route that writes outside this
+    /// directory. Never the content.
+    public static var editsLogFile: URL {
+        stateDirectory.appendingPathComponent("edits.log")
+    }
+
     /// Creates the state directory owner-only. It holds tokens and shell
     /// output, so a directory the umask left world-readable would let
     /// another local user list what is there. An existing directory keeps
