@@ -28,3 +28,12 @@ request.
 
 Phases 2 to 4 of the research are a later budget, after the direction
 check and the ADR.
+
+## Second budget (2026-10-19, `corpus/03-all-phases.md`)
+
+| # | Capability | Proof |
+|---|---|---|
+| 3 | **The save route** (phase 2a): `ETag` on `GET /api/files/content`; `PUT /api/files/content` with the jail, the atomic save, `If-Match`, the editor header, the Origin check, the audit log; on its own queue. | Swift tests for every refusal of condition 7 and a save that keeps the mode; `KittermBench` on a scratch daemon. |
+| 4 | **The `/edit` page** (phase 2b): a Vite input on CodeMirror 6 with lazy languages, the tree on `GET /api/files`, save with `If-Match`, the changed-on-disk bar, compare in the editor area, the read-only states, the 390 px tabs and key bar, `edit` links from the preview card and `/md`. | Vitests on the pure parts; Playwright against a scratch daemon at 1200 and 390 px (a save, a 412 from an outside edit, a read-only file); the bundle sizes. |
+| 5 | **Git reads** (phase 3): status (`--porcelain=v2 -z --branch`) and the diff of one file, with `--no-optional-locks` and `-c core.fsmonitor=`, per-repository serial queue; the git tab, badges in the tree, the diff view. | Swift parser tests; a test that a poll does not hold `index.lock`; Playwright of the git tab. |
+| 6 | **Git writes** (phase 4): stage, unstage, commit (`-F -`), push, branch switch and create, allowlisted argv, behind full grade and `--agent-control`; hook output; 409 on a held lock. | Swift tests on a scratch repository with a hook and a lock; Playwright of a commit and a push to a scratch remote. |

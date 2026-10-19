@@ -1,14 +1,17 @@
 # STATE: code-editor
 
-- Status: done
-- Round: 2 of 2 in this budget (first budget)
+- Status: active
+- Round: 0 of 4 in this budget (second budget)
 - Rounds total: 2
 - Last floor: green (2026-10-18, round 2 after: PR CI on 01ac6ff)
-- Updated: 2026-10-18, the human approved the frames; this budget is done
+- Updated: 2026-10-19, the second budget opens on the human's word (`corpus/03-all-phases.md`)
 
 ## Queue
 
-None.
+1. `save-route` (capability 3)
+2. `edit-page` (capability 4)
+3. `git-read` (capability 5)
+4. `git-write` (capability 6)
 
 ## Failures
 
@@ -28,6 +31,4 @@ the three foundation additions, and compare in the editor area.
 
 ## Next action
 
-None for this budget. Phases 2 to 4 of `docs/adr/0005-…` (the `/edit`
-page with the jailed save route, git reads, git writes) open as a new
-budget on the human's word.
+Round 3: `save-route` from `plan.md` row 3.
