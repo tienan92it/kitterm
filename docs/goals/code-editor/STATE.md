@@ -1,10 +1,10 @@
 # STATE: code-editor
 
 - Status: active
-- Round: 2 of 4 in this budget (second budget)
-- Rounds total: 4
-- Last floor: green (2026-10-19, round 4 after: vitest 2081, swift test 1274, PR CI on 6685d6d)
-- Updated: 2026-10-19, round 4 done
+- Round: 3 of 4 in this budget (second budget)
+- Rounds total: 5
+- Last floor: green (2026-10-19, round 5 after: swift test 1289, vitest 2091, PR CI on b1d931f)
+- Updated: 2026-10-19, round 5 done
 
 ## Queue
 
@@ -23,6 +23,8 @@ the three foundation additions, and compare in the editor area.
 
 ## Done
 
+- `git-read`, round 5, PR #198. See `rounds/005.md`. Git status and
+  diff, the git tab, tree badges.
 - `edit-page`, round 4, PR #198. See `rounds/004.md`. The `/edit` page
   on CodeMirror 6.
 - `save-route`, round 3, PR #198. See `rounds/003.md`. The jailed atomic
@@ -34,4 +36,4 @@ the three foundation additions, and compare in the editor area.
 
 ## Next action
 
-Round 5: `git-read` from `plan.md` row 5.
+Round 6: `git-write` from `plan.md` row 6.
