@@ -8,7 +8,7 @@
 
 ## Queue
 
-1. `save-route` (capability 3)
+1. `save-route` (capability 3), PR #198.
 2. `edit-page` (capability 4)
 3. `git-read` (capability 5)
 4. `git-write` (capability 6)
