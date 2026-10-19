@@ -25,8 +25,20 @@
  * `+a −d` per file, read from `GET /api/git/status` every 3 s while
  * visible and after a save, with `If-None-Match`; the tree's rows wear the
  * same badges, a folder `M` when a changed path is under it; a change row
- * opens its unified diff from `GET /api/git/diff` in the diff view. The
- * stage toggles and `COMMIT` are round 6's.
+ * opens its unified diff from `GET /api/git/diff` in the diff view.
+ *
+ * The writes (round 6, phase 4; rules 7, 8, 13 and 14 of `Editor
+ * components`): a `[ ]`/`[x]`/`[~]` toggle before each change's badge
+ * stages or unstages the whole file, the `COMMIT` box takes a message and
+ * `[ commit ]` and `[ push ↑N ]`, a button becomes `◐ committing` or
+ * `◐ pushing` while its command runs, a well under the buttons keeps the
+ * last 8 lines a commit or a push printed, a failed write's first line
+ * stands under the buttons with `!`, and the `BRANCH` row is a select of
+ * the local branches plus `new branch…`, which asks first while the
+ * buffer holds unsaved edits. Every write is `POST /api/git/<kind>`,
+ * followed by one status read. A daemon without `--agent-control` says
+ * so in the status (`writes` false): the tab then shows no control and
+ * the one sentence `NO_WRITES`.
  *
  * The pure decisions are `edit-model.ts`, `edit-tree.ts`, `edit-git.ts`
  * and `line-diff.ts`; the daemon conversations are `edit-fetch.ts`. This
@@ -55,7 +67,7 @@ import { Compartment, EditorState } from "@codemirror/state";
 import { drawSelection, EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
-import { type Fetch, readFile, readGitDiff, readGitStatus, readListing, readProject, saveFile } from "./edit-fetch";
+import { type Fetch, gitWrite, readFile, readGitDiff, readGitStatus, readListing, readProject, saveFile } from "./edit-fetch";
 import {
   badgeForPath,
   badgeOf,
@@ -64,9 +76,22 @@ import {
   diffWhat,
   entryCounts,
   entryName,
+  branchOptions,
+  commitEnabled,
   type GitEntry,
   type GitStatus,
   gitTabLabel,
+  inFlightWord,
+  NEW_BRANCH,
+  NEW_BRANCH_QUESTION,
+  NO_WRITES,
+  pushLabel,
+  stageState,
+  stageToggle,
+  SWITCH_QUESTION,
+  toggleWrite,
+  wellLines,
+  type WriteKind,
   parseStatus,
   parseUnifiedDiff,
   wantsStaged,
@@ -83,6 +108,7 @@ import {
   encodeText,
   gitDiffUrl,
   gitStatusUrl,
+  gitWriteUrl,
   hasUnsavedWork,
   headerFacts,
   headerName,
@@ -171,6 +197,8 @@ export interface PageOptions {
   navigate?: (url: string) => void;
   /** The question before a reload drops typed work; `window.confirm` on the page. */
   confirm?: (question: string) => boolean;
+  /** The name `new branch…` asks for; `window.prompt` on the page. */
+  prompt?: (question: string) => string | null;
   /** The poll's clock; `setInterval` on the page. */
   schedule?: (tick: () => void, ms: number) => void;
 }
@@ -183,6 +211,7 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
   const fetchFn: Fetch = options.fetch ?? ((input, init) => fetch(input, init));
   const navigate = options.navigate ?? ((url: string) => location.assign(url));
   const confirmFn = options.confirm ?? ((question: string) => window.confirm(question));
+  const promptFn = options.prompt ?? ((question: string) => window.prompt(question));
   const schedule = options.schedule ?? ((tick: () => void, ms: number) => void setInterval(tick, ms));
 
   // --- the chrome ---------------------------------------------------------
@@ -537,26 +566,158 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
     if (hasUnsavedWork(model)) event.preventDefault();
   });
 
-  // --- the git tab (round 5) ---------------------------------------------------
+  // --- the git tab (round 5; the writes in round 6) --------------------------
   let gitEtag: string | null = null;
   let gitError: string | null = null;
   let gitPolling = false;
   /** The change row whose diff the editor area shows. */
   let openChange: string | null = null;
+  /** The write in flight, one at a time (rule 14). */
+  let inFlight: WriteKind | null = null;
+  /** What the last commit or push printed, for the well, and the line of
+   * the last write that failed (rule 13; it stays until the next write). */
+  let well: string[] = [];
+  let failure: string | null = null;
+
+  // The COMMIT box is built once and kept across repaints, so the typed
+  // message and the focus survive a poll that moves the status.
+  const commitBox = el("section", "edit-commit");
+  commitBox.setAttribute("aria-label", "Commit");
+  const commitLabel = el("h2", "edit-git-label", "COMMIT");
+  const message = el("textarea", "edit-commit-message");
+  message.dataset.focus = "commit:message";
+  message.rows = 2;
+  message.setAttribute("aria-label", "Commit message");
+  const commitButtons = el("div", "edit-commit-buttons");
+  const commitButton = button("edit-bar-button edit-git-button", "[ commit ]", "commit");
+  const pushButton = button("edit-bar-button edit-git-button", "[ push ]", "push");
+  /** The turning mark and the word that take a button's place while its
+   * command runs. */
+  const running = (kind: "commit" | "push"): HTMLSpanElement => {
+    const word = inFlightWord(kind);
+    const run = el("span", "edit-state accent edit-git-running");
+    run.setAttribute("role", "status");
+    run.append(mark(word.mark, "accent"), " ", el("span", "edit-state-word accent", word.word));
+    run.hidden = true;
+    return run;
+  };
+  const commitRun = running("commit");
+  const pushRun = running("push");
+  commitButtons.append(commitButton, commitRun, pushButton, pushRun);
+  const failureLine = el("p", "edit-git-failure");
+  failureLine.setAttribute("role", "alert");
+  failureLine.hidden = true;
+  const wellBox = el("pre", "edit-git-well");
+  wellBox.setAttribute("aria-label", "Command output");
+  wellBox.hidden = true;
+  commitBox.append(commitLabel, message, commitButtons, failureLine, wellBox);
+
+  // The branch switcher, kept too: a select whose options follow the
+  // status; `new branch…` asks for a name.
+  const branchSelect = el("select", "edit-branch-select");
+  branchSelect.dataset.focus = "branch";
+  branchSelect.setAttribute("aria-label", "Branch");
+  let branchKey = "";
+
+  const paintCommit = (): void => {
+    const can = commitEnabled(message.value, gitStatus?.counts ?? null);
+    commitButton.classList.toggle("edit-quiet", !can);
+    commitButton.disabled = !can || inFlight !== null;
+    commitButton.hidden = inFlight === "commit";
+    commitRun.hidden = inFlight !== "commit";
+    pushButton.textContent = pushLabel(gitStatus);
+    pushButton.disabled = inFlight !== null || !gitStatus || gitStatus.detached;
+    pushButton.classList.toggle("edit-quiet", !gitStatus || gitStatus.detached);
+    pushButton.hidden = inFlight === "push";
+    pushRun.hidden = inFlight !== "push";
+    message.disabled = inFlight === "commit";
+    failureLine.replaceChildren();
+    if (failure !== null) failureLine.append(mark("!", "danger"), " ", el("span", "edit-git-failure-text", failure));
+    failureLine.hidden = failure === null;
+    wellBox.textContent = wellLines(well).join("\n");
+    wellBox.hidden = well.length === 0;
+  };
+  message.addEventListener("input", paintCommit);
+
+  /**
+   * One write, then the status read again so the toggles, the counts and
+   * `↑N` follow at once. The well takes what a commit or a push printed;
+   * a refusal becomes the failure line. True when the daemon answered ok.
+   */
+  const runWrite = async (kind: WriteKind, body: Record<string, unknown>): Promise<boolean> => {
+    if (inFlight !== null) return false;
+    inFlight = kind;
+    failure = null;
+    if (kind === "commit" || kind === "push") well = [];
+    paintGit();
+    const result = await gitWrite(fetchFn, gitWriteUrl(kind), { path, ...(session ? { session } : {}), ...body });
+    inFlight = null;
+    if (result.lines.length > 0) well = result.lines;
+    if (result.kind === "error") failure = result.reason;
+    else if (kind === "commit") message.value = "";
+    paintGit();
+    if (!(await pollGit())) setTimeout(() => void pollGit(), 100);
+    return result.kind === "ok";
+  };
+  commitButton.addEventListener("click", () => void runWrite("commit", { message: message.value }));
+  pushButton.addEventListener("click", () => void runWrite("push", {}));
+  branchSelect.addEventListener("change", () => {
+    const value = branchSelect.value;
+    const current = gitStatus?.branch ?? null;
+    const reset = (): void => {
+      if (current !== null) branchSelect.value = current;
+    };
+    if (value === current) return;
+    if (hasUnsavedWork(model) && !confirmFn(SWITCH_QUESTION)) return reset();
+    if (value === NEW_BRANCH) {
+      const name = promptFn(NEW_BRANCH_QUESTION)?.trim() ?? "";
+      if (name === "") return reset();
+      void runWrite("branch", { create: name }).then((ok) => {
+        if (!ok) reset();
+      });
+      return;
+    }
+    void runWrite("branch", { switch: value }).then((ok) => {
+      if (!ok) reset();
+    });
+  });
 
   const paintGit = (): void => {
+    // The control that had the focus keeps it across the repaint.
+    const focused = document.activeElement instanceof HTMLElement ? document.activeElement.dataset.focus : undefined;
     gitPanel.replaceChildren();
     if (gitError !== null) {
       gitPanel.append(el("p", "edit-note", gitError));
       return;
     }
     if (!gitStatus) return;
+    const writes = gitStatus.writes === true;
     const branch = branchLine(gitStatus);
     const branchLabel = el("h2", "edit-git-label", "BRANCH");
     const branchRow = el("div", "edit-git-branch");
-    const branchName = el("span", "edit-git-name", branch.name);
-    branchName.title = gitStatus.upstream ? `${branch.name} · upstream ${gitStatus.upstream}` : branch.name;
-    branchRow.append(branchName);
+    if (writes && !branch.detached) {
+      const options = branchOptions(gitStatus);
+      const key = options.map((option) => option.value).join("\0");
+      if (key !== branchKey) {
+        branchSelect.replaceChildren(
+          ...options.map((option) => {
+            const item = document.createElement("option");
+            item.value = option.value;
+            item.textContent = option.label;
+            return item;
+          }),
+        );
+        branchKey = key;
+      }
+      branchSelect.value = branch.name;
+      branchSelect.disabled = inFlight !== null;
+      branchSelect.title = gitStatus.upstream ? `${branch.name} · upstream ${gitStatus.upstream}` : branch.name;
+      branchRow.append(branchSelect);
+    } else {
+      const branchName = el("span", "edit-git-name", branch.name);
+      branchName.title = gitStatus.upstream ? `${branch.name} · upstream ${gitStatus.upstream}` : branch.name;
+      branchRow.append(branchName);
+    }
     if (branch.detached) branchRow.append(" ", el("span", "edit-git-detached", "detached"));
     branchRow.append(el("span", "edit-git-ab", branch.ab));
     const changesLabelRow = el("h2", "edit-git-label", changesLabel(gitStatus.counts));
@@ -566,24 +727,42 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
     for (const entry of gitStatus.files) {
       const badge = badgeOf(entry);
       if (!badge) continue;
-      const row = button("edit-change", "", `change:${entry.path}`);
+      const row = el("div", "edit-change");
       row.setAttribute("role", "listitem");
-      row.title = entry.origPath ? `${entry.origPath} → ${entry.path}` : entry.path;
-      if (entry.path === openChange) {
-        row.classList.add("open");
-        row.setAttribute("aria-current", "true");
+      if (entry.path === openChange) row.classList.add("open");
+      if (writes) {
+        // The toggle stages or unstages the whole file (rule 8).
+        const state = stageState(entry);
+        const toggle = button("edit-stage", stageToggle(state), `stage:${entry.path}`);
+        toggle.setAttribute("role", "checkbox");
+        toggle.setAttribute("aria-checked", state === "staged" ? "true" : state === "partial" ? "mixed" : "false");
+        toggle.setAttribute("aria-label", `${toggleWrite(entry)} ${entryName(entry)}`);
+        toggle.disabled = inFlight !== null;
+        toggle.addEventListener("click", () => void runWrite(toggleWrite(entry), { paths: [entry.path] }));
+        row.append(toggle);
       }
+      const open = button("edit-change-open", "", `change:${entry.path}`);
+      open.title = entry.origPath ? `${entry.origPath} → ${entry.path}` : entry.path;
+      if (entry.path === openChange) open.setAttribute("aria-current", "true");
       // The letter is read: it is the row's one state word.
-      row.append(
+      open.append(
         mark(badge.letter, badge.tone, true),
         el("span", "edit-change-name", entryName(entry)),
         el("span", "edit-change-counts", entryCounts(entry)),
       );
-      row.addEventListener("click", () => void showChange(entry));
+      open.addEventListener("click", () => void showChange(entry));
+      row.append(open);
       list.append(row);
     }
     if (gitStatus.files.length === 0) list.append(el("p", "edit-note", "The working tree is clean."));
     gitPanel.append(list);
+    if (writes) {
+      gitPanel.append(commitBox);
+      paintCommit();
+    } else {
+      gitPanel.append(el("p", "edit-note edit-git-no-writes", NO_WRITES));
+    }
+    if (focused) gitPanel.querySelector<HTMLElement>(`[data-focus="${CSS.escape(focused)}"]`)?.focus();
   };
 
   /** The unified diff of one change in the editor area. */
@@ -614,13 +793,14 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
 
   const entryPathOf = (entry: GitEntry): string => (gitStatus && gitStatus.root !== "/" ? `${gitStatus.root}/${entry.path}` : `/${entry.path}`);
 
-  /** One status read, skipped while one is in flight or the page is hidden. */
-  const pollGit = async (): Promise<void> => {
-    if (gitPolling || document.visibilityState !== "visible") return;
+  /** One status read, skipped while one is in flight or the page is hidden;
+   * true when it ran. */
+  const pollGit = async (): Promise<boolean> => {
+    if (gitPolling || document.visibilityState !== "visible") return false;
     gitPolling = true;
     try {
       const result = await readGitStatus(fetchFn, gitStatusUrl(path, session), gitEtag);
-      if (result.kind === "unchanged") return;
+      if (result.kind === "unchanged") return true;
       if (result.kind === "error") {
         // A failed read keeps the last status; a refusal says why.
         if (result.status === 404 || result.status === 403 || result.status === 503) {
@@ -631,7 +811,7 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
           paintGit();
           paintTree();
         }
-        return;
+        return true;
       }
       gitStatus = parseStatus(result.body);
       gitEtag = result.etag;
@@ -639,6 +819,7 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
       paintTabs();
       paintGit();
       paintTree();
+      return true;
     } finally {
       gitPolling = false;
     }

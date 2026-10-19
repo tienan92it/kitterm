@@ -157,6 +157,13 @@ public final class GitRead: @unchecked Sendable {
            numstat.status == 0 {
             for line in GitStatus.parseNumstat(numstat.output) { counts[line.path] = (line.additions, line.deletions) }
         }
+        // The local branches for the switcher (round 6), the most recently
+        // committed first, the current one always among them.
+        if let refs = run(base + ["for-each-ref", "--sort=-committerdate", "--format=%(refname:short)", "--count=\(GitWrite.maxBranches)", "--", "refs/heads/"]),
+           refs.status == 0 {
+            report.branches = String(decoding: refs.output, as: UTF8.self).split(separator: "\n").map(String.init).filter { !$0.isEmpty }
+            if let branch = report.branch, !report.branches.contains(branch) { report.branches.insert(branch, at: 0) }
+        }
         for index in report.files.indices {
             let entry = report.files[index]
             if let known = counts[entry.path] {
@@ -297,6 +304,8 @@ public enum GitStatus {
         public var behind = 0
         public var detached = false
         public var files: [Entry] = []
+        /// The local branches, by last commit, at most `GitWrite.maxBranches`.
+        public var branches: [String] = []
 
         public var counts: Counts {
             var counts = Counts()

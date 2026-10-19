@@ -45,14 +45,48 @@ enum EditLog {
         return String(decoding: data, as: UTF8.self)
     }
 
+    /// One git write (`code-editor` round 6): the kind, the paths or the
+    /// branch it named, and the status answered. Never the commit message.
+    struct GitEntry: Sendable {
+        let at: Date
+        let token: String
+        let git: GitWrite.Kind
+        let paths: [String]?
+        let branch: String?
+        let status: Int
+    }
+
+    /// `{at, branch?, git, paths?, status, token}`, keys sorted.
+    static func line(_ entry: GitEntry) throws -> String {
+        var payload: [String: Any] = [
+            "at": isoFormatter().string(from: entry.at),
+            "token": entry.token,
+            "git": entry.git.rawValue,
+            "status": entry.status,
+        ]
+        if let paths = entry.paths { payload["paths"] = paths }
+        if let branch = entry.branch { payload["branch"] = branch }
+        let data = try JSONSerialization.data(
+            withJSONObject: payload, options: [.withoutEscapingSlashes, .sortedKeys]
+        )
+        return String(decoding: data, as: UTF8.self)
+    }
+
     /// Append one line; every error is swallowed, because the answer has
     /// already been decided and the audit must never fail the save.
     static func append(_ entry: Entry, to fileURL: URL = DaemonPaths.editsLogFile) {
         try? appendOrThrow(entry, to: fileURL)
     }
 
+    static func append(_ entry: GitEntry, to fileURL: URL = DaemonPaths.editsLogFile) {
+        try? appendLine(try line(entry), to: fileURL)
+    }
+
     static func appendOrThrow(_ entry: Entry, to fileURL: URL) throws {
-        let text = try line(entry)
+        try appendLine(try line(entry), to: fileURL)
+    }
+
+    private static func appendLine(_ text: String, to fileURL: URL) throws {
         try FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true
         )

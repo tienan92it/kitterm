@@ -51,6 +51,10 @@ export interface GitStatus {
   detached: boolean;
   files: GitEntry[];
   counts: GitCounts;
+  /** The local branches, by last commit (round 6). */
+  branches?: string[];
+  /** Whether the daemon takes the writes: `--agent-control` is on. */
+  writes?: boolean;
 }
 
 const KINDS: GitKind[] = ["ordinary", "renamed", "copied", "unmerged", "untracked", "ignored"];
@@ -77,7 +81,7 @@ export function parseStatus(body: unknown): GitStatus {
     files.push(out);
   }
   const counts = (item.counts ?? {}) as Record<string, unknown>;
-  return {
+  const status: GitStatus = {
     root: typeof item.root === "string" ? item.root : "",
     branch: typeof item.branch === "string" ? item.branch : null,
     upstream: typeof item.upstream === "string" ? item.upstream : null,
@@ -93,6 +97,11 @@ export function parseStatus(body: unknown): GitStatus {
       conflicts: number(counts.conflicts),
     },
   };
+  // The round 6 fields, set only when the body carries them, so a status
+  // from before them reads as before.
+  if (Array.isArray(item.branches)) status.branches = item.branches.filter((name): name is string => typeof name === "string");
+  if (item.writes === true) status.writes = true;
+  return status;
 }
 
 // MARK: - The badges (rule 5)
@@ -273,4 +282,82 @@ export function parseUnifiedDiff(text: string): LineDiff {
     hunk.lines.push(out);
   }
   return { hunks, added, removed };
+}
+
+// MARK: - The writes (round 6; rules 8, 13 and 14)
+
+/** `[x]` staged, `[ ]` unstaged, `[~]` partly staged (both columns hold a
+ * change), the state a change row's toggle shows. */
+export type StageState = "staged" | "unstaged" | "partial";
+
+/** The stage state of one entry: an untracked or a conflicted file is
+ * unstaged, a file with no index change is unstaged, one with no
+ * working-tree change is staged, and one changed on both sides is
+ * partial. */
+export function stageState(entry: GitEntry): StageState {
+  if (entry.kind === "untracked" || entry.kind === "unmerged" || entry.kind === "ignored") return "unstaged";
+  if (entry.index === ".") return "unstaged";
+  if (entry.worktree === ".") return "staged";
+  return "partial";
+}
+
+/** The toggle's three glyphs. */
+export function stageToggle(state: StageState): string {
+  return state === "staged" ? "[x]" : state === "partial" ? "[~]" : "[ ]";
+}
+
+/** What a tap on the toggle does: a staged file is unstaged, every other
+ * state stages the whole file (a partial one becomes staged, rule 8). */
+export function toggleWrite(entry: GitEntry): "stage" | "unstage" {
+  return stageState(entry) === "staged" ? "unstage" : "stage";
+}
+
+/** `[ commit ]` answers when something is staged and the message holds a
+ * word; faint otherwise (rule 7). */
+export function commitEnabled(message: string, counts: GitCounts | null): boolean {
+  return (counts?.staged ?? 0) > 0 && message.trim() !== "";
+}
+
+/** `[ push ]`, with `↑N` inside it while the branch is ahead of its
+ * upstream. */
+export function pushLabel(status: GitStatus | null): string {
+  return status && status.ahead > 0 ? `[ push ↑${status.ahead} ]` : "[ push ]";
+}
+
+export type WriteKind = "stage" | "unstage" | "commit" | "push" | "branch";
+
+/** The turning mark and the word a button becomes while its command runs
+ * (rule 14): `◐ committing`, `◐ pushing`. */
+export function inFlightWord(kind: "commit" | "push"): { mark: string; word: string } {
+  return { mark: "◐", word: kind === "commit" ? "committing" : "pushing" };
+}
+
+/** The choice that opens the name question in the branch switcher. */
+export const NEW_BRANCH = "new branch…";
+
+/** The switcher's options: every local branch (the current one first, so
+ * a list the daemon could not give still names it) then `new branch…`. */
+export function branchOptions(status: GitStatus): { value: string; label: string; current: boolean }[] {
+  const current = status.branch;
+  const names = [...(status.branches ?? [])];
+  if (current !== null && !names.includes(current)) names.unshift(current);
+  const options = names.map((name) => ({ value: name, label: name, current: name === current }));
+  options.push({ value: NEW_BRANCH, label: NEW_BRANCH, current: false });
+  return options;
+}
+
+/** The question before a switch while the buffer holds unsaved edits. The
+ * edits stay in the buffer; the file under them may change. */
+export const SWITCH_QUESTION = "You have unsaved edits. Switch the branch anyway?";
+
+/** The question `new branch…` asks. */
+export const NEW_BRANCH_QUESTION = "Name of the new branch:";
+
+/** The one sentence under the git panel when the daemon takes no write. */
+export const NO_WRITES = "Commit, push and branch need the daemon started with --agent-control; use lazygit in a pane.";
+
+/** The last `keep` lines of what a command printed, for the well
+ * (rule 14: at most the last 8). */
+export function wellLines(lines: readonly string[], keep = 8): string[] {
+  return lines.slice(Math.max(0, lines.length - keep));
 }

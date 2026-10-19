@@ -241,6 +241,9 @@ public final class DaemonServer: @unchecked Sendable {
         // The git reads of the editor's git tab, one serial queue per
         // repository, never on the loop and never taking `index.lock`.
         let gitRead = GitRead()
+        // The git writes of the same tab, on the same queues, behind
+        // `--agent-control`.
+        let gitWrite = GitWrite()
         // The model per live session's transcript, one cache for every
         // connection, so a session list reads a transcript only when it grew.
         let transcriptModels = TranscriptModelCache()
@@ -410,6 +413,7 @@ public final class DaemonServer: @unchecked Sendable {
                         usageLimits: usageLimits,
                         listeningServers: listeningServers,
                         gitRead: gitRead,
+                        gitWrite: gitWrite,
                         transcriptModels: transcriptModels,
                         transcriptEstimates: transcriptEstimates
                     )

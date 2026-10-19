@@ -274,6 +274,11 @@ export function gitStatusUrl(path: string, session: string | null = null): strin
   return `/api/git/status?${params.toString()}`;
 }
 
+/** `POST /api/git/<kind>` (round 6): the body names the file and the session. */
+export function gitWriteUrl(kind: "stage" | "unstage" | "commit" | "push" | "branch"): string {
+  return `/api/git/${kind}`;
+}
+
 /** The git diff route for one file: the working tree against the index,
  * or with `staged` the index against `HEAD`. */
 export function gitDiffUrl(path: string, session: string | null = null, staged = false): string {

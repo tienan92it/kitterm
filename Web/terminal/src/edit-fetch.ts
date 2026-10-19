@@ -233,3 +233,35 @@ export async function readGitDiff(
     },
   };
 }
+
+export type WriteResult =
+  | { kind: "ok"; body: Record<string, unknown>; lines: string[] }
+  | { kind: "error"; status: number | null; reason: string; lines: string[] };
+
+/**
+ * `POST /api/git/<kind>` (round 6): the body as JSON with the editor
+ * header the daemon requires, the answer's `lines` (what the command and
+ * the hooks printed) kept on both outcomes, and a refusal's `error` word in
+ * `reason` as the daemon wrote it (`git push exited 1: …`).
+ */
+export async function gitWrite(fetch: Fetch, url: string, body: Record<string, unknown>): Promise<WriteResult> {
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json", "X-Kitterm-Editor": "1" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    return { kind: "error", status: null, reason: DAEMON_UNREACHABLE, lines: [] };
+  }
+  const answer = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  const lines = Array.isArray(answer.lines) ? answer.lines.filter((line): line is string => typeof line === "string") : [];
+  if (!response.ok) {
+    const error = typeof answer.error === "string" && answer.error !== "" ? answer.error : null;
+    return { kind: "error", status: response.status, reason: error ?? daemonAnswered(response.status, null), lines };
+  }
+  return { kind: "ok", body: answer, lines };
+}

@@ -84,6 +84,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// and `GET /api/git/diff`; nil in a handler built without one, where
     /// both routes answer 503.
     private let gitRead: GitRead?
+    /// The git writes of the git tab behind `POST /api/git/{stage,unstage,
+    /// commit,push,branch}` (round 6); nil in a handler built without one.
+    private let gitWrite: GitWrite?
     /// The model per live session's transcript, for the `agentModel` field
     /// of a session row; nil in a handler built without one, where the row
     /// carries no model. One cache per daemon, shared by every connection.
@@ -129,6 +132,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         usageLimits: UsageLimitsStore? = nil,
         listeningServers: ListeningServers? = nil,
         gitRead: GitRead? = nil,
+        gitWrite: GitWrite? = nil,
         transcriptModels: TranscriptModelCache? = nil,
         transcriptEstimates: TranscriptEstimateCache? = nil
     ) {
@@ -157,6 +161,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.usageLimits = usageLimits
         self.listeningServers = listeningServers
         self.gitRead = gitRead
+        self.gitWrite = gitWrite
         self.transcriptModels = transcriptModels
         self.transcriptEstimates = transcriptEstimates
     }
@@ -557,6 +562,16 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             serveGitStatus(grade: grade, head: head, context: context)
         case (.GET, "/api/git/diff"):
             serveGitDiff(grade: grade, head: head, context: context)
+        case (.POST, "/api/git/stage"):
+            serveGitWrite(kind: .stage, body: body, bodyOverflow: bodyOverflow, grade: grade, head: head, context: context)
+        case (.POST, "/api/git/unstage"):
+            serveGitWrite(kind: .unstage, body: body, bodyOverflow: bodyOverflow, grade: grade, head: head, context: context)
+        case (.POST, "/api/git/commit"):
+            serveGitWrite(kind: .commit, body: body, bodyOverflow: bodyOverflow, grade: grade, head: head, context: context)
+        case (.POST, "/api/git/push"):
+            serveGitWrite(kind: .push, body: body, bodyOverflow: bodyOverflow, grade: grade, head: head, context: context)
+        case (.POST, "/api/git/branch"):
+            serveGitWrite(kind: .branch, body: body, bodyOverflow: bodyOverflow, grade: grade, head: head, context: context)
         case (.PUT, "/api/files/content"):
             serveFileSave(
                 body: body,
@@ -4625,10 +4640,13 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// body answers 304 to `If-None-Match`, which is what the page's 3 s
     /// poll sends. Full grade only, like the file routes.
     private func serveGitStatus(grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext) {
+        // `writes`: whether this daemon takes the git writes (round 6), so
+        // the page shows its controls or the one sentence that says why not.
+        let writes = agentControl && gitWrite != nil
         withGitRepository(grade: grade, head: head, context: context) { gitRead, repository in
             do {
                 let report = try gitRead.status(of: repository)
-                let data = Self.gitStatusBody(report, toplevel: repository.toplevel)
+                let data = Self.gitStatusBody(report, toplevel: repository.toplevel, writes: writes)
                 return .success((data, ["ETag": FileEdit.etag(data)]))
             } catch let failure as GitRead.Failure {
                 return .failure(failure)
@@ -4638,11 +4656,11 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         }
     }
 
-    static func gitStatusBody(_ report: GitStatus.Report, toplevel: String) -> Data {
+    static func gitStatusBody(_ report: GitStatus.Report, toplevel: String, writes: Bool = false) -> Data {
         let counts = report.counts
         var payload: [String: Any] = [
             "ok": true, "root": toplevel, "ahead": report.ahead, "behind": report.behind,
-            "detached": report.detached,
+            "detached": report.detached, "branches": report.branches, "writes": writes,
             "files": report.files.map { entry -> [String: Any] in
                 var item: [String: Any] = [
                     "path": entry.path, "index": String(entry.index), "worktree": String(entry.worktree),
@@ -4689,6 +4707,217 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 return .failure(failure)
             } catch {
                 return .failure(.failed("\(error)"))
+            }
+        }
+    }
+
+    // MARK: - Git writes (`code-editor` round 6)
+
+    /// `POST /api/git/stage|unstage|commit|push|branch` — one git write
+    /// (`GitWrite`) on the repository of the body's `path`, resolved as the
+    /// reads resolve it. The body is `{path, session?, paths?, message?,
+    /// switch?, create?}`: `paths` (relative to the toplevel; the file
+    /// itself when absent) for stage and unstage, `message` for commit,
+    /// `switch` or `create` for branch. Full grade and `--agent-control`
+    /// (a commit runs the repository's hooks as the user, the power of the
+    /// input route), with the save route's `X-Kitterm-Editor: 1` and exact
+    /// `Origin`; 403 with the reason otherwise. 400 for a malformed body,
+    /// an empty message, a bad path or name; 404 outside a repository; 409
+    /// `index.lock is held` (the lock is never deleted), a detached head to
+    /// push or no remote; 502 with the command's first stderr line and its
+    /// last lines; 503 without git. Every attempt past the grade check
+    /// leaves one line in `edits.log` with the kind, the paths or the
+    /// branch, and the status, never the message.
+    private func serveGitWrite(
+        kind: GitWrite.Kind,
+        body: Data,
+        bodyOverflow: Bool,
+        grade: TokenGrade,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let tokenKind = policy.tokenKind(
+            remote: context.channel.remoteAddress, headers: head.headers, uri: head.uri
+        )
+        let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] ?? [:]
+        let requested = json["path"] as? String ?? ""
+        let paths = (json["paths"] as? [Any])?.compactMap { $0 as? String }
+        let branchNamed = (json["switch"] as? String) ?? (json["create"] as? String)
+        let loop = context.eventLoop
+        let boundContext = NIOLoopBound(context, eventLoop: loop)
+        /// The audit line, written where the caller runs (off the loop),
+        /// before the answer goes out, so a reader of the log after the
+        /// answer finds the line.
+        let log: @Sendable (Int, [String]?, String?) -> Void = { status, paths, branch in
+            EditLog.append(EditLog.GitEntry(
+                at: Date(), token: tokenKind, git: kind, paths: paths, branch: branch, status: status
+            ))
+        }
+        // A refusal decided here, before any repository is touched: logged
+        // on the edit queue, then answered on the loop.
+        let refuse: (HTTPResponseStatus, String) -> Void = { status, error in
+            let text = (try? JSONSerialization.data(withJSONObject: ["ok": false, "error": error]))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? #"{"ok":false,"error":"encoding failed"}"#
+            FileEdit.queue.async {
+                log(Int(status.code), paths, branchNamed)
+                loop.execute {
+                    self.writeJSON(status: status, body: text, context: boundContext.value, version: head.version, keepAlive: false)
+                }
+            }
+        }
+        guard agentControl, let gitWrite, let gitRead else {
+            refuse(.forbidden, "agent control disabled; start the daemon with --agent-control")
+            return
+        }
+        guard head.headers["x-kitterm-editor"].first?.trimmingCharacters(in: .whitespaces) == "1" else {
+            refuse(.forbidden, "X-Kitterm-Editor: 1 is required")
+            return
+        }
+        let scheme = cookiesMayBeSecure(head: head, context: context) ? "https" : "http"
+        guard let host = head.headers["host"].first,
+              let origin = head.headers["origin"].first,
+              origin == "\(scheme)://\(host)"
+        else {
+            refuse(.forbidden, "Origin must equal the request's own \(scheme)://<host>")
+            return
+        }
+        guard !bodyOverflow else {
+            refuse(.payloadTooLarge, "body exceeds \(KittermConstants.maxInputBytes) bytes")
+            return
+        }
+        guard !body.isEmpty, (try? JSONSerialization.jsonObject(with: body)) is [String: Any] else {
+            refuse(.badRequest, "body must be a JSON object")
+            return
+        }
+        guard !requested.isEmpty else {
+            refuse(.badRequest, "no path given")
+            return
+        }
+        let message = json["message"] as? String ?? ""
+        let create = json["create"] is String
+        switch kind {
+        case .commit where message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+            refuse(.badRequest, "the message is empty")
+            return
+        case .branch where branchNamed == nil:
+            refuse(.badRequest, "switch or create must name a branch")
+            return
+        default:
+            break
+        }
+        let sessionID = (json["session"] as? String ?? DaemonServer.queryValue("session", fromRequestURI: head.uri))
+            .flatMap(UUID.init(uuidString:))
+        let projects = self.projects
+        typealias Answer = (HTTPResponseStatus, Data)
+        let promise = loop.makePromise(of: Answer.self)
+        let encode: @Sendable ([String: Any]) -> Data = { fields in
+            (try? JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys]))
+                ?? Data(#"{"ok":false,"error":"encoding failed"}"#.utf8)
+        }
+        promise.completeWithTask {
+            let cwd: String? = sessionID == nil
+                ? nil
+                : await self.registry.session(sessionID!)?.liveCwd
+            let path = FileEdit.resolve(requested, base: cwd)
+            let located: Result<GitRead.Repository, GitRead.Failure> = await withCheckedContinuation { continuation in
+                gitRead.resolveQueue.async { continuation.resume(returning: gitRead.repository(for: path, projects: projects)) }
+            }
+            guard case .success(let repository) = located else {
+                let (status, fields) = Self.gitWriteAnswer(kind: kind, created: create, located.map { _ in (GitWrite.Outcome(), nil) }.mapError { $0 as any Error })
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    FileEdit.queue.async {
+                        log(Int(status.code), paths, branchNamed)
+                        continuation.resume()
+                    }
+                }
+                return (status, encode(fields))
+            }
+            return await withCheckedContinuation { continuation in
+                gitRead.queue(for: repository.toplevel).async {
+                    var named: [String]? = paths
+                    let result: Result<(GitWrite.Outcome, [String]?), any Error> = Result {
+                        switch kind {
+                        case .stage:
+                            let list = paths ?? [repository.relative]
+                            named = list
+                            return (try gitWrite.stage(repository, paths: list), list)
+                        case .unstage:
+                            let list = paths ?? [repository.relative]
+                            named = list
+                            return (try gitWrite.unstage(repository, paths: list), list)
+                        case .commit:
+                            return (try gitWrite.commit(repository, message: message), nil)
+                        case .push:
+                            return (try gitWrite.push(repository), nil)
+                        case .branch:
+                            return (try gitWrite.branch(repository, name: branchNamed ?? "", create: create), nil)
+                        }
+                    }
+                    let (status, fields) = Self.gitWriteAnswer(kind: kind, created: create, result)
+                    var branch = branchNamed
+                    if let found = fields["branch"] as? String { branch = found }
+                    let staging = kind == .stage || kind == .unstage
+                    log(Int(status.code), staging ? named : nil, staging ? nil : branch)
+                    continuation.resume(returning: (status, encode(fields)))
+                }
+            }
+        }
+        promise.futureResult.whenComplete { outcome in
+            let context = boundContext.value
+            let (status, data): Answer = (try? outcome.get())
+                ?? (.internalServerError, Data(#"{"ok":false,"error":"the write did not complete"}"#.utf8))
+            var headers = HTTPHeaders()
+            headers.add(name: "Content-Type", value: "application/json")
+            headers.add(name: "Cache-Control", value: "no-store")
+            self.writeBytes(
+                status: status, headers: headers, data: data,
+                context: context, version: head.version, keepAlive: status == .ok && head.isKeepAlive
+            )
+        }
+    }
+
+    /// The status and the JSON fields of one write's outcome: 200 with
+    /// `ok`, the command's `lines` and its facts (`oid`, `branch`,
+    /// `remote`, `paths`), else the refusal with its sentence and, for a
+    /// failed command, the lines it printed.
+    static func gitWriteAnswer(
+        kind: GitWrite.Kind, created: Bool = false, _ result: Result<(GitWrite.Outcome, [String]?), any Error>
+    ) -> (HTTPResponseStatus, [String: Any]) {
+        switch result {
+        case .success((let outcome, let paths)):
+            var fields: [String: Any] = ["ok": true, "lines": outcome.lines]
+            for (name, value) in outcome.fields { fields[name] = value }
+            if let paths { fields["paths"] = paths }
+            if kind == .branch { fields["created"] = created }
+            return (.ok, fields)
+        case .failure(let error):
+            if let read = error as? GitRead.Failure {
+                switch read {
+                case .noProject, .noRepository, .outsideRepository:
+                    return (.notFound, ["ok": false, "error": read.reason])
+                case .gitAbsent:
+                    return (.serviceUnavailable, ["ok": false, "error": read.reason])
+                case .failed:
+                    return (.badGateway, ["ok": false, "error": read.reason])
+                }
+            }
+            guard let failure = error as? GitWrite.Failure else {
+                return (.internalServerError, ["ok": false, "error": "\(error)"])
+            }
+            switch failure {
+            case .refused(let text): return (.badRequest, ["ok": false, "error": text])
+            case .locked: return (.conflict, ["ok": false, "error": failure.reason])
+            case .conflict(let text): return (.conflict, ["ok": false, "error": text])
+            case .gitAbsent: return (.serviceUnavailable, ["ok": false, "error": failure.reason])
+            case .failed(let text, let lines): return (.badGateway, ["ok": false, "error": text, "lines": lines])
             }
         }
     }

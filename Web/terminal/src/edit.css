@@ -15,7 +15,10 @@
    the soft keyboard (rule 15). The sidebar shows the tree or the git panel
    (round 5; the frames `Editor 1200 git` and `Editor 390 git`, rules 5, 7
    and 9): `BRANCH`, `CHANGES` with a badge, a name and the counts per row,
-   and the same badges at the right of a tree row. */
+   and the same badges at the right of a tree row. The writes (round 6;
+   rules 8, 13 and 14): the stage toggle before the badge, the `COMMIT` box
+   with its message well and `[ commit ] [ push ]` in the accent, the
+   in-flight run, the failure line and the output well. */
 
 :root {
   --space-1: 4px;
@@ -334,6 +337,104 @@ body {
 }
 .edit-change.open .edit-change-counts { color: var(--ui-text); }
 
+/* --- the writes (round 6; rules 7, 8, 13 and 14) ------------------------ */
+/* A change row holds the stage toggle and the button that opens the diff;
+   the toggle is `[ ]`, `[x]` or `[~]` in the muted grey. */
+.edit-change { box-sizing: border-box; }
+.edit-change-open {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  height: var(--line-h);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ui-text);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.edit-stage {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ui-text-muted);
+  font: inherit;
+  white-space: pre;
+  cursor: pointer;
+}
+.edit-stage:disabled { cursor: default; }
+/* On the open row the toggle takes the text colour, as the counts do. */
+.edit-change.open .edit-stage { color: var(--ui-text); }
+
+/* The branch switcher reads as the branch name: no box, no arrow. */
+.edit-branch-select {
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ui-text);
+  font: inherit;
+  text-overflow: ellipsis;
+  appearance: none;
+  cursor: pointer;
+}
+
+/* The COMMIT box: the message in a well with a hairline, the two buttons
+   on one line, the failure line and the output well under them. */
+.edit-commit { padding: 0 0 var(--space-2); }
+.edit-commit-message {
+  display: block;
+  width: calc(100% - 2 * var(--space-4));
+  margin: 0 var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  font: var(--type-body);
+  resize: vertical;
+  box-sizing: border-box;
+}
+.edit-commit-message:focus { outline: 1px solid var(--ui-accent); }
+.edit-commit-buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  height: var(--line-h);
+  padding: 0 var(--space-4);
+  white-space: pre;
+}
+/* `[ commit ]` faint with nothing staged or no message, `[ push ]` faint
+   with nothing to push to (rule 7): the same quiet grey as `[ save ]`. */
+.edit-git-button.edit-quiet,
+.edit-git-button:disabled { background: var(--ui-text-faint); }
+.edit-git-running { white-space: pre; }
+.edit-git-failure {
+  margin: 0;
+  padding: var(--space-1) var(--space-4);
+  color: var(--ui-text-muted);
+  font: var(--type-body);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.edit-git-well {
+  margin: var(--space-2) var(--space-4) 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface);
+  color: var(--ui-text-muted);
+  font: var(--type-body);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: auto;
+}
+.edit-git-no-writes { white-space: normal; }
+
 /* One sentence under a folder with nothing in it, at its row's indent, and
    the sentence of a tree with no project (rule 12). */
 .edit-note {
@@ -579,7 +680,9 @@ body {
 .edit-save.edit-quiet,
 .edit-save:disabled,
 .edit-key-save.edit-quiet,
-.edit-key-save:disabled {
+.edit-key-save:disabled,
+.edit-git-button.edit-quiet,
+.edit-git-button:disabled {
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
