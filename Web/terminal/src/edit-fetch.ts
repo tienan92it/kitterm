@@ -165,3 +165,71 @@ export async function readListing(
       .map((entry) => ({ name: entry.name, dir: entry.dir === true, ...(typeof entry.size === "number" ? { size: entry.size } : {}) })),
   };
 }
+
+export type StatusResult =
+  | { kind: "ok"; body: unknown; etag: string | null }
+  /** 304: the repository still holds the tag the page sent. */
+  | { kind: "unchanged" }
+  | { kind: "error"; status: number | null; reason: string };
+
+/**
+ * `GET /api/git/status`, conditional on the tag the page holds. The body
+ * is handed back as parsed JSON for `parseStatus` (`edit-git.ts`).
+ */
+export async function readGitStatus(fetch: Fetch, url: string, ifNoneMatch: string | null = null): Promise<StatusResult> {
+  const headers: Record<string, string> = {};
+  if (ifNoneMatch) headers["If-None-Match"] = ifNoneMatch;
+  let response: Response;
+  try {
+    response = await fetch(url, { credentials: "same-origin", headers, cache: "no-store" });
+  } catch {
+    return { kind: "error", status: null, reason: DAEMON_UNREACHABLE };
+  }
+  if (response.status === 304) return { kind: "unchanged" };
+  if (!response.ok) {
+    return { kind: "error", status: response.status, reason: daemonAnswered(response.status, await errorWord(response)) };
+  }
+  return { kind: "ok", body: await response.json().catch(() => ({})), etag: response.headers.get("ETag") };
+}
+
+/** The diff route's answer, as far as the page draws it. */
+export interface DiffAnswer {
+  path: string;
+  staged: boolean;
+  untracked: boolean;
+  binary: boolean;
+  additions: number | null;
+  deletions: number | null;
+  diff: string;
+  truncated: boolean;
+}
+
+/** `GET /api/git/diff`: the unified diff of one file, or an error sentence. */
+export async function readGitDiff(
+  fetch: Fetch,
+  url: string,
+): Promise<{ kind: "ok"; answer: DiffAnswer } | { kind: "error"; status: number | null; reason: string }> {
+  let response: Response;
+  try {
+    response = await fetch(url, { credentials: "same-origin", cache: "no-store" });
+  } catch {
+    return { kind: "error", status: null, reason: DAEMON_UNREACHABLE };
+  }
+  if (!response.ok) {
+    return { kind: "error", status: response.status, reason: daemonAnswered(response.status, await errorWord(response)) };
+  }
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  return {
+    kind: "ok",
+    answer: {
+      path: typeof body.path === "string" ? body.path : "",
+      staged: body.staged === true,
+      untracked: body.untracked === true,
+      binary: body.binary === true,
+      additions: typeof body.additions === "number" ? body.additions : null,
+      deletions: typeof body.deletions === "number" ? body.deletions : null,
+      diff: typeof body.diff === "string" ? body.diff : "",
+      truncated: body.truncated === true,
+    },
+  };
+}

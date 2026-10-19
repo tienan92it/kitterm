@@ -238,6 +238,9 @@ public final class DaemonServer: @unchecked Sendable {
         // queue, at most once every few seconds, probed for HTTP once per
         // pid and port.
         let listeningServers = ListeningServers()
+        // The git reads of the editor's git tab, one serial queue per
+        // repository, never on the loop and never taking `index.lock`.
+        let gitRead = GitRead()
         // The model per live session's transcript, one cache for every
         // connection, so a session list reads a transcript only when it grew.
         let transcriptModels = TranscriptModelCache()
@@ -406,6 +409,7 @@ public final class DaemonServer: @unchecked Sendable {
                         knowledgeBase: knowledgeBase,
                         usageLimits: usageLimits,
                         listeningServers: listeningServers,
+                        gitRead: gitRead,
                         transcriptModels: transcriptModels,
                         transcriptEstimates: transcriptEstimates
                     )

@@ -19,9 +19,18 @@
  * (`corpus/03-all-phases.md` rule 1); a language loads lazily by the file's
  * name through `@codemirror/language-data`.
  *
- * The pure decisions are `edit-model.ts`, `edit-tree.ts` and
- * `line-diff.ts`; the daemon conversations are `edit-fetch.ts`. This file
- * paints and wires.
+ * The git tab (round 5, phase 3 of ADR 0005; the frames `Editor 1200 git`
+ * and `Editor 390 git`): `[ ] files [x] git N` switches the sidebar to
+ * `BRANCH` with `↑ahead ↓behind` and `CHANGES` with a badge, the name and
+ * `+a −d` per file, read from `GET /api/git/status` every 3 s while
+ * visible and after a save, with `If-None-Match`; the tree's rows wear the
+ * same badges, a folder `M` when a changed path is under it; a change row
+ * opens its unified diff from `GET /api/git/diff` in the diff view. The
+ * stage toggles and `COMMIT` are round 6's.
+ *
+ * The pure decisions are `edit-model.ts`, `edit-tree.ts`, `edit-git.ts`
+ * and `line-diff.ts`; the daemon conversations are `edit-fetch.ts`. This
+ * file paints and wires.
  */
 
 import "./tokens.css";
@@ -46,7 +55,22 @@ import { Compartment, EditorState } from "@codemirror/state";
 import { drawSelection, EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
-import { type Fetch, readFile, readListing, readProject, saveFile } from "./edit-fetch";
+import { type Fetch, readFile, readGitDiff, readGitStatus, readListing, readProject, saveFile } from "./edit-fetch";
+import {
+  badgeForPath,
+  badgeOf,
+  branchLine,
+  changesLabel,
+  diffWhat,
+  entryCounts,
+  entryName,
+  type GitEntry,
+  type GitStatus,
+  gitTabLabel,
+  parseStatus,
+  parseUnifiedDiff,
+  wantsStaged,
+} from "./edit-git";
 import {
   barLine,
   contentUrl,
@@ -57,6 +81,8 @@ import {
   type EditorModel,
   emptyFolder,
   encodeText,
+  gitDiffUrl,
+  gitStatusUrl,
   hasUnsavedWork,
   headerFacts,
   headerName,
@@ -77,7 +103,7 @@ import {
 import { ancestorsOf, childrenOf, findNode, treeRoot, type TreeNode, triangle, visibleRows } from "./edit-tree";
 import { resolveFontFamily } from "./fonts";
 import { trackKeyboardInsets } from "./keyboard-insets";
-import { diffCounts, hunkHeader, lineDiff } from "./line-diff";
+import { diffCounts, hunkHeader, type LineDiff, lineDiff } from "./line-diff";
 import { basename, cannotRead } from "./markdown-view";
 import { loadSettings } from "./settings-store";
 import { applyThemeTokens } from "./theme-tokens";
@@ -194,14 +220,21 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
   const editTab = button("edit-tab edit-tab-edit", "[ ] edit", "tab:edit");
   editTab.setAttribute("role", "radio");
   editTab.setAttribute("aria-checked", "false");
-  tabs.append(filesTab, editTab);
+  const gitTab = button("edit-tab edit-tab-git", gitTabLabel(false, null), "tab:git");
+  gitTab.setAttribute("role", "radio");
+  gitTab.setAttribute("aria-checked", "false");
+  tabs.append(filesTab, editTab, gitTab);
 
   const body = el("div", "edit-body");
   const sidebar = el("aside", "edit-sidebar");
   sidebar.setAttribute("aria-label", "Files");
   const tree = el("div", "edit-tree");
   tree.setAttribute("role", "tree");
-  sidebar.append(tree);
+  const gitPanel = el("div", "edit-git");
+  gitPanel.setAttribute("role", "region");
+  gitPanel.setAttribute("aria-label", "Git");
+  gitPanel.hidden = true;
+  sidebar.append(tree, gitPanel);
   const main = el("section", "edit-main");
   const bar = el("div", "edit-bar");
   bar.setAttribute("role", "alert");
@@ -235,19 +268,47 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
   }
   const { session } = target;
 
-  // --- the tabs (the phone) -------------------------------------------------
-  const selectTab = (tab: "files" | "edit"): void => {
-    root.dataset.tab = tab;
-    filesTab.setAttribute("aria-checked", tab === "files" ? "true" : "false");
-    filesTab.textContent = `[${tab === "files" ? "x" : " "}] files`;
-    editTab.setAttribute("aria-checked", tab === "edit" ? "true" : "false");
-    editTab.textContent = `[${tab === "edit" ? "x" : " "}] edit`;
+  // --- the tabs ---------------------------------------------------------------
+  // Two choices: which panel the sidebar shows (`files` or `git`, rule 1),
+  // and on a phone which column is on screen (the sidebar or the editor).
+  // A wide window shows both columns, so its tabs read the panel alone and
+  // `[x] files` holds while the tree shows whatever the editor area does
+  // (the round 4 gap).
+  const wide = window.matchMedia("(min-width: 768px)");
+  let panel: "files" | "git" = "files";
+  let column: "sidebar" | "edit" = wide.matches ? "sidebar" : "edit";
+  let gitStatus: GitStatus | null = null;
+  const paintTabs = (): void => {
+    const sidebarShown = wide.matches || column === "sidebar";
+    const filesOn = panel === "files" && sidebarShown;
+    const gitOn = panel === "git" && sidebarShown;
+    const editOn = column === "edit";
+    filesTab.setAttribute("aria-checked", filesOn ? "true" : "false");
+    filesTab.textContent = `[${filesOn ? "x" : " "}] files`;
+    editTab.setAttribute("aria-checked", editOn ? "true" : "false");
+    editTab.textContent = `[${editOn ? "x" : " "}] edit`;
+    gitTab.setAttribute("aria-checked", gitOn ? "true" : "false");
+    gitTab.textContent = gitTabLabel(gitOn, gitStatus?.counts ?? null);
+    root.dataset.tab = column === "edit" ? "edit" : panel;
+    root.dataset.panel = panel;
+    tree.hidden = panel !== "files";
+    gitPanel.hidden = panel !== "git";
+    sidebar.setAttribute("aria-label", panel === "git" ? "Git" : "Files");
+  };
+  const selectTab = (tab: "files" | "edit" | "git"): void => {
+    if (tab === "edit") column = "edit";
+    else {
+      panel = tab;
+      column = "sidebar";
+    }
+    paintTabs();
   };
   filesTab.addEventListener("click", () => selectTab("files"));
   editTab.addEventListener("click", () => selectTab("edit"));
-  // A phone opens on the editor (the frame `Editor 390`); a wide window
-  // shows both columns, and its one tab reads `[x] files`.
-  selectTab(window.matchMedia("(max-width: 767px)").matches ? "edit" : "files");
+  gitTab.addEventListener("click", () => selectTab("git"));
+  wide.addEventListener("change", paintTabs);
+  // A phone opens on the editor (the frame `Editor 390`).
+  paintTabs();
 
   // --- the file -----------------------------------------------------------
   let model: EditorModel = INITIAL_MODEL;
@@ -336,32 +397,30 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
     editorHost.hidden = false;
   };
 
-  /** The unified diff of the disk against the buffer, in the editor area. */
-  const showDiff = (): void => {
-    const diff = lineDiff(disk.text, bufferText());
+  /**
+   * A unified diff in the editor area (rule 9): the top line with the
+   * name, the counts and what is compared, `open file` at its right, then
+   * the hunks; `empty` is the sentence shown with no hunk.
+   */
+  const renderDiff = (name: string, counts: string, what: string, diff: LineDiff, empty: string, onBack: () => void): void => {
     diffHost.replaceChildren();
     const top = el("div", "edit-diff-top");
-    top.append(
-      el("span", "edit-diff-name", basename(path)),
-      " ",
-      el("span", "edit-diff-counts", diffCounts(diff)),
-      el("span", "edit-diff-what", " · buffer against disk"),
-    );
+    top.append(el("span", "edit-diff-name", name), " ", el("span", "edit-diff-counts", counts), el("span", "edit-diff-what", ` · ${what}`));
     const back = button("edit-diff-back", "open file", "diff:back");
-    back.addEventListener("click", hideDiff);
+    back.addEventListener("click", onBack);
     top.append(back);
     const rows = el("div", "edit-diff-rows");
-    if (diff.hunks.length === 0) rows.append(el("p", "edit-note", "The buffer equals the disk."));
+    if (diff.hunks.length === 0) rows.append(el("p", "edit-note", empty));
     for (const hunk of diff.hunks) {
       const header = el("div", "edit-diff-line hunk");
       header.append(el("span", "edit-diff-gutter", ""), el("span", "edit-diff-text", hunkHeader(hunk)));
       rows.append(header);
       for (const line of hunk.lines) {
         const row = el("div", `edit-diff-line ${line.kind}`);
-        const prefix = line.kind === "add" ? "+" : line.kind === "del" ? "−" : " ";
+        const prefix = line.kind === "add" ? "+ " : line.kind === "del" ? "− " : line.kind === "note" ? "" : "  ";
         row.append(
           el("span", "edit-diff-gutter", line.newNumber === undefined ? "" : String(line.newNumber)),
-          el("span", "edit-diff-text", `${prefix} ${line.text}`),
+          el("span", "edit-diff-text", `${prefix}${line.text}`),
         );
         rows.append(row);
       }
@@ -370,6 +429,12 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
     diffHost.hidden = false;
     editorHost.hidden = true;
     selectTab("edit");
+  };
+
+  /** The unified diff of the disk against the buffer, in the editor area. */
+  const showDiff = (): void => {
+    const diff = lineDiff(disk.text, bufferText());
+    renderDiff(basename(path), diffCounts(diff), "buffer against disk", diff, "The buffer equals the disk.", hideDiff);
   };
 
   /** The disk's bytes taken as the buffer, when the reader agrees. */
@@ -409,6 +474,8 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
       base = { text };
       model = reduce(model, { type: "save-ok" });
       hideDiff();
+      // The save moved the tree: the badges and the counts follow at once.
+      void pollGit();
     } else if (result.kind === "conflict") {
       // The disk's own text, for compare and for keep mine.
       const current = await readFile(fetchFn, contentUrl(path, session));
@@ -470,6 +537,117 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
     if (hasUnsavedWork(model)) event.preventDefault();
   });
 
+  // --- the git tab (round 5) ---------------------------------------------------
+  let gitEtag: string | null = null;
+  let gitError: string | null = null;
+  let gitPolling = false;
+  /** The change row whose diff the editor area shows. */
+  let openChange: string | null = null;
+
+  const paintGit = (): void => {
+    gitPanel.replaceChildren();
+    if (gitError !== null) {
+      gitPanel.append(el("p", "edit-note", gitError));
+      return;
+    }
+    if (!gitStatus) return;
+    const branch = branchLine(gitStatus);
+    const branchLabel = el("h2", "edit-git-label", "BRANCH");
+    const branchRow = el("div", "edit-git-branch");
+    const branchName = el("span", "edit-git-name", branch.name);
+    branchName.title = gitStatus.upstream ? `${branch.name} · upstream ${gitStatus.upstream}` : branch.name;
+    branchRow.append(branchName);
+    if (branch.detached) branchRow.append(" ", el("span", "edit-git-detached", "detached"));
+    branchRow.append(el("span", "edit-git-ab", branch.ab));
+    const changesLabelRow = el("h2", "edit-git-label", changesLabel(gitStatus.counts));
+    gitPanel.append(branchLabel, branchRow, changesLabelRow);
+    const list = el("div", "edit-changes");
+    list.setAttribute("role", "list");
+    for (const entry of gitStatus.files) {
+      const badge = badgeOf(entry);
+      if (!badge) continue;
+      const row = button("edit-change", "", `change:${entry.path}`);
+      row.setAttribute("role", "listitem");
+      row.title = entry.origPath ? `${entry.origPath} → ${entry.path}` : entry.path;
+      if (entry.path === openChange) {
+        row.classList.add("open");
+        row.setAttribute("aria-current", "true");
+      }
+      // The letter is read: it is the row's one state word.
+      row.append(
+        mark(badge.letter, badge.tone, true),
+        el("span", "edit-change-name", entryName(entry)),
+        el("span", "edit-change-counts", entryCounts(entry)),
+      );
+      row.addEventListener("click", () => void showChange(entry));
+      list.append(row);
+    }
+    if (gitStatus.files.length === 0) list.append(el("p", "edit-note", "The working tree is clean."));
+    gitPanel.append(list);
+  };
+
+  /** The unified diff of one change in the editor area. */
+  const showChange = async (entry: GitEntry): Promise<void> => {
+    const staged = wantsStaged(entry);
+    const result = await readGitDiff(fetchFn, gitDiffUrl(entryPathOf(entry), session, staged));
+    openChange = entry.path;
+    paintGit();
+    const back = (): void => {
+      openChange = null;
+      hideDiff();
+      paintGit();
+    };
+    if (result.kind !== "ok") {
+      renderDiff(entryName(entry), "", diffWhat(entry, staged), { hunks: [], added: 0, removed: 0 }, cannotRead(entryName(entry), result.reason), back);
+      return;
+    }
+    const answer = result.answer;
+    const diff = parseUnifiedDiff(answer.diff);
+    const counts = answer.additions === null || answer.deletions === null ? "–" : `+${answer.additions} −${answer.deletions}`;
+    let empty = "No difference.";
+    if (answer.binary) empty = "A binary file: no text diff.";
+    renderDiff(entryName(entry), counts, diffWhat(entry, staged), diff, empty, back);
+    if (answer.truncated) diffHost.append(el("p", "edit-note", "The diff is cut at 512 KB."));
+    const focus = diffHost.querySelector<HTMLElement>('[data-focus="diff:back"]');
+    focus?.focus();
+  };
+
+  const entryPathOf = (entry: GitEntry): string => (gitStatus && gitStatus.root !== "/" ? `${gitStatus.root}/${entry.path}` : `/${entry.path}`);
+
+  /** One status read, skipped while one is in flight or the page is hidden. */
+  const pollGit = async (): Promise<void> => {
+    if (gitPolling || document.visibilityState !== "visible") return;
+    gitPolling = true;
+    try {
+      const result = await readGitStatus(fetchFn, gitStatusUrl(path, session), gitEtag);
+      if (result.kind === "unchanged") return;
+      if (result.kind === "error") {
+        // A failed read keeps the last status; a refusal says why.
+        if (result.status === 404 || result.status === 403 || result.status === 503) {
+          gitStatus = null;
+          gitEtag = null;
+          gitError = cannotRead("git status", result.reason);
+          paintTabs();
+          paintGit();
+          paintTree();
+        }
+        return;
+      }
+      gitStatus = parseStatus(result.body);
+      gitEtag = result.etag;
+      gitError = null;
+      paintTabs();
+      paintGit();
+      paintTree();
+    } finally {
+      gitPolling = false;
+    }
+  };
+  schedule(() => void pollGit(), POLL_MS);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void pollGit();
+  });
+
   // --- the key bar (the phone) --------------------------------------------
   const keyCommand = (key: HTMLButtonElement, command: (view: EditorView) => boolean): void => {
     // Pointer down, not click: a click would move focus off the editor and
@@ -511,6 +689,12 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
       }
       row.title = node.path;
       row.append(el("span", "edit-triangle", triangle(node)), el("span", "edit-row-name", node.name));
+      const badge = badgeForPath(gitStatus, node.path, node.dir);
+      if (badge) {
+        const letter = mark(badge.letter, badge.tone, true);
+        letter.classList.add("edit-row-badge");
+        row.append(letter);
+      }
       row.addEventListener("click", () => void onRow(node));
       tree.append(row);
       if (node.dir && node.open && node.children && node.children.length === 0) {
@@ -572,6 +756,7 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
   } else {
     tree.replaceChildren(el("p", "edit-note", cannotRead(path, projectAnswer.reason)));
   }
+  void pollGit();
 
   // --- the read -----------------------------------------------------------
   const read = await readFile(fetchFn, contentUrl(path, session));

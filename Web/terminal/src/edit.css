@@ -10,9 +10,12 @@
    the owned colours on a mark's background, never on `color`.
 
    Two columns at 1200 px: a sidebar of 280 px with a hairline at its right
-   and the editor (rule 1); one column at 390 px, where `[ ] files [x] edit`
-   chooses what the column shows and a 44 px key bar sits above the soft
-   keyboard (rule 15). */
+   and the editor (rule 1); one column at 390 px, where `[ ] files [x] edit
+   [ ] git 3` chooses what the column shows and a 44 px key bar sits above
+   the soft keyboard (rule 15). The sidebar shows the tree or the git panel
+   (round 5; the frames `Editor 1200 git` and `Editor 390 git`, rules 5, 7
+   and 9): `BRANCH`, `CHANGES` with a badge, a name and the counts per row,
+   and the same badges at the right of a tree row. */
 
 :root {
   --space-1: 4px;
@@ -265,6 +268,72 @@ body {
   text-overflow: ellipsis;
 }
 
+/* The badge at the right of a tree row (rule 5): a one-letter mark. */
+.edit-row-badge { margin-left: auto; }
+
+/* --- the git panel (rules 5 and 7) --------------------------------------- */
+.edit-git { padding: var(--space-2) 0; }
+
+/* A label per section, faint, at the body size and weight 600. */
+.edit-git-label {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  color: var(--ui-text-faint);
+  font: var(--type-body);
+  font-weight: 600;
+  text-transform: none;
+}
+
+/* The branch row: the name, `detached` when so, and `↑1 ↓0` at the right. */
+.edit-git-branch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--line-h);
+  padding: 0 var(--space-4);
+  color: var(--ui-text);
+  font: var(--type-body);
+  white-space: nowrap;
+}
+.edit-git-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.edit-git-detached,
+.edit-git-ab { color: var(--ui-text-muted); }
+.edit-git-ab { margin-left: auto; white-space: pre; }
+
+/* One row per changed file: the badge, the name and `+21 −1`; the row
+   whose diff the editor area shows sits on surface-2. */
+.edit-change {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: var(--line-h);
+  padding: 0 var(--space-4);
+  border: 0;
+  background: none;
+  color: var(--ui-text);
+  font: var(--type-body);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.edit-change.open { background: var(--ui-surface-2); }
+.edit-change-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.edit-change-counts {
+  margin-left: auto;
+  color: var(--ui-text-muted);
+  white-space: pre;
+}
+.edit-change.open .edit-change-counts { color: var(--ui-text); }
+
 /* One sentence under a folder with nothing in it, at its row's indent, and
    the sentence of a tree with no project (rule 12). */
 .edit-note {
@@ -384,9 +453,14 @@ body {
   color: var(--ui-text);
   white-space: nowrap;
 }
+.edit-diff-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .edit-diff-counts { color: var(--ui-text-muted); }
 .edit-diff-what { color: var(--ui-text-faint); }
-.edit-diff-back { margin-left: auto; }
+.edit-diff-back { flex: none; margin-left: auto; }
 
 .edit-diff-rows { padding: var(--space-2) 0; }
 
@@ -410,6 +484,8 @@ body {
 .edit-diff-line.add .edit-diff-text { color: var(--ui-success); }
 .edit-diff-line.del .edit-diff-text { color: var(--ui-danger); }
 .edit-diff-line.hunk .edit-diff-text { color: var(--code-link); }
+/* Git's own `\ No newline at end of file`, faint. */
+.edit-diff-line.note .edit-diff-text { color: var(--ui-text-faint); }
 
 /* --- the key bar (rule 15) ---------------------------------------------- */
 .edit-keys {
@@ -458,8 +534,17 @@ body {
   .edit-sidebar { grid-column: 1; grid-row: 2; border-right: 0; }
   .edit-main { grid-column: 1; grid-row: 2; }
   #edit[data-tab="edit"] .edit-sidebar { display: none; }
-  #edit[data-tab="files"] .edit-main { display: none; }
+  #edit[data-tab="files"] .edit-main,
+  #edit[data-tab="git"] .edit-main { display: none; }
+  /* The key bar belongs to the editor: the frames `Editor 390 files` and
+     `Editor 390 git` show none. */
   .edit-keys { display: flex; }
+  #edit[data-tab="files"] .edit-keys,
+  #edit[data-tab="git"] .edit-keys { display: none; }
+  #edit[data-tab="files"],
+  #edit[data-tab="git"] { padding-bottom: var(--keyboard-height); }
+  /* What the diff compares drops on a phone, so `open file` keeps its place. */
+  .edit-diff-what { display: none; }
   #edit { padding-bottom: calc(44px + var(--keyboard-height)); }
   .edit-bar { flex-wrap: wrap; padding: var(--space-2) var(--space-4); }
   .edit-bar-controls { margin-left: 0; }

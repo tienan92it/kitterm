@@ -80,6 +80,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// The user's listening servers behind `GET /api/servers`; nil in a
     /// handler built without one, where the route answers 503.
     private let listeningServers: ListeningServers?
+    /// The git reads of the `/edit` page's git tab behind `GET /api/git/status`
+    /// and `GET /api/git/diff`; nil in a handler built without one, where
+    /// both routes answer 503.
+    private let gitRead: GitRead?
     /// The model per live session's transcript, for the `agentModel` field
     /// of a session row; nil in a handler built without one, where the row
     /// carries no model. One cache per daemon, shared by every connection.
@@ -124,6 +128,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         knowledgeBase: KnowledgeBase? = nil,
         usageLimits: UsageLimitsStore? = nil,
         listeningServers: ListeningServers? = nil,
+        gitRead: GitRead? = nil,
         transcriptModels: TranscriptModelCache? = nil,
         transcriptEstimates: TranscriptEstimateCache? = nil
     ) {
@@ -151,6 +156,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.knowledgeBase = knowledgeBase
         self.usageLimits = usageLimits
         self.listeningServers = listeningServers
+        self.gitRead = gitRead
         self.transcriptModels = transcriptModels
         self.transcriptEstimates = transcriptEstimates
     }
@@ -547,6 +553,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             serveFileContent(grade: grade, head: head, context: context)
         case (.GET, "/api/files/project"):
             serveFileProject(grade: grade, head: head, context: context)
+        case (.GET, "/api/git/status"):
+            serveGitStatus(grade: grade, head: head, context: context)
+        case (.GET, "/api/git/diff"):
+            serveGitDiff(grade: grade, head: head, context: context)
         case (.PUT, "/api/files/content"):
             serveFileSave(
                 body: body,
@@ -4518,6 +4528,168 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 status: .ok, body: text, context: context,
                 version: head.version, keepAlive: head.isKeepAlive
             )
+        }
+    }
+
+    // MARK: - Git reads (`code-editor` round 5)
+
+    /// The prelude of both git routes: full grade, a path, the session's
+    /// cwd, the lexical resolution, then the repository on the resolve
+    /// queue. `body` runs on the repository's own serial queue and answers
+    /// through `answer` on the loop.
+    private func withGitRepository(
+        grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext,
+        body: @escaping @Sendable (GitRead, GitRead.Repository) -> Result<(Data, [String: String]), GitRead.Failure>
+    ) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let gitRead else {
+            writeJSON(
+                status: .serviceUnavailable,
+                body: #"{"ok":false,"error":"git reads unavailable"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let requested = DaemonServer.queryValue("path", fromRequestURI: head.uri), !requested.isEmpty else {
+            writeJSON(
+                status: .badRequest,
+                body: #"{"ok":false,"error":"no path given"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let sessionID = DaemonServer.queryValue("session", fromRequestURI: head.uri)
+            .flatMap(UUID.init(uuidString:))
+        let loop = context.eventLoop
+        let boundContext = NIOLoopBound(context, eventLoop: loop)
+        let projects = self.projects
+        let promise = loop.makePromise(of: Result<(Data, [String: String]), GitRead.Failure>.self)
+        promise.completeWithTask {
+            let cwd: String? = sessionID == nil
+                ? nil
+                : await self.registry.session(sessionID!)?.liveCwd
+            let path = FileEdit.resolve(requested, base: cwd)
+            let located: Result<GitRead.Repository, GitRead.Failure> = await withCheckedContinuation { continuation in
+                gitRead.resolveQueue.async { continuation.resume(returning: gitRead.repository(for: path, projects: projects)) }
+            }
+            guard case .success(let repository) = located else {
+                return located.map { _ in (Data(), [:]) }
+            }
+            return await withCheckedContinuation { continuation in
+                gitRead.queue(for: repository.toplevel).async { continuation.resume(returning: body(gitRead, repository)) }
+            }
+        }
+        promise.futureResult.whenComplete { result in
+            let context = boundContext.value
+            let outcome: Result<(Data, [String: String]), GitRead.Failure> =
+                (try? result.get()) ?? .failure(.failed("the read did not complete"))
+            switch outcome {
+            case .success((let data, let extra)):
+                var headers = HTTPHeaders()
+                headers.add(name: "Cache-Control", value: "no-cache")
+                for (name, value) in extra { headers.add(name: name, value: value) }
+                if let etag = extra["ETag"], head.headers["if-none-match"].contains(etag) {
+                    self.writeBytes(status: .notModified, headers: headers, data: Data(),
+                                    context: context, version: head.version, keepAlive: head.isKeepAlive)
+                    return
+                }
+                headers.add(name: "Content-Type", value: "application/json")
+                headers.add(name: "X-Content-Type-Options", value: "nosniff")
+                self.writeBytes(status: .ok, headers: headers, data: data,
+                                context: context, version: head.version, keepAlive: head.isKeepAlive)
+            case .failure(let failure):
+                let status: HTTPResponseStatus
+                switch failure {
+                case .noProject, .noRepository, .outsideRepository: status = .notFound
+                case .gitAbsent: status = .serviceUnavailable
+                case .failed: status = .badGateway
+                }
+                let text = (try? JSONSerialization.data(withJSONObject: ["ok": false, "error": failure.reason]))
+                    .flatMap { String(data: $0, encoding: .utf8) } ?? #"{"ok":false,"error":"git failed"}"#
+                self.writeJSON(status: status, body: text, context: context, version: head.version, keepAlive: false)
+            }
+        }
+    }
+
+    /// `GET /api/git/status?path=<file>&session=<id>` — the status of the
+    /// file's repository (`GitRead.status`): the branch, its upstream and
+    /// `ahead`/`behind`, `detached`, one entry per changed file with its
+    /// `XY` columns, kind and `+a −d`, and the counts. An `ETag` over the
+    /// body answers 304 to `If-None-Match`, which is what the page's 3 s
+    /// poll sends. Full grade only, like the file routes.
+    private func serveGitStatus(grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext) {
+        withGitRepository(grade: grade, head: head, context: context) { gitRead, repository in
+            do {
+                let report = try gitRead.status(of: repository)
+                let data = Self.gitStatusBody(report, toplevel: repository.toplevel)
+                return .success((data, ["ETag": FileEdit.etag(data)]))
+            } catch let failure as GitRead.Failure {
+                return .failure(failure)
+            } catch {
+                return .failure(.failed("\(error)"))
+            }
+        }
+    }
+
+    static func gitStatusBody(_ report: GitStatus.Report, toplevel: String) -> Data {
+        let counts = report.counts
+        var payload: [String: Any] = [
+            "ok": true, "root": toplevel, "ahead": report.ahead, "behind": report.behind,
+            "detached": report.detached,
+            "files": report.files.map { entry -> [String: Any] in
+                var item: [String: Any] = [
+                    "path": entry.path, "index": String(entry.index), "worktree": String(entry.worktree),
+                    "kind": entry.kind.rawValue,
+                ]
+                if let orig = entry.origPath { item["origPath"] = orig }
+                if let additions = entry.additions { item["additions"] = additions }
+                if let deletions = entry.deletions { item["deletions"] = deletions }
+                return item
+            },
+            "counts": [
+                "changed": counts.changed, "staged": counts.staged, "unstaged": counts.unstaged,
+                "untracked": counts.untracked, "conflicts": counts.conflicts,
+            ],
+        ]
+        if let branch = report.branch { payload["branch"] = branch }
+        if let oid = report.oid { payload["oid"] = oid }
+        if let upstream = report.upstream { payload["upstream"] = upstream }
+        return (try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]))
+            ?? Data(#"{"ok":false,"error":"encoding failed"}"#.utf8)
+    }
+
+    /// `GET /api/git/diff?path=<file>&session=<id>&staged=0|1` — the unified
+    /// diff of one file (`GitRead.diff`): the working tree against the
+    /// index, or with `staged=1` the index against `HEAD`; an untracked
+    /// file as all added; `+a −d` from `--numstat`; cut at 512 KiB with
+    /// `truncated` true. Full grade only.
+    private func serveGitDiff(grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext) {
+        let staged = DaemonServer.queryValue("staged", fromRequestURI: head.uri) == "1"
+        withGitRepository(grade: grade, head: head, context: context) { gitRead, repository in
+            do {
+                let diff = try gitRead.diff(of: repository, staged: staged)
+                var payload: [String: Any] = [
+                    "ok": true, "root": repository.toplevel, "path": repository.relative, "staged": staged,
+                    "untracked": diff.untracked, "binary": diff.binary, "diff": diff.text,
+                    "truncated": diff.truncated,
+                ]
+                if let additions = diff.additions { payload["additions"] = additions }
+                if let deletions = diff.deletions { payload["deletions"] = deletions }
+                let data = (try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]))
+                    ?? Data(#"{"ok":false,"error":"encoding failed"}"#.utf8)
+                return .success((data, [:]))
+            } catch let failure as GitRead.Failure {
+                return .failure(failure)
+            } catch {
+                return .failure(.failed("\(error)"))
+            }
         }
     }
 

@@ -494,6 +494,28 @@ only for such a binary; a `cc`-built or a Homebrew or npm binary of the same
 user is readable. Full grade only; `supported: false` on Linux, where no
 reader exists yet.
 
+### The git reads
+
+`GET /api/git/status?path=&session=` and `GET /api/git/diff?path=&session=&staged=`
+feed the `/edit` page's git tab (`code-editor` round 5, phase 3 of ADR 0005). The
+repository is the one of the file's parent directory, as `git rev-parse
+--show-toplevel` names it (cached a minute per directory), so a file in a worktree
+reads the worktree's own status; it must sit on one chain with the project that
+would jail the file's save (`FileEdit.locate`), and a path outside both is 404.
+`GitRead` runs every command through `KnowledgeBase.run` (its own process group, a
+20 s timeout, no prompt, literal pathspecs) with `--no-optional-locks -c
+core.fsmonitor= -c color.ui=false` before the subcommand, so a poll never takes
+`index.lock` from under an agent's `git commit` and a repository's own config runs
+no program on a plain status; the reads of one repository run on one serial queue,
+never on the loop. The status is `status --porcelain=v2 -z --branch`, parsed by
+`GitStatus.parse` (pure, every record kind, paths with spaces and newlines under
+`-z`), with `+a −d` per file from one `diff --numstat -z HEAD` and an untracked
+file's lines counted by the daemon; an `ETag` over the body answers 304 to the
+page's 3 s poll. The diff is `diff --numstat -p [--cached] -- <path>` (one command
+gives the counts and the patch), `--no-index /dev/null` for an untracked file, cut
+at 512 KiB with `truncated` true. Full grade only, like the file routes; no write
+this round.
+
 ## Security model
 
 kitterm has no multi-user model. It serves shells as the user who runs it. Anyone who

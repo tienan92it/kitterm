@@ -267,6 +267,22 @@ export function projectUrl(path: string, session: string | null = null): string 
   return `/api/files/project?${params.toString()}`;
 }
 
+/** The git status route for the repository of a file through a session. */
+export function gitStatusUrl(path: string, session: string | null = null): string {
+  const params = new URLSearchParams({ path });
+  if (session) params.set("session", session);
+  return `/api/git/status?${params.toString()}`;
+}
+
+/** The git diff route for one file: the working tree against the index,
+ * or with `staged` the index against `HEAD`. */
+export function gitDiffUrl(path: string, session: string | null = null, staged = false): string {
+  const params = new URLSearchParams({ path });
+  if (session) params.set("session", session);
+  params.set("staged", staged ? "1" : "0");
+  return `/api/git/diff?${params.toString()}`;
+}
+
 /** The listing route for a directory. */
 export function listingUrl(path: string, session: string | null = null): string {
   const params = new URLSearchParams({ path });

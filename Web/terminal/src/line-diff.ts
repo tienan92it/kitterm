@@ -11,7 +11,9 @@
  * it; a text with no trailing newline diffs the same lines.
  */
 
-export type DiffLineKind = "context" | "add" | "del";
+/** `note` is git's own `\\ No newline at end of file`, which only a parsed
+ * diff carries (`edit-git.ts`); `lineDiff` never emits one. */
+export type DiffLineKind = "context" | "add" | "del" | "note";
 
 export interface DiffLine {
   kind: DiffLineKind;
