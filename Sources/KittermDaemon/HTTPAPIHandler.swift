@@ -80,6 +80,13 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// The user's listening servers behind `GET /api/servers`; nil in a
     /// handler built without one, where the route answers 503.
     private let listeningServers: ListeningServers?
+    /// The git reads of the `/edit` page's git tab behind `GET /api/git/status`
+    /// and `GET /api/git/diff`; nil in a handler built without one, where
+    /// both routes answer 503.
+    private let gitRead: GitRead?
+    /// The git writes of the git tab behind `POST /api/git/{stage,unstage,
+    /// commit,push,branch}` (round 6); nil in a handler built without one.
+    private let gitWrite: GitWrite?
     /// The model per live session's transcript, for the `agentModel` field
     /// of a session row; nil in a handler built without one, where the row
     /// carries no model. One cache per daemon, shared by every connection.
@@ -124,6 +131,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         knowledgeBase: KnowledgeBase? = nil,
         usageLimits: UsageLimitsStore? = nil,
         listeningServers: ListeningServers? = nil,
+        gitRead: GitRead? = nil,
+        gitWrite: GitWrite? = nil,
         transcriptModels: TranscriptModelCache? = nil,
         transcriptEstimates: TranscriptEstimateCache? = nil
     ) {
@@ -151,6 +160,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         self.knowledgeBase = knowledgeBase
         self.usageLimits = usageLimits
         self.listeningServers = listeningServers
+        self.gitRead = gitRead
+        self.gitWrite = gitWrite
         self.transcriptModels = transcriptModels
         self.transcriptEstimates = transcriptEstimates
     }
@@ -204,6 +215,21 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         return path.hasPrefix("/api/sessions/") && path.hasSuffix("/files")
     }
 
+    /// `PUT /api/files/content` — the body is the new bytes of a file, so
+    /// the cap is the read cap (`FileEdit.maxBytes`), not a command line's.
+    private static func isEditorSave(_ head: HTTPRequestHead) -> Bool {
+        guard head.method == .PUT else { return false }
+        let path = head.uri.split(separator: "?", maxSplits: 1).first.map(String.init) ?? head.uri
+        return path == "/api/files/content"
+    }
+
+    /// How much body a request may carry, by the route its head names.
+    private static func bodyLimit(for head: HTTPRequestHead) -> Int {
+        if isDropUpload(head) { return KittermConstants.maxDropBytes }
+        if isEditorSave(head) { return FileEdit.maxBytes }
+        return KittermConstants.maxInputBytes
+    }
+
     /// Whether an auth cookie set on this request may carry `Secure`.
     ///
     /// True on the TLS listener. Also true when a trusted proxy reports it
@@ -230,8 +256,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             pendingHead = head
             pendingBody.removeAll(keepingCapacity: true)
             bodyOverflow = false
-            bodyLimit = Self.isDropUpload(head) ? KittermConstants.maxDropBytes
-                                               : KittermConstants.maxInputBytes
+            bodyLimit = Self.bodyLimit(for: head)
         case .body(let buffer):
             guard !bodyOverflow else { break }
             if pendingBody.count + buffer.readableBytes > bodyLimit {
@@ -531,6 +556,30 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             serveFileStat(grade: grade, head: head, context: context)
         case (.GET, "/api/files/content"):
             serveFileContent(grade: grade, head: head, context: context)
+        case (.GET, "/api/files/project"):
+            serveFileProject(grade: grade, head: head, context: context)
+        case (.GET, "/api/git/status"):
+            serveGitStatus(grade: grade, head: head, context: context)
+        case (.GET, "/api/git/diff"):
+            serveGitDiff(grade: grade, head: head, context: context)
+        case (.POST, "/api/git/stage"):
+            serveGitWrite(kind: .stage, body: body, bodyOverflow: bodyOverflow, grade: grade, head: head, context: context)
+        case (.POST, "/api/git/unstage"):
+            serveGitWrite(kind: .unstage, body: body, bodyOverflow: bodyOverflow, grade: grade, head: head, context: context)
+        case (.POST, "/api/git/commit"):
+            serveGitWrite(kind: .commit, body: body, bodyOverflow: bodyOverflow, grade: grade, head: head, context: context)
+        case (.POST, "/api/git/push"):
+            serveGitWrite(kind: .push, body: body, bodyOverflow: bodyOverflow, grade: grade, head: head, context: context)
+        case (.POST, "/api/git/branch"):
+            serveGitWrite(kind: .branch, body: body, bodyOverflow: bodyOverflow, grade: grade, head: head, context: context)
+        case (.PUT, "/api/files/content"):
+            serveFileSave(
+                body: body,
+                bodyOverflow: bodyOverflow,
+                grade: grade,
+                head: head,
+                context: context
+            )
         case (.GET, _) where Self.pullsProjectID(path: path) != nil:
             servePulls(id: Self.pullsProjectID(path: path) ?? "", grade: grade, head: head, context: context)
         case (.GET, _) where path.hasPrefix("/api/projects/"):
@@ -552,6 +601,11 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             // The Markdown page, the same way: `?path=` or `?project=&path=`
             // name the file, and the page reads it through the API.
             serveStatic(path: "/md.html", head: head, context: context, authCookie: authCookie,
+                        secureCookie: cookiesMayBeSecure(head: head, context: context))
+        case (.GET, "/edit"):
+            // The editor page (`code-editor` round 4): `?path=` and `?session=`
+            // name the file, and the page reads and saves it through the API.
+            serveStatic(path: "/edit.html", head: head, context: context, authCookie: authCookie,
                         secureCookie: cookiesMayBeSecure(head: head, context: context))
         case (.GET, _):
             serveStatic(path: path, head: head, context: context, authCookie: authCookie,
@@ -4366,6 +4420,20 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 )
                 return
             }
+            // The editor polls for an outside change with the tag it holds:
+            // the same bytes answer 304 and nothing else, so a poll every
+            // few seconds costs no body. A truncated read has no tag, so it
+            // never matches.
+            let etag = payload.truncated ? nil : FileEdit.etag(payload.data)
+            if let etag, let given = head.headers["if-none-match"].first,
+               FileEdit.matches(ifMatch: given, etag: etag) {
+                var headers = HTTPHeaders()
+                headers.add(name: "ETag", value: etag)
+                headers.add(name: "Cache-Control", value: "no-store")
+                self.writeBytes(status: .notModified, headers: headers, data: Data(),
+                                context: context, version: head.version, keepAlive: head.isKeepAlive)
+                return
+            }
             var headers = HTTPHeaders()
             headers.add(name: "Content-Type", value: payload.contentType)
             // Never guess past what we chose, never let the response fetch
@@ -4382,8 +4450,654 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             headers.add(name: "X-Kitterm-Total-Bytes", value: "\(payload.totalBytes)")
             headers.add(name: "X-Kitterm-Truncated", value: payload.truncated ? "1" : "0")
             headers.add(name: "X-Kitterm-Kind", value: payload.kind)
+            // The save's precondition: the tag of the whole file, so only a
+            // read that saw every byte gets one. A truncated read sends none,
+            // and the editor refuses to edit what it cannot save whole.
+            if let etag {
+                headers.add(name: "ETag", value: etag)
+            }
+            if let mode = payload.mode {
+                headers.add(name: "X-Kitterm-Mode", value: String(mode, radix: 8))
+            }
             self.writeBytes(status: .ok, headers: headers, data: payload.data,
                             context: context, version: head.version, keepAlive: head.isKeepAlive)
+        }
+    }
+
+    /// `GET /api/files/project?path=<file>&session=<id>` — where a file sits
+    /// for the editor page: the path resolved as the save route resolves it
+    /// (lexically, `~` and the session's cwd), and the project that holds it
+    /// by the save route's own rule (`FileEdit.jail`: the project of the
+    /// parent's real path, the nearest checkout or registered root). Answers
+    /// `{ok, path, project {id, name, root, relative}}`, where `relative` is
+    /// the file's path under the root as the walk sees it, or `{ok, path}`
+    /// alone for a file under no project, so the page says so and still
+    /// shows the file. 404 when the parent directory does not exist. Full
+    /// grade, like the listing; the resolution runs on the edit queue, off
+    /// the loop, because `realpath` and the store's `.git` walk touch the
+    /// disk.
+    private func serveFileProject(
+        grade: TokenGrade,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let requested = DaemonServer.queryValue("path", fromRequestURI: head.uri), !requested.isEmpty else {
+            writeJSON(
+                status: .badRequest,
+                body: #"{"ok":false,"error":"no path given"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let sessionID = DaemonServer.queryValue("session", fromRequestURI: head.uri)
+            .flatMap(UUID.init(uuidString:))
+
+        let loop = context.eventLoop
+        let boundContext = NIOLoopBound(context, eventLoop: loop)
+        let projects = self.projects
+        let promise = loop.makePromise(of: (String, FileEdit.Located?)?.self)
+        promise.completeWithTask {
+            let cwd: String? = sessionID == nil
+                ? nil
+                : await self.registry.session(sessionID!)?.liveCwd
+            let path = FileEdit.resolve(requested, base: cwd)
+            return await withCheckedContinuation { continuation in
+                FileEdit.queue.async {
+                    guard let located = FileEdit.locate(path, projects: projects) else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    continuation.resume(returning: (path, located.project))
+                }
+            }
+        }
+        promise.futureResult.whenComplete { result in
+            let context = boundContext.value
+            guard case .success(.some((let path, let located))) = result else {
+                self.writeJSON(
+                    status: .notFound,
+                    body: #"{"ok":false,"error":"no such directory"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+                return
+            }
+            var payload: [String: Any] = ["ok": true, "path": path]
+            if let located {
+                payload["project"] = [
+                    "id": located.id, "name": located.name, "root": located.root,
+                    "relative": located.relative,
+                ]
+            }
+            let text = (try? JSONSerialization.data(withJSONObject: payload))
+                .flatMap { String(data: $0, encoding: .utf8) }
+                ?? #"{"ok":false,"error":"encoding failed"}"#
+            self.writeJSON(
+                status: .ok, body: text, context: context,
+                version: head.version, keepAlive: head.isKeepAlive
+            )
+        }
+    }
+
+    // MARK: - Git reads (`code-editor` round 5)
+
+    /// The prelude of both git routes: full grade, a path, the session's
+    /// cwd, the lexical resolution, then the repository on the resolve
+    /// queue. `body` runs on the repository's own serial queue and answers
+    /// through `answer` on the loop.
+    private func withGitRepository(
+        grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext,
+        body: @escaping @Sendable (GitRead, GitRead.Repository) -> Result<(Data, [String: String]), GitRead.Failure>
+    ) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let gitRead else {
+            writeJSON(
+                status: .serviceUnavailable,
+                body: #"{"ok":false,"error":"git reads unavailable"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        guard let requested = DaemonServer.queryValue("path", fromRequestURI: head.uri), !requested.isEmpty else {
+            writeJSON(
+                status: .badRequest,
+                body: #"{"ok":false,"error":"no path given"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let sessionID = DaemonServer.queryValue("session", fromRequestURI: head.uri)
+            .flatMap(UUID.init(uuidString:))
+        let loop = context.eventLoop
+        let boundContext = NIOLoopBound(context, eventLoop: loop)
+        let projects = self.projects
+        let promise = loop.makePromise(of: Result<(Data, [String: String]), GitRead.Failure>.self)
+        promise.completeWithTask {
+            let cwd: String? = sessionID == nil
+                ? nil
+                : await self.registry.session(sessionID!)?.liveCwd
+            let path = FileEdit.resolve(requested, base: cwd)
+            let located: Result<GitRead.Repository, GitRead.Failure> = await withCheckedContinuation { continuation in
+                gitRead.resolveQueue.async { continuation.resume(returning: gitRead.repository(for: path, projects: projects)) }
+            }
+            guard case .success(let repository) = located else {
+                return located.map { _ in (Data(), [:]) }
+            }
+            return await withCheckedContinuation { continuation in
+                gitRead.queue(for: repository.toplevel).async { continuation.resume(returning: body(gitRead, repository)) }
+            }
+        }
+        promise.futureResult.whenComplete { result in
+            let context = boundContext.value
+            let outcome: Result<(Data, [String: String]), GitRead.Failure> =
+                (try? result.get()) ?? .failure(.failed("the read did not complete"))
+            switch outcome {
+            case .success((let data, let extra)):
+                var headers = HTTPHeaders()
+                headers.add(name: "Cache-Control", value: "no-cache")
+                for (name, value) in extra { headers.add(name: name, value: value) }
+                if let etag = extra["ETag"], head.headers["if-none-match"].contains(etag) {
+                    self.writeBytes(status: .notModified, headers: headers, data: Data(),
+                                    context: context, version: head.version, keepAlive: head.isKeepAlive)
+                    return
+                }
+                headers.add(name: "Content-Type", value: "application/json")
+                headers.add(name: "X-Content-Type-Options", value: "nosniff")
+                self.writeBytes(status: .ok, headers: headers, data: data,
+                                context: context, version: head.version, keepAlive: head.isKeepAlive)
+            case .failure(let failure):
+                let status: HTTPResponseStatus
+                switch failure {
+                case .noProject, .noRepository, .outsideRepository: status = .notFound
+                case .gitAbsent: status = .serviceUnavailable
+                case .failed: status = .badGateway
+                }
+                let text = (try? JSONSerialization.data(withJSONObject: ["ok": false, "error": failure.reason]))
+                    .flatMap { String(data: $0, encoding: .utf8) } ?? #"{"ok":false,"error":"git failed"}"#
+                self.writeJSON(status: status, body: text, context: context, version: head.version, keepAlive: false)
+            }
+        }
+    }
+
+    /// `GET /api/git/status?path=<file>&session=<id>` — the status of the
+    /// file's repository (`GitRead.status`): the branch, its upstream and
+    /// `ahead`/`behind`, `detached`, one entry per changed file with its
+    /// `XY` columns, kind and `+a −d`, and the counts. An `ETag` over the
+    /// body answers 304 to `If-None-Match`, which is what the page's 3 s
+    /// poll sends. Full grade only, like the file routes.
+    private func serveGitStatus(grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext) {
+        // `writes`: whether this daemon takes the git writes (round 6), so
+        // the page shows its controls or the one sentence that says why not.
+        let writes = agentControl && gitWrite != nil
+        withGitRepository(grade: grade, head: head, context: context) { gitRead, repository in
+            do {
+                let report = try gitRead.status(of: repository)
+                let data = Self.gitStatusBody(report, toplevel: repository.toplevel, writes: writes)
+                return .success((data, ["ETag": FileEdit.etag(data)]))
+            } catch let failure as GitRead.Failure {
+                return .failure(failure)
+            } catch {
+                return .failure(.failed("\(error)"))
+            }
+        }
+    }
+
+    static func gitStatusBody(_ report: GitStatus.Report, toplevel: String, writes: Bool = false) -> Data {
+        let counts = report.counts
+        var payload: [String: Any] = [
+            "ok": true, "root": toplevel, "ahead": report.ahead, "behind": report.behind,
+            "detached": report.detached, "branches": report.branches, "writes": writes,
+            "files": report.files.map { entry -> [String: Any] in
+                var item: [String: Any] = [
+                    "path": entry.path, "index": String(entry.index), "worktree": String(entry.worktree),
+                    "kind": entry.kind.rawValue,
+                ]
+                if let orig = entry.origPath { item["origPath"] = orig }
+                if let additions = entry.additions { item["additions"] = additions }
+                if let deletions = entry.deletions { item["deletions"] = deletions }
+                return item
+            },
+            "counts": [
+                "changed": counts.changed, "staged": counts.staged, "unstaged": counts.unstaged,
+                "untracked": counts.untracked, "conflicts": counts.conflicts,
+            ],
+        ]
+        if let branch = report.branch { payload["branch"] = branch }
+        if let oid = report.oid { payload["oid"] = oid }
+        if let upstream = report.upstream { payload["upstream"] = upstream }
+        return (try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]))
+            ?? Data(#"{"ok":false,"error":"encoding failed"}"#.utf8)
+    }
+
+    /// `GET /api/git/diff?path=<file>&session=<id>&staged=0|1` — the unified
+    /// diff of one file (`GitRead.diff`): the working tree against the
+    /// index, or with `staged=1` the index against `HEAD`; an untracked
+    /// file as all added; `+a −d` from `--numstat`; cut at 512 KiB with
+    /// `truncated` true. Full grade only.
+    private func serveGitDiff(grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext) {
+        let staged = DaemonServer.queryValue("staged", fromRequestURI: head.uri) == "1"
+        withGitRepository(grade: grade, head: head, context: context) { gitRead, repository in
+            do {
+                let diff = try gitRead.diff(of: repository, staged: staged)
+                var payload: [String: Any] = [
+                    "ok": true, "root": repository.toplevel, "path": repository.relative, "staged": staged,
+                    "untracked": diff.untracked, "binary": diff.binary, "diff": diff.text,
+                    "truncated": diff.truncated,
+                ]
+                if let additions = diff.additions { payload["additions"] = additions }
+                if let deletions = diff.deletions { payload["deletions"] = deletions }
+                let data = (try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]))
+                    ?? Data(#"{"ok":false,"error":"encoding failed"}"#.utf8)
+                return .success((data, [:]))
+            } catch let failure as GitRead.Failure {
+                return .failure(failure)
+            } catch {
+                return .failure(.failed("\(error)"))
+            }
+        }
+    }
+
+    // MARK: - Git writes (`code-editor` round 6)
+
+    /// `POST /api/git/stage|unstage|commit|push|branch` — one git write
+    /// (`GitWrite`) on the repository of the body's `path`, resolved as the
+    /// reads resolve it. The body is `{path, session?, paths?, message?,
+    /// switch?, create?}`: `paths` (relative to the toplevel; the file
+    /// itself when absent) for stage and unstage, `message` for commit,
+    /// `switch` or `create` for branch. Full grade and `--agent-control`
+    /// (a commit runs the repository's hooks as the user, the power of the
+    /// input route), with the save route's `X-Kitterm-Editor: 1` and exact
+    /// `Origin`; 403 with the reason otherwise. 400 for a malformed body,
+    /// an empty message, a bad path or name; 404 outside a repository; 409
+    /// `index.lock is held` (the lock is never deleted), a detached head to
+    /// push or no remote; 502 with the command's first stderr line and its
+    /// last lines; 503 without git. Every attempt past the grade check
+    /// leaves one line in `edits.log` with the kind, the paths or the
+    /// branch, and the status, never the message.
+    private func serveGitWrite(
+        kind: GitWrite.Kind,
+        body: Data,
+        bodyOverflow: Bool,
+        grade: TokenGrade,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let tokenKind = policy.tokenKind(
+            remote: context.channel.remoteAddress, headers: head.headers, uri: head.uri
+        )
+        let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] ?? [:]
+        let requested = json["path"] as? String ?? ""
+        let paths = (json["paths"] as? [Any])?.compactMap { $0 as? String }
+        let branchNamed = (json["switch"] as? String) ?? (json["create"] as? String)
+        let loop = context.eventLoop
+        let boundContext = NIOLoopBound(context, eventLoop: loop)
+        /// The audit line, written where the caller runs (off the loop),
+        /// before the answer goes out, so a reader of the log after the
+        /// answer finds the line.
+        let log: @Sendable (Int, [String]?, String?) -> Void = { status, paths, branch in
+            EditLog.append(EditLog.GitEntry(
+                at: Date(), token: tokenKind, git: kind, paths: paths, branch: branch, status: status
+            ))
+        }
+        // A refusal decided here, before any repository is touched: logged
+        // on the edit queue, then answered on the loop.
+        let refuse: (HTTPResponseStatus, String) -> Void = { status, error in
+            let text = (try? JSONSerialization.data(withJSONObject: ["ok": false, "error": error]))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? #"{"ok":false,"error":"encoding failed"}"#
+            FileEdit.queue.async {
+                log(Int(status.code), paths, branchNamed)
+                loop.execute {
+                    self.writeJSON(status: status, body: text, context: boundContext.value, version: head.version, keepAlive: false)
+                }
+            }
+        }
+        guard agentControl, let gitWrite, let gitRead else {
+            refuse(.forbidden, "agent control disabled; start the daemon with --agent-control")
+            return
+        }
+        guard head.headers["x-kitterm-editor"].first?.trimmingCharacters(in: .whitespaces) == "1" else {
+            refuse(.forbidden, "X-Kitterm-Editor: 1 is required")
+            return
+        }
+        let scheme = cookiesMayBeSecure(head: head, context: context) ? "https" : "http"
+        guard let host = head.headers["host"].first,
+              let origin = head.headers["origin"].first,
+              origin == "\(scheme)://\(host)"
+        else {
+            refuse(.forbidden, "Origin must equal the request's own \(scheme)://<host>")
+            return
+        }
+        guard !bodyOverflow else {
+            refuse(.payloadTooLarge, "body exceeds \(KittermConstants.maxInputBytes) bytes")
+            return
+        }
+        guard !body.isEmpty, (try? JSONSerialization.jsonObject(with: body)) is [String: Any] else {
+            refuse(.badRequest, "body must be a JSON object")
+            return
+        }
+        guard !requested.isEmpty else {
+            refuse(.badRequest, "no path given")
+            return
+        }
+        let message = json["message"] as? String ?? ""
+        let create = json["create"] is String
+        switch kind {
+        case .commit where message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+            refuse(.badRequest, "the message is empty")
+            return
+        case .branch where branchNamed == nil:
+            refuse(.badRequest, "switch or create must name a branch")
+            return
+        default:
+            break
+        }
+        let sessionID = (json["session"] as? String ?? DaemonServer.queryValue("session", fromRequestURI: head.uri))
+            .flatMap(UUID.init(uuidString:))
+        let projects = self.projects
+        typealias Answer = (HTTPResponseStatus, Data)
+        let promise = loop.makePromise(of: Answer.self)
+        let encode: @Sendable ([String: Any]) -> Data = { fields in
+            (try? JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys]))
+                ?? Data(#"{"ok":false,"error":"encoding failed"}"#.utf8)
+        }
+        promise.completeWithTask {
+            let cwd: String? = sessionID == nil
+                ? nil
+                : await self.registry.session(sessionID!)?.liveCwd
+            let path = FileEdit.resolve(requested, base: cwd)
+            let located: Result<GitRead.Repository, GitRead.Failure> = await withCheckedContinuation { continuation in
+                gitRead.resolveQueue.async { continuation.resume(returning: gitRead.repository(for: path, projects: projects)) }
+            }
+            guard case .success(let repository) = located else {
+                let (status, fields) = Self.gitWriteAnswer(kind: kind, created: create, located.map { _ in (GitWrite.Outcome(), nil) }.mapError { $0 as any Error })
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    FileEdit.queue.async {
+                        log(Int(status.code), paths, branchNamed)
+                        continuation.resume()
+                    }
+                }
+                return (status, encode(fields))
+            }
+            return await withCheckedContinuation { continuation in
+                gitRead.queue(for: repository.toplevel).async {
+                    var named: [String]? = paths
+                    let result: Result<(GitWrite.Outcome, [String]?), any Error> = Result {
+                        switch kind {
+                        case .stage:
+                            let list = paths ?? [repository.relative]
+                            named = list
+                            return (try gitWrite.stage(repository, paths: list), list)
+                        case .unstage:
+                            let list = paths ?? [repository.relative]
+                            named = list
+                            return (try gitWrite.unstage(repository, paths: list), list)
+                        case .commit:
+                            return (try gitWrite.commit(repository, message: message), nil)
+                        case .push:
+                            return (try gitWrite.push(repository), nil)
+                        case .branch:
+                            return (try gitWrite.branch(repository, name: branchNamed ?? "", create: create), nil)
+                        }
+                    }
+                    let (status, fields) = Self.gitWriteAnswer(kind: kind, created: create, result)
+                    var branch = branchNamed
+                    if let found = fields["branch"] as? String { branch = found }
+                    let staging = kind == .stage || kind == .unstage
+                    log(Int(status.code), staging ? named : nil, staging ? nil : branch)
+                    continuation.resume(returning: (status, encode(fields)))
+                }
+            }
+        }
+        promise.futureResult.whenComplete { outcome in
+            let context = boundContext.value
+            let (status, data): Answer = (try? outcome.get())
+                ?? (.internalServerError, Data(#"{"ok":false,"error":"the write did not complete"}"#.utf8))
+            var headers = HTTPHeaders()
+            headers.add(name: "Content-Type", value: "application/json")
+            headers.add(name: "Cache-Control", value: "no-store")
+            self.writeBytes(
+                status: status, headers: headers, data: data,
+                context: context, version: head.version, keepAlive: status == .ok && head.isKeepAlive
+            )
+        }
+    }
+
+    /// The status and the JSON fields of one write's outcome: 200 with
+    /// `ok`, the command's `lines` and its facts (`oid`, `branch`,
+    /// `remote`, `paths`), else the refusal with its sentence and, for a
+    /// failed command, the lines it printed.
+    static func gitWriteAnswer(
+        kind: GitWrite.Kind, created: Bool = false, _ result: Result<(GitWrite.Outcome, [String]?), any Error>
+    ) -> (HTTPResponseStatus, [String: Any]) {
+        switch result {
+        case .success((let outcome, let paths)):
+            var fields: [String: Any] = ["ok": true, "lines": outcome.lines]
+            for (name, value) in outcome.fields { fields[name] = value }
+            if let paths { fields["paths"] = paths }
+            if kind == .branch { fields["created"] = created }
+            return (.ok, fields)
+        case .failure(let error):
+            if let read = error as? GitRead.Failure {
+                switch read {
+                case .noProject, .noRepository, .outsideRepository:
+                    return (.notFound, ["ok": false, "error": read.reason])
+                case .gitAbsent:
+                    return (.serviceUnavailable, ["ok": false, "error": read.reason])
+                case .failed:
+                    return (.badGateway, ["ok": false, "error": read.reason])
+                }
+            }
+            guard let failure = error as? GitWrite.Failure else {
+                return (.internalServerError, ["ok": false, "error": "\(error)"])
+            }
+            switch failure {
+            case .refused(let text): return (.badRequest, ["ok": false, "error": text])
+            case .locked: return (.conflict, ["ok": false, "error": failure.reason])
+            case .conflict(let text): return (.conflict, ["ok": false, "error": text])
+            case .gitAbsent: return (.serviceUnavailable, ["ok": false, "error": failure.reason])
+            case .failed(let text, let lines): return (.badGateway, ["ok": false, "error": text, "lines": lines])
+            }
+        }
+    }
+
+    /// `PUT /api/files/content?path=<path>&session=<id>` — replace the bytes
+    /// of one existing regular file inside a project (`FileEdit`). The first
+    /// route that writes outside `~/.kitterm/` (ADR 0005, phase 2a).
+    ///
+    /// Full grade, no `--agent-control`: a person saving their own file in
+    /// their own browser, the drop route's and `PATCH /api/sessions`'s
+    /// argument. Against a cross-site request the route wants two things a
+    /// form or a navigation cannot send: `X-Kitterm-Editor: 1` and an
+    /// `Origin` equal to this request's own scheme and host; it answers no
+    /// CORS header, so a script on another origin reads nothing. `If-Match`
+    /// is required (428): the tag the read gave, so an outside edit answers
+    /// 412 with the current tag and the page can compare. The body is the
+    /// bytes as sent, capped at the read cap (413). Every attempt past the
+    /// grade check leaves one line in `edits.log` (`EditLog`).
+    private func serveFileSave(
+        body: Data,
+        bodyOverflow: Bool,
+        grade: TokenGrade,
+        head: HTTPRequestHead,
+        context: ChannelHandlerContext
+    ) {
+        guard grade == .full else {
+            writeJSON(
+                status: .forbidden,
+                body: #"{"ok":false,"error":"watch-only token"}"#,
+                context: context, version: head.version, keepAlive: false
+            )
+            return
+        }
+        let tokenKind = policy.tokenKind(
+            remote: context.channel.remoteAddress, headers: head.headers, uri: head.uri
+        )
+        let requested = DaemonServer.queryValue("path", fromRequestURI: head.uri) ?? ""
+        let newHash = FileEdit.hashName(body)
+        let bytes = body.count
+        // A refusal decided here, before any file is touched: answered at
+        // once, logged on the edit queue with the path as requested.
+        let refuse: (HTTPResponseStatus, String) -> Void = { status, error in
+            FileEdit.queue.async {
+                EditLog.append(EditLog.Entry(
+                    at: Date(), token: tokenKind, path: requested, bytes: bytes,
+                    oldHash: nil, newHash: newHash, status: Int(status.code)
+                ))
+            }
+            let payload: [String: Any] = ["ok": false, "error": error]
+            let text = (try? JSONSerialization.data(withJSONObject: payload))
+                .flatMap { String(data: $0, encoding: .utf8) }
+                ?? #"{"ok":false,"error":"encoding failed"}"#
+            self.writeJSON(status: status, body: text, context: context, version: head.version, keepAlive: false)
+        }
+        guard head.headers["x-kitterm-editor"].first?.trimmingCharacters(in: .whitespaces) == "1" else {
+            refuse(.forbidden, "X-Kitterm-Editor: 1 is required")
+            return
+        }
+        let scheme = cookiesMayBeSecure(head: head, context: context) ? "https" : "http"
+        guard let host = head.headers["host"].first,
+              let origin = head.headers["origin"].first,
+              origin == "\(scheme)://\(host)"
+        else {
+            refuse(.forbidden, "Origin must equal the request's own \(scheme)://<host>")
+            return
+        }
+        guard !bodyOverflow else {
+            refuse(.payloadTooLarge, "body exceeds \(FileEdit.maxBytes) bytes")
+            return
+        }
+        guard !requested.isEmpty else {
+            refuse(.badRequest, "no path given")
+            return
+        }
+        guard let ifMatch = head.headers["if-match"].first else {
+            refuse(.preconditionRequired, "If-Match is required: the ETag the read gave")
+            return
+        }
+        let sessionID = DaemonServer.queryValue("session", fromRequestURI: head.uri)
+            .flatMap(UUID.init(uuidString:))
+
+        let loop = context.eventLoop
+        let boundContext = NIOLoopBound(context, eventLoop: loop)
+        let projects = self.projects
+        let promise = loop.makePromise(of: (String, Result<FileEdit.Saved, any Error>).self)
+        promise.completeWithTask {
+            let cwd: String? = sessionID == nil
+                ? nil
+                : await self.registry.session(sessionID!)?.liveCwd
+            let path = FileEdit.resolve(requested, base: cwd)
+            // The walk, the hash, the write and the audit line, one after
+            // another on the one edit queue: never on the loop, and never
+            // two saves at once.
+            return await withCheckedContinuation { continuation in
+                FileEdit.queue.async {
+                    let result = Result {
+                        let jail = try FileEdit.jail(for: path, projects: projects)
+                        return try FileEdit.save(
+                            root: jail.root, components: jail.components, ifMatch: ifMatch, data: body
+                        )
+                    }
+                    let (status, _, _) = Self.saveAnswer(result)
+                    let oldHash: String?
+                    switch result {
+                    case .success(let saved): oldHash = FileEdit.bare(saved.previousEtag)
+                    case .failure(let error):
+                        if case FileEdit.Failure.preconditionFailed(let current) = error {
+                            oldHash = current.map(FileEdit.bare)
+                        } else {
+                            oldHash = nil
+                        }
+                    }
+                    EditLog.append(EditLog.Entry(
+                        at: Date(), token: tokenKind, path: path, bytes: bytes,
+                        oldHash: oldHash, newHash: newHash, status: Int(status.code)
+                    ))
+                    continuation.resume(returning: (path, result))
+                }
+            }
+        }
+        promise.futureResult.whenComplete { outcome in
+            let context = boundContext.value
+            guard case .success((let path, let result)) = outcome else {
+                self.writeJSON(
+                    status: .internalServerError,
+                    body: #"{"ok":false,"error":"save failed"}"#,
+                    context: context, version: head.version, keepAlive: false
+                )
+                return
+            }
+            let (status, payload, etag) = Self.saveAnswer(result)
+            var fields = payload
+            fields["path"] = path
+            var headers = HTTPHeaders()
+            headers.add(name: "Content-Type", value: "application/json")
+            headers.add(name: "Cache-Control", value: "no-store")
+            if let etag { headers.add(name: "ETag", value: etag) }
+            let text = (try? JSONSerialization.data(withJSONObject: fields))
+                .flatMap { String(data: $0, encoding: .utf8) }
+                ?? #"{"ok":false,"error":"encoding failed"}"#
+            self.writeBytes(
+                status: status, headers: headers, data: Data(text.utf8),
+                context: context, version: head.version, keepAlive: status == .ok && head.isKeepAlive
+            )
+        }
+    }
+
+    /// The status, the JSON fields and the `ETag` header for a save's
+    /// outcome: 200 with the new tag, 412 with the current one, and the
+    /// refusals of `FileEdit.Failure` with their one sentence.
+    private static func saveAnswer(
+        _ result: Result<FileEdit.Saved, any Error>
+    ) -> (HTTPResponseStatus, [String: Any], String?) {
+        switch result {
+        case .success(let saved):
+            return (.ok, ["ok": true, "etag": saved.etag, "bytes": saved.bytes], saved.etag)
+        case .failure(let error):
+            guard let failure = error as? FileEdit.Failure else {
+                return (.internalServerError, ["ok": false, "error": "\(error)"], nil)
+            }
+            switch failure {
+            case .outsideProject:
+                return (.forbidden, ["ok": false, "error": "outside every project"], nil)
+            case .symlink:
+                return (.forbidden, ["ok": false, "error": "a symlink in the path"], nil)
+            case .gitDirectory:
+                return (.forbidden, ["ok": false, "error": "under .git"], nil)
+            case .notFound:
+                return (.notFound, ["ok": false, "error": "no such file"], nil)
+            case .notRegular:
+                return (.conflict, ["ok": false, "error": "not a regular file"], nil)
+            case .hardLinked:
+                return (.conflict, ["ok": false, "error": "hard-linked file"], nil)
+            case .preconditionFailed(let current):
+                var fields: [String: Any] = ["ok": false, "error": "If-Match does not name the current content"]
+                if let current { fields["etag"] = current }
+                return (.preconditionFailed, fields, current)
+            case .ioFailed(let text):
+                return (.internalServerError, ["ok": false, "error": text], nil)
+            }
         }
     }
 

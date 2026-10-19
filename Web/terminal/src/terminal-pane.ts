@@ -1748,6 +1748,7 @@ export class TerminalPane {
         // A linked `.md` file shown in place keeps the first file's line; the
         // editor opens that file at its top when the path differs.
         onOpenInEditor: (shown) => this.openInEditor(shown, shown === path ? line : undefined),
+        sessionId: this.sessionIdValue ?? undefined,
       },
     );
   }

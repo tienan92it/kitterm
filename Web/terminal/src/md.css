@@ -42,6 +42,26 @@ body {
   color: var(--ui-text-muted);
 }
 
+/* The toggle and `edit` at the right (`code-editor` round 4). */
+.md-page-controls {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  font: 12.5px/1.6 var(--font-mono);
+}
+
+/* The accent as a clipped background, the fleet view's idiom for a run of
+   text that carries a colour, with the underline drawn in the accent too. */
+.md-page-edit {
+  background: var(--ui-accent);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--ui-accent);
+}
+
 /* The column. `ch` is read in the prose font, so the measure is the one
    `--md-measure` names; the padding is rule 9's `$space-5` at 1200 px and
    `$space-4` at 390 px. */

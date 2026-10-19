@@ -777,6 +777,14 @@ body,
   text-decoration: underline;
 }
 
+/* `edit`, the `/edit` page in a new tab, beside `open full width`
+   (`code-editor` round 4). */
+.preview-open-edit {
+  color: var(--ui-accent);
+  font: 12px/1.6 var(--font-ui);
+  text-decoration: underline;
+}
+
 .preview-open-editor {
   padding: 0;
   border: 0;

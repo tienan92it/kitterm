@@ -10,6 +10,19 @@ decision moves to `docs/adr/`.
 
 ## Toolchain
 
+- git sends a hook's stdout to stderr, so a failing hook's first
+  printed line is a git command's first stderr line; on git 2.39
+  `switch --end-of-options -c <name>` refuses (`switch --create <name>`
+  works), and `for-each-ref` takes `--` and `--end-of-options`
+  (2026-10-19, `code-editor` round 6).
+
+- `O_NOFOLLOW_ANY | O_NOFOLLOW` is `EINVAL` on macOS 26.6.2 (`open` and
+  `openat`); `O_NOFOLLOW_ANY` alone refuses a symlink in every
+  component, the last included, and a firmlink (`/Users`,
+  `/private/var`) is not a symlink to it. `URL.standardizedFileURL`
+  rewrites `/private/var/…` to `/var/…` only when the path exists
+  (2026-10-19, `code-editor` round 3).
+
 - xterm.js 6.0.0's DECRQM answer (`requestMode`) throws `ReferenceError: i
   is not defined` in the Vite bundle (not in `lib/xterm.mjs`), and the throw
   ends the parser's write loop: the pane freezes on its last line. Any

@@ -21,6 +21,7 @@ import "./tokens.css";
 import "./styles.css";
 import "./md.css";
 
+import { editPageUrl } from "./file-preview";
 import { resolveFontFamily } from "./fonts";
 import { languageFor } from "./highlight";
 import { fragmentTarget } from "./markdown";
@@ -165,8 +166,10 @@ export async function bootMarkdownPage(
   size.textContent = truncated ? cutHeader(totalBytes, body.size) : formatBytes(totalBytes);
 
   let view: MarkdownView = markdown ? loadView() : "source";
+  const controls = document.createElement("div");
+  controls.className = "md-page-controls";
   if (markdown) {
-    header.append(
+    controls.append(
       viewToggle(view, (choice) => {
         view = choice;
         saveView(choice);
@@ -174,6 +177,17 @@ export async function bootMarkdownPage(
       }),
     );
   }
+  // `edit`: the same file on the `/edit` page (`code-editor` round 4). A
+  // knowledge file is read from a branch's objects, not from a path the
+  // save route could write, so it offers none.
+  if (target.kind === "file") {
+    const edit = document.createElement("a");
+    edit.className = "md-page-edit";
+    edit.textContent = "edit";
+    edit.href = editPageUrl(target.path);
+    controls.append(edit);
+  }
+  if (markdown || target.kind === "file") header.append(controls);
 
   const open = (link: string, fragment: string): void => {
     const next: PageTarget = { ...target, path: resolveRelative(target.path, link) };

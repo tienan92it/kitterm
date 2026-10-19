@@ -68,6 +68,17 @@ export interface PreviewOptions {
    * `$EDITOR`). Without it the header offers no such control: a watch page
    * and the `/md` page have no shell to type into. */
   onOpenInEditor?: (path: string) => void;
+  /** The session the `/edit` page reads the file through, so a relative
+   * path resolves where the shell resolves it. */
+  sessionId?: string;
+}
+
+/** `/edit?path=<file>&session=<id>`: the page that edits the same file
+ * (`code-editor` round 4). */
+export function editPageUrl(path: string, session?: string): string {
+  const params = new URLSearchParams({ path });
+  if (session) params.set("session", session);
+  return `/edit?${params.toString()}`;
 }
 
 /** `/md?path=<file>`: the page that shows the same file full width. */
@@ -143,6 +154,13 @@ export function showPreview(
   openFull.textContent = "open full width";
   openFull.target = "_blank";
   openFull.rel = "noopener";
+  // `edit` beside it: the `/edit` page in a new tab, for a text file the
+  // page can save (`code-editor` round 4, `goal.md` condition 8).
+  const openEdit = document.createElement("a");
+  openEdit.className = "preview-open-edit";
+  openEdit.textContent = "edit";
+  openEdit.target = "_blank";
+  openEdit.rel = "noopener";
   // "open in editor" sits beside the other controls, for the device that
   // has no modifier to click a path link with. A phone opens the preview
   // with a tap and reaches the editor from here.
@@ -162,7 +180,7 @@ export function showPreview(
   close.className = "preview-close";
   close.textContent = "✕";
   close.setAttribute("aria-label", "Close preview");
-  controls.append(toggle, openFull, openInEditor, close);
+  controls.append(toggle, openFull, openEdit, openInEditor, close);
   header.append(heading, controls);
 
   const bodyEl = document.createElement("div");
@@ -245,6 +263,8 @@ export function showPreview(
     if (path !== null) openFull.href = fullWidthUrl(path);
     // A text file only: an image or a PDF has no line to edit.
     openInEditor.hidden = meta.kind !== "text" || path === null || !options.onOpenInEditor;
+    openEdit.hidden = meta.kind !== "text" || path === null;
+    if (path !== null) openEdit.href = editPageUrl(path, options.sessionId);
     render(afterText);
   };
 
@@ -279,6 +299,7 @@ export function showPreview(
     title.textContent = basename(path);
     sub.textContent = "";
     openFull.href = fullWidthUrl(path);
+    openEdit.hidden = true;
     bodyEl.classList.remove("preview-body-rendered");
     bodyEl.replaceChildren(noteLine(cannotRead(path, reason)));
   };

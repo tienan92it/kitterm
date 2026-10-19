@@ -38,6 +38,9 @@ enum FilePreview {
         /// Offer as a download rather than render inline.
         let attachment: Bool
         let filename: String
+        /// The file's permission bits, for the editor's read-only states;
+        /// nil when the stat failed.
+        let mode: Int?
     }
 
     enum PreviewError: Error {
@@ -83,7 +86,9 @@ enum FilePreview {
         }
         defer { try? handle.close() }
 
-        let total = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? nil
+        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+        let total = attributes?[.size] as? Int
+        let mode = attributes?[.posixPermissions] as? Int
         // One byte past the cap, so truncation is known without reading it all.
         let data = (try? handle.read(upToCount: cap + 1)) ?? Data()
         let truncated = data.count > cap
@@ -96,7 +101,7 @@ enum FilePreview {
             return Payload(
                 data: Data(body), contentType: type, kind: kind.rawValue,
                 totalBytes: total ?? body.count, truncated: truncated,
-                attachment: false, filename: name
+                attachment: false, filename: name, mode: mode
             )
         }
 
@@ -108,14 +113,14 @@ enum FilePreview {
             return Payload(
                 data: Data(body), contentType: "text/plain; charset=utf-8", kind: Kind.text.rawValue,
                 totalBytes: total ?? body.count, truncated: truncated,
-                attachment: false, filename: name
+                attachment: false, filename: name, mode: mode
             )
         }
 
         return Payload(
             data: Data(body), contentType: "application/octet-stream", kind: Kind.binary.rawValue,
             totalBytes: total ?? body.count, truncated: truncated,
-            attachment: true, filename: name
+            attachment: true, filename: name, mode: mode
         )
     }
 

@@ -494,6 +494,55 @@ only for such a binary; a `cc`-built or a Homebrew or npm binary of the same
 user is readable. Full grade only; `supported: false` on Linux, where no
 reader exists yet.
 
+### The git reads
+
+`GET /api/git/status?path=&session=` and `GET /api/git/diff?path=&session=&staged=`
+feed the `/edit` page's git tab (`code-editor` round 5, phase 3 of ADR 0005). The
+repository is the one of the file's parent directory, as `git rev-parse
+--show-toplevel` names it (cached a minute per directory), so a file in a worktree
+reads the worktree's own status; it must sit on one chain with the project that
+would jail the file's save (`FileEdit.locate`), and a path outside both is 404.
+`GitRead` runs every command through `KnowledgeBase.run` (its own process group, a
+20 s timeout, no prompt, literal pathspecs) with `--no-optional-locks -c
+core.fsmonitor= -c color.ui=false` before the subcommand, so a poll never takes
+`index.lock` from under an agent's `git commit` and a repository's own config runs
+no program on a plain status; the reads of one repository run on one serial queue,
+never on the loop. The status is `status --porcelain=v2 -z --branch`, parsed by
+`GitStatus.parse` (pure, every record kind, paths with spaces and newlines under
+`-z`), with `+a −d` per file from one `diff --numstat -z HEAD` and an untracked
+file's lines counted by the daemon; an `ETag` over the body answers 304 to the
+page's 3 s poll. The diff is `diff --numstat -p [--cached] -- <path>` (one command
+gives the counts and the patch), `--no-index /dev/null` for an untracked file, cut
+at 512 KiB with `truncated` true. Full grade only, like the file routes. The status
+also lists the local `branches` (round 6) for the page's switcher.
+
+### The git writes
+
+`POST /api/git/stage`, `unstage`, `commit`, `push` and `branch` are the writes of the
+same tab (`GitWrite`, `code-editor` round 6, phase 4 of ADR 0005). The body is JSON
+(`{path, session?, paths?, message?, switch?, create?}`); the repository is resolved
+as the reads resolve it, and the command runs on the repository's serial queue, never
+on the loop. Every command is one of a fixed allowlist with fixed options: `add --
+<paths>`, `restore --staged -- <paths>` (`rm --cached -r --force -- <paths>` in a
+repository with no commit yet), `commit -F -` with the message on stdin and the user's
+global config kept (so the name, the email and the signing key apply, and the
+repository's hooks run; a signing failure is reported, never retried unsigned), `push
+--end-of-options <remote> refs/heads/<branch>:<upstream ref>` or `push --set-upstream
+--end-of-options origin <branch>` with no upstream, never `--force`, and `switch
+--end-of-options <name>` or `switch --create <name>`. A ref goes after
+`--end-of-options`, a path after `--`, and a path or a name that starts with `-`, an
+absolute path, a `..` component, or a branch name `git check-ref-format --branch` does
+not answer unchanged is refused (400) before any `git` runs. A held `index.lock` is 409
+before the command and from git's own error, and the lock is never deleted; a failed
+command is 502 with its first useful stderr line (`git push exited 1: ! [rejected] …`)
+and the last 8 lines it printed; a credential prompt fails fast under the no-prompt
+environment of `KnowledgeBase`; `commit` and `push` get 120 s, the others 20 s. Full
+grade and `--agent-control`, because a commit runs repository code as the user (the
+power of `POST /input`), with the save route's editor header and exact `Origin`; the
+status route's `writes` says whether this daemon takes them. One JSON line per attempt
+past the grade check lands in `~/.kitterm/edits.log` with the kind, the paths or the
+branch, and the status, never the message.
+
 ## Security model
 
 kitterm has no multi-user model. It serves shells as the user who runs it. Anyone who
@@ -538,6 +587,20 @@ can reach it has a shell. The controls below decide who can reach it.
 - **`--agent-control` is a separate switch.** It adds the one write route
   (`POST /input`). Default off. It stops a program from driving your shell; it is not
   about a person dropping a file into their own browser.
+- **The writes outside `~/.kitterm/`.** Every HTTP route that writes to disk writes under
+  `~/.kitterm/`, except `PUT /api/files/content`, the editor's save (ADR 0005, phase 2a),
+  and the five `POST /api/git/*` routes, its git writes (phase 4, round 6), which write
+  a project's repository through `git` alone, at full grade plus `--agent-control`.
+  It writes one existing regular file inside a project. The jail root is the project
+  root of the file's parent directory; every component below it is opened from the
+  root's descriptor with `O_NOFOLLOW_ANY` (`O_NOFOLLOW` on Linux), so a symlink below the
+  root is refused; `.git` is refused by name in any case and by inode; a hard link and a
+  FIFO are refused; the save is a temporary file beside the target and a rename;
+  `If-Match` carries the SHA-256 the read gave as `ETag`, 412 on a mismatch and 428 when
+  missing; `X-Kitterm-Editor: 1` and an `Origin` equal to the request's own scheme and
+  host are required; and one JSON line per attempt lands in `~/.kitterm/edits.log` with
+  the token kind, the path, the size and both hashes, never the content. Full grade
+  only, no `--agent-control`: a person saving their own file in their own browser.
 
 ## Reaching the daemon from a phone
 
@@ -798,9 +861,13 @@ State lives in `~/.kitterm/`. The default port is 3418.
 ├── vapid.json                the VAPID key pair every subscription is bound to (0600)
 ├── takeover/                 live-upgrade handoff, between execv and adoption
 ├── web-root                  the web bundle the running daemon pinned
-└── screen-state.log[.1]      one JSON line per `screen_state` answer (0600,
-                              rotated past 1 MiB, one old file kept); read by
-                              `kitterm screen-state stats`
+├── screen-state.log[.1]      one JSON line per `screen_state` answer (0600,
+│                             rotated past 1 MiB, one old file kept); read by
+│                             `kitterm screen-state stats`
+└── edits.log[.1]             one JSON line per `PUT /api/files/content` and `POST
+                              /api/git/*` attempt (0600, rotated past 1 MiB, one old file
+                              kept): the audit of the routes that write outside this
+                              directory; never the content, never the commit message
 ```
 
 The order is the order `DaemonPaths.swift` declares them.

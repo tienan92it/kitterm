@@ -138,6 +138,21 @@ public struct AccessPolicy: @unchecked Sendable {
         return .reject("missing or invalid token")
     }
 
+    /// What admitted a request the policy already graded, for the edit
+    /// audit log: `loopback` for a trusted local peer, `ephemeral` for the
+    /// run's own control or watch token, `token:<name>` for a named one,
+    /// `unknown` when no token can be read back (a request `decide` would
+    /// have rejected). Never the token itself.
+    public func tokenKind(remote: SocketAddress?, headers: HTTPHeaders, uri: String) -> String {
+        let (host, _) = LoopbackSecurity.hostAndOrigin(from: headers)
+        let viaTrustedHost = host.map(isTrustedHost) ?? false
+        if Self.isLoopback(remote), !viaTrustedHost { return "loopback" }
+        guard let presented = Self.cookieToken(headers) ?? Self.queryToken(uri) else { return "unknown" }
+        if presented == token || presented == watchToken { return "ephemeral" }
+        if let name = namedTokens?.name(of: presented) { return "token:" + name }
+        return "unknown"
+    }
+
     /// Does this `Host` header name one of our configured public hosts?
     func isTrustedHost(_ hostHeader: String) -> Bool {
         guard !trustedHosts.isEmpty else { return false }
