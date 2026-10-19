@@ -1,16 +1,14 @@
 # STATE: code-editor
 
-- Status: active
-- Round: 3 of 4 in this budget (second budget)
-- Rounds total: 5
-- Last floor: green (2026-10-19, round 5 after: swift test 1289, vitest 2091, PR CI on b1d931f)
-- Updated: 2026-10-19, round 5 done
+- Status: done
+- Round: 4 of 4 in this budget (second budget)
+- Rounds total: 6
+- Last floor: green (2026-10-19, round 6 after: swift test 1312, vitest 2104, PR CI on 37932e3)
+- Updated: 2026-10-19, round 6 done; every phase of ADR 0005 is built
 
 ## Queue
 
-1. `git-read` (capability 5), PR #198. It also fixes the `[ ] files`
-   tab that reads unchecked while shown (`rounds/004.md`, Gap).
-3. `git-write` (capability 6), PR #198.
+None.
 
 ## Failures
 
@@ -23,6 +21,8 @@ the three foundation additions, and compare in the editor area.
 
 ## Done
 
+- `git-write`, round 6, PR #198. See `rounds/006.md`. Stage, commit,
+  push and branch from `/edit`, behind `--agent-control`.
 - `git-read`, round 5, PR #198. See `rounds/005.md`. Git status and
   diff, the git tab, tree badges.
 - `edit-page`, round 4, PR #198. See `rounds/004.md`. The `/edit` page
@@ -36,4 +36,6 @@ the three foundation additions, and compare in the editor area.
 
 ## Next action
 
-Round 6: `git-write` from `plan.md` row 6.
+None. The human merges PR #198; the foreman releases, upgrades, and
+edits, saves and commits on the live `/edit`. Reopen with a new
+`goal.md` line.

@@ -10,6 +10,12 @@ decision moves to `docs/adr/`.
 
 ## Toolchain
 
+- git sends a hook's stdout to stderr, so a failing hook's first
+  printed line is a git command's first stderr line; on git 2.39
+  `switch --end-of-options -c <name>` refuses (`switch --create <name>`
+  works), and `for-each-ref` takes `--` and `--end-of-options`
+  (2026-10-19, `code-editor` round 6).
+
 - `O_NOFOLLOW_ANY | O_NOFOLLOW` is `EINVAL` on macOS 26.6.2 (`open` and
   `openat`); `O_NOFOLLOW_ANY` alone refuses a symlink in every
   component, the last included, and a firmlink (`/Users`,
