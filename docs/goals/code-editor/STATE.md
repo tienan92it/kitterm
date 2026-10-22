@@ -1,14 +1,14 @@
 # STATE: code-editor
 
-- Status: done
-- Round: 4 of 4 in this budget (second budget)
+- Status: active
+- Round: 0 of 1 in this budget (third budget, a chore on the done goal)
 - Rounds total: 6
 - Last floor: green (2026-10-19, round 6 after: swift test 1312, vitest 2104, PR CI on 37932e3)
-- Updated: 2026-10-19, round 6 done; every phase of ADR 0005 is built
+- Updated: 2026-10-22, resumed for one round: quick open (`corpus/04-quick-open.md`)
 
 ## Queue
 
-None.
+1. `quick-open` (`corpus/04-quick-open.md`)
 
 ## Failures
 
@@ -36,6 +36,5 @@ the three foundation additions, and compare in the editor area.
 
 ## Next action
 
-None. The human merges PR #198; the foreman releases, upgrades, and
-edits, saves and commits on the live `/edit`. Reopen with a new
-`goal.md` line.
+Round 7: `quick-open`, the three items of `corpus/04-quick-open.md`,
+then `Status: done` again.
