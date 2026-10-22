@@ -31,6 +31,8 @@ export type PaneCommand =
   | { type: "show-help" }
   /** The focused pane becomes an editor, lazygit and a shell in its cwd. */
   | { type: "editor-layout" }
+  /** The `/edit` page at the focused pane's cwd, in a new browser tab. */
+  | { type: "edit-page" }
   /** A path link, clicked with the modifier: open it in the pane's editor. */
   | { type: "open-editor"; path: string; line?: number };
 
@@ -95,6 +97,10 @@ export const matchPaneCommand = (event: ChordEvent, isMac: boolean): PaneCommand
     // ⌘/ — the shortcut list. Bare `?` would be the obvious key and is what
     // every other app uses, but here it is a character the shell must receive.
     if (!event.altKey && key === "/") return { type: "show-help" };
+    // ⌘⇧E — the `/edit` page at this pane's folder, in a new tab. Chrome and
+    // Safari bind nothing to it; Firefox's Network Monitor takes it when the
+    // developer tools own the chord, as Safari's Develop menu takes ⌘⌥E.
+    if (!event.altKey && event.shiftKey && chordLetter(event) === "e") return { type: "edit-page" };
     if (event.altKey && !event.shiftKey) {
       const dir = ARROW_DIRECTIONS[key];
       if (dir) return { type: "navigate", dir };
@@ -130,6 +136,11 @@ export const matchPaneCommand = (event: ChordEvent, isMac: boolean): PaneCommand
     if (chordLetter(event) === "o") return { type: "browse-files" };
     // Ctrl+Shift+Alt+E — the editor layout; Ctrl+Shift+E is the split.
     if (chordLetter(event) === "e") return { type: "editor-layout" };
+    // Ctrl+Shift+Alt+P — the `/edit` page, P for the project it opens.
+    // Ctrl+Shift+E is the split and Ctrl+Shift+Alt+E the layout, so the
+    // mac chord's letter has no free slot here; Chrome, Firefox and GNOME
+    // (which takes Ctrl+Shift+Alt+R for its recorder) leave this one.
+    if (chordLetter(event) === "p") return { type: "edit-page" };
   }
   return null;
 };

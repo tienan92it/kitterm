@@ -19,6 +19,7 @@ import {
   type PaneSession,
 } from "./layout-store";
 import { NotificationCenter, type TerminalNotification } from "./notifications";
+import { paneEditUrl } from "./file-preview";
 import { isMacPlatform, type PaneCommand } from "./pane-keys";
 import {
   countPanes,
@@ -388,6 +389,12 @@ export class TerminalApp implements PaneHost {
         break;
       case "editor-layout":
         this.applyEditorLayout(pane.id);
+        break;
+      case "edit-page":
+        // Synchronous with the gesture, like the new tab. The cwd is the one
+        // the daemon's `cwd` frames keep; before the first one, `.` resolves
+        // against the session's cwd on the daemon.
+        window.open(paneEditUrl(pane.lastCwd, pane.sessionId), "_blank", "noopener");
         break;
       case "open-editor":
         // Beside the pane that showed the path, in its cwd, so a relative
@@ -760,6 +767,10 @@ export class TerminalApp implements PaneHost {
       onCopyWatchLink: () => this.copyWatchLink(),
       onShowHelp: () => this.showIntroCard(),
       onEditorLayout: () => this.applyEditorLayout(this.focusedId),
+      onEditPage: () => {
+        const pane = this.focusedPane;
+        if (pane) this.paneCommand(pane, { type: "edit-page" });
+      },
     });
   }
 

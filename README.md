@@ -38,6 +38,7 @@ A tab is a real shell with a TTY: job control, `Ctrl+C`, and TUIs work locally.
 
 - Close the tab; reattach from any device replays the exact missed bytes.
 - `⌘D` / `⌘⇧D` split a pane; `⌘⌥T` opens a new tab, same directory.
+- `⌘⇧E` opens the pane's folder in `/edit`, the built-in editor with a git tab; `kitterm edit [path]` does the same from a shell.
 - Session profiles in `~/.kitterm/profiles.json` open a named remote shell.
 
 ### Linux

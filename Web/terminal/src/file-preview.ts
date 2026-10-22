@@ -81,6 +81,13 @@ export function editPageUrl(path: string, session?: string): string {
   return `/edit?${params.toString()}`;
 }
 
+/** The `/edit` page for a pane's folder (round 7, the ⌘⇧E chord): the cwd
+ * the daemon's `cwd` frames gave, or `.` before the first one, which the
+ * daemon resolves against the session's cwd, so the session rides along. */
+export function paneEditUrl(cwd: string | null, session: string | null): string {
+  return editPageUrl(cwd ?? ".", session ?? undefined);
+}
+
 /** `/md?path=<file>`: the page that shows the same file full width. */
 export function fullWidthUrl(path: string): string {
   return `/md?path=${encodeURIComponent(path)}`;

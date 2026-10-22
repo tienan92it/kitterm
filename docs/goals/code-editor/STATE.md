@@ -1,10 +1,10 @@
 # STATE: code-editor
 
 - Status: done
-- Round: 4 of 4 in this budget (second budget)
-- Rounds total: 6
-- Last floor: green (2026-10-19, round 6 after: swift test 1312, vitest 2104, PR CI on 37932e3)
-- Updated: 2026-10-19, round 6 done; every phase of ADR 0005 is built
+- Round: 1 of 1 in this budget (third budget, a chore on the done goal)
+- Rounds total: 7
+- Last floor: green (2026-10-22, round 7 after: swift test 1317, vitest 2117, PR CI on 6799475)
+- Updated: 2026-10-22, round 7 done; the goal waits for the human's merge of PR #199
 
 ## Queue
 
@@ -21,6 +21,8 @@ the three foundation additions, and compare in the editor area.
 
 ## Done
 
+- `quick-open`, round 7, PR #199. See `rounds/007.md`. `/edit` on a
+  folder, `kitterm edit`, and ⌘⇧E in a pane.
 - `git-write`, round 6, PR #198. See `rounds/006.md`. Stage, commit,
   push and branch from `/edit`, behind `--agent-control`.
 - `git-read`, round 5, PR #198. See `rounds/005.md`. Git status and
@@ -36,6 +38,4 @@ the three foundation additions, and compare in the editor area.
 
 ## Next action
 
-None. The human merges PR #198; the foreman releases, upgrades, and
-edits, saves and commits on the live `/edit`. Reopen with a new
-`goal.md` line.
+None. The human merges PR #199; the foreman releases and upgrades.

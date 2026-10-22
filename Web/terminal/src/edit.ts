@@ -99,6 +99,7 @@ import {
 import {
   barLine,
   contentUrl,
+  cwdUrl,
   decodeText,
   type DecodedText,
   diskChangeAction,
@@ -118,15 +119,18 @@ import {
   NO_FILE_NAMED,
   NO_PROJECT,
   notSaved,
+  OPEN_FROM_TREE,
+  pageTarget,
   pageTitle,
   projectUrl,
   READ_ONLY_MODEL,
+  readmeIn,
   readOnlyReason,
   reduce,
   stateRun,
   terminalUrl,
 } from "./edit-model";
-import { ancestorsOf, childrenOf, findNode, treeRoot, type TreeNode, triangle, visibleRows } from "./edit-tree";
+import { ancestorsOf, childrenOf, findNode, foldersToOpen, treeRoot, type TreeNode, triangle, visibleRows } from "./edit-tree";
 import { resolveFontFamily } from "./fonts";
 import { trackKeyboardInsets } from "./keyboard-insets";
 import { diffCounts, hunkHeader, type LineDiff, lineDiff } from "./line-diff";
@@ -157,15 +161,6 @@ const highlightStyle = HighlightStyle.define([
   { tag: tags.invalid, class: "tok-error" },
   { tag: [tags.punctuation, tags.operator, tags.bracket, tags.separator, tags.derefOperator], class: "tok-punct" },
 ]);
-
-/** The query: the file and the session, or `null` with no file. */
-export function pageTarget(search: string): { path: string; session: string | null } | null {
-  const params = new URLSearchParams(search);
-  const path = params.get("path");
-  if (path === null || path === "") return null;
-  const session = params.get("session");
-  return { path, session: session === null || session === "" ? null : session };
-}
 
 type Tone = "warning" | "accent" | "success" | "faint" | "danger";
 
@@ -857,8 +852,10 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
   let treeModel: TreeNode | null = null;
 
   const paintTree = (): void => {
-    tree.replaceChildren();
+    // With no tree the panel holds a sentence (`NO_PROJECT`, a refused
+    // project read), which a git repaint must not wipe.
     if (!treeModel) return;
+    tree.replaceChildren();
     for (const { node, depth } of visibleRows(treeModel)) {
       const row = button("edit-row", "", `tree:${node.path}`);
       row.style.setProperty("--depth", String(depth));
@@ -912,19 +909,25 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
   };
 
   const projectAnswer = await readProject(fetchFn, projectUrl(path, session));
+  /** The folder the page opened on (the folder form, round 7), else null. */
+  let folder: string | null = null;
+  const project = projectAnswer.kind === "ok" ? projectAnswer.answer.project : null;
   if (projectAnswer.kind === "ok") {
     path = projectAnswer.answer.path || path;
-    const named = headerName(projectAnswer.answer.project, path);
+    if (projectAnswer.answer.kind === "directory") folder = path;
+    const named = headerName(project, path);
     projectName.textContent = named.project ?? "";
-    separator.hidden = named.project === null;
+    separator.hidden = named.project === null || named.path === "";
     namePath(named.path);
     pathName.title = path;
-    terminalLink.href = terminalUrl(path);
-    if (projectAnswer.answer.project) {
-      const { root: projectRoot, name: projectLabel } = projectAnswer.answer.project;
+    terminalLink.href = folder === null ? terminalUrl(path) : cwdUrl(folder);
+    if (project) {
+      const { root: projectRoot, name: projectLabel } = project;
       treeModel = treeRoot(projectRoot, projectLabel);
-      // The open file's folders listed and open, so its row shows.
-      for (const directory of ancestorsOf(projectRoot, path)) {
+      // The open file's folders listed and open, so its row shows; on a
+      // folder page the folder itself too, so its entries show.
+      const toOpen = folder === null ? ancestorsOf(projectRoot, path) : foldersToOpen(projectRoot, folder);
+      for (const directory of toOpen) {
         const node = findNode(treeModel, directory);
         if (!node) break;
         node.open = true;
@@ -938,6 +941,30 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
     tree.replaceChildren(el("p", "edit-note", cannotRead(path, projectAnswer.reason)));
   }
   void pollGit();
+
+  // --- the folder form (round 7, `corpus/04-quick-open.md` item 1) ----------
+  // A folder opens its `README.md` when it holds one, by name regardless of
+  // case; else the tree stands alone, open down to the folder, and the
+  // editor area says where to go. The title is the folder's name.
+  if (folder !== null) {
+    const node = treeModel ? findNode(treeModel, folder) : null;
+    const readme = node?.children ? readmeIn(folder, node.children) : null;
+    if (readme === null) {
+      editorHost.replaceChildren(el("p", "edit-note", OPEN_FROM_TREE));
+      paint();
+      // Nothing is open, so nothing saves; the buffer is not read only either.
+      saveButton.disabled = true;
+      keySave.disabled = true;
+      return;
+    }
+    path = readme;
+    const readmeName = basename(readme);
+    const named = headerName(project && { name: project.name, relative: project.relative ? `${project.relative}/${readmeName}` : readmeName }, readme);
+    separator.hidden = named.project === null;
+    namePath(named.path);
+    pathName.title = path;
+    paintTree();
+  }
 
   // --- the read -----------------------------------------------------------
   const read = await readFile(fetchFn, contentUrl(path, session));

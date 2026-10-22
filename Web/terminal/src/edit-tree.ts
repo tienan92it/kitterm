@@ -72,6 +72,18 @@ export function ancestorsOf(root: string, file: string): string[] {
   return out;
 }
 
+/**
+ * The directories, root first, to open and list so that `folder` shows
+ * open with its own entries (the folder form of `/edit`, round 7): its
+ * ancestors under the root, then the folder itself; the root alone for the
+ * root. Empty for a folder outside the root.
+ */
+export function foldersToOpen(root: string, folder: string): string[] {
+  if (folder === root) return [root];
+  const above = ancestorsOf(root, folder);
+  return above.length === 0 ? [] : [...above, folder];
+}
+
 export interface TreeRow {
   node: TreeNode;
   /** 0 for the root. */
