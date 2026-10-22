@@ -39,6 +39,8 @@ enum KittermMain {
                 try restart(args.dropFirst())
             case "open":
                 try openShell(at: args.dropFirst().first(where: { !$0.hasPrefix("-") }))
+            case "edit":
+                try editInBrowser(at: args.dropFirst().first(where: { !$0.hasPrefix("-") }))
             case "service":
                 try service(args.dropFirst())
             case "upgrade", "update":
@@ -182,6 +184,7 @@ enum KittermMain {
               kitterm status
               kitterm restart [same flags as start]
               kitterm open [PATH]     # browser shell in PATH (default: cwd)
+              kitterm edit [PATH]     # the editor page for a file or a folder (default: cwd)
               kitterm service install [same flags as start]
               kitterm service uninstall | status
               kitterm service sync    # rewrite the plist from this build, no restart
@@ -766,6 +769,27 @@ enum KittermMain {
         process.arguments = [url]
         try process.run()
         print("opened \(url)")
+    }
+
+    /// `kitterm edit [path]` — the `/edit` page for a file or a folder
+    /// (`code-editor` round 7). The path resolves as `open` resolves one,
+    /// must exist, the daemon starts when none runs, as for `open`, and the
+    /// browser opens on `EditCommand.url`; with no opener the URL is printed.
+    private static func editInBrowser(at rawPath: String?) throws {
+        let fm = FileManager.default
+        let path = try EditCommand.existing(
+            EditCommand.resolve(rawPath, cwd: fm.currentDirectoryPath, home: fm.homeDirectoryForCurrentUser.path)
+        )
+        let port = readPort() ?? KittermConstants.defaultPort
+        if livePid() == nil {
+            try start(port, flags: DaemonFlags(), openBrowser: false)
+        }
+        let url = EditCommand.url(port: port, path: path)
+        if EditCommand.openInBrowser(url) {
+            print("opened \(url)")
+        } else {
+            print(url)
+        }
     }
 
     /// Opens the browser client when a built web UI is available. Best-effort; never fails start.
@@ -1720,6 +1744,7 @@ enum CLIError: Error, LocalizedError {
     case daemonExited
     case portInUse(port: Int, occupant: String)
     case notADirectory(path: String)
+    case noSuchPath(path: String)
     case serviceFailed(action: String, detail: String)
     case upgradeUnavailable(detail: String)
     case upgradeFailed(detail: String)
@@ -1738,6 +1763,8 @@ enum CLIError: Error, LocalizedError {
             """
         case .notADirectory(let path):
             return "not a directory: \(path)"
+        case .noSuchPath(let path):
+            return "no such file or directory: \(path)"
         case .upgradeUnavailable(let detail):
             return "cannot upgrade: \(detail)"
         case .upgradeFailed(let detail):

@@ -4469,10 +4469,13 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// (lexically, `~` and the session's cwd), and the project that holds it
     /// by the save route's own rule (`FileEdit.jail`: the project of the
     /// parent's real path, the nearest checkout or registered root). Answers
-    /// `{ok, path, project {id, name, root, relative}}`, where `relative` is
-    /// the file's path under the root as the walk sees it, or `{ok, path}`
-    /// alone for a file under no project, so the page says so and still
-    /// shows the file. 404 when the parent directory does not exist. Full
+    /// `{ok, path, kind, project {id, name, root, relative}}`, where `kind`
+    /// is `file` or `directory` and `relative` is the file's path under the
+    /// root as the walk sees it, or `{ok, path, kind}` alone for a file
+    /// under no project, so the page says so and still shows the file. A
+    /// directory (the folder form of `/edit`, round 7) is located by itself,
+    /// `FileEdit.locateDirectory`, so a checkout's root is its own project
+    /// with `relative` `""`. 404 when the parent directory does not exist. Full
     /// grade, like the listing; the resolution runs on the edit queue, off
     /// the loop, because `realpath` and the store's `.git` walk touch the
     /// disk.
@@ -4503,7 +4506,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         let loop = context.eventLoop
         let boundContext = NIOLoopBound(context, eventLoop: loop)
         let projects = self.projects
-        let promise = loop.makePromise(of: (String, FileEdit.Located?)?.self)
+        let promise = loop.makePromise(of: (String, String, FileEdit.Located?)?.self)
         promise.completeWithTask {
             let cwd: String? = sessionID == nil
                 ? nil
@@ -4511,17 +4514,23 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             let path = FileEdit.resolve(requested, base: cwd)
             return await withCheckedContinuation { continuation in
                 FileEdit.queue.async {
+                    // A directory is located by itself (the folder form of
+                    // `/edit`, round 7); a file by its parent, as the save is.
+                    if let directory = FileEdit.locateDirectory(path, projects: projects) {
+                        continuation.resume(returning: (path, "directory", directory.project))
+                        return
+                    }
                     guard let located = FileEdit.locate(path, projects: projects) else {
                         continuation.resume(returning: nil)
                         return
                     }
-                    continuation.resume(returning: (path, located.project))
+                    continuation.resume(returning: (path, "file", located.project))
                 }
             }
         }
         promise.futureResult.whenComplete { result in
             let context = boundContext.value
-            guard case .success(.some((let path, let located))) = result else {
+            guard case .success(.some((let path, let kind, let located))) = result else {
                 self.writeJSON(
                     status: .notFound,
                     body: #"{"ok":false,"error":"no such directory"}"#,
@@ -4529,7 +4538,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 )
                 return
             }
-            var payload: [String: Any] = ["ok": true, "path": path]
+            var payload: [String: Any] = ["ok": true, "path": path, "kind": kind]
             if let located {
                 payload["project"] = [
                     "id": located.id, "name": located.name, "root": located.root,

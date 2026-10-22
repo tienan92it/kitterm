@@ -118,6 +118,8 @@ export const CHANGED_ON_DISK = "Changed on disk since you opened it.";
 export const NOT_SAVED = "Not saved: changed on disk since you opened it.";
 export const NO_PROJECT = "No project here: open /edit from a shell inside a checkout.";
 export const NO_FILE_NAMED = "No file named. Open /edit?path=<file>&session=<id>.";
+/** The editor area of a folder that holds no `README.md` (round 7). */
+export const OPEN_FROM_TREE = "Open a file from the tree.";
 
 /** The bar's sentence and mark for a kind, `null` with no bar. */
 export function barLine(bar: BarKind): { mark: string; tone: "warning" | "danger"; text: string } | null {
@@ -129,6 +131,18 @@ export function barLine(bar: BarKind): { mark: string; tone: "warning" | "danger
 /** `src is empty.` under a folder with nothing in it. */
 export function emptyFolder(name: string): string {
   return `${name} is empty.`;
+}
+
+/**
+ * The folder form of `/edit` (`corpus/04-quick-open.md` item 1): the
+ * `README.md` the page opens in place of the empty state, by name
+ * regardless of case, the first one in the listing's order; `null` when
+ * the folder holds none. A folder named `readme.md` is not one.
+ */
+export function readmeIn(folder: string, entries: readonly { name: string; dir: boolean }[]): string | null {
+  const hit = entries.find((entry) => !entry.dir && entry.name.toLowerCase() === "readme.md");
+  if (!hit) return null;
+  return folder === "/" ? `/${hit.name}` : `${folder}/${hit.name}`;
 }
 
 /** A save the daemon refused for a reason that is not the content: the
@@ -232,13 +246,25 @@ export function headerFacts(language: string | null, decoded: { lineEnding: Line
 }
 
 /** The header's name: the project and the path under its root, or the
- * path alone (under the home directory as `~/…`) with no project. */
+ * path alone (under the home directory as `~/…`) with no project. A
+ * project's own root (the folder form, round 7) is the project alone,
+ * `path` empty. */
 export function headerName(project: { name: string; relative: string } | null, path: string): { project: string | null; path: string } {
   if (project) return { project: project.name, path: project.relative };
   return { project: null, path: homePath(path) };
 }
 
 // MARK: - URLs
+
+/** The query: the path (a file, or a folder since round 7) and the
+ * session, or `null` with no path. */
+export function pageTarget(search: string): { path: string; session: string | null } | null {
+  const params = new URLSearchParams(search);
+  const path = params.get("path");
+  if (path === null || path === "") return null;
+  const session = params.get("session");
+  return { path, session: session === null || session === "" ? null : session };
+}
 
 /** `/edit?path=<file>&session=<id>`, the page's own URL for a file. */
 export function editUrl(path: string, session: string | null = null): string {
@@ -249,7 +275,11 @@ export function editUrl(path: string, session: string | null = null): string {
 
 /** `/?cwd=<the file's directory>`: `open in terminal`. */
 export function terminalUrl(path: string): string {
-  const directory = path.slice(0, path.lastIndexOf("/")) || "/";
+  return cwdUrl(path.slice(0, path.lastIndexOf("/")) || "/");
+}
+
+/** `/?cwd=<directory>`: `open in terminal` on a folder page (round 7). */
+export function cwdUrl(directory: string): string {
   return `/?cwd=${encodeURIComponent(directory)}`;
 }
 

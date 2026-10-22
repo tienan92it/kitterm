@@ -199,6 +199,32 @@ public enum FileEdit {
         ))
     }
 
+    /// Where a directory sits, for the folder form of `/edit` (`code-editor`
+    /// round 7): the project of the directory's own real path, not its
+    /// parent's, so the root of a checkout is its own project, and the
+    /// components below the root joined, `src`, or `""` at the root. nil
+    /// when `path` is no directory; `project` nil under no project.
+    /// Blocking like `locate`: the caller runs it off the loop.
+    public static func locateDirectory(_ path: String, projects: ProjectStore) -> Location? {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue,
+              let real = realPath(path)
+        else { return nil }
+        guard let project = projects.resolve(cwd: real), let root = project.root else { return Location(project: nil) }
+        // The shortest ancestor of the lexical path, the path itself
+        // included, whose real path is the root, as `jail` picks it.
+        var ancestor = path
+        var match: String?
+        while true {
+            if realPath(ancestor) == root { match = ancestor }
+            if ancestor == "/" || ancestor.isEmpty { break }
+            ancestor = (ancestor as NSString).deletingLastPathComponent
+        }
+        guard let match else { return Location(project: nil) }
+        let relative = components(of: path, under: match)?.joined(separator: "/") ?? ""
+        return Location(project: Located(id: project.id, name: project.name, root: root, relative: relative))
+    }
+
     /// `realpath(3)`, or nil when the path names nothing.
     static func realPath(_ path: String) -> String? {
         var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))

@@ -106,6 +106,20 @@ public final class GitRead: @unchecked Sendable {
     /// The repository of the lexical `path`, by the rules above. Blocking:
     /// the caller runs it on `resolveQueue`.
     public func repository(for path: String, projects: ProjectStore) -> Result<Repository, Failure> {
+        // A directory is its own parent (the folder form of `/edit`, round
+        // 7): its repository, with its path under the toplevel as `relative`,
+        // `""` at the root, which `status` reads whole and `diff` never asks.
+        if let location = FileEdit.locateDirectory(path, projects: projects) {
+            guard let project = location.project else { return .failure(.noProject) }
+            guard let real = FileEdit.realPath(path), let toplevel = toplevel(of: real) else {
+                return .failure(.noRepository)
+            }
+            guard toplevel == project.root || ProjectStore.isPrefix(toplevel, of: project.root)
+                || ProjectStore.isPrefix(project.root, of: toplevel)
+            else { return .failure(.outsideRepository) }
+            let parts = FileEdit.components(of: real, under: toplevel) ?? []
+            return .success(Repository(toplevel: toplevel, relative: parts.joined(separator: "/")))
+        }
         guard let location = FileEdit.locate(path, projects: projects), let project = location.project else {
             return .failure(.noProject)
         }

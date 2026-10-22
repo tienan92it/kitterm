@@ -28,6 +28,8 @@ export type SettingsPanelCallbacks = {
   onShowHelp: () => void;
   /** Lay the focused pane out as an editor, lazygit and a shell. */
   onEditorLayout: () => void;
+  /** Open the `/edit` page at the focused pane's folder, in a new tab. */
+  onEditPage: () => void;
 };
 
 export class SettingsPanel {
@@ -143,6 +145,7 @@ export class SettingsPanel {
       </div>
       <div class="settings-share">
         <button type="button" id="settings-editor-layout" title="Split the focused pane into $EDITOR (micro), lazygit and a shell, all in its folder">⌸ Editor, lazygit and a shell</button>
+        <button type="button" id="settings-edit-page" title="Open the /edit page at the focused pane's folder in a new tab (⌘⇧E on a Mac, Ctrl+Shift+Alt+P elsewhere)">▤ Open this folder in /edit</button>
       </div>
       <div class="settings-about" id="settings-about" hidden>
         <span id="settings-version"></span>
@@ -182,6 +185,11 @@ export class SettingsPanel {
       // Close first, so the new panes take the focus the panel held.
       this.close();
       this.callbacks.onEditorLayout();
+    });
+    this.dialog.querySelector("#settings-edit-page")?.addEventListener("click", () => {
+      // Inside the click, so the browser lets the new tab open.
+      this.close();
+      this.callbacks.onEditPage();
     });
 
     if (this.tabTitleInput) {

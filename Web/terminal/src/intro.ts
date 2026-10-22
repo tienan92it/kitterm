@@ -86,6 +86,7 @@ export const introSections = (isMac: boolean, touch: boolean): IntroSection[] =>
         { keys: "⌘⌥W", what: "Close this pane" },
         { keys: "⌘⌥T", what: "New tab" },
         { keys: "⌘⌥E", what: "Editor, lazygit and a shell in this folder" },
+        { keys: "⌘⇧E", what: "Open this folder in /edit, a new tab" },
       ]
     : [
         { keys: "Ctrl+Shift+D", what: "Split right" },
@@ -94,6 +95,7 @@ export const introSections = (isMac: boolean, touch: boolean): IntroSection[] =>
         { keys: "Ctrl+Shift+Alt+W", what: "Close this pane" },
         { keys: "Ctrl+Shift+Alt+T", what: "New tab" },
         { keys: "Ctrl+Shift+Alt+E", what: "Editor, lazygit and a shell in this folder" },
+        { keys: "Ctrl+Shift+Alt+P", what: "Open this folder in /edit, a new tab" },
       ];
 
   const inThePane: IntroRow[] = isMac

@@ -105,6 +105,9 @@ export async function saveFile(fetch: Fetch, url: string, bytes: Uint8Array, ifM
 
 export interface ProjectAnswer {
   path: string;
+  /** `directory` when the path is a folder (round 7), which opens the tree
+   * in place of the editor; absent for a file, as before round 7. */
+  kind?: "directory";
   project: { id: string; name: string; root: string; relative: string } | null;
 }
 
@@ -122,12 +125,13 @@ export async function readProject(
   if (!response.ok) {
     return { kind: "error", status: response.status, reason: daemonAnswered(response.status, await errorWord(response)) };
   }
-  const body = (await response.json()) as { path?: unknown; project?: unknown };
+  const body = (await response.json()) as { path?: unknown; kind?: unknown; project?: unknown };
   const project = body.project as ProjectAnswer["project"] | undefined;
   return {
     kind: "ok",
     answer: {
       path: typeof body.path === "string" ? body.path : "",
+      ...(body.kind === "directory" ? { kind: "directory" as const } : {}),
       project:
         project && typeof project === "object" && typeof project.root === "string"
           ? { id: String(project.id), name: String(project.name), root: project.root, relative: String(project.relative ?? "") }
