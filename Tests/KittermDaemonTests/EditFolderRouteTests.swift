@@ -94,22 +94,30 @@ final class EditFolderRouteTests: XCTestCase {
         var project: [String: Any]? { json["project"] as? [String: Any] }
     }
 
+    /// The reply of one request, in a box the Linux toolchain lets a
+    /// `@Sendable` closure write (`facts.md`); read after the semaphore.
+    private final class Reply: @unchecked Sendable {
+        var status = 0
+        var body = Data()
+        var failure: String?
+    }
+
     /// One plain GET; the routes under test take no conditional header.
     private func get(_ route: String, path: String) throws -> Answer {
         let encoded = path.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? path
         let url = try XCTUnwrap(URL(string: "http://127.0.0.1:\(port!)\(route)?path=\(encoded)"))
-        let done = expectation(description: route)
-        var answer = Answer(status: 0, json: [:])
-        let task = URLSession.shared.dataTask(with: url) { data, response, error in
-            XCTAssertNil(error)
-            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            let json = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
-            answer = Answer(status: status, json: json)
-            done.fulfill()
-        }
-        task.resume()
-        wait(for: [done], timeout: 10)
-        return answer
+        let reply = Reply()
+        let done = DispatchSemaphore(value: 0)
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            reply.failure = error?.localizedDescription
+            reply.status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            reply.body = data ?? Data()
+            done.signal()
+        }.resume()
+        XCTAssertEqual(done.wait(timeout: .now() + 10), .success, "no answer to \(route)")
+        XCTAssertNil(reply.failure)
+        let json = (try? JSONSerialization.jsonObject(with: reply.body) as? [String: Any]) ?? [:]
+        return Answer(status: reply.status, json: json)
     }
 
     func testTheProjectRouteLocatesADirectoryByItself() throws {
