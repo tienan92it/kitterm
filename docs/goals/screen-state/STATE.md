@@ -8,7 +8,7 @@
 
 ## Queue
 
-1. `unknown-capture` (capability 5)
+1. `unknown-capture` (capability 5), PR #200.
 
 ## Failures
 
