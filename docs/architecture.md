@@ -30,7 +30,11 @@ The design holds three properties.
   rules over that render and the session's `foregroundProgram` and answers one of
   eight states (`prompt-empty`, `working`, `trust-dialog`, and so on) with no
   further daemon call; it logs each answer to `~/.kitterm/screen-state.log`,
-  which `kitterm screen-state stats` reads.
+  which `kitterm screen-state stats` reads. With `kitterm screen-state capture
+  on` it also keeps the rendered screen of each `unknown` answer under
+  `~/.kitterm/screen-unknown/` (0600, 50 files and 2 MiB at most, local only),
+  which `kitterm screen-state samples` lists and prints, so the missing rules
+  can be written from real screens.
 - **Durability by design.** Every output byte flows through a 4 MiB ring
   (`SessionLog`) with absolute stream offsets. A reconnect replays the exact bytes the
   client missed. State lives in `~/.kitterm/`, so a restart restores each pane.
@@ -864,6 +868,14 @@ State lives in `~/.kitterm/`. The default port is 3418.
 ├── screen-state.log[.1]      one JSON line per `screen_state` answer (0600,
 │                             rotated past 1 MiB, one old file kept); read by
 │                             `kitterm screen-state stats`
+├── screen-state.json         `{"captureUnknown": true|false}`, the switch of the
+│                             unknown capture (0600; `kitterm screen-state capture`)
+├── screen-unknown/<time>-<session>.txt
+│                             the rendered screen of each `unknown` answer while the
+│                             capture is on (the directory 0700, each file 0600, at
+│                             most 50 files and 2 MiB, the oldest removed first);
+│                             never sent anywhere, a screen can hold a secret; read by
+│                             `kitterm screen-state samples`
 └── edits.log[.1]             one JSON line per `PUT /api/files/content` and `POST
                               /api/git/*` attempt (0600, rotated past 1 MiB, one old file
                               kept): the audit of the routes that write outside this

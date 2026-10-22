@@ -1,14 +1,14 @@
 # STATE: screen-state
 
 - Status: waiting
-- Round: 3 of 3 in this budget (first budget)
-- Rounds total: 3
-- Last floor: green (2026-10-07, round 3 after: swift test 1185, PR CI on aa8b831)
-- Updated: 2026-10-07, direction check: merge capabilities 1 to 3, measure, then decide capability 4
+- Round: 1 of 1 in this budget (second budget)
+- Rounds total: 4
+- Last floor: green (2026-10-22, round 4 after: swift test 1344, PR CI on 40d045b)
+- Updated: 2026-10-22, round 4 done; the capture waits for the human's word and a re-measure
 
 ## Queue
 
-1. `clef-fallback` (capability 4)
+None.
 
 ## Failures
 
@@ -16,12 +16,13 @@ None.
 
 ## Proposals waiting on the human
 
-- Decide capability 4 (`clef-fallback`) on or after 2026-10-21, with the
-  `unknown` share that `kitterm screen-state stats --days 14` prints.
-  2026-10-07: the human chose to merge capabilities 1 to 3 first.
+None. 2026-10-22: the human chose no Clef and a local capture of
+`unknown` screens (`corpus/02-clef-decision.md`).
 
 ## Done
 
+- `unknown-capture`, round 4, PR #200. See `rounds/004.md`. An opt-in
+  local capture of `unknown` screens.
 - `screen-count`, round 3, PR #187. See `rounds/003.md`. Each answer is
   counted in `~/.kitterm/screen-state.log`, `kitterm screen-state stats`
   prints the count, and the skill calls `screen_state` first.
@@ -33,7 +34,7 @@ None.
 
 ## Next action
 
-The human merges PR #187 (capabilities 1 to 3). On or after 2026-10-21,
-the foreman runs `kitterm screen-state stats --days 14` and brings the
-`unknown` share to the human, who decides capability 4. The goal stays
-`waiting` until then.
+The human merges PR #200; the capture stays off until the human turns
+it on (`kitterm screen-state capture on`). On or after 2026-11-05, the
+foreman runs `kitterm screen-state stats --days 14` and `samples`, and
+proposes the missing rules as a round.

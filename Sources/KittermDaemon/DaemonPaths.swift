@@ -171,6 +171,25 @@ public enum DaemonPaths: Sendable {
         stateDirectory.appendingPathComponent("screen-state.log")
     }
 
+    /// The `screen_state` settings (`ScreenStateCapture.Settings`, in
+    /// `KittermCLI`): `{"captureUnknown": true}` turns the local capture of
+    /// `unknown` screens on. `0600`; off when the file is missing or
+    /// unreadable. Written by `kitterm screen-state capture on|off`.
+    public static var screenStateSettingsFile: URL {
+        stateDirectory.appendingPathComponent("screen-state.json")
+    }
+
+    /// One file per `unknown` answer while the capture is on
+    /// (`ScreenStateCapture`): the rendered screen text the rules saw, under
+    /// a short header, as `<time>-<session>.txt`. The directory is `0700`,
+    /// each file `0600`, at most 50 files and 2 MiB together, the oldest
+    /// removed first. Nothing here ever leaves the machine; a screen can
+    /// hold a secret the pane showed. `kitterm screen-state samples` reads
+    /// it.
+    public static var screenUnknownDirectory: URL {
+        stateDirectory.appendingPathComponent("screen-unknown", isDirectory: true)
+    }
+
     /// One JSON line per `PUT /api/files/content` attempt (`EditLog`),
     /// `0600`, bounded at 1 MiB with one rotated file kept as
     /// `edits.log.1`: the audit of the one route that writes outside this

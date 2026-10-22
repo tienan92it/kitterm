@@ -213,6 +213,12 @@ enum KittermMain {
               kitterm screen-state stats [--days N] [--json]
                                       # count per state and the unknown share from
                                       # ~/.kitterm/screen-state.log, no daemon needed
+              kitterm screen-state capture on|off|status
+                                      # keep each unknown screen in
+                                      # ~/.kitterm/screen-unknown/ (local only, 0600)
+              kitterm screen-state samples [--print N] [--json] [--clear]
+                                      # list the captured screens, print one, or
+                                      # remove them all
               kitterm foreman catch-up [--scope PATH] [--json]
                                       # what a new foreman reads first, for one
                                       # scope (default: the working directory)

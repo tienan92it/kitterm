@@ -7,12 +7,33 @@ import KittermScreen
 /// as `ScreenReport` (ADR 0001: the bridge renders, the daemon never does),
 /// then hands the lines and the cursor to the pure rules.
 enum ScreenStateReport {
+    /// The tool's answer with what made it: the JSON text that goes out,
+    /// the rules' result, and the rendered lines and size the rules read,
+    /// so the bridge can capture an `unknown` screen without a second
+    /// render (`ScreenStateCapture`).
+    struct Answer {
+        let text: String
+        let result: ScreenState.Result
+        let lines: [String]
+        let cols: Int
+        let rows: Int
+    }
+
     static func text(
         data: Data,
         headers: [String: String],
         options: MCPTools.ScreenOptions,
         foregroundProgram: String?
     ) throws -> String {
+        try answer(data: data, headers: headers, options: options, foregroundProgram: foregroundProgram).text
+    }
+
+    static func answer(
+        data: Data,
+        headers: [String: String],
+        options: MCPTools.ScreenOptions,
+        foregroundProgram: String?
+    ) throws -> Answer {
         guard let cols = options.cols ?? ScreenReport.header("x-kitterm-cols", in: headers).flatMap({ Int($0) }),
               let rows = options.rows ?? ScreenReport.header("x-kitterm-rows", in: headers).flatMap({ Int($0) })
         else {
@@ -38,7 +59,10 @@ enum ScreenStateReport {
         let json = try JSONSerialization.data(
             withJSONObject: payload, options: [.withoutEscapingSlashes, .sortedKeys]
         )
-        return String(decoding: json, as: UTF8.self)
+        return Answer(
+            text: String(decoding: json, as: UTF8.self),
+            result: result, lines: lines, cols: cols, rows: rows
+        )
     }
 
     private static let versionPattern: NSRegularExpression = {
