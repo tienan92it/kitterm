@@ -89,9 +89,12 @@ enum ScreenStateStats {
         return lines.joined(separator: "\n")
     }
 
-    static func json(for summary: Summary) -> String {
+    /// `samples` and `captureOn` are the capture's facts (`ScreenStateCapture`),
+    /// printed as `samples` and `captureUnknown`; the command passes them, a
+    /// caller with no capture leaves them out.
+    static func json(for summary: Summary, samples: Int? = nil, captureOn: Bool? = nil) -> String {
         let formatter = ScreenStateLog.isoFormatter()
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "ok": true,
             "days": summary.window.days,
             "from": formatter.string(from: summary.window.from),
@@ -100,6 +103,8 @@ enum ScreenStateStats {
             "unknownSharePercent": summary.unknownSharePercent,
             "counts": summary.counts,
         ]
+        if let samples { payload["samples"] = samples }
+        if let captureOn { payload["captureUnknown"] = captureOn }
         guard let data = try? JSONSerialization.data(
             withJSONObject: payload, options: [.withoutEscapingSlashes, .sortedKeys]
         ) else { return "{}" }

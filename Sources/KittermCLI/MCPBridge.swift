@@ -171,11 +171,14 @@ enum MCPBridge {
                 return
             }
             do {
-                let text = try ScreenStateReport.text(
+                let answer = try ScreenStateReport.answer(
                     data: data, headers: headers, options: screenOptions, foregroundProgram: foregroundProgram
                 )
-                respond(id: id, result: toolResult(text: text, isError: false))
-                logScreenState(session: arguments["session"] as? String, answer: text)
+                respond(id: id, result: toolResult(text: answer.text, isError: false))
+                logScreenState(session: arguments["session"] as? String, answer: answer.text)
+                captureUnknownScreen(
+                    session: arguments["session"] as? String, answer: answer, foregroundProgram: foregroundProgram
+                )
             } catch {
                 respond(
                     id: id,
@@ -206,6 +209,23 @@ enum MCPBridge {
               let rule = object["rule"] as? String
         else { return }
         ScreenStateLog.append(session: session, state: state, rule: rule)
+    }
+
+    /// Write the rendered screen of an `unknown` answer to
+    /// `~/.kitterm/screen-unknown/` when `kitterm screen-state capture on`
+    /// turned the capture on (`ScreenStateCapture`). After the response and
+    /// the log line, and every error swallowed, so the answer that went out
+    /// is never changed or delayed by a write. A known state writes nothing.
+    private static func captureUnknownScreen(
+        session: String?, answer: ScreenStateReport.Answer, foregroundProgram: String?
+    ) {
+        guard let session, answer.result.state == .unknown else { return }
+        ScreenStateCapture.capture(
+            ScreenStateCapture.Sample(
+                at: Date(), session: session, state: answer.result.state, rule: answer.result.rule,
+                foregroundProgram: foregroundProgram, cols: answer.cols, rows: answer.rows, lines: answer.lines
+            )
+        )
     }
 
     // MARK: - JSON-RPC framing
