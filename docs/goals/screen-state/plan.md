@@ -30,3 +30,11 @@ pull request.
 Capability 2 depends on 1, 3 on 2, 4 on 2. Three rounds run before the
 direction check; capability 4 runs after it, and the human decides it
 there with the count from capability 3.
+
+## Second budget (2026-10-22, `corpus/02-clef-decision.md`)
+
+Capability 4 (`clef-fallback`) is not built, on the human's word.
+
+| # | Capability | Proof |
+|---|---|---|
+| 5 | **Unknown capture.** Opt-in (`kitterm screen-state capture on|off`, kept in `~/.kitterm/screen-state.json`, off by default): when `screen_state` answers `unknown`, the bridge writes the rendered screen text, the session, the time, the foreground program and the screen size to `~/.kitterm/screen-unknown/<time>-<session>.txt` (0600, the directory 0700), at most 50 files and 2 MiB, the oldest removed first, after the answer so a failed write never fails the call; `kitterm screen-state samples [--print N]` lists and prints them; `stats` says how many samples exist. | Swift tests: no file while off; a file per `unknown` while on, mode 0600; nothing for a known state; the caps; the toggle; `samples` output; a write failure does not fail the tool. |
