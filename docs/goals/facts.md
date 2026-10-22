@@ -10,6 +10,11 @@ decision moves to `docs/adr/`.
 
 ## Toolchain
 
+- `PullRequestStatusTests.testAGhThatIgnoresSIGTERMIsKilledWithItsGroup`
+  can fail once under a full local `swift test` (the fake `gh` writes its
+  pid file late); it passes alone and on CI. Rerun it alone before
+  treating it as a regression (2026-10-22, `screen-state` round 4).
+
 - git sends a hook's stdout to stderr, so a failing hook's first
   printed line is a git command's first stderr line; on git 2.39
   `switch --end-of-options -c <name>` refuses (`switch --create <name>`
