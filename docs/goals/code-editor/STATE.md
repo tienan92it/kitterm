@@ -8,7 +8,7 @@
 
 ## Queue
 
-1. `quick-open` (`corpus/04-quick-open.md`)
+1. `quick-open` (`corpus/04-quick-open.md`), PR #199.
 
 ## Failures
 
