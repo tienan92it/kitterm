@@ -8,7 +8,7 @@
 
 ## Queue
 
-1. `editor-markdown-preview` (`corpus/05-markdown-preview.md`)
+1. `editor-markdown-preview` (`corpus/05-markdown-preview.md`), PR #201.
 
 ## Failures
 
