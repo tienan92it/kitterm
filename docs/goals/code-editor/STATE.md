@@ -8,7 +8,7 @@
 
 ## Queue
 
-1. `editor-dotfiles` (`corpus/06-dotfiles.md`).
+1. `editor-dotfiles` (`corpus/06-dotfiles.md`), PR #202.
 
 ## Failures
 
