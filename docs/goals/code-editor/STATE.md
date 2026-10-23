@@ -1,14 +1,14 @@
 # STATE: code-editor
 
-- Status: done
-- Round: 1 of 1 in this budget (third budget, a chore on the done goal)
+- Status: active
+- Round: 0 of 1 in this budget (fourth budget, a chore on the done goal)
 - Rounds total: 7
 - Last floor: green (2026-10-22, round 7 after: swift test 1317, vitest 2117, PR CI on 6799475)
-- Updated: 2026-10-22, round 7 done; the goal waits for the human's merge of PR #199
+- Updated: 2026-10-23, resumed for one round: Markdown preview in the editor (`corpus/05-markdown-preview.md`)
 
 ## Queue
 
-None.
+1. `editor-markdown-preview` (`corpus/05-markdown-preview.md`)
 
 ## Failures
 
@@ -38,4 +38,4 @@ the three foundation additions, and compare in the editor area.
 
 ## Next action
 
-None. The human merges PR #199; the foreman releases and upgrades.
+Round 8: `editor-markdown-preview`, then `Status: done` again.
