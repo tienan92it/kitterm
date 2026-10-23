@@ -114,6 +114,15 @@ body {
   font: var(--type-body);
 }
 
+/* The Markdown preview toggle (round 8, `corpus/05-markdown-preview.md`
+   rule 1): `[x] source [ ] preview`, in the header beside `[ save ]`; its
+   buttons reuse `.edit-tab`'s own colours, muted and the text colour. */
+.edit-view-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
 /* A control in the accent: `[ save ⌘S ]`, `open in terminal`, the bar's
    three, `open file` on the diff. The accent is a mark's background, not
    `color`, so a control is a run of text clipped to its glyphs. */
@@ -523,6 +532,30 @@ body {
   font: var(--type-body);
 }
 
+/* --- the Markdown preview (round 8) -------------------------------------
+   The buffer rendered through `markdown.ts`'s `.md-body` (`styles.css`),
+   in the editor area's own column, at most `--md-measure` wide and
+   centred, full width on a phone (`markdown-preview/corpus/02-wider-
+   column.md` rule 1); `.md-body` paints its own colour and background
+   from `styles.css`, so nothing here sets `color`. */
+.edit-preview {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  background: var(--ui-bg);
+}
+
+.edit-preview .md-body {
+  max-width: calc(var(--md-measure) + var(--space-5) * 2);
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-4);
+  background: var(--ui-bg);
+}
+
+@media (max-width: 767px) {
+  .edit-preview .md-body { padding: var(--space-4); }
+}
+
 /* The source view's colours, on CodeMirror's tokens. */
 .tok-comment { color: var(--code-comment); }
 .tok-string { color: var(--code-string); }
@@ -630,6 +663,9 @@ body {
   .edit-separator,
   .edit-path-dir,
   .edit-project { display: none; }
+  /* The toggle has no editor area to control outside the edit tab (rule 6). */
+  .edit-view-toggle { display: none; }
+  #edit[data-tab="edit"] .edit-view-toggle { display: flex; }
   .edit-body { grid-template-columns: minmax(0, 1fr); }
   .edit-tabs { grid-column: 1; border-right: 0; }
   .edit-sidebar { grid-column: 1; grid-row: 2; border-right: 0; }
