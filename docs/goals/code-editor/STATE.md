@@ -1,14 +1,14 @@
 # STATE: code-editor
 
-- Status: active
-- Round: 0 of 1 in this budget (fourth budget, a chore on the done goal)
-- Rounds total: 7
-- Last floor: green (2026-10-22, round 7 after: swift test 1317, vitest 2117, PR CI on 6799475)
-- Updated: 2026-10-23, resumed for one round: Markdown preview in the editor (`corpus/05-markdown-preview.md`)
+- Status: done
+- Round: 1 of 1 in this budget (fourth budget, a chore on the done goal)
+- Rounds total: 8
+- Last floor: green (2026-10-23, round 8 after: vitest 2122, PR CI on 1030783)
+- Updated: 2026-10-23, round 8 done: Markdown preview in the editor
 
 ## Queue
 
-1. `editor-markdown-preview` (`corpus/05-markdown-preview.md`), PR #201.
+None.
 
 ## Failures
 
@@ -21,6 +21,8 @@ the three foundation additions, and compare in the editor area.
 
 ## Done
 
+- `editor-markdown-preview`, round 8, PR #201. See `rounds/008.md`. The
+  `[x] source [ ] preview` switch for a Markdown file in `/edit`.
 - `quick-open`, round 7, PR #199. See `rounds/007.md`. `/edit` on a
   folder, `kitterm edit`, and ⌘⇧E in a pane.
 - `git-write`, round 6, PR #198. See `rounds/006.md`. Stage, commit,
@@ -38,4 +40,4 @@ the three foundation additions, and compare in the editor area.
 
 ## Next action
 
-Round 8: `editor-markdown-preview`, then `Status: done` again.
+None. The goal is done. A later change to `/edit` resumes it for one round.
