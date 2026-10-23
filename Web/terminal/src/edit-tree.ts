@@ -5,12 +5,20 @@
  * decides what is listed and shown; `edit.ts` paints the rows and asks the
  * daemon.
  *
- * `.git` is never a row: the save route refuses everything under it, and
- * the listing route hides dotfiles anyway. The badges a folder and a file
- * wear from `git status` are round 5's; a node carries none yet.
+ * The listing request carries `hidden=1` (`listingUrl`, `edit-model.ts`), so
+ * a dotfile (`.env`, `.github/`, `.gitignore`) is a row like any other
+ * (`corpus/06-dotfiles.md` rule 1); `childrenOf` drops only `HIDDEN_NAMES`,
+ * what a normal editor hides by default (rule 2). The badges a folder and a
+ * file wear from `git status` are round 5's; a node carries none yet.
  */
 
 import type { ListingEntry } from "./edit-fetch";
+
+/** The names `childrenOf` drops regardless of the listing: VS Code's
+ * `files.exclude` default (`corpus/06-dotfiles.md` rule 2). The save route
+ * refuses everything under `.git` on its own, so dropping it here is only
+ * about the tree. */
+export const HIDDEN_NAMES: ReadonlySet<string> = new Set([".git", ".svn", ".hg", "CVS", ".DS_Store", "Thumbs.db"]);
 
 export interface TreeNode {
   name: string;
@@ -29,10 +37,11 @@ export function treeRoot(root: string, name: string): TreeNode {
   return { name, path: root, dir: true, open: true, children: null, error: null };
 }
 
-/** The entries the tree shows: `.git` dropped, the daemon's order kept. */
+/** The entries the tree shows: `HIDDEN_NAMES` dropped, the daemon's order
+ * kept (folders first, then by name). */
 export function childrenOf(parent: TreeNode, entries: ListingEntry[]): TreeNode[] {
   return entries
-    .filter((entry) => entry.name !== ".git")
+    .filter((entry) => !HIDDEN_NAMES.has(entry.name))
     .map((entry) => ({
       name: entry.name,
       path: parent.path === "/" ? `/${entry.name}` : `${parent.path}/${entry.name}`,

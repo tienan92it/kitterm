@@ -1,10 +1,10 @@
 # STATE: code-editor
 
 - Status: done
-- Round: 1 of 1 in this budget (fourth budget, a chore on the done goal)
-- Rounds total: 8
-- Last floor: green (2026-10-23, round 8 after: vitest 2122, PR CI on 1030783)
-- Updated: 2026-10-23, round 8 done: Markdown preview in the editor
+- Round: 1 of 1 in this budget (fifth budget, a chore on the done goal)
+- Rounds total: 9
+- Last floor: green (2026-10-23, round 9 after: vitest 2125, PR CI on 650802a)
+- Updated: 2026-10-23, round 9 done: dotfiles in the editor tree
 
 ## Queue
 
@@ -21,6 +21,8 @@ the three foundation additions, and compare in the editor area.
 
 ## Done
 
+- `editor-dotfiles`, round 9, PR #202. See `rounds/009.md`. The tree
+  lists dotfiles and hides VS Code's `files.exclude` names.
 - `editor-markdown-preview`, round 8, PR #201. See `rounds/008.md`. The
   `[x] source [ ] preview` switch for a Markdown file in `/edit`.
 - `quick-open`, round 7, PR #199. See `rounds/007.md`. `/edit` on a

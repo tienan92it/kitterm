@@ -319,9 +319,11 @@ export function gitDiffUrl(path: string, session: string | null = null, staged =
   return `/api/git/diff?${params.toString()}`;
 }
 
-/** The listing route for a directory. */
+/** The listing route for a directory, with dotfiles included
+ * (`corpus/06-dotfiles.md` rule 1): the tree hides only the six names
+ * `edit-tree.ts`'s `HIDDEN_NAMES` lists, not every dotfile. */
 export function listingUrl(path: string, session: string | null = null): string {
-  const params = new URLSearchParams({ path });
+  const params = new URLSearchParams({ path, hidden: "1" });
   if (session) params.set("session", session);
   return `/api/files?${params.toString()}`;
 }
