@@ -12,7 +12,8 @@
 
 import { LanguageDescription } from "@codemirror/language";
 
-import { basename, formatBytes } from "./markdown-view";
+import { fragmentTarget } from "./markdown";
+import { basename, formatBytes, isMarkdownName, resolveRelative } from "./markdown-view";
 import { homePath } from "./sessions-tree";
 
 // MARK: - The buffer
@@ -328,4 +329,44 @@ export function listingUrl(path: string, session: string | null = null): string 
 /** The page's title: `md.ts — kitterm`. */
 export function pageTitle(path: string): string {
   return `${basename(path)} — kitterm`;
+}
+
+// MARK: - The Markdown preview (round 8, `corpus/05-markdown-preview.md`)
+
+export type MarkdownPreview = "source" | "preview";
+
+/** The viewer's choice for this page, kept apart from the pane overlay's and
+ * the `/md` page's own key (`markdown-view.ts`): the words and the default
+ * differ here (rule 5: `source` is the default). */
+export const MARKDOWN_PREVIEW_KEY = "kitterm.edit.markdownPreview";
+
+export function loadMarkdownPreview(): MarkdownPreview {
+  try {
+    return localStorage.getItem(MARKDOWN_PREVIEW_KEY) === "preview" ? "preview" : "source";
+  } catch {
+    return "source";
+  }
+}
+
+export function saveMarkdownPreview(view: MarkdownPreview): void {
+  try {
+    localStorage.setItem(MARKDOWN_PREVIEW_KEY, view);
+  } catch {
+    // A viewer with no storage keeps the default next time.
+  }
+}
+
+/** Whether the open file shows the toggle at all (rule 1): the same
+ * language lookup the header's facts use. */
+export function isMarkdownFile(path: string): boolean {
+  return isMarkdownName(basename(path));
+}
+
+/** The `/edit` URL a relative `.md` link inside the preview opens: the
+ * linked file resolved against the open file's own directory, with the
+ * fragment carried as the page's own hash (rule 3). */
+export function markdownLinkUrl(path: string, link: string, fragment: string, session: string | null): string {
+  const target = resolveRelative(path, link);
+  const url = editUrl(target, session);
+  return fragment === "" ? url : `${url}#${fragmentTarget(fragment)}`;
 }

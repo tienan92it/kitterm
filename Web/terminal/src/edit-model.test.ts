@@ -1,5 +1,5 @@
 import { languages } from "@codemirror/language-data";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   barLine,
@@ -14,14 +14,19 @@ import {
   headerFacts,
   headerName,
   INITIAL_MODEL,
+  isMarkdownFile,
   languageOf,
   listingUrl,
+  loadMarkdownPreview,
+  MARKDOWN_PREVIEW_KEY,
+  markdownLinkUrl,
   NOT_SAVED,
   notSaved,
   projectUrl,
   READ_ONLY_MODEL,
   readOnlyReason,
   reduce,
+  saveMarkdownPreview,
   stateRun,
   terminalUrl,
 } from "./edit-model";
@@ -198,5 +203,70 @@ describe("the header and the URLs", () => {
     expect(contentUrl("/w/a.ts", "S1")).toBe("/api/files/content?path=%2Fw%2Fa.ts&session=S1");
     expect(projectUrl("/w/a.ts")).toBe("/api/files/project?path=%2Fw%2Fa.ts");
     expect(listingUrl("/w", "S1")).toBe("/api/files?path=%2Fw&session=S1");
+  });
+});
+
+// The Markdown preview (round 8, `corpus/05-markdown-preview.md`): which
+// files show the toggle, the choice kept per viewer under its own key
+// (apart from the pane overlay's and `/md`'s, and `source` by default,
+// rule 5), and the link a relative `.md` link in the preview opens.
+
+describe("which files show the toggle (rule 1)", () => {
+  it("is Markdown by the same language lookup the header's facts use", () => {
+    expect(isMarkdownFile("/w/README.md")).toBe(true);
+    expect(isMarkdownFile("/w/notes.markdown")).toBe(true);
+    expect(isMarkdownFile("/w/a.ts")).toBe(false);
+    expect(isMarkdownFile("/w/Makefile")).toBe(false);
+  });
+});
+
+describe("the choice kept per viewer (rule 5)", () => {
+  const storage = (): Map<string, string> => {
+    const map = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => map.get(key) ?? null,
+      setItem: (key: string, value: string) => void map.set(key, value),
+    });
+    return map;
+  };
+
+  it("is source until the viewer picks preview, under its own key", () => {
+    const map = storage();
+    expect(loadMarkdownPreview()).toBe("source");
+    saveMarkdownPreview("preview");
+    expect(map.get(MARKDOWN_PREVIEW_KEY)).toBe("preview");
+    expect(loadMarkdownPreview()).toBe("preview");
+    saveMarkdownPreview("source");
+    expect(loadMarkdownPreview()).toBe("source");
+  });
+
+  it("reads any other stored value, and a storage that throws, as source", () => {
+    const map = storage();
+    map.set(MARKDOWN_PREVIEW_KEY, "rendered");
+    expect(loadMarkdownPreview()).toBe("source");
+    vi.stubGlobal("localStorage", {
+      getItem: () => {
+        throw new Error("denied");
+      },
+      setItem: () => {
+        throw new Error("denied");
+      },
+    });
+    expect(loadMarkdownPreview()).toBe("source");
+    expect(() => saveMarkdownPreview("preview")).not.toThrow();
+  });
+});
+
+describe("a relative .md link in the preview (rule 3)", () => {
+  it("resolves against the open file's directory and carries the session", () => {
+    expect(markdownLinkUrl("/w/docs/README.md", "guide.md", "", "S1")).toBe("/edit?path=%2Fw%2Fdocs%2Fguide.md&session=S1");
+    expect(markdownLinkUrl("/w/docs/README.md", "../CHANGES.md", "", null)).toBe("/edit?path=%2Fw%2FCHANGES.md");
+  });
+
+  it("carries a fragment as the page's own hash, under the heading prefix", () => {
+    expect(markdownLinkUrl("/w/docs/README.md", "guide.md", "install", "S1")).toBe(
+      "/edit?path=%2Fw%2Fdocs%2Fguide.md&session=S1#md-install",
+    );
+    expect(markdownLinkUrl("/w/docs/README.md", "guide.md", "", null)).toBe("/edit?path=%2Fw%2Fdocs%2Fguide.md");
   });
 });

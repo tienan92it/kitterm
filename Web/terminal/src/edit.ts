@@ -46,6 +46,7 @@
  */
 
 import "./tokens.css";
+import "./styles.css";
 import "./edit.css";
 
 import {
@@ -114,8 +115,12 @@ import {
   headerFacts,
   headerName,
   INITIAL_MODEL,
+  isMarkdownFile,
   languageOf,
   listingUrl,
+  loadMarkdownPreview,
+  markdownLinkUrl,
+  type MarkdownPreview,
   NO_FILE_NAMED,
   NO_PROJECT,
   notSaved,
@@ -127,6 +132,7 @@ import {
   readmeIn,
   readOnlyReason,
   reduce,
+  saveMarkdownPreview,
   stateRun,
   terminalUrl,
 } from "./edit-model";
@@ -134,7 +140,7 @@ import { ancestorsOf, childrenOf, findNode, foldersToOpen, treeRoot, type TreeNo
 import { resolveFontFamily } from "./fonts";
 import { trackKeyboardInsets } from "./keyboard-insets";
 import { diffCounts, hunkHeader, type LineDiff, lineDiff } from "./line-diff";
-import { basename, cannotRead } from "./markdown-view";
+import { basename, cannotRead, imageResolver, renderedView, scrollToFragment } from "./markdown-view";
 import { loadSettings } from "./settings-store";
 import { applyThemeTokens } from "./theme-tokens";
 import { findThemeById } from "./themes";
@@ -229,10 +235,23 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
   state.setAttribute("role", "status");
   const facts = el("span", "edit-facts");
   const actions = el("div", "edit-actions");
+  // The Markdown preview toggle (round 8, `corpus/05-markdown-preview.md`
+  // rule 1): `[x] source [ ] preview`, shown only for a Markdown file.
+  const MARKDOWN_PREVIEW_CHOICES: readonly MarkdownPreview[] = ["source", "preview"];
+  const previewToggle = el("div", "edit-view-toggle");
+  previewToggle.setAttribute("role", "radiogroup");
+  previewToggle.setAttribute("aria-label", "View");
+  previewToggle.hidden = true;
+  const previewButtons = MARKDOWN_PREVIEW_CHOICES.map((choice) => {
+    const choiceButton = button("edit-tab", "", `view:${choice}`);
+    choiceButton.setAttribute("role", "radio");
+    return choiceButton;
+  });
+  previewToggle.append(...previewButtons);
   const saveButton = button("edit-save", "[ save ⌘S ]", "save");
   saveButton.setAttribute("aria-keyshortcuts", "Meta+S Control+S");
   const terminalLink = el("a", "edit-terminal", "open in terminal");
-  actions.append(saveButton, terminalLink);
+  actions.append(previewToggle, saveButton, terminalLink);
   header.append(name, state, facts, actions);
 
   const tabs = el("nav", "edit-tabs");
@@ -264,9 +283,11 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
   bar.setAttribute("role", "alert");
   bar.hidden = true;
   const editorHost = el("div", "edit-editor");
+  const previewHost = el("div", "edit-preview");
+  previewHost.hidden = true;
   const diffHost = el("div", "edit-diff");
   diffHost.hidden = true;
-  main.append(bar, editorHost, diffHost);
+  main.append(bar, editorHost, previewHost, diffHost);
   body.append(tabs, sidebar, main);
 
   const keys = el("div", "edit-keys");
@@ -418,7 +439,7 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
   const hideDiff = (): void => {
     diffHost.hidden = true;
     diffHost.replaceChildren();
-    editorHost.hidden = false;
+    showEditorArea();
   };
 
   /**
@@ -452,6 +473,7 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
     diffHost.append(top, rows);
     diffHost.hidden = false;
     editorHost.hidden = true;
+    previewHost.hidden = true;
     selectTab("edit");
   };
 
@@ -460,6 +482,66 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
     const diff = lineDiff(disk.text, bufferText());
     renderDiff(basename(path), diffCounts(diff), "buffer against disk", diff, "The buffer equals the disk.", hideDiff);
   };
+
+  // --- the Markdown preview (round 8, `corpus/05-markdown-preview.md`) ---
+  // The toggle replaces the editor area with the buffer rendered through
+  // `markdown.ts` (rule 2); a relative `.md` link opens that file in
+  // `/edit`, asking first when the buffer is edited, as the tree does
+  // (rule 3), and a `#fragment` carries through the page's own hash.
+  let markdownView: MarkdownPreview = loadMarkdownPreview();
+  /** Whether the open file shows the toggle at all (rule 1): set once the
+   * read names the file's kind, below. */
+  let showsPreview = false;
+
+  const paintPreviewToggle = (): void => {
+    previewToggle.hidden = !showsPreview;
+    previewButtons.forEach((choiceButton, i) => {
+      const choice = MARKDOWN_PREVIEW_CHOICES[i];
+      const on = choice === markdownView;
+      choiceButton.setAttribute("aria-checked", on ? "true" : "false");
+      choiceButton.textContent = `[${on ? "x" : " "}] ${choice}`;
+    });
+  };
+
+  /** Which of the editor and the preview the editor area shows, under
+   * whatever the diff view leaves behind. */
+  const showEditorArea = (): void => {
+    const previewing = showsPreview && markdownView === "preview";
+    editorHost.hidden = previewing;
+    previewHost.hidden = !previewing;
+  };
+
+  /** The buffer rendered in `.md-body`, replacing the editor area; drawn
+   * again only when the view switches to it (rule 2: no live split). */
+  const paintMarkdownPreview = (): void => {
+    previewHost.replaceChildren(
+      renderedView(bufferText(), {
+        resolveImage: imageResolver(path, (p) => contentUrl(p, session)),
+        onOpen: (link, fragment) => void openMarkdownLink(link, fragment),
+      }),
+    );
+  };
+
+  /** A relative `.md` link in the preview (rule 3). */
+  const openMarkdownLink = (link: string, fragment: string): void => {
+    if (hasUnsavedWork(model) && !confirmFn("Discard your edits and open another file?")) return;
+    navigate(markdownLinkUrl(path, link, fragment, session));
+  };
+
+  const selectMarkdownView = (choice: MarkdownPreview): void => {
+    if (choice === markdownView) return;
+    markdownView = choice;
+    saveMarkdownPreview(choice);
+    paintPreviewToggle();
+    if (markdownView === "preview") paintMarkdownPreview();
+    // Leaving a shown diff behind restores the editor or the preview.
+    hideDiff();
+    if (markdownView === "source") view?.focus();
+  };
+
+  previewButtons.forEach((choiceButton, i) => {
+    choiceButton.addEventListener("click", () => selectMarkdownView(MARKDOWN_PREVIEW_CHOICES[i]));
+  });
 
   /** The disk's bytes taken as the buffer, when the reader agrees. */
   const reloadFromDisk = async (): Promise<void> => {
@@ -479,9 +561,10 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
     model = reduce(model, { type: "reload" });
     refusal = null;
     hideDiff();
+    if (markdownView === "preview") paintMarkdownPreview();
     paint();
     facts.textContent = headerFacts(languageName, decoded);
-    view?.focus();
+    if (markdownView === "source") view?.focus();
   };
 
   /** The save: with the buffer's own tag, or the disk's for `keep mine`. */
@@ -545,6 +628,7 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
         replaceDoc(text.text);
         model = reduce(model, { type: "reload" });
         facts.textContent = headerFacts(languageName, decoded);
+        if (markdownView === "preview") paintMarkdownPreview();
       } else {
         model = reduce(model, { type: "disk-changed" });
       }
@@ -993,6 +1077,10 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
   const languageName = language?.name ?? null;
   facts.textContent = read.fileKind === "text" ? headerFacts(languageName, decoded) : (read.contentType?.split(";")[0] ?? read.fileKind);
 
+  // The Markdown preview toggle (rule 1): a text file whose name is Markdown.
+  showsPreview = read.fileKind === "text" && isMarkdownFile(path);
+  paintPreviewToggle();
+
   view = new EditorView({
     parent: editorHost,
     state: EditorState.create({
@@ -1029,6 +1117,14 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
     }),
   });
   paint();
+
+  if (showsPreview && markdownView === "preview") {
+    paintMarkdownPreview();
+    showEditorArea();
+    // A `.md` link in a previous preview carried its fragment here as the
+    // page's own hash (rule 3).
+    if (location.hash !== "") scrollToFragment(previewHost, location.hash.replace(/^#(md-)?/, ""));
+  }
 
   if (language) {
     void language.load().then((support) => {
