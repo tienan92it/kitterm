@@ -202,7 +202,7 @@ describe("the header and the URLs", () => {
     expect(terminalUrl("/a.ts")).toBe("/?cwd=%2F");
     expect(contentUrl("/w/a.ts", "S1")).toBe("/api/files/content?path=%2Fw%2Fa.ts&session=S1");
     expect(projectUrl("/w/a.ts")).toBe("/api/files/project?path=%2Fw%2Fa.ts");
-    expect(listingUrl("/w", "S1")).toBe("/api/files?path=%2Fw&session=S1");
+    expect(listingUrl("/w", "S1")).toBe("/api/files?path=%2Fw&hidden=1&session=S1");
   });
 });
 
