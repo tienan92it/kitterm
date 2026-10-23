@@ -1,14 +1,14 @@
 # STATE: code-editor
 
-- Status: done
-- Round: 1 of 1 in this budget (fourth budget, a chore on the done goal)
+- Status: active
+- Round: 0 of 1 in this budget (fifth budget, a chore on the done goal)
 - Rounds total: 8
 - Last floor: green (2026-10-23, round 8 after: vitest 2122, PR CI on 1030783)
-- Updated: 2026-10-23, round 8 done: Markdown preview in the editor
+- Updated: 2026-10-23, resumed for one round: dotfiles in the editor tree (`corpus/06-dotfiles.md`)
 
 ## Queue
 
-None.
+1. `editor-dotfiles` (`corpus/06-dotfiles.md`).
 
 ## Failures
 
@@ -40,4 +40,4 @@ the three foundation additions, and compare in the editor area.
 
 ## Next action
 
-None. The goal is done. A later change to `/edit` resumes it for one round.
+Round 9: `editor-dotfiles`, then `Status: done` again.
