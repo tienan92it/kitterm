@@ -1,14 +1,20 @@
 # STATE: code-editor
 
-- Status: done
-- Round: 1 of 1 in this budget (fifth budget, a chore on the done goal)
+- Status: active
+- Round: 0 of 4 in this budget (sixth budget, `corpus/07-projects-and-tree.md`)
 - Rounds total: 9
 - Last floor: green (2026-10-23, round 9 after: vitest 2125, PR CI on 650802a)
-- Updated: 2026-10-23, round 9 done: dotfiles in the editor tree
+- Updated: 2026-10-24, resumed for four rounds: projects and a livelier tree
 
 ## Queue
 
-None.
+1. `editor-design-2`: frames for the home page, the switcher, the tree and
+   the palette (`corpus/07-projects-and-tree.md`).
+2. `project-access`: the `/edit` home page and the header switcher
+   (rules 1, 2).
+3. `tree-polish`: guides, tags, dimmed ignored files, compact folders,
+   keys (rules 3 to 7).
+4. `quick-open-palette`: ⌘P with the file index (rule 8).
 
 ## Failures
 
@@ -42,4 +48,4 @@ the three foundation additions, and compare in the editor area.
 
 ## Next action
 
-None. The goal is done. A later change to `/edit` resumes it for one round.
+Round 10: `editor-design-2`, then the human approves the frames.
