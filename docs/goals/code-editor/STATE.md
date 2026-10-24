@@ -9,7 +9,7 @@
 ## Queue
 
 1. `editor-design-2`: frames for the home page, the switcher, the tree and
-   the palette (`corpus/07-projects-and-tree.md`).
+   the palette (`corpus/07-projects-and-tree.md`), PR #203.
 2. `project-access`: the `/edit` home page and the header switcher
    (rules 1, 2).
 3. `tree-polish`: guides, tags, dimmed ignored files, compact folders,
