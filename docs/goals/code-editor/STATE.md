@@ -1,15 +1,15 @@
 # STATE: code-editor
 
-- Status: waiting
+- Status: active
 - Round: 2 of 5 in this budget (sixth budget, `corpus/07-projects-and-tree.md`)
 - Rounds total: 11
 - Last floor: green (2026-10-24, round 11 after: PR CI on 3ba7558)
-- Updated: 2026-10-24, round 11 redrew the tree; the frames wait on the human
+- Updated: 2026-10-24, the human approved the frames and the tag colour (`corpus/09-approved-frames.md`)
 
 ## Queue
 
 1. `project-access`: the `/edit` home page and the header switcher
-   (rules 1, 2).
+   (rules 1, 2), PR #203.
 2. `tree-polish`: guides, tags, dimmed ignored files, compact folders,
    keys (rules 3 to 7).
 3. `quick-open-palette`: ⌘P with the file index (rule 8).
@@ -20,10 +20,8 @@ None.
 
 ## Proposals waiting on the human
 
-- The frames of rounds 10 and 11 (`rounds/010.md`, `rounds/011.md`)
-  and their words.
-- The tag-colour exception for `design/foundation.md` (`rounds/010.md`,
-  proposal 1).
+None. 2026-10-24: the human approved the frames of rounds 10 and 11,
+their words, and the tag-colour exception (`corpus/09-approved-frames.md`).
 
 ## Done
 
@@ -52,5 +50,4 @@ None.
 
 ## Next action
 
-The human approves the frames of rounds 10 and 11; then round 12,
-`project-access`.
+Round 12: `project-access`.

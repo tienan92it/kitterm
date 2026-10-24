@@ -281,6 +281,15 @@ view), a `+` line is set in `--ui-success` and a `−` line in
 it is the one place a state colours a run of code. Approved by the human
 on 2026-10-18 (`docs/goals/code-editor/corpus/02-approved-design.md`).
 
+**A second exception: a file-type tag.** In the `/edit` tree
+(`design/editor.pen`, `Editor components 2` rule 17), the two- or
+three-letter tag before a file's name (`ts`, `md`, `sw`, `{}`) is set in
+the `--code-*` token of its language, the source view's own colours, over
+its glyphs alone. It names a kind, not a state: no state colour paints a
+tag, a folder and an unknown type carry no tag, and an ignored entry's tag
+is `--ui-text-faint`. Approved by the human on 2026-10-24
+(`docs/goals/code-editor/corpus/09-approved-frames.md`).
+
 Two more surfaces are named, because the prose views sit things on them
 and a light theme needs a value of its own for one (approved 2026-10-16,
 `corpus/01-approved-design.md` rule 8):
