@@ -1,20 +1,18 @@
 # STATE: code-editor
 
-- Status: active
-- Round: 0 of 4 in this budget (sixth budget, `corpus/07-projects-and-tree.md`)
-- Rounds total: 9
-- Last floor: green (2026-10-23, round 9 after: vitest 2125, PR CI on 650802a)
-- Updated: 2026-10-24, resumed for four rounds: projects and a livelier tree
+- Status: waiting
+- Round: 2 of 5 in this budget (sixth budget, `corpus/07-projects-and-tree.md`)
+- Rounds total: 11
+- Last floor: green (2026-10-24, round 11 after: PR CI on 3ba7558)
+- Updated: 2026-10-24, round 11 redrew the tree; the frames wait on the human
 
 ## Queue
 
-1. `editor-design-2`: frames for the home page, the switcher, the tree and
-   the palette (`corpus/07-projects-and-tree.md`), PR #203.
-2. `project-access`: the `/edit` home page and the header switcher
+1. `project-access`: the `/edit` home page and the header switcher
    (rules 1, 2).
-3. `tree-polish`: guides, tags, dimmed ignored files, compact folders,
+2. `tree-polish`: guides, tags, dimmed ignored files, compact folders,
    keys (rules 3 to 7).
-4. `quick-open-palette`: ⌘P with the file index (rule 8).
+3. `quick-open-palette`: ⌘P with the file index (rule 8).
 
 ## Failures
 
@@ -22,11 +20,17 @@ None.
 
 ## Proposals waiting on the human
 
-None. 2026-10-18: the human approved the frames at 01ac6ff, the words,
-the three foundation additions, and compare in the editor area.
+- The frames of rounds 10 and 11 (`rounds/010.md`, `rounds/011.md`)
+  and their words.
+- The tag-colour exception for `design/foundation.md` (`rounds/010.md`,
+  proposal 1).
 
 ## Done
 
+- `tree-design-revision`, round 11, PR #203. See `rounds/011.md`.
+  Vertical guides only, one space after the triangle.
+- `editor-design-2`, round 10, PR #203. See `rounds/010.md`. Seven
+  frames in `design/editor.pen`.
 - `editor-dotfiles`, round 9, PR #202. See `rounds/009.md`. The tree
   lists dotfiles and hides VS Code's `files.exclude` names.
 - `editor-markdown-preview`, round 8, PR #201. See `rounds/008.md`. The
@@ -48,4 +52,5 @@ the three foundation additions, and compare in the editor area.
 
 ## Next action
 
-Round 10: `editor-design-2`, then the human approves the frames.
+The human approves the frames of rounds 10 and 11; then round 12,
+`project-access`.
