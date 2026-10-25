@@ -51,8 +51,8 @@ final class GitStatusParserTests: XCTestCase {
         XCTAssertEqual(report.ahead, 3)
         XCTAssertEqual(report.behind, 1)
         XCTAssertFalse(report.detached)
-        // Chartered (`code-editor` round 13, `corpus/09-approved-frames.md`
-        // rule 19): an ignored path is no longer a `.files` entry of kind
+        // Chartered (`code-editor` round 13, rule 19 of `Editor components 2`,
+        // `design/editor.pen`): an ignored path is no longer a `.files` entry of kind
         // `.ignored` — it is `report.ignored`, outside `files` and `counts`,
         // so the tree can dim a path the daemon never treats as a change.
         // Old: `report.files.map(\.path)` ended `…, "untracked.txt", "build/"`
