@@ -68,7 +68,7 @@ import { Compartment, EditorState } from "@codemirror/state";
 import { drawSelection, EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
-import { type Fetch, gitWrite, readFile, readGitDiff, readGitStatus, readListing, readProject, saveFile } from "./edit-fetch";
+import { type Fetch, gitWrite, readFile, readFilesIndex, readGitDiff, readGitStatus, readListing, readProject, readProjects, saveFile } from "./edit-fetch";
 import {
   badgeForPath,
   badgeOf,
@@ -83,6 +83,7 @@ import {
   type GitStatus,
   gitTabLabel,
   inFlightWord,
+  isIgnoredPath,
   NEW_BRANCH,
   NEW_BRANCH_QUESTION,
   NO_WRITES,
@@ -103,17 +104,23 @@ import {
   cwdUrl,
   decodeText,
   type DecodedText,
+  DISCARD_FILE_QUESTION,
   diskChangeAction,
   editUrl,
   type EditorModel,
   emptyFolder,
+  EMPTY_HOME_COMMAND,
+  EMPTY_HOME_SENTENCE,
   encodeText,
+  filesIndexUrl,
   gitDiffUrl,
   gitStatusUrl,
   gitWriteUrl,
   hasUnsavedWork,
   headerFacts,
   headerName,
+  HOME_NAME,
+  HOME_TERMINAL_URL,
   INITIAL_MODEL,
   isMarkdownFile,
   languageOf,
@@ -121,12 +128,17 @@ import {
   loadMarkdownPreview,
   markdownLinkUrl,
   type MarkdownPreview,
-  NO_FILE_NAMED,
   NO_PROJECT,
   notSaved,
   OPEN_FROM_TREE,
   pageTarget,
   pageTitle,
+  type ProjectCheckout,
+  type ProjectEntry,
+  type ProjectGroup,
+  projectGroups,
+  type ProjectLine,
+  projectsUrl,
   projectUrl,
   READ_ONLY_MODEL,
   readmeIn,
@@ -134,9 +146,39 @@ import {
   reduce,
   saveMarkdownPreview,
   stateRun,
+  SWITCH_PROJECT_QUESTION,
   terminalUrl,
 } from "./edit-model";
-import { ancestorsOf, childrenOf, findNode, foldersToOpen, treeRoot, type TreeNode, triangle, visibleRows } from "./edit-tree";
+import {
+  moreFilesLine,
+  movePaletteSelection,
+  PALETTE_EMPTY,
+  PALETTE_KEYS,
+  PALETTE_PLACEHOLDER,
+  type PaletteFileRow,
+  paletteGroups,
+  type PaletteProjectRow,
+  type PaletteRow,
+  paletteRows,
+} from "./palette-model";
+import {
+  ancestorsOf,
+  chainTail,
+  childrenOf,
+  compactCandidate,
+  findNode,
+  foldersToOpen,
+  MAX_COMPACT_CHAIN,
+  navigateTree,
+  type NavResult,
+  treeRoot,
+  type TreeKey,
+  type TreeNode,
+  type TreeRow,
+  triangle,
+  visibleRows,
+} from "./edit-tree";
+import { tagFor } from "./edit-tags";
 import { resolveFontFamily } from "./fonts";
 import { trackKeyboardInsets } from "./keyboard-insets";
 import { diffCounts, hunkHeader, type LineDiff, lineDiff } from "./line-diff";
@@ -192,6 +234,41 @@ const mark = (text: string, tone: Tone, wide = false): HTMLSpanElement => {
   return node;
 };
 
+/**
+ * The project groups of the home page and the switcher (rounds 10 and 11,
+ * rules 1 and 2): one line per project, the same shape in both, with a
+ * `[x]`/`[ ]` radio only while `currentRoot` is given (the switcher). The
+ * empty home (rule 1) shows only with no radio: the switcher's own empty
+ * list is a project read in flight, never the home's empty state.
+ */
+const renderProjectGroups = (container: HTMLElement, groups: readonly ProjectGroup[], currentRoot: string | null, onChoose: (line: ProjectLine) => void): void => {
+  container.replaceChildren();
+  const radio = currentRoot !== null;
+  if (groups.length === 0) {
+    if (radio) return;
+    const empty = el("p", "edit-home-empty");
+    empty.append(EMPTY_HOME_SENTENCE, "  ", el("span", "edit-home-command", EMPTY_HOME_COMMAND));
+    container.append(empty);
+    return;
+  }
+  for (const group of groups) {
+    container.append(el("h2", "edit-git-label", `${group.label} ${group.count}`));
+    for (const line of group.lines) {
+      const row = button(`edit-project-line${radio ? " radio" : ""}`, "", `project:${line.id}`);
+      if (radio) {
+        const current = line.root === currentRoot;
+        row.append(el("span", `edit-project-radio${current ? " current" : ""}`, current ? "[x]" : "[ ]"));
+      }
+      row.append(el("span", "edit-project-name", line.name), el("span", "edit-project-home", line.home), el("span", "edit-project-branch", line.branch));
+      const changed = el("span", "edit-project-changed");
+      if (line.changed !== null) changed.append(mark("M", "warning", true), " ", el("span", "edit-project-changed-count", String(line.changed)));
+      row.append(changed);
+      row.addEventListener("click", () => onChoose(line));
+      container.append(row);
+    }
+  }
+};
+
 export interface PageOptions {
   fetch?: Fetch;
   /** Where a tree row's file opens; `location.assign` on the page. */
@@ -218,13 +295,27 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
   // --- the chrome ---------------------------------------------------------
   const header = el("header", "edit-header");
   const name = el("div", "edit-name");
-  const projectName = el("span", "edit-project");
+  // The project name is the switcher's own control (rule 2): `kitterm ▼`,
+  // hidden with no project, so a file under none keeps its header as today.
+  const projectName = button("edit-project", "", "switcher");
+  projectName.hidden = true;
+  projectName.setAttribute("aria-haspopup", "listbox");
+  projectName.setAttribute("aria-expanded", "false");
+  const projectNameText = el("span", "edit-project-text");
+  const projectNameTriangle = el("span", "edit-project-triangle", "▼");
+  projectName.append(projectNameText, " ", projectNameTriangle);
   const separator = el("span", "edit-separator", " / ");
   const pathName = el("span", "edit-path");
   const pathDir = el("span", "edit-path-dir");
   const pathBase = el("span", "edit-path-name");
   pathName.append(pathDir, pathBase);
   name.append(projectName, separator, pathName);
+  // The switcher's own panel (rounds 10 and 11, rule 2): the two project
+  // groups under the header, closed until `projectName` opens it.
+  const switcherPanel = el("div", "edit-switcher");
+  switcherPanel.setAttribute("role", "listbox");
+  switcherPanel.setAttribute("aria-label", "Projects");
+  switcherPanel.hidden = true;
   /** The path in two runs, so a phone keeps the name alone. */
   const namePath = (text: string): void => {
     const cut = text.lastIndexOf("/") + 1;
@@ -252,7 +343,7 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
   saveButton.setAttribute("aria-keyshortcuts", "Meta+S Control+S");
   const terminalLink = el("a", "edit-terminal", "open in terminal");
   actions.append(previewToggle, saveButton, terminalLink);
-  header.append(name, state, facts, actions);
+  header.append(name, state, facts, actions, switcherPanel);
 
   const tabs = el("nav", "edit-tabs");
   tabs.setAttribute("role", "radiogroup");
@@ -304,11 +395,72 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
 
   root.replaceChildren(header, body, keys);
 
+  // --- the project list (rounds 10 and 11, rules 1 and 2) ------------------
+  // Read once, never on a poll: `GET /api/projects`, then each root's
+  // `GET /api/git/status`, at most `PROJECT_STATUS_CONCURRENCY` at a time,
+  // cached for the page's life so the home page and a later switcher open
+  // never ask twice.
+  const PROJECT_STATUS_CONCURRENCY = 4;
+  let projectsList: ProjectEntry[] | null = null;
+  let projectsError: string | null = null;
+  const projectStatuses = new Map<string, ProjectCheckout>();
+
+  const loadProjectGroups = async (onUpdate: (groups: ProjectGroup[]) => void): Promise<void> => {
+    if (projectsList === null && projectsError === null) {
+      const result = await readProjects(fetchFn, projectsUrl());
+      if (result.kind === "ok") projectsList = result.projects;
+      else {
+        projectsList = [];
+        projectsError = cannotRead("projects", result.reason);
+      }
+    }
+    const projects = projectsList ?? [];
+    onUpdate(projectGroups(projects, projectStatuses));
+    const pending = projects.filter((p) => !projectStatuses.has(p.root));
+    let index = 0;
+    const worker = async (): Promise<void> => {
+      while (index < pending.length) {
+        const project = pending[index++];
+        const result = await readGitStatus(fetchFn, gitStatusUrl(project.root));
+        let status: ProjectCheckout = null;
+        if (result.kind === "ok") {
+          const parsed = parseStatus(result.body);
+          status = { branch: parsed.branch, changed: parsed.counts.changed };
+        }
+        projectStatuses.set(project.root, status);
+        onUpdate(projectGroups(projects, projectStatuses));
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(PROJECT_STATUS_CONCURRENCY, pending.length) }, worker));
+  };
+
   const target = pageTarget(search);
   if (target === null) {
-    namePath("/edit");
-    main.replaceChildren(el("p", "edit-note", NO_FILE_NAMED));
-    tree.replaceChildren(el("p", "edit-note", NO_PROJECT));
+    document.title = `${HOME_NAME} — kitterm`;
+    namePath(HOME_NAME);
+    pathName.title = "";
+    separator.hidden = true;
+    state.hidden = true;
+    facts.hidden = true;
+    previewToggle.hidden = true;
+    saveButton.hidden = true;
+    terminalLink.href = HOME_TERMINAL_URL;
+    tabs.hidden = true;
+    sidebar.hidden = true;
+    main.hidden = true;
+    keys.hidden = true;
+    body.classList.add("edit-body-home");
+    const home = el("div", "edit-home");
+    home.setAttribute("role", "list");
+    body.append(home);
+    const paintHome = (groups: ProjectGroup[]): void => {
+      if (projectsError !== null) {
+        home.replaceChildren(el("p", "edit-note", projectsError));
+        return;
+      }
+      renderProjectGroups(home, groups, null, (line) => navigate(editUrl(line.root)));
+    };
+    await loadProjectGroups(paintHome);
     return;
   }
   const { session } = target;
@@ -524,7 +676,7 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
 
   /** A relative `.md` link in the preview (rule 3). */
   const openMarkdownLink = (link: string, fragment: string): void => {
-    if (hasUnsavedWork(model) && !confirmFn("Discard your edits and open another file?")) return;
+    if (hasUnsavedWork(model) && !confirmFn(DISCARD_FILE_QUESTION)) return;
     navigate(markdownLinkUrl(path, link, fragment, session));
   };
 
@@ -934,40 +1086,68 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
   document.title = pageTitle(path);
   terminalLink.href = terminalUrl(path);
   let treeModel: TreeNode | null = null;
+  // The roving-tabindex selection (rule 7, rule 21): the one row in the
+  // tab order, by its `tail` path; the first row until a click or a key
+  // moves it.
+  let focusedTreePath: string | null = null;
+
+  /** The key a row's identity is painted and found by: a chain's tail, a
+   * plain node's own path. */
+  const rowKey = (row: Pick<TreeRow, "tail">): string => row.tail.path;
 
   const paintTree = (): void => {
     // With no tree the panel holds a sentence (`NO_PROJECT`, a refused
     // project read), which a git repaint must not wipe.
     if (!treeModel) return;
+    const rows = visibleRows(treeModel);
     tree.replaceChildren();
-    for (const { node, depth } of visibleRows(treeModel)) {
-      const row = button("edit-row", "", `tree:${node.path}`);
+    const current = focusedTreePath !== null && rows.some((r) => rowKey(r) === focusedTreePath) ? focusedTreePath : (rows[0] ? rowKey(rows[0]) : null);
+    for (const treeRow of rows) {
+      const { node, tail, displayName, depth } = treeRow;
+      const key = rowKey(treeRow);
+      const row = button("edit-row", "", `tree:${key}`);
       row.style.setProperty("--depth", String(depth));
       row.setAttribute("role", "treeitem");
-      if (node.dir) row.setAttribute("aria-expanded", node.open ? "true" : "false");
-      if (node.path === path) {
+      row.tabIndex = key === current ? 0 : -1;
+      if (tail.dir) row.setAttribute("aria-expanded", tail.open ? "true" : "false");
+      if (key === path) {
         row.classList.add("open");
         row.setAttribute("aria-current", "true");
       }
-      row.title = node.path;
-      row.append(el("span", "edit-triangle", triangle(node)), el("span", "edit-row-name", node.name));
-      const badge = badgeForPath(gitStatus, node.path, node.dir);
+      if (isIgnoredPath(gitStatus, node.path)) row.classList.add("ignored");
+      row.title = key;
+      for (let level = 0; level < depth; level += 1) row.append(el("span", "edit-guide", ""));
+      if (tail.dir) {
+        row.append(el("span", "edit-triangle", triangle(tail)));
+      } else {
+        const tag = tagFor(node.name);
+        row.append(el("span", `edit-tag${tag ? ` ${tag.className}` : ""}`, tag?.text ?? ""));
+      }
+      row.append(el("span", "edit-row-name", displayName));
+      const badge = badgeForPath(gitStatus, key, tail.dir);
       if (badge) {
         const letter = mark(badge.letter, badge.tone, true);
         letter.classList.add("edit-row-badge");
         row.append(letter);
       }
       row.addEventListener("click", () => void onRow(node));
+      row.addEventListener("focus", () => {
+        focusedTreePath = key;
+      });
       tree.append(row);
-      if (node.dir && node.open && node.children && node.children.length === 0) {
-        const empty = el("p", "edit-note edit-row-empty", node.error ?? emptyFolder(node.name));
+      if (tail.dir && tail.open && tail.children && tail.children.length === 0) {
+        const empty = el("p", "edit-note edit-row-empty", tail.error ?? emptyFolder(displayName));
         empty.style.setProperty("--depth", String(depth + 1));
         tree.append(empty);
       }
     }
   };
 
-  const list = async (node: TreeNode): Promise<void> => {
+  /** One directory's listing, with no chain resolution of its own: `list`
+   * below is what a row's click or an ancestor-opening loop calls; this is
+   * what `resolveChain` calls on each link, so a chain never re-lists a
+   * folder its own expansion already covers. */
+  const listOne = async (node: TreeNode): Promise<void> => {
     const result = await readListing(fetchFn, listingUrl(node.path, session));
     if (result.kind === "ok") {
       node.children = childrenOf(node, result.entries);
@@ -978,17 +1158,82 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
     }
   };
 
-  const onRow = async (node: TreeNode): Promise<void> => {
-    if (!node.dir) {
-      if (node.path === path) return selectTab("edit");
-      if (hasUnsavedWork(model) && !confirmFn("Discard your edits and open another file?")) return;
-      navigate(editUrl(node.path, session));
+  /** Whether `node` is itself the single link of a compact chain (rule 6):
+   * while its listing holds exactly one directory and nothing else, the
+   * chain continues into that directory's listing too, up to
+   * `MAX_COMPACT_CHAIN` links. */
+  const resolveChain = async (node: TreeNode, chainDepth: number): Promise<void> => {
+    if (chainDepth >= MAX_COMPACT_CHAIN) return;
+    if (node.children === null) await listOne(node);
+    const next = compactCandidate(node);
+    if (next) {
+      node.compactWith = next;
+      await resolveChain(next, chainDepth + 1);
+    }
+  };
+
+  /** A folder's listing, then every directory child's own chain resolved
+   * eagerly (rule 6), so a chain shows compacted the moment its parent is
+   * listed — never a bare single-child folder revealed one click at a
+   * time, which is what the approved frames show. */
+  const list = async (node: TreeNode): Promise<void> => {
+    await listOne(node);
+    if (node.children) await Promise.all(node.children.filter((child) => child.dir).map((child) => resolveChain(child, 0)));
+  };
+
+  /** The tree's keyboard (rule 7, rule 21): `↑` `↓` `←` `→` `Home` `End`
+   * move the roving selection and fold or open a row in place;
+   * `navigateTree` decides where, this applies it. */
+  const applyTreeNav = async (rows: readonly TreeRow[], result: NavResult): Promise<void> => {
+    const target = rows[result.focusIndex];
+    if (result.toggle) {
+      target.tail.open = result.toggle === "open";
+      if (target.tail.open && target.tail.children === null) await list(target.tail);
+    }
+    focusedTreePath = rowKey(target);
+    paintTree();
+    tree.querySelector<HTMLElement>(`[data-focus="tree:${CSS.escape(focusedTreePath)}"]`)?.focus();
+  };
+
+  const TREE_KEYS: Record<string, TreeKey> = {
+    ArrowUp: "up",
+    ArrowDown: "down",
+    ArrowLeft: "left",
+    ArrowRight: "right",
+    Home: "home",
+    End: "end",
+  };
+  tree.addEventListener("keydown", (event) => {
+    if (!treeModel) return;
+    const focusedPath = document.activeElement instanceof HTMLElement ? document.activeElement.dataset.focus : undefined;
+    if (!focusedPath?.startsWith("tree:")) return;
+    const rows = visibleRows(treeModel);
+    const index = rows.findIndex((r) => `tree:${rowKey(r)}` === focusedPath);
+    if (index < 0) return;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void onRow(rows[index].node);
       return;
     }
-    node.open = !node.open;
-    if (node.open && node.children === null) await list(node);
+    const key = TREE_KEYS[event.key];
+    if (!key) return;
+    event.preventDefault();
+    void applyTreeNav(rows, navigateTree(rows, index, key));
+  });
+
+  const onRow = async (node: TreeNode): Promise<void> => {
+    const tail = chainTail(node);
+    if (!tail.dir) {
+      if (tail.path === path) return selectTab("edit");
+      if (hasUnsavedWork(model) && !confirmFn(DISCARD_FILE_QUESTION)) return;
+      navigate(editUrl(tail.path, session));
+      return;
+    }
+    tail.open = !tail.open;
+    if (tail.open && tail.children === null) await list(tail);
+    focusedTreePath = tail.path;
     paintTree();
-    const focus = tree.querySelector<HTMLElement>(`[data-focus="tree:${CSS.escape(node.path)}"]`);
+    const focus = tree.querySelector<HTMLElement>(`[data-focus="tree:${CSS.escape(tail.path)}"]`);
     focus?.focus();
   };
 
@@ -1000,7 +1245,8 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
     path = projectAnswer.answer.path || path;
     if (projectAnswer.answer.kind === "directory") folder = path;
     const named = headerName(project, path);
-    projectName.textContent = named.project ?? "";
+    projectNameText.textContent = named.project ?? "";
+    projectName.hidden = named.project === null;
     separator.hidden = named.project === null || named.path === "";
     namePath(named.path);
     pathName.title = path;
@@ -1025,6 +1271,229 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
     tree.replaceChildren(el("p", "edit-note", cannotRead(path, projectAnswer.reason)));
   }
   void pollGit();
+
+  // --- the switcher (rounds 10 and 11, rule 2) ------------------------------
+  // The project name's own control, loaded once on the first open; a choice
+  // asks the tree's own question before it drops a buffer's unsaved edits.
+  let switcherGroups: ProjectGroup[] | null = null;
+  let switcherOpen = false;
+
+  const paintSwitcher = (): void => {
+    switcherPanel.hidden = !switcherOpen;
+    projectName.setAttribute("aria-expanded", switcherOpen ? "true" : "false");
+    if (!switcherOpen) return;
+    if (projectsError !== null) {
+      switcherPanel.replaceChildren(el("p", "edit-note", projectsError));
+      return;
+    }
+    renderProjectGroups(switcherPanel, switcherGroups ?? [], project?.root ?? null, chooseProject);
+  };
+
+  const closeSwitcher = (): void => {
+    if (!switcherOpen) return;
+    switcherOpen = false;
+    paintSwitcher();
+  };
+
+  const openSwitcher = async (): Promise<void> => {
+    switcherOpen = true;
+    paintSwitcher();
+    await loadProjectGroups((groups) => {
+      switcherGroups = groups;
+      if (switcherOpen) paintSwitcher();
+    });
+  };
+
+  const chooseProject = (line: ProjectLine): void => {
+    if (project && line.root === project.root) return closeSwitcher();
+    if (hasUnsavedWork(model) && !confirmFn(SWITCH_PROJECT_QUESTION)) return;
+    navigate(editUrl(line.root));
+  };
+
+  if (project) {
+    projectName.addEventListener("click", () => {
+      if (switcherOpen) closeSwitcher();
+      else void openSwitcher();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && switcherOpen) closeSwitcher();
+    });
+    document.addEventListener("click", (event) => {
+      if (!switcherOpen) return;
+      const target = event.target as Node;
+      if (switcherPanel.contains(target) || projectName.contains(target)) return;
+      closeSwitcher();
+    });
+  }
+
+  // --- the palette (round 14, rule 8 of `corpus/07-projects-and-tree.md`,
+  // rule 25 of `Editor components 2`) -------------------------------------
+  // ⌘P (Ctrl+P) over a scrim: the query line, `FILES N` of the open
+  // project's repository (the index read once on open and again past
+  // `PALETTE_INDEX_STALE_MS`), then `PROJECTS N` of round 12's list, both
+  // matched by `palette-match.ts`'s fuzzy matcher; `Enter` or a click opens
+  // the chosen row, after the tree's own question for a file with unsaved
+  // work or the switcher's for a project.
+  const PALETTE_INDEX_STALE_MS = 30000;
+  let paletteOpen = false;
+  let paletteQuery = "";
+  let paletteIndex: { root: string; files: string[] } | null = null;
+  let paletteIndexEtag: string | null = null;
+  let paletteIndexReadAt = 0;
+  let paletteSelected = -1;
+  let paletteCurrentRows: PaletteRow[] = [];
+
+  const paletteScrim = el("div", "edit-palette-scrim");
+  paletteScrim.hidden = true;
+  const paletteBox = el("div", "edit-palette");
+  paletteBox.setAttribute("role", "dialog");
+  paletteBox.setAttribute("aria-label", "Quick open");
+  const paletteInputRow = el("div", "edit-palette-input-row");
+  const paletteInput = document.createElement("input");
+  paletteInput.type = "text";
+  paletteInput.className = "edit-palette-input";
+  paletteInput.placeholder = PALETTE_PLACEHOLDER;
+  paletteInput.setAttribute("aria-label", "Quick open");
+  paletteInput.setAttribute("aria-autocomplete", "list");
+  const paletteKeysHint = el("span", "edit-palette-keys", PALETTE_KEYS);
+  paletteInputRow.append(paletteInput, paletteKeysHint);
+  const paletteGroupsHost = el("div", "edit-palette-groups");
+  paletteGroupsHost.setAttribute("role", "listbox");
+  paletteBox.append(paletteInputRow, paletteGroupsHost);
+  paletteScrim.append(paletteBox);
+  root.append(paletteScrim);
+
+  const closePalette = (): void => {
+    if (!paletteOpen) return;
+    paletteOpen = false;
+    paletteScrim.hidden = true;
+    view?.focus();
+  };
+
+  /** A row chosen by `Enter` or a click: the palette closes first, then the
+   * row's own question and navigation run, as the tree's row and the
+   * switcher's choice do. */
+  const openPaletteRow = (row: PaletteRow): void => {
+    closePalette();
+    if (row.kind === "project") return chooseProject(row.line);
+    if (row.path === path) return selectTab("edit");
+    if (hasUnsavedWork(model) && !confirmFn(DISCARD_FILE_QUESTION)) return;
+    navigate(editUrl(row.path, session));
+  };
+
+  const renderPaletteFileRow = (file: PaletteFileRow, index: number): HTMLElement => {
+    const row = button(`edit-palette-row edit-palette-file${index === paletteSelected ? " selected" : ""}`, "", `palette:${file.path}`);
+    row.setAttribute("role", "option");
+    row.setAttribute("aria-selected", index === paletteSelected ? "true" : "false");
+    row.title = file.path;
+    row.append(el("span", `edit-palette-tag${file.tag ? ` ${file.tag.className}` : ""}`, file.tag?.text ?? ""));
+    const name = el("span", "edit-palette-name");
+    for (const run of file.runs) name.append(run.matched ? el("span", "edit-palette-match", run.text) : document.createTextNode(run.text));
+    row.append(name, el("span", "edit-palette-dir", file.directory));
+    row.addEventListener("click", () => openPaletteRow(file));
+    return row;
+  };
+
+  const renderPaletteProjectRow = (entry: PaletteProjectRow, index: number): HTMLElement => {
+    const line = entry.line;
+    // `.edit-project-line` alone (rule 25: the home line without the
+    // radio) — not `.edit-palette-row`, whose flex layout would win the
+    // cascade at equal specificity over the line's own grid.
+    const row = button(`edit-project-line${index === paletteSelected ? " selected" : ""}`, "", `palette:project:${line.id}`);
+    row.setAttribute("role", "option");
+    row.setAttribute("aria-selected", index === paletteSelected ? "true" : "false");
+    row.append(el("span", "edit-project-name", line.name), el("span", "edit-project-home", line.home), el("span", "edit-project-branch", line.branch));
+    const changed = el("span", "edit-project-changed");
+    if (line.changed !== null) changed.append(mark("M", "warning", true), " ", el("span", "edit-project-changed-count", String(line.changed)));
+    row.append(changed);
+    row.addEventListener("click", () => openPaletteRow(entry));
+    return row;
+  };
+
+  const paintPalette = (): void => {
+    if (!paletteOpen) return;
+    const groups = paletteGroups(paletteIndex, projectsList ?? [], projectStatuses, paletteQuery);
+    paletteCurrentRows = paletteRows(groups);
+    if (paletteSelected >= paletteCurrentRows.length) paletteSelected = paletteCurrentRows.length - 1;
+    if (paletteSelected < 0 && paletteCurrentRows.length > 0) paletteSelected = 0;
+    paletteGroupsHost.replaceChildren();
+    if (groups.empty) {
+      paletteGroupsHost.append(el("p", "edit-note", PALETTE_EMPTY));
+      return;
+    }
+    if (groups.files.length > 0) {
+      paletteGroupsHost.append(el("h2", "edit-git-label", `FILES ${groups.fileCount}`));
+      groups.files.forEach((file, i) => paletteGroupsHost.append(renderPaletteFileRow(file, i)));
+      const more = moreFilesLine(groups.fileCount);
+      if (more) paletteGroupsHost.append(el("p", "edit-palette-more", more));
+    }
+    if (groups.projects.length > 0) {
+      paletteGroupsHost.append(el("h2", "edit-git-label", `PROJECTS ${groups.projects.length}`));
+      groups.projects.forEach((entry, i) => paletteGroupsHost.append(renderPaletteProjectRow(entry, groups.files.length + i)));
+    }
+  };
+
+  const refreshPaletteIndex = async (): Promise<void> => {
+    if (paletteIndexReadAt !== 0 && Date.now() - paletteIndexReadAt < PALETTE_INDEX_STALE_MS) return;
+    const result = await readFilesIndex(fetchFn, filesIndexUrl(path, session), paletteIndexEtag);
+    if (result.kind === "ok") {
+      paletteIndex = { root: result.answer.root, files: result.answer.files };
+      paletteIndexEtag = result.answer.etag;
+    }
+    // A 304 keeps the index as read; any other failure (no repository
+    // included) keeps the last index, `null` the first time, and is tried
+    // again past the stale window rather than on every keystroke.
+    paletteIndexReadAt = Date.now();
+  };
+
+  const openPalette = async (): Promise<void> => {
+    if (switcherOpen) closeSwitcher();
+    paletteOpen = true;
+    paletteQuery = "";
+    paletteInput.value = "";
+    paletteSelected = -1;
+    paletteScrim.hidden = false;
+    paintPalette();
+    paletteInput.focus();
+    await loadProjectGroups(() => {
+      if (paletteOpen) paintPalette();
+    });
+    await refreshPaletteIndex();
+    if (paletteOpen) paintPalette();
+  };
+
+  paletteInput.addEventListener("input", () => {
+    paletteQuery = paletteInput.value;
+    paletteSelected = -1;
+    paintPalette();
+  });
+  paletteInput.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      paletteSelected = movePaletteSelection(paletteCurrentRows.length, paletteSelected, event.key === "ArrowDown" ? "down" : "up");
+      paintPalette();
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const row = paletteCurrentRows[paletteSelected];
+      if (row) openPaletteRow(row);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closePalette();
+    }
+  });
+  paletteScrim.addEventListener("click", (event) => {
+    if (event.target === paletteScrim) closePalette();
+  });
+  document.addEventListener("keydown", (event) => {
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "p") {
+      event.preventDefault();
+      if (!paletteOpen) void openPalette();
+    }
+  });
 
   // --- the folder form (round 7, `corpus/04-quick-open.md` item 1) ----------
   // A folder opens its `README.md` when it holds one, by name regardless of

@@ -29,6 +29,19 @@ public final class GitRead: @unchecked Sendable {
     public static let toplevelCacheSeconds: TimeInterval = 60
     /// The options every read carries, before the subcommand.
     public static let readOptions = ["--no-optional-locks", "-c", "core.fsmonitor=", "-c", "color.ui=false"]
+    /// The bytes a `git` run is allowed to write before the read is cut:
+    /// `git ls-files` (`index`) on a very large repository is the one call
+    /// here that can exceed `diffMaxBytes`; `diff`'s own 512 KiB cut still
+    /// applies to the diff route regardless of how much this lets the
+    /// process write.
+    public static let indexMaxBytes = 4 << 20
+    /// The index route's own cap on the number of paths it answers
+    /// (`code-editor` round 14, rule 8 of `corpus/07-projects-and-tree.md`).
+    public static let maxIndexFiles = 20000
+    /// The names the `/edit` tree hides at any depth (`edit-tree.ts`'s
+    /// `HIDDEN_NAMES`); the index applies the same rule so no path under
+    /// `.git` reaches the palette.
+    static let hiddenNames: Set<String> = [".git", ".svn", ".hg", "CVS", ".DS_Store", "Thumbs.db"]
 
     public enum Failure: Error, Equatable {
         /// The file's parent is in no project.
@@ -86,7 +99,7 @@ public final class GitRead: @unchecked Sendable {
         self.run = run ?? { args in
             guard let git = PullRequestStatus.locate("git", in: searchPath) else { return nil }
             return KnowledgeBase.run(
-                executable: git, args: args, input: nil, maxOutput: GitRead.diffMaxBytes + 1, searchPath: searchPath
+                executable: git, args: args, input: nil, maxOutput: GitRead.indexMaxBytes, searchPath: searchPath
             )
         }
     }
@@ -161,7 +174,11 @@ public final class GitRead: @unchecked Sendable {
     /// runs it on the repository's queue.
     public func status(of repository: Repository) throws -> GitStatus.Report {
         let base = ["-C", repository.toplevel] + Self.readOptions
-        guard let result = run(base + ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=normal"]) else {
+        // `--ignored=matching` names a top-level ignored path without
+        // descending into it (an ignored directory is one `!` record, not
+        // one per file inside), measured at parity with a plain status on
+        // this repository: both read in 0.02 s (`code-editor` round 13).
+        guard let result = run(base + ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=normal", "--ignored=matching"]) else {
             throw Failure.gitAbsent
         }
         guard result.status == 0 else { throw Failure.failed(Self.failure("git status", result)) }
@@ -246,6 +263,47 @@ public final class GitRead: @unchecked Sendable {
         return diff
     }
 
+    // MARK: - Index
+
+    /// The repository's file index behind the `/edit` page's palette
+    /// (`code-editor` round 14, rule 8 of `corpus/07-projects-and-tree.md`):
+    /// every tracked path plus every untracked path `.gitignore` does not
+    /// exclude, relative to `repository.toplevel`, with the tree's own
+    /// `HIDDEN_NAMES` filtered out and capped at `limit` with `truncated`
+    /// set past it. **The runner itself keeps at most `maxBytes` of `git
+    /// ls-files`'s stdout** (`GitRead.init`'s default runner reads with
+    /// `maxOutput: GitRead.indexMaxBytes`): a read that reached that cap may
+    /// have cut the last path mid-entry, so when `result.output.count` is at
+    /// or past `maxBytes` the last NUL-terminated field is dropped — a
+    /// possibly-partial path is worse than one fewer entry — and `truncated`
+    /// is set, even under `limit`. `maxBytes` is a parameter, not the bare
+    /// constant, so a test can inject a small one against real output
+    /// without a 4 MiB repository. Blocking: the caller runs it on the
+    /// repository's queue.
+    public func index(
+        of repository: Repository, limit: Int = GitRead.maxIndexFiles, maxBytes: Int = GitRead.indexMaxBytes
+    ) throws -> (files: [String], truncated: Bool) {
+        let base = ["-C", repository.toplevel] + Self.readOptions
+        guard let result = run(base + ["ls-files", "--cached", "--others", "--exclude-standard", "-z"]) else {
+            throw Failure.gitAbsent
+        }
+        guard result.status == 0 else { throw Failure.failed(Self.failure("git ls-files", result)) }
+        var fields = GitStatus.nulFields(result.output)
+        var cutByBytes = false
+        if result.output.count >= maxBytes, !fields.isEmpty {
+            fields.removeLast()
+            cutByBytes = true
+        }
+        let filtered = Self.filterHidden(fields)
+        guard filtered.count > limit else { return (filtered, cutByBytes) }
+        return (Array(filtered.prefix(limit)), true)
+    }
+
+    /// Drops a path with a component in `hiddenNames` at any depth.
+    static func filterHidden(_ paths: [String]) -> [String] {
+        paths.filter { path in !path.split(separator: "/").contains { hiddenNames.contains(String($0)) } }
+    }
+
     /// The newlines of the file, nil for one over `countMaxBytes` or with
     /// a NUL in its first bytes (binary), or that cannot be read.
     static func lineCount(of path: String) -> Int? {
@@ -267,8 +325,12 @@ public final class GitRead: @unchecked Sendable {
 
 /// `git status --porcelain=v2 -z --branch`, parsed. Pure.
 public enum GitStatus {
+    /// Paths `--ignored=matching` names at most, with `ignoredTruncated`
+    /// set once a read holds more (rule 19 of `Editor components 2`, `design/editor.pen`).
+    public static let maxIgnored = 2000
+
     public enum Kind: String, Sendable {
-        case ordinary, renamed, copied, unmerged, untracked, ignored
+        case ordinary, renamed, copied, unmerged, untracked
     }
 
     public struct Entry: Sendable, Equatable {
@@ -320,12 +382,16 @@ public enum GitStatus {
         public var files: [Entry] = []
         /// The local branches, by last commit, at most `GitWrite.maxBranches`.
         public var branches: [String] = []
+        /// Paths `.gitignore` excludes, a directory ending in `/` and not
+        /// listed again for what sits under it; never in `files` or
+        /// `counts` (rule 19). Capped at `GitStatus.maxIgnored`.
+        public var ignored: [String] = []
+        public var ignoredTruncated = false
 
         public var counts: Counts {
             var counts = Counts()
             for entry in files {
                 switch entry.kind {
-                case .ignored: continue
                 case .untracked: counts.untracked += 1
                 case .unmerged: counts.conflicts += 1
                 case .ordinary, .renamed, .copied:
@@ -366,10 +432,14 @@ public enum GitStatus {
                 let parts = record.split(separator: " ", maxSplits: 10, omittingEmptySubsequences: false)
                 guard parts.count == 11, let xy = columns(parts[1]) else { continue }
                 report.files.append(Entry(path: String(parts[10]), index: xy.0, worktree: xy.1, kind: .unmerged))
-            case "?", "!":
+            case "?":
                 guard record.count > 2, record.dropFirst().first == " " else { continue }
                 let path = String(record.dropFirst(2))
-                report.files.append(Entry(path: path, index: first, worktree: first, kind: first == "?" ? .untracked : .ignored))
+                report.files.append(Entry(path: path, index: first, worktree: first, kind: .untracked))
+            case "!":
+                guard record.count > 2, record.dropFirst().first == " " else { continue }
+                let path = String(record.dropFirst(2))
+                if report.ignored.count < maxIgnored { report.ignored.append(path) } else { report.ignoredTruncated = true }
             default:
                 continue
             }

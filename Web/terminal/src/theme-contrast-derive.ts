@@ -733,6 +733,17 @@ const BLOCK_SURFACES: Array<{ block: string; stack: string[]; why: string }> = [
   { block: "edit-triangle", stack: ["var(--ui-surface-2)"], why: "in .edit-row, on the body or on the open row's --ui-surface-2, the lifted one measured; a clipped glyph" },
   { block: "edit-row-name", stack: ["var(--ui-surface-2)"], why: "in .edit-row, on the body or on the open row's --ui-surface-2, the lifted one measured" },
   { block: "edit-row-badge", stack: ["var(--ui-surface-2)"], why: "in .edit-row, on the body or on the open row's --ui-surface-2, the lifted one measured; a clipped glyph" },
+  // The file-type tag (round 13, rule 17): on the body or the open row's
+  // --ui-surface-2, the lifted one measured, like the row's own name; a
+  // clipped glyph, like the triangle, because a plain `color` with these
+  // tokens misses 4.5:1 on several themes against the lifted surface.
+  { block: "edit-tag-name", stack: ["var(--ui-surface-2)"], why: "in .edit-row, on the body or on the open row's --ui-surface-2, the lifted one measured; a clipped glyph" },
+  { block: "edit-tag-attr", stack: ["var(--ui-surface-2)"], why: "in .edit-row, on the body or on the open row's --ui-surface-2, the lifted one measured; a clipped glyph" },
+  { block: "edit-tag-link", stack: ["var(--ui-surface-2)"], why: "in .edit-row, on the body or on the open row's --ui-surface-2, the lifted one measured; a clipped glyph" },
+  { block: "edit-tag-error", stack: ["var(--ui-surface-2)"], why: "in .edit-row, on the body or on the open row's --ui-surface-2, the lifted one measured; a clipped glyph" },
+  { block: "edit-tag-string", stack: ["var(--ui-surface-2)"], why: "in .edit-row, on the body or on the open row's --ui-surface-2, the lifted one measured; a clipped glyph" },
+  { block: "edit-tag-keyword", stack: ["var(--ui-surface-2)"], why: "in .edit-row, on the body or on the open row's --ui-surface-2, the lifted one measured; a clipped glyph" },
+  { block: "edit-tag-number", stack: ["var(--ui-surface-2)"], why: "in .edit-row, on the body or on the open row's --ui-surface-2, the lifted one measured; a clipped glyph" },
   { block: "edit-note", stack: ["var(--ui-bg)"], why: "in .edit-tree on the body, or in .edit-main on the well, where the greys read higher" },
   { block: "edit-git", stack: ["var(--ui-bg)"], why: "in .edit-sidebar, in place of the tree" },
   { block: "edit-git-label", stack: ["var(--ui-bg)"], why: "in .edit-git" },
@@ -771,6 +782,27 @@ const BLOCK_SURFACES: Array<{ block: string; stack: string[]; why: string }> = [
   { block: "edit-keys", stack: ["var(--ui-bg)"], why: "over the page's foot; it paints --ui-surface itself" },
   { block: "edit-key", stack: ["var(--ui-surface)"], why: "in .edit-keys" },
   { block: "edit-key-save", stack: ["var(--ui-surface)"], why: "in .edit-keys; a clipped run" },
+  // The home page and the switcher (rounds 10 and 11): the home's lines sit
+  // on the body, the switcher's own on --ui-bg, which .edit-switcher paints
+  // itself; the same surface either way.
+  { block: "edit-project-line", stack: ["var(--ui-bg)"], why: "in .edit-home on the body, or in .edit-switcher, which paints --ui-bg itself" },
+  { block: "edit-project-radio", stack: ["var(--ui-bg)"], why: "in .edit-project-line" },
+  { block: "edit-project-home", stack: ["var(--ui-bg)"], why: "in .edit-project-line" },
+  { block: "edit-project-branch", stack: ["var(--ui-bg)"], why: "in .edit-project-line" },
+  { block: "edit-project-changed", stack: ["var(--ui-bg)"], why: "in .edit-project-line" },
+  { block: "edit-home-empty", stack: ["var(--ui-bg)"], why: "in .edit-home, on the body" },
+  { block: "edit-home-command", stack: ["var(--ui-bg)"], why: "in .edit-home-empty" },
+  // The palette (round 14, rule 8 of `corpus/07-projects-and-tree.md`, rule
+  // 25 of `Editor components 2`): ⌘P over a scrim, under the header.
+  { block: "edit-palette-scrim", stack: ["var(--ui-bg)"], why: "over the page; it paints --ui-scrim itself, no text" },
+  { block: "edit-palette", stack: ["var(--ui-bg)"], why: "the palette's own box, over the scrim; it paints --ui-bg itself" },
+  { block: "edit-palette-input-row", stack: ["var(--ui-bg)"], why: "in .edit-palette" },
+  { block: "edit-palette-input", stack: ["var(--ui-bg)"], why: "in .edit-palette-input-row" },
+  { block: "edit-palette-keys", stack: ["var(--ui-bg)"], why: "in .edit-palette-input-row" },
+  { block: "edit-palette-groups", stack: ["var(--ui-bg)"], why: "in .edit-palette" },
+  { block: "edit-palette-row", stack: ["var(--ui-bg)"], why: "in .edit-palette-groups; the selected row paints --ui-surface-2 itself" },
+  { block: "edit-palette-dir", stack: ["var(--ui-bg)"], why: "in .edit-palette-row, on the body or on the selected row's --ui-surface-2, the lifted one measured" },
+  { block: "edit-palette-more", stack: ["var(--ui-bg)"], why: "in .edit-palette-groups, under the files" },
   // --- styles.css: the paste prompt and the file picker ---
   { block: "paste-prompt", stack: ["var(--ui-bg)"], why: "over the grid; it paints --ui-surface-2 itself" },
   { block: "paste-prompt-hint", stack: ["var(--ui-surface-2)"], why: "in .paste-prompt, which paints --ui-surface-2" },

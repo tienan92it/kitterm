@@ -39,6 +39,8 @@
   --sidebar-w: 280px;
   --gutter-w: 36px;
   --keyboard-height: 0px;
+  /* The switcher's own width (rule 22). */
+  --switcher-w: 760px;
 
   --ui-accent: light-dark(#1d7268, #2a9d8f);
   --ui-success: light-dark(#2d6a4f, #52b788);
@@ -78,6 +80,7 @@ body {
 
 /* --- the header (rule 2) ------------------------------------------------ */
 .edit-header {
+  position: relative;
   display: flex;
   flex: none;
   align-items: center;
@@ -97,7 +100,19 @@ body {
   font: var(--type-heading);
 }
 
-.edit-project,
+/* The switcher's own control (rounds 10 and 11, rule 2): `kitterm ▼`, the
+   name in `--ui-text-muted` as the project name read before it, the
+   triangle faint at `--mark-size-disclosure`; hidden with no project. */
+.edit-project {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ui-text-muted);
+  font: inherit;
+  white-space: pre;
+  cursor: pointer;
+}
+.edit-project-triangle { font-size: var(--mark-size-disclosure); }
 .edit-separator { color: var(--ui-text-muted); }
 .edit-path { color: var(--ui-text); }
 
@@ -245,16 +260,110 @@ body {
   min-width: 0;
 }
 
-/* --- the tree (rule 4, rule 12) ----------------------------------------- */
+/* --- the home page and the switcher (rounds 10 and 11, rules 1 and 2) --- */
+/* `/edit` with no path: the grid gives way to one column of project lines. */
+.edit-body.edit-body-home {
+  display: block;
+  overflow: auto;
+}
+.edit-home { padding: var(--space-2) 0; }
+
+/* The switcher's own panel: under the header at the sidebar's content x,
+   on `--ui-bg` with a hairline and a 2 px radius (rule 22). */
+.edit-switcher {
+  position: absolute;
+  top: 100%;
+  left: var(--space-3);
+  z-index: 1;
+  width: var(--switcher-w);
+  max-width: calc(100vw - 2 * var(--space-3));
+  max-height: calc(100vh - var(--line-h) - var(--space-5));
+  overflow: auto;
+  border: 1px solid var(--ui-border);
+  border-radius: 2px;
+  background: var(--ui-bg);
+}
+
+/* One line, shared by the home page and the switcher (rule 23): the name
+   in a 22ch cell, the root under `~` growing and truncating, the branch in
+   a 9ch cell, the changed count at the right; the switcher's radio adds a
+   column before the name (rule 22). */
+.edit-project-line {
+  display: grid;
+  grid-template-columns: 22ch minmax(0, 1fr) 9ch minmax(6ch, auto);
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  height: var(--line-h);
+  padding: 0 var(--space-4);
+  border: 0;
+  background: none;
+  color: var(--ui-text);
+  font: var(--type-body);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.edit-project-line.radio { grid-template-columns: 4ch 22ch minmax(0, 1fr) 9ch minmax(6ch, auto); }
+/* The palette's selected project row (round 14, rule 25): the line's own
+   grid kept, only the background added — never `.edit-palette-row`, whose
+   flex layout would win the cascade at equal specificity. */
+.edit-project-line.selected { background: var(--ui-surface-2); }
+.edit-project-radio { color: var(--ui-text-muted); }
+.edit-project-radio.current { color: var(--ui-text); }
+.edit-project-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.edit-project-home {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ui-text-faint);
+}
+.edit-project-branch {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ui-text-muted);
+}
+.edit-project-changed {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  color: var(--ui-text-muted);
+  white-space: pre;
+}
+
+/* The empty home (rule 24): the command in the text colour after two
+   spaces, the sentence muted. */
+.edit-home-empty {
+  margin: 0;
+  padding: var(--space-4);
+  color: var(--ui-text-muted);
+  font: var(--type-body);
+}
+.edit-home-command { color: var(--ui-text); }
+
+/* The home page drops the root under the switcher's own frame too (rule 3). */
+@media (max-width: 767px) {
+  .edit-project-home { display: none; }
+  .edit-project-line { grid-template-columns: 1fr 9ch minmax(6ch, auto); }
+  .edit-project-line.radio { grid-template-columns: 4ch 1fr 9ch minmax(6ch, auto); }
+}
+
+/* --- the tree (rule 4, rule 12; the indent guides, the tags, the dimmed
+   entries and the compact rows of `code-editor` round 13, rules 17 to 20
+   of `Editor components 2`) --------------------------------------------- */
 .edit-tree { padding: var(--space-2) 0; }
 
 .edit-row {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
   width: 100%;
   height: var(--line-h);
-  padding: 0 var(--space-4) 0 calc(var(--space-4) + var(--depth, 0) * var(--space-3));
+  padding: 0 var(--space-4);
   border: 0;
   background: none;
   color: var(--ui-text);
@@ -266,13 +375,68 @@ body {
 
 .edit-row.open { background: var(--ui-surface-2); }
 
+/* The keyboard selection (rule 7, rule 21): a 1 px inset outline in the
+   muted grey; the open row may wear both. */
+.edit-row:focus-visible {
+  outline: 1px solid var(--ui-text-muted);
+  outline-offset: -1px;
+}
+
+/* One `--space-5` (24 px) cell per ancestor level, a 1 px rail in
+   `--ui-border` at the cell's x + 6 — the centre of an ancestor's 12 px
+   triangle cell — the full height of the row, so consecutive rows under
+   one open folder draw one continuous line (rule 18). No tick, no tee, no
+   elbow: a row simply carries one guide cell per ancestor depth. */
+.edit-guide {
+  position: relative;
+  flex: none;
+  align-self: stretch;
+  width: var(--space-5);
+}
+.edit-guide::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 6px;
+  width: 1px;
+  background: var(--ui-border);
+}
+
 .edit-triangle {
   flex: none;
-  width: var(--space-4);
+  width: var(--space-3);
+  margin-right: var(--space-2);
   text-align: center;
   font-size: var(--mark-size-disclosure);
   background: var(--ui-text-faint);
 }
+
+/* A file's tag (rule 17): 2 or 3 characters right-aligned in a 24 px cell
+   ending at the triangle cell's right edge — pulled left by the
+   difference between the two cells' widths, so a level's names start at
+   one x whichever marker sits before them (`36 + 24·d`). Empty for a
+   folder or an unknown extension, which still reserves the cell. */
+.edit-tag {
+  flex: none;
+  width: var(--space-5);
+  margin-right: var(--space-2);
+  margin-left: calc(-1 * var(--space-3));
+  text-align: right;
+  white-space: pre;
+}
+/* The tag's colour is its background, clipped to its glyphs, like every
+   other owned colour on the page: a plain `color` with the `--code-*`
+   tokens fails 4.5:1 on several bundled themes against the open row's
+   lifted `--ui-surface-2` (measured, `code-editor` round 13), the same
+   reason a mark and a triangle are clipped runs. */
+.edit-tag-name { background: var(--code-name); }
+.edit-tag-attr { background: var(--code-attr); }
+.edit-tag-link { background: var(--code-link); }
+.edit-tag-error { background: var(--code-error); }
+.edit-tag-string { background: var(--code-string); }
+.edit-tag-keyword { background: var(--code-keyword); }
+.edit-tag-number { background: var(--code-number); }
 
 .edit-row-name {
   min-width: 0;
@@ -280,8 +444,158 @@ body {
   text-overflow: ellipsis;
 }
 
+/* Dimmed (rule 19): an entry `.gitignore` excludes, and everything under
+   it, shows its triangle (already the faint grey by default), its tag and
+   its name in that same grey; it stays listed and keeps its click. The tag
+   and the name both become clipped runs here, for the same reason. */
+.edit-row.ignored .edit-tag { background: var(--ui-text-faint); }
+.edit-row.ignored .edit-row-name { background: var(--ui-text-faint); }
+
 /* The badge at the right of a tree row (rule 5): a one-letter mark. */
 .edit-row-badge { margin-left: auto; }
+
+/* A row's own pad is `--space-3` (12 px) below 768 px, so a name starts at
+   `32 + 24·d` there and `36 + 24·d` at 1200 (`rounds/011.md`). */
+@media (max-width: 767px) {
+  .edit-row { padding: 0 var(--space-3); }
+  .edit-row-empty { padding-left: calc(var(--space-3) + var(--space-3) + var(--space-2) + var(--depth, 0) * var(--space-5)); }
+}
+
+/* --- the palette (round 14, rule 8 of `corpus/07-projects-and-tree.md`,
+   rule 25 of `Editor components 2`) --------------------------------------
+   ⌘P over a scrim: a 640 px box 24 px (`--space-5`) under the header, on
+   `--ui-bg` with a hairline and a 2 px radius like the switcher's own
+   panel. The query line is its own fixed 44 px, not `--line-h`, which
+   shrinks to 28 px at 768 px and up; the row list keeps `--line-h` like
+   every other row on the page. */
+.edit-palette-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  background: var(--ui-scrim);
+}
+
+.edit-palette {
+  position: absolute;
+  top: calc(var(--line-h) + var(--space-5));
+  width: 640px;
+  max-width: calc(100vw - 2 * var(--space-3));
+  max-height: calc(100vh - var(--line-h) - 2 * var(--space-5));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--ui-border);
+  border-radius: 2px;
+  background: var(--ui-bg);
+}
+
+.edit-palette-input-row {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-3);
+  height: 44px;
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.edit-palette-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--ui-text);
+  caret-color: var(--ui-text);
+  font: var(--type-body);
+}
+.edit-palette-input:focus { outline: none; }
+.edit-palette-input::placeholder { color: var(--ui-text-faint); }
+
+.edit-palette-keys {
+  flex: none;
+  color: var(--ui-text-faint);
+  font: var(--type-body);
+  white-space: pre;
+}
+
+.edit-palette-groups {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: var(--space-2) 0;
+}
+
+/* A row (a file or a project): the same shape and height as a tree row;
+   `.edit-palette-file` adds the tag cell, `.edit-project-line` (the home
+   line without the radio) is reused whole for a project row. */
+.edit-palette-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: var(--line-h);
+  padding: 0 var(--space-4);
+  border: 0;
+  background: none;
+  color: var(--ui-text);
+  font: var(--type-body);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.edit-palette-row.selected { background: var(--ui-surface-2); }
+
+/* The tag cell (rule 25): the same 2-or-3-character tag the tree draws, in
+   its `--code-*` token, right-aligned before the name. */
+.edit-palette-tag {
+  flex: none;
+  width: var(--space-5);
+  margin-right: var(--space-2);
+  text-align: right;
+  white-space: pre;
+}
+
+.edit-palette-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The matched letters (rule 25): weight 600, underlined, in the text
+   colour — not a clipped run, because a match is not a kind or a state. */
+.edit-palette-match {
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.edit-palette-dir {
+  flex: none;
+  max-width: 40%;
+  margin-left: var(--space-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ui-text-faint);
+}
+
+.edit-palette-more {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  height: var(--line-h);
+  padding: 0 var(--space-4);
+  color: var(--ui-text-faint);
+  font: var(--type-body);
+}
+
+@media (max-width: 767px) {
+  .edit-palette-input-row { padding: 0 var(--space-3); }
+  .edit-palette-row { padding: 0 var(--space-3); }
+  .edit-palette-more { padding: 0 var(--space-3); }
+  /* A phone has no keys to name (foreman correction): the hint squeezed
+     the input to a sliver, so it drops and the input takes the row. */
+  .edit-palette-keys { display: none; }
+}
 
 /* --- the git panel (rules 5 and 7) --------------------------------------- */
 .edit-git { padding: var(--space-2) 0; }
@@ -452,7 +766,9 @@ body {
   color: var(--ui-text-faint);
   font: var(--type-body);
 }
-.edit-row-empty { padding-left: calc(var(--space-4) + var(--space-4) + var(--depth, 0) * var(--space-3)); }
+/* The same x a row's name starts at (`36 + 24·d`, rule 18): `--depth` here
+   is already the child rows' depth, the folder's own plus one. */
+.edit-row-empty { padding-left: calc(var(--space-4) + var(--space-3) + var(--space-2) + var(--depth, 0) * var(--space-5)); }
 .edit-main .edit-note { color: var(--ui-text-muted); }
 
 /* --- the bars (rules 10 and 11) ----------------------------------------- */
@@ -708,6 +1024,15 @@ body {
 .edit-state-word.success,
 .edit-state-word.faint,
 .edit-triangle,
+.edit-tag-name,
+.edit-tag-attr,
+.edit-tag-link,
+.edit-tag-error,
+.edit-tag-string,
+.edit-tag-keyword,
+.edit-tag-number,
+.edit-row.ignored .edit-tag,
+.edit-row.ignored .edit-row-name,
 .edit-save,
 .edit-terminal,
 .edit-bar-button,

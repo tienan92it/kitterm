@@ -8,7 +8,10 @@ import { ancestorsOf, childrenOf, findNode, treeRoot, triangle, visibleRows } fr
 describe("the tree", () => {
   it("starts as the root row, open and unlisted, and lists one level without .git", () => {
     const root = treeRoot("/w/kitterm", "kitterm");
-    expect(root).toEqual({ name: "kitterm", path: "/w/kitterm", dir: true, open: true, children: null, error: null });
+    // Chartered (`code-editor` round 13, rule 6 of `corpus/07-projects-and-
+    // tree.md`): `TreeNode` grows `compactWith`, the compact-folder chain
+    // pointer, so the root's literal shape grows the field with it.
+    expect(root).toEqual({ name: "kitterm", path: "/w/kitterm", dir: true, open: true, children: null, error: null, compactWith: null });
     root.children = childrenOf(root, [
       { name: ".git", dir: true },
       { name: "Web", dir: true },

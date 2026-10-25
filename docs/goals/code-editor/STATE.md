@@ -1,10 +1,10 @@
 # STATE: code-editor
 
 - Status: done
-- Round: 1 of 1 in this budget (fifth budget, a chore on the done goal)
-- Rounds total: 9
-- Last floor: green (2026-10-23, round 9 after: vitest 2125, PR CI on 650802a)
-- Updated: 2026-10-23, round 9 done: dotfiles in the editor tree
+- Round: 5 of 5 in this budget (sixth budget, `corpus/07-projects-and-tree.md`)
+- Rounds total: 14
+- Last floor: green (2026-10-25, round 14 after: swift test 1360, vitest 2198, PR CI on 5cf4c22)
+- Updated: 2026-10-25, round 14 done; the budget is spent and the goal is done
 
 ## Queue
 
@@ -16,11 +16,21 @@ None.
 
 ## Proposals waiting on the human
 
-None. 2026-10-18: the human approved the frames at 01ac6ff, the words,
-the three foundation additions, and compare in the editor area.
+None. 2026-10-24: the human approved the frames of rounds 10 and 11,
+their words, and the tag-colour exception (`corpus/09-approved-frames.md`).
 
 ## Done
 
+- `quick-open-palette`, round 14, PR #203. See `rounds/014.md`. ⌘P with
+  the file index.
+- `tree-polish`, round 13, PR #203. See `rounds/013.md`. Guides, tags,
+  dimmed ignored entries, compact folders, keys.
+- `project-access`, round 12, PR #203. See `rounds/012.md`. The `/edit`
+  home page and the header switcher.
+- `tree-design-revision`, round 11, PR #203. See `rounds/011.md`.
+  Vertical guides only, one space after the triangle.
+- `editor-design-2`, round 10, PR #203. See `rounds/010.md`. Seven
+  frames in `design/editor.pen`.
 - `editor-dotfiles`, round 9, PR #202. See `rounds/009.md`. The tree
   lists dotfiles and hides VS Code's `files.exclude` names.
 - `editor-markdown-preview`, round 8, PR #201. See `rounds/008.md`. The

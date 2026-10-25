@@ -238,6 +238,79 @@ export async function readGitDiff(
   };
 }
 
+/** One project of `GET /api/projects` (rounds 10 and 11): the identity the
+ * home page and the switcher group by. */
+export interface ProjectRef {
+  id: string;
+  name: string;
+  root: string;
+  registered: boolean;
+}
+
+/** `GET /api/projects`: every project the daemon has seen, or an error
+ * sentence. A project missing an id, a name or a root is dropped. */
+export async function readProjects(fetch: Fetch, url: string): Promise<{ kind: "ok"; projects: ProjectRef[] } | { kind: "error"; status: number | null; reason: string }> {
+  let response: Response;
+  try {
+    response = await fetch(url, { credentials: "same-origin" });
+  } catch {
+    return { kind: "error", status: null, reason: DAEMON_UNREACHABLE };
+  }
+  if (!response.ok) {
+    return { kind: "error", status: response.status, reason: daemonAnswered(response.status, await errorWord(response)) };
+  }
+  const body = (await response.json().catch(() => ({}))) as { projects?: unknown };
+  const list = Array.isArray(body.projects) ? body.projects : [];
+  const projects: ProjectRef[] = [];
+  for (const raw of list) {
+    const item = (raw ?? {}) as Record<string, unknown>;
+    if (typeof item.id !== "string" || typeof item.name !== "string" || typeof item.root !== "string") continue;
+    projects.push({ id: item.id, name: item.name, root: item.root, registered: item.registered === true });
+  }
+  return { kind: "ok", projects };
+}
+
+/** `GET /api/files/index` (the palette, round 14): the file paths of the
+ * repository the path resolves to, relative to `root`. */
+export interface FilesIndexAnswer {
+  root: string;
+  files: string[];
+  truncated: boolean;
+  etag: string | null;
+}
+
+export type FilesIndexResult =
+  | { kind: "ok"; answer: FilesIndexAnswer }
+  /** 304: the index still holds the tag the page sent. */
+  | { kind: "unchanged" }
+  | { kind: "error"; status: number | null; reason: string };
+
+/**
+ * `GET /api/files/index`, conditional on the tag the page holds (the
+ * palette reads it once on the first open and again when more than 30 s
+ * have passed since the last read).
+ */
+export async function readFilesIndex(fetch: Fetch, url: string, ifNoneMatch: string | null = null): Promise<FilesIndexResult> {
+  const headers: Record<string, string> = {};
+  if (ifNoneMatch) headers["If-None-Match"] = ifNoneMatch;
+  let response: Response;
+  try {
+    response = await fetch(url, { credentials: "same-origin", headers, cache: "no-store" });
+  } catch {
+    return { kind: "error", status: null, reason: DAEMON_UNREACHABLE };
+  }
+  if (response.status === 304) return { kind: "unchanged" };
+  if (!response.ok) {
+    return { kind: "error", status: response.status, reason: daemonAnswered(response.status, await errorWord(response)) };
+  }
+  const body = (await response.json().catch(() => ({}))) as { root?: unknown; files?: unknown; truncated?: unknown };
+  const files = Array.isArray(body.files) ? body.files.filter((f): f is string => typeof f === "string") : [];
+  return {
+    kind: "ok",
+    answer: { root: typeof body.root === "string" ? body.root : "", files, truncated: body.truncated === true, etag: response.headers.get("ETag") },
+  };
+}
+
 export type WriteResult =
   | { kind: "ok"; body: Record<string, unknown>; lines: string[] }
   | { kind: "error"; status: number | null; reason: string; lines: string[] };

@@ -51,20 +51,28 @@ final class GitStatusParserTests: XCTestCase {
         XCTAssertEqual(report.ahead, 3)
         XCTAssertEqual(report.behind, 1)
         XCTAssertFalse(report.detached)
+        // Chartered (`code-editor` round 13, rule 19 of `Editor components 2`,
+        // `design/editor.pen`): an ignored path is no longer a `.files` entry of kind
+        // `.ignored` — it is `report.ignored`, outside `files` and `counts`,
+        // so the tree can dim a path the daemon never treats as a change.
+        // Old: `report.files.map(\.path)` ended `…, "untracked.txt", "build/"`
+        // and `.kind` `…, .untracked, .ignored`, with `"!!"` in the XY list.
         XCTAssertEqual(report.files.map(\.path), [
-            "a b.txt", "src/osc52.ts", "gone.txt", "new.txt", "copy.txt", "conflict.txt", "nl\nin.txt", "untracked.txt", "build/",
+            "a b.txt", "src/osc52.ts", "gone.txt", "new.txt", "copy.txt", "conflict.txt", "nl\nin.txt", "untracked.txt",
         ])
         XCTAssertEqual(report.files.map(\.kind), [
-            .ordinary, .ordinary, .ordinary, .renamed, .copied, .unmerged, .untracked, .untracked, .ignored,
+            .ordinary, .ordinary, .ordinary, .renamed, .copied, .unmerged, .untracked, .untracked,
         ])
         XCTAssertEqual(report.files.map { String($0.index) + String($0.worktree) }, [
-            ".M", "A.", "D.", "R.", "C.", "UU", "??", "??", "!!",
+            ".M", "A.", "D.", "R.", "C.", "UU", "??", "??",
         ])
         XCTAssertEqual(report.files[3].origPath, "old.txt")
         XCTAssertEqual(report.files[4].origPath, "source.txt")
         XCTAssertNil(report.files[0].origPath)
+        XCTAssertEqual(report.ignored, ["build/"])
+        XCTAssertFalse(report.ignoredTruncated)
         let counts = report.counts
-        XCTAssertEqual(counts.changed, 8, "the ignored entry is not a change")
+        XCTAssertEqual(counts.changed, 8, "the ignored entry is never a files entry")
         XCTAssertEqual(counts.staged, 4, "A, D, R and C")
         XCTAssertEqual(counts.unstaged, 1)
         XCTAssertEqual(counts.untracked, 2)

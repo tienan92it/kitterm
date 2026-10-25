@@ -10,6 +10,14 @@ decision moves to `docs/adr/`.
 
 ## Toolchain
 
+- `git status --porcelain=v2 --ignored=matching` costs nothing measurable
+  beside a plain status on this repository (`.build`, `.playwright-mcp`,
+  `Web/terminal/node_modules`): both `real 0.02s`. `--ignored=matching`
+  (not `--ignored=no-matching`) with `--untracked-files=normal` names one
+  `!` record per top-level ignored path, a directory ending in `/`, and
+  never descends into it — exactly the shape the `/edit` tree's dimmed
+  entries need, no `git check-ignore` call required (2026-10-25,
+  `code-editor` round 13).
 - `PullRequestStatusTests.testAGhThatIgnoresSIGTERMIsKilledWithItsGroup`
   can fail once under a full local `swift test` (the fake `gh` writes its
   pid file late); it passes alone and on CI. Rerun it alone before
