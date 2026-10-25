@@ -68,7 +68,7 @@ import { Compartment, EditorState } from "@codemirror/state";
 import { drawSelection, EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
-import { type Fetch, gitWrite, readFile, readGitDiff, readGitStatus, readListing, readProject, readProjects, saveFile } from "./edit-fetch";
+import { type Fetch, gitWrite, readFile, readFilesIndex, readGitDiff, readGitStatus, readListing, readProject, readProjects, saveFile } from "./edit-fetch";
 import {
   badgeForPath,
   badgeOf,
@@ -104,6 +104,7 @@ import {
   cwdUrl,
   decodeText,
   type DecodedText,
+  DISCARD_FILE_QUESTION,
   diskChangeAction,
   editUrl,
   type EditorModel,
@@ -111,6 +112,7 @@ import {
   EMPTY_HOME_COMMAND,
   EMPTY_HOME_SENTENCE,
   encodeText,
+  filesIndexUrl,
   gitDiffUrl,
   gitStatusUrl,
   gitWriteUrl,
@@ -147,6 +149,18 @@ import {
   SWITCH_PROJECT_QUESTION,
   terminalUrl,
 } from "./edit-model";
+import {
+  moreFilesLine,
+  movePaletteSelection,
+  PALETTE_EMPTY,
+  PALETTE_KEYS,
+  PALETTE_PLACEHOLDER,
+  type PaletteFileRow,
+  paletteGroups,
+  type PaletteProjectRow,
+  type PaletteRow,
+  paletteRows,
+} from "./palette-model";
 import {
   ancestorsOf,
   chainTail,
@@ -662,7 +676,7 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
 
   /** A relative `.md` link in the preview (rule 3). */
   const openMarkdownLink = (link: string, fragment: string): void => {
-    if (hasUnsavedWork(model) && !confirmFn("Discard your edits and open another file?")) return;
+    if (hasUnsavedWork(model) && !confirmFn(DISCARD_FILE_QUESTION)) return;
     navigate(markdownLinkUrl(path, link, fragment, session));
   };
 
@@ -1211,7 +1225,7 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
     const tail = chainTail(node);
     if (!tail.dir) {
       if (tail.path === path) return selectTab("edit");
-      if (hasUnsavedWork(model) && !confirmFn("Discard your edits and open another file?")) return;
+      if (hasUnsavedWork(model) && !confirmFn(DISCARD_FILE_QUESTION)) return;
       navigate(editUrl(tail.path, session));
       return;
     }
@@ -1311,6 +1325,172 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
       closeSwitcher();
     });
   }
+
+  // --- the palette (round 14, rule 8 of `corpus/07-projects-and-tree.md`,
+  // rule 25 of `Editor components 2`) -------------------------------------
+  // ⌘P (Ctrl+P) over a scrim: the query line, `FILES N` of the open
+  // project's repository (the index read once on open and again past
+  // `PALETTE_INDEX_STALE_MS`), then `PROJECTS N` of round 12's list, both
+  // matched by `palette-match.ts`'s fuzzy matcher; `Enter` or a click opens
+  // the chosen row, after the tree's own question for a file with unsaved
+  // work or the switcher's for a project.
+  const PALETTE_INDEX_STALE_MS = 30000;
+  let paletteOpen = false;
+  let paletteQuery = "";
+  let paletteIndex: { root: string; files: string[] } | null = null;
+  let paletteIndexEtag: string | null = null;
+  let paletteIndexReadAt = 0;
+  let paletteSelected = -1;
+  let paletteCurrentRows: PaletteRow[] = [];
+
+  const paletteScrim = el("div", "edit-palette-scrim");
+  paletteScrim.hidden = true;
+  const paletteBox = el("div", "edit-palette");
+  paletteBox.setAttribute("role", "dialog");
+  paletteBox.setAttribute("aria-label", "Quick open");
+  const paletteInputRow = el("div", "edit-palette-input-row");
+  const paletteInput = document.createElement("input");
+  paletteInput.type = "text";
+  paletteInput.className = "edit-palette-input";
+  paletteInput.placeholder = PALETTE_PLACEHOLDER;
+  paletteInput.setAttribute("aria-label", "Quick open");
+  paletteInput.setAttribute("aria-autocomplete", "list");
+  const paletteKeysHint = el("span", "edit-palette-keys", PALETTE_KEYS);
+  paletteInputRow.append(paletteInput, paletteKeysHint);
+  const paletteGroupsHost = el("div", "edit-palette-groups");
+  paletteGroupsHost.setAttribute("role", "listbox");
+  paletteBox.append(paletteInputRow, paletteGroupsHost);
+  paletteScrim.append(paletteBox);
+  root.append(paletteScrim);
+
+  const closePalette = (): void => {
+    if (!paletteOpen) return;
+    paletteOpen = false;
+    paletteScrim.hidden = true;
+    view?.focus();
+  };
+
+  /** A row chosen by `Enter` or a click: the palette closes first, then the
+   * row's own question and navigation run, as the tree's row and the
+   * switcher's choice do. */
+  const openPaletteRow = (row: PaletteRow): void => {
+    closePalette();
+    if (row.kind === "project") return chooseProject(row.line);
+    if (row.path === path) return selectTab("edit");
+    if (hasUnsavedWork(model) && !confirmFn(DISCARD_FILE_QUESTION)) return;
+    navigate(editUrl(row.path, session));
+  };
+
+  const renderPaletteFileRow = (file: PaletteFileRow, index: number): HTMLElement => {
+    const row = button(`edit-palette-row edit-palette-file${index === paletteSelected ? " selected" : ""}`, "", `palette:${file.path}`);
+    row.setAttribute("role", "option");
+    row.setAttribute("aria-selected", index === paletteSelected ? "true" : "false");
+    row.title = file.path;
+    row.append(el("span", `edit-palette-tag${file.tag ? ` ${file.tag.className}` : ""}`, file.tag?.text ?? ""));
+    const name = el("span", "edit-palette-name");
+    for (const run of file.runs) name.append(run.matched ? el("span", "edit-palette-match", run.text) : document.createTextNode(run.text));
+    row.append(name, el("span", "edit-palette-dir", file.directory));
+    row.addEventListener("click", () => openPaletteRow(file));
+    return row;
+  };
+
+  const renderPaletteProjectRow = (entry: PaletteProjectRow, index: number): HTMLElement => {
+    const line = entry.line;
+    const row = button(`edit-project-line edit-palette-row${index === paletteSelected ? " selected" : ""}`, "", `palette:project:${line.id}`);
+    row.setAttribute("role", "option");
+    row.setAttribute("aria-selected", index === paletteSelected ? "true" : "false");
+    row.append(el("span", "edit-project-name", line.name), el("span", "edit-project-home", line.home), el("span", "edit-project-branch", line.branch));
+    const changed = el("span", "edit-project-changed");
+    if (line.changed !== null) changed.append(mark("M", "warning", true), " ", el("span", "edit-project-changed-count", String(line.changed)));
+    row.append(changed);
+    row.addEventListener("click", () => openPaletteRow(entry));
+    return row;
+  };
+
+  const paintPalette = (): void => {
+    if (!paletteOpen) return;
+    const groups = paletteGroups(paletteIndex, projectsList ?? [], projectStatuses, paletteQuery);
+    paletteCurrentRows = paletteRows(groups);
+    if (paletteSelected >= paletteCurrentRows.length) paletteSelected = paletteCurrentRows.length - 1;
+    if (paletteSelected < 0 && paletteCurrentRows.length > 0) paletteSelected = 0;
+    paletteGroupsHost.replaceChildren();
+    if (groups.empty) {
+      paletteGroupsHost.append(el("p", "edit-note", PALETTE_EMPTY));
+      return;
+    }
+    if (groups.files.length > 0) {
+      paletteGroupsHost.append(el("h2", "edit-git-label", `FILES ${groups.fileCount}`));
+      groups.files.forEach((file, i) => paletteGroupsHost.append(renderPaletteFileRow(file, i)));
+      const more = moreFilesLine(groups.fileCount);
+      if (more) paletteGroupsHost.append(el("p", "edit-palette-more", more));
+    }
+    if (groups.projects.length > 0) {
+      paletteGroupsHost.append(el("h2", "edit-git-label", `PROJECTS ${groups.projects.length}`));
+      groups.projects.forEach((entry, i) => paletteGroupsHost.append(renderPaletteProjectRow(entry, groups.files.length + i)));
+    }
+  };
+
+  const refreshPaletteIndex = async (): Promise<void> => {
+    if (paletteIndexReadAt !== 0 && Date.now() - paletteIndexReadAt < PALETTE_INDEX_STALE_MS) return;
+    const result = await readFilesIndex(fetchFn, filesIndexUrl(path, session), paletteIndexEtag);
+    if (result.kind === "ok") {
+      paletteIndex = { root: result.answer.root, files: result.answer.files };
+      paletteIndexEtag = result.answer.etag;
+    }
+    // A 304 keeps the index as read; any other failure (no repository
+    // included) keeps the last index, `null` the first time, and is tried
+    // again past the stale window rather than on every keystroke.
+    paletteIndexReadAt = Date.now();
+  };
+
+  const openPalette = async (): Promise<void> => {
+    if (switcherOpen) closeSwitcher();
+    paletteOpen = true;
+    paletteQuery = "";
+    paletteInput.value = "";
+    paletteSelected = -1;
+    paletteScrim.hidden = false;
+    paintPalette();
+    paletteInput.focus();
+    await loadProjectGroups(() => {
+      if (paletteOpen) paintPalette();
+    });
+    await refreshPaletteIndex();
+    if (paletteOpen) paintPalette();
+  };
+
+  paletteInput.addEventListener("input", () => {
+    paletteQuery = paletteInput.value;
+    paletteSelected = -1;
+    paintPalette();
+  });
+  paletteInput.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      paletteSelected = movePaletteSelection(paletteCurrentRows.length, paletteSelected, event.key === "ArrowDown" ? "down" : "up");
+      paintPalette();
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const row = paletteCurrentRows[paletteSelected];
+      if (row) openPaletteRow(row);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closePalette();
+    }
+  });
+  paletteScrim.addEventListener("click", (event) => {
+    if (event.target === paletteScrim) closePalette();
+  });
+  document.addEventListener("keydown", (event) => {
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "p") {
+      event.preventDefault();
+      if (!paletteOpen) void openPalette();
+    }
+  });
 
   // --- the folder form (round 7, `corpus/04-quick-open.md` item 1) ----------
   // A folder opens its `README.md` when it holds one, by name regardless of

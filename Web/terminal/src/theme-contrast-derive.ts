@@ -792,6 +792,17 @@ const BLOCK_SURFACES: Array<{ block: string; stack: string[]; why: string }> = [
   { block: "edit-project-changed", stack: ["var(--ui-bg)"], why: "in .edit-project-line" },
   { block: "edit-home-empty", stack: ["var(--ui-bg)"], why: "in .edit-home, on the body" },
   { block: "edit-home-command", stack: ["var(--ui-bg)"], why: "in .edit-home-empty" },
+  // The palette (round 14, rule 8 of `corpus/07-projects-and-tree.md`, rule
+  // 25 of `Editor components 2`): ⌘P over a scrim, under the header.
+  { block: "edit-palette-scrim", stack: ["var(--ui-bg)"], why: "over the page; it paints --ui-scrim itself, no text" },
+  { block: "edit-palette", stack: ["var(--ui-bg)"], why: "the palette's own box, over the scrim; it paints --ui-bg itself" },
+  { block: "edit-palette-input-row", stack: ["var(--ui-bg)"], why: "in .edit-palette" },
+  { block: "edit-palette-input", stack: ["var(--ui-bg)"], why: "in .edit-palette-input-row" },
+  { block: "edit-palette-keys", stack: ["var(--ui-bg)"], why: "in .edit-palette-input-row" },
+  { block: "edit-palette-groups", stack: ["var(--ui-bg)"], why: "in .edit-palette" },
+  { block: "edit-palette-row", stack: ["var(--ui-bg)"], why: "in .edit-palette-groups; the selected row paints --ui-surface-2 itself" },
+  { block: "edit-palette-dir", stack: ["var(--ui-bg)"], why: "in .edit-palette-row, on the body or on the selected row's --ui-surface-2, the lifted one measured" },
+  { block: "edit-palette-more", stack: ["var(--ui-bg)"], why: "in .edit-palette-groups, under the files" },
   // --- styles.css: the paste prompt and the file picker ---
   { block: "paste-prompt", stack: ["var(--ui-bg)"], why: "over the grid; it paints --ui-surface-2 itself" },
   { block: "paste-prompt-hint", stack: ["var(--ui-surface-2)"], why: "in .paste-prompt, which paints --ui-surface-2" },

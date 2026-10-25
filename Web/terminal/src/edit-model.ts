@@ -318,6 +318,14 @@ export function gitDiffUrl(path: string, session: string | null = null, staged =
   return `/api/git/diff?${params.toString()}`;
 }
 
+/** The file index route for the repository of a file or a folder through a
+ * session (the palette, round 14). */
+export function filesIndexUrl(path: string, session: string | null = null): string {
+  const params = new URLSearchParams({ path });
+  if (session) params.set("session", session);
+  return `/api/files/index?${params.toString()}`;
+}
+
 /** The listing route for a directory, with dotfiles included
  * (`corpus/06-dotfiles.md` rule 1): the tree hides only the six names
  * `edit-tree.ts`'s `HIDDEN_NAMES` lists, not every dotfile. */
@@ -377,7 +385,9 @@ export interface ProjectGroup {
   lines: ProjectLine[];
 }
 
-function projectLine(project: ProjectEntry, status: ProjectCheckout | undefined): ProjectLine {
+/** One project's line (rule 1 of `corpus/07-projects-and-tree.md`), the
+ * same shape the home page, the switcher and the palette (round 14) paint. */
+export function projectLine(project: ProjectEntry, status: ProjectCheckout | undefined): ProjectLine {
   const home = homePath(project.root);
   if (status === undefined) return { id: project.id, name: project.name, root: project.root, home, branch: "", changed: null };
   if (status === null) return { id: project.id, name: project.name, root: project.root, home, branch: "-", changed: null };
@@ -414,6 +424,10 @@ export const EMPTY_HOME_COMMAND = "kitterm project add <path>";
 
 /** The question before the switcher's choice drops typed work (rule 2). */
 export const SWITCH_PROJECT_QUESTION = "Discard your edits and open another project?";
+
+/** The question before a tree row, a Markdown link, or the palette (round
+ * 14) opens another file and drops typed work. */
+export const DISCARD_FILE_QUESTION = "Discard your edits and open another file?";
 
 /** `GET /api/projects`, for the home page and the switcher. */
 export function projectsUrl(): string {

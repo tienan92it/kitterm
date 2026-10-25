@@ -457,6 +457,139 @@ body {
   .edit-row-empty { padding-left: calc(var(--space-3) + var(--space-3) + var(--space-2) + var(--depth, 0) * var(--space-5)); }
 }
 
+/* --- the palette (round 14, rule 8 of `corpus/07-projects-and-tree.md`,
+   rule 25 of `Editor components 2`) --------------------------------------
+   ⌘P over a scrim: a 640 px box 24 px (`--space-5`) under the header, on
+   `--ui-bg` with a hairline and a 2 px radius like the switcher's own
+   panel. The query line is its own fixed 44 px, not `--line-h`, which
+   shrinks to 28 px at 768 px and up; the row list keeps `--line-h` like
+   every other row on the page. */
+.edit-palette-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  background: var(--ui-scrim);
+}
+
+.edit-palette {
+  position: absolute;
+  top: calc(var(--line-h) + var(--space-5));
+  width: 640px;
+  max-width: calc(100vw - 2 * var(--space-3));
+  max-height: calc(100vh - var(--line-h) - 2 * var(--space-5));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--ui-border);
+  border-radius: 2px;
+  background: var(--ui-bg);
+}
+
+.edit-palette-input-row {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-3);
+  height: 44px;
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.edit-palette-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--ui-text);
+  caret-color: var(--ui-text);
+  font: var(--type-body);
+}
+.edit-palette-input:focus { outline: none; }
+.edit-palette-input::placeholder { color: var(--ui-text-faint); }
+
+.edit-palette-keys {
+  flex: none;
+  color: var(--ui-text-faint);
+  font: var(--type-body);
+  white-space: pre;
+}
+
+.edit-palette-groups {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: var(--space-2) 0;
+}
+
+/* A row (a file or a project): the same shape and height as a tree row;
+   `.edit-palette-file` adds the tag cell, `.edit-project-line` (the home
+   line without the radio) is reused whole for a project row. */
+.edit-palette-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: var(--line-h);
+  padding: 0 var(--space-4);
+  border: 0;
+  background: none;
+  color: var(--ui-text);
+  font: var(--type-body);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.edit-palette-row.selected { background: var(--ui-surface-2); }
+
+/* The tag cell (rule 25): the same 2-or-3-character tag the tree draws, in
+   its `--code-*` token, right-aligned before the name. */
+.edit-palette-tag {
+  flex: none;
+  width: var(--space-5);
+  margin-right: var(--space-2);
+  text-align: right;
+  white-space: pre;
+}
+
+.edit-palette-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The matched letters (rule 25): weight 600, underlined, in the text
+   colour — not a clipped run, because a match is not a kind or a state. */
+.edit-palette-match {
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.edit-palette-dir {
+  flex: none;
+  max-width: 40%;
+  margin-left: var(--space-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ui-text-faint);
+}
+
+.edit-palette-more {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  height: var(--line-h);
+  padding: 0 var(--space-4);
+  color: var(--ui-text-faint);
+  font: var(--type-body);
+}
+
+@media (max-width: 767px) {
+  .edit-palette-input-row { padding: 0 var(--space-3); }
+  .edit-palette-row { padding: 0 var(--space-3); }
+  .edit-palette-more { padding: 0 var(--space-3); }
+}
+
 /* --- the git panel (rules 5 and 7) --------------------------------------- */
 .edit-git { padding: var(--space-2) 0; }
 
