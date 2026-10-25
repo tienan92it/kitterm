@@ -39,6 +39,8 @@
   --sidebar-w: 280px;
   --gutter-w: 36px;
   --keyboard-height: 0px;
+  /* The switcher's own width (rule 22). */
+  --switcher-w: 760px;
 
   --ui-accent: light-dark(#1d7268, #2a9d8f);
   --ui-success: light-dark(#2d6a4f, #52b788);
@@ -78,6 +80,7 @@ body {
 
 /* --- the header (rule 2) ------------------------------------------------ */
 .edit-header {
+  position: relative;
   display: flex;
   flex: none;
   align-items: center;
@@ -97,7 +100,19 @@ body {
   font: var(--type-heading);
 }
 
-.edit-project,
+/* The switcher's own control (rounds 10 and 11, rule 2): `kitterm ▼`, the
+   name in `--ui-text-muted` as the project name read before it, the
+   triangle faint at `--mark-size-disclosure`; hidden with no project. */
+.edit-project {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ui-text-muted);
+  font: inherit;
+  white-space: pre;
+  cursor: pointer;
+}
+.edit-project-triangle { font-size: var(--mark-size-disclosure); }
 .edit-separator { color: var(--ui-text-muted); }
 .edit-path { color: var(--ui-text); }
 
@@ -243,6 +258,95 @@ body {
   grid-row: 1 / 3;
   min-height: 0;
   min-width: 0;
+}
+
+/* --- the home page and the switcher (rounds 10 and 11, rules 1 and 2) --- */
+/* `/edit` with no path: the grid gives way to one column of project lines. */
+.edit-body.edit-body-home {
+  display: block;
+  overflow: auto;
+}
+.edit-home { padding: var(--space-2) 0; }
+
+/* The switcher's own panel: under the header at the sidebar's content x,
+   on `--ui-bg` with a hairline and a 2 px radius (rule 22). */
+.edit-switcher {
+  position: absolute;
+  top: 100%;
+  left: var(--space-3);
+  z-index: 1;
+  width: var(--switcher-w);
+  max-width: calc(100vw - 2 * var(--space-3));
+  max-height: calc(100vh - var(--line-h) - var(--space-5));
+  overflow: auto;
+  border: 1px solid var(--ui-border);
+  border-radius: 2px;
+  background: var(--ui-bg);
+}
+
+/* One line, shared by the home page and the switcher (rule 23): the name
+   in a 22ch cell, the root under `~` growing and truncating, the branch in
+   a 9ch cell, the changed count at the right; the switcher's radio adds a
+   column before the name (rule 22). */
+.edit-project-line {
+  display: grid;
+  grid-template-columns: 22ch minmax(0, 1fr) 9ch minmax(6ch, auto);
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  height: var(--line-h);
+  padding: 0 var(--space-4);
+  border: 0;
+  background: none;
+  color: var(--ui-text);
+  font: var(--type-body);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.edit-project-line.radio { grid-template-columns: 4ch 22ch minmax(0, 1fr) 9ch minmax(6ch, auto); }
+.edit-project-radio { color: var(--ui-text-muted); }
+.edit-project-radio.current { color: var(--ui-text); }
+.edit-project-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.edit-project-home {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ui-text-faint);
+}
+.edit-project-branch {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ui-text-muted);
+}
+.edit-project-changed {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  color: var(--ui-text-muted);
+  white-space: pre;
+}
+
+/* The empty home (rule 24): the command in the text colour after two
+   spaces, the sentence muted. */
+.edit-home-empty {
+  margin: 0;
+  padding: var(--space-4);
+  color: var(--ui-text-muted);
+  font: var(--type-body);
+}
+.edit-home-command { color: var(--ui-text); }
+
+/* The home page drops the root under the switcher's own frame too (rule 3). */
+@media (max-width: 767px) {
+  .edit-project-home { display: none; }
+  .edit-project-line { grid-template-columns: 1fr 9ch minmax(6ch, auto); }
+  .edit-project-line.radio { grid-template-columns: 4ch 1fr 9ch minmax(6ch, auto); }
 }
 
 /* --- the tree (rule 4, rule 12) ----------------------------------------- */

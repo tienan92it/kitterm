@@ -118,7 +118,6 @@ export function stateRun(state: BufferState): StateRun | null {
 export const CHANGED_ON_DISK = "Changed on disk since you opened it.";
 export const NOT_SAVED = "Not saved: changed on disk since you opened it.";
 export const NO_PROJECT = "No project here: open /edit from a shell inside a checkout.";
-export const NO_FILE_NAMED = "No file named. Open /edit?path=<file>&session=<id>.";
 /** The editor area of a folder that holds no `README.md` (round 7). */
 export const OPEN_FROM_TREE = "Open a file from the tree.";
 
@@ -341,6 +340,91 @@ export type MarkdownPreview = "source" | "preview";
  * the `/md` page's own key (`markdown-view.ts`): the words and the default
  * differ here (rule 5: `source` is the default). */
 export const MARKDOWN_PREVIEW_KEY = "kitterm.edit.markdownPreview";
+
+// MARK: - The home page and the switcher (rounds 10 and 11,
+// `corpus/07-projects-and-tree.md` rules 1 and 2)
+
+/** One project of `GET /api/projects`, as the home page and the switcher
+ * group it. */
+export interface ProjectEntry {
+  id: string;
+  name: string;
+  root: string;
+  registered: boolean;
+}
+
+/** A project's checkout facts from `GET /api/git/status` on its root:
+ * `null` for a root that is not a checkout, or whose read failed. */
+export type ProjectCheckout = { branch: string | null; changed: number } | null;
+
+/** One line of the home page or the switcher: the name in a 22ch cell, the
+ * root under `~` (the one cell that grows and truncates), the branch in a
+ * 9ch cell (`-` for a root with no checkout, `""` while the read has not
+ * landed), and the changed count (`null` with none, with no checkout, or
+ * while pending). */
+export interface ProjectLine {
+  id: string;
+  name: string;
+  root: string;
+  home: string;
+  branch: string;
+  changed: number | null;
+}
+
+export interface ProjectGroup {
+  label: "REGISTERED" | "DISCOVERED";
+  count: number;
+  lines: ProjectLine[];
+}
+
+function projectLine(project: ProjectEntry, status: ProjectCheckout | undefined): ProjectLine {
+  const home = homePath(project.root);
+  if (status === undefined) return { id: project.id, name: project.name, root: project.root, home, branch: "", changed: null };
+  if (status === null) return { id: project.id, name: project.name, root: project.root, home, branch: "-", changed: null };
+  return {
+    id: project.id,
+    name: project.name,
+    root: project.root,
+    home,
+    branch: status.branch ?? "HEAD",
+    changed: status.changed > 0 ? status.changed : null,
+  };
+}
+
+/**
+ * `REGISTERED N` then `DISCOVERED N` (rule 1): registered projects first,
+ * then the ones a live pane discovered, in `GET /api/projects`'s own
+ * order inside each group; a group appears only while it holds a project.
+ * `statuses` is a project's checkout facts by its root, absent while
+ * nothing has read it yet (`readProjectCheckouts`, `edit.ts`).
+ */
+export function projectGroups(projects: readonly ProjectEntry[], statuses: ReadonlyMap<string, ProjectCheckout>): ProjectGroup[] {
+  const groups: ProjectGroup[] = [];
+  const registered = projects.filter((p) => p.registered);
+  const discovered = projects.filter((p) => !p.registered);
+  if (registered.length > 0) groups.push({ label: "REGISTERED", count: registered.length, lines: registered.map((p) => projectLine(p, statuses.get(p.root))) });
+  if (discovered.length > 0) groups.push({ label: "DISCOVERED", count: discovered.length, lines: discovered.map((p) => projectLine(p, statuses.get(p.root))) });
+  return groups;
+}
+
+/** The empty home (rule 1), in two runs so the command keeps the text
+ * colour after two spaces, as the fleet view's first-run notes do. */
+export const EMPTY_HOME_SENTENCE = "No project is registered and no pane sits in a checkout.";
+export const EMPTY_HOME_COMMAND = "kitterm project add <path>";
+
+/** The question before the switcher's choice drops typed work (rule 2). */
+export const SWITCH_PROJECT_QUESTION = "Discard your edits and open another project?";
+
+/** `GET /api/projects`, for the home page and the switcher. */
+export function projectsUrl(): string {
+  return "/api/projects";
+}
+
+/** The home page's title and header name, `Projects`. */
+export const HOME_NAME = "Projects";
+
+/** `/edit` with no path: `open in terminal` opens a plain local shell. */
+export const HOME_TERMINAL_URL = "/";
 
 export function loadMarkdownPreview(): MarkdownPreview {
   try {

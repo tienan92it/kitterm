@@ -68,7 +68,7 @@ import { Compartment, EditorState } from "@codemirror/state";
 import { drawSelection, EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
-import { type Fetch, gitWrite, readFile, readGitDiff, readGitStatus, readListing, readProject, saveFile } from "./edit-fetch";
+import { type Fetch, gitWrite, readFile, readGitDiff, readGitStatus, readListing, readProject, readProjects, saveFile } from "./edit-fetch";
 import {
   badgeForPath,
   badgeOf,
@@ -107,6 +107,8 @@ import {
   editUrl,
   type EditorModel,
   emptyFolder,
+  EMPTY_HOME_COMMAND,
+  EMPTY_HOME_SENTENCE,
   encodeText,
   gitDiffUrl,
   gitStatusUrl,
@@ -114,6 +116,8 @@ import {
   hasUnsavedWork,
   headerFacts,
   headerName,
+  HOME_NAME,
+  HOME_TERMINAL_URL,
   INITIAL_MODEL,
   isMarkdownFile,
   languageOf,
@@ -121,12 +125,17 @@ import {
   loadMarkdownPreview,
   markdownLinkUrl,
   type MarkdownPreview,
-  NO_FILE_NAMED,
   NO_PROJECT,
   notSaved,
   OPEN_FROM_TREE,
   pageTarget,
   pageTitle,
+  type ProjectCheckout,
+  type ProjectEntry,
+  type ProjectGroup,
+  projectGroups,
+  type ProjectLine,
+  projectsUrl,
   projectUrl,
   READ_ONLY_MODEL,
   readmeIn,
@@ -134,6 +143,7 @@ import {
   reduce,
   saveMarkdownPreview,
   stateRun,
+  SWITCH_PROJECT_QUESTION,
   terminalUrl,
 } from "./edit-model";
 import { ancestorsOf, childrenOf, findNode, foldersToOpen, treeRoot, type TreeNode, triangle, visibleRows } from "./edit-tree";
@@ -192,6 +202,41 @@ const mark = (text: string, tone: Tone, wide = false): HTMLSpanElement => {
   return node;
 };
 
+/**
+ * The project groups of the home page and the switcher (rounds 10 and 11,
+ * rules 1 and 2): one line per project, the same shape in both, with a
+ * `[x]`/`[ ]` radio only while `currentRoot` is given (the switcher). The
+ * empty home (rule 1) shows only with no radio: the switcher's own empty
+ * list is a project read in flight, never the home's empty state.
+ */
+const renderProjectGroups = (container: HTMLElement, groups: readonly ProjectGroup[], currentRoot: string | null, onChoose: (line: ProjectLine) => void): void => {
+  container.replaceChildren();
+  const radio = currentRoot !== null;
+  if (groups.length === 0) {
+    if (radio) return;
+    const empty = el("p", "edit-home-empty");
+    empty.append(EMPTY_HOME_SENTENCE, "  ", el("span", "edit-home-command", EMPTY_HOME_COMMAND));
+    container.append(empty);
+    return;
+  }
+  for (const group of groups) {
+    container.append(el("h2", "edit-git-label", `${group.label} ${group.count}`));
+    for (const line of group.lines) {
+      const row = button(`edit-project-line${radio ? " radio" : ""}`, "", `project:${line.id}`);
+      if (radio) {
+        const current = line.root === currentRoot;
+        row.append(el("span", `edit-project-radio${current ? " current" : ""}`, current ? "[x]" : "[ ]"));
+      }
+      row.append(el("span", "edit-project-name", line.name), el("span", "edit-project-home", line.home), el("span", "edit-project-branch", line.branch));
+      const changed = el("span", "edit-project-changed");
+      if (line.changed !== null) changed.append(mark("M", "warning", true), " ", el("span", "edit-project-changed-count", String(line.changed)));
+      row.append(changed);
+      row.addEventListener("click", () => onChoose(line));
+      container.append(row);
+    }
+  }
+};
+
 export interface PageOptions {
   fetch?: Fetch;
   /** Where a tree row's file opens; `location.assign` on the page. */
@@ -218,13 +263,27 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
   // --- the chrome ---------------------------------------------------------
   const header = el("header", "edit-header");
   const name = el("div", "edit-name");
-  const projectName = el("span", "edit-project");
+  // The project name is the switcher's own control (rule 2): `kitterm ▼`,
+  // hidden with no project, so a file under none keeps its header as today.
+  const projectName = button("edit-project", "", "switcher");
+  projectName.hidden = true;
+  projectName.setAttribute("aria-haspopup", "listbox");
+  projectName.setAttribute("aria-expanded", "false");
+  const projectNameText = el("span", "edit-project-text");
+  const projectNameTriangle = el("span", "edit-project-triangle", "▼");
+  projectName.append(projectNameText, " ", projectNameTriangle);
   const separator = el("span", "edit-separator", " / ");
   const pathName = el("span", "edit-path");
   const pathDir = el("span", "edit-path-dir");
   const pathBase = el("span", "edit-path-name");
   pathName.append(pathDir, pathBase);
   name.append(projectName, separator, pathName);
+  // The switcher's own panel (rounds 10 and 11, rule 2): the two project
+  // groups under the header, closed until `projectName` opens it.
+  const switcherPanel = el("div", "edit-switcher");
+  switcherPanel.setAttribute("role", "listbox");
+  switcherPanel.setAttribute("aria-label", "Projects");
+  switcherPanel.hidden = true;
   /** The path in two runs, so a phone keeps the name alone. */
   const namePath = (text: string): void => {
     const cut = text.lastIndexOf("/") + 1;
@@ -252,7 +311,7 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
   saveButton.setAttribute("aria-keyshortcuts", "Meta+S Control+S");
   const terminalLink = el("a", "edit-terminal", "open in terminal");
   actions.append(previewToggle, saveButton, terminalLink);
-  header.append(name, state, facts, actions);
+  header.append(name, state, facts, actions, switcherPanel);
 
   const tabs = el("nav", "edit-tabs");
   tabs.setAttribute("role", "radiogroup");
@@ -304,11 +363,72 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
 
   root.replaceChildren(header, body, keys);
 
+  // --- the project list (rounds 10 and 11, rules 1 and 2) ------------------
+  // Read once, never on a poll: `GET /api/projects`, then each root's
+  // `GET /api/git/status`, at most `PROJECT_STATUS_CONCURRENCY` at a time,
+  // cached for the page's life so the home page and a later switcher open
+  // never ask twice.
+  const PROJECT_STATUS_CONCURRENCY = 4;
+  let projectsList: ProjectEntry[] | null = null;
+  let projectsError: string | null = null;
+  const projectStatuses = new Map<string, ProjectCheckout>();
+
+  const loadProjectGroups = async (onUpdate: (groups: ProjectGroup[]) => void): Promise<void> => {
+    if (projectsList === null && projectsError === null) {
+      const result = await readProjects(fetchFn, projectsUrl());
+      if (result.kind === "ok") projectsList = result.projects;
+      else {
+        projectsList = [];
+        projectsError = cannotRead("projects", result.reason);
+      }
+    }
+    const projects = projectsList ?? [];
+    onUpdate(projectGroups(projects, projectStatuses));
+    const pending = projects.filter((p) => !projectStatuses.has(p.root));
+    let index = 0;
+    const worker = async (): Promise<void> => {
+      while (index < pending.length) {
+        const project = pending[index++];
+        const result = await readGitStatus(fetchFn, gitStatusUrl(project.root));
+        let status: ProjectCheckout = null;
+        if (result.kind === "ok") {
+          const parsed = parseStatus(result.body);
+          status = { branch: parsed.branch, changed: parsed.counts.changed };
+        }
+        projectStatuses.set(project.root, status);
+        onUpdate(projectGroups(projects, projectStatuses));
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(PROJECT_STATUS_CONCURRENCY, pending.length) }, worker));
+  };
+
   const target = pageTarget(search);
   if (target === null) {
-    namePath("/edit");
-    main.replaceChildren(el("p", "edit-note", NO_FILE_NAMED));
-    tree.replaceChildren(el("p", "edit-note", NO_PROJECT));
+    document.title = `${HOME_NAME} — kitterm`;
+    namePath(HOME_NAME);
+    pathName.title = "";
+    separator.hidden = true;
+    state.hidden = true;
+    facts.hidden = true;
+    previewToggle.hidden = true;
+    saveButton.hidden = true;
+    terminalLink.href = HOME_TERMINAL_URL;
+    tabs.hidden = true;
+    sidebar.hidden = true;
+    main.hidden = true;
+    keys.hidden = true;
+    body.classList.add("edit-body-home");
+    const home = el("div", "edit-home");
+    home.setAttribute("role", "list");
+    body.append(home);
+    const paintHome = (groups: ProjectGroup[]): void => {
+      if (projectsError !== null) {
+        home.replaceChildren(el("p", "edit-note", projectsError));
+        return;
+      }
+      renderProjectGroups(home, groups, null, (line) => navigate(editUrl(line.root)));
+    };
+    await loadProjectGroups(paintHome);
     return;
   }
   const { session } = target;
@@ -1000,7 +1120,8 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
     path = projectAnswer.answer.path || path;
     if (projectAnswer.answer.kind === "directory") folder = path;
     const named = headerName(project, path);
-    projectName.textContent = named.project ?? "";
+    projectNameText.textContent = named.project ?? "";
+    projectName.hidden = named.project === null;
     separator.hidden = named.project === null || named.path === "";
     namePath(named.path);
     pathName.title = path;
@@ -1025,6 +1146,60 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
     tree.replaceChildren(el("p", "edit-note", cannotRead(path, projectAnswer.reason)));
   }
   void pollGit();
+
+  // --- the switcher (rounds 10 and 11, rule 2) ------------------------------
+  // The project name's own control, loaded once on the first open; a choice
+  // asks the tree's own question before it drops a buffer's unsaved edits.
+  let switcherGroups: ProjectGroup[] | null = null;
+  let switcherOpen = false;
+
+  const paintSwitcher = (): void => {
+    switcherPanel.hidden = !switcherOpen;
+    projectName.setAttribute("aria-expanded", switcherOpen ? "true" : "false");
+    if (!switcherOpen) return;
+    if (projectsError !== null) {
+      switcherPanel.replaceChildren(el("p", "edit-note", projectsError));
+      return;
+    }
+    renderProjectGroups(switcherPanel, switcherGroups ?? [], project?.root ?? null, chooseProject);
+  };
+
+  const closeSwitcher = (): void => {
+    if (!switcherOpen) return;
+    switcherOpen = false;
+    paintSwitcher();
+  };
+
+  const openSwitcher = async (): Promise<void> => {
+    switcherOpen = true;
+    paintSwitcher();
+    await loadProjectGroups((groups) => {
+      switcherGroups = groups;
+      if (switcherOpen) paintSwitcher();
+    });
+  };
+
+  const chooseProject = (line: ProjectLine): void => {
+    if (project && line.root === project.root) return closeSwitcher();
+    if (hasUnsavedWork(model) && !confirmFn(SWITCH_PROJECT_QUESTION)) return;
+    navigate(editUrl(line.root));
+  };
+
+  if (project) {
+    projectName.addEventListener("click", () => {
+      if (switcherOpen) closeSwitcher();
+      else void openSwitcher();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && switcherOpen) closeSwitcher();
+    });
+    document.addEventListener("click", (event) => {
+      if (!switcherOpen) return;
+      const target = event.target as Node;
+      if (switcherPanel.contains(target) || projectName.contains(target)) return;
+      closeSwitcher();
+    });
+  }
 
   // --- the folder form (round 7, `corpus/04-quick-open.md` item 1) ----------
   // A folder opens its `README.md` when it holds one, by name regardless of

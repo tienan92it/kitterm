@@ -771,6 +771,16 @@ const BLOCK_SURFACES: Array<{ block: string; stack: string[]; why: string }> = [
   { block: "edit-keys", stack: ["var(--ui-bg)"], why: "over the page's foot; it paints --ui-surface itself" },
   { block: "edit-key", stack: ["var(--ui-surface)"], why: "in .edit-keys" },
   { block: "edit-key-save", stack: ["var(--ui-surface)"], why: "in .edit-keys; a clipped run" },
+  // The home page and the switcher (rounds 10 and 11): the home's lines sit
+  // on the body, the switcher's own on --ui-bg, which .edit-switcher paints
+  // itself; the same surface either way.
+  { block: "edit-project-line", stack: ["var(--ui-bg)"], why: "in .edit-home on the body, or in .edit-switcher, which paints --ui-bg itself" },
+  { block: "edit-project-radio", stack: ["var(--ui-bg)"], why: "in .edit-project-line" },
+  { block: "edit-project-home", stack: ["var(--ui-bg)"], why: "in .edit-project-line" },
+  { block: "edit-project-branch", stack: ["var(--ui-bg)"], why: "in .edit-project-line" },
+  { block: "edit-project-changed", stack: ["var(--ui-bg)"], why: "in .edit-project-line" },
+  { block: "edit-home-empty", stack: ["var(--ui-bg)"], why: "in .edit-home, on the body" },
+  { block: "edit-home-command", stack: ["var(--ui-bg)"], why: "in .edit-home-empty" },
   // --- styles.css: the paste prompt and the file picker ---
   { block: "paste-prompt", stack: ["var(--ui-bg)"], why: "over the grid; it paints --ui-surface-2 itself" },
   { block: "paste-prompt-hint", stack: ["var(--ui-surface-2)"], why: "in .paste-prompt, which paints --ui-surface-2" },
