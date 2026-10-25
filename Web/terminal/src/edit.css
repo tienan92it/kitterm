@@ -592,6 +592,9 @@ body {
   .edit-palette-input-row { padding: 0 var(--space-3); }
   .edit-palette-row { padding: 0 var(--space-3); }
   .edit-palette-more { padding: 0 var(--space-3); }
+  /* A phone has no keys to name (foreman correction): the hint squeezed
+     the input to a sliver, so it drops and the input takes the row. */
+  .edit-palette-keys { display: none; }
 }
 
 /* --- the git panel (rules 5 and 7) --------------------------------------- */
