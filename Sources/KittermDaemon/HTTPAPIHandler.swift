@@ -4645,9 +4645,12 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// `GET /api/git/status?path=<file>&session=<id>` — the status of the
     /// file's repository (`GitRead.status`): the branch, its upstream and
     /// `ahead`/`behind`, `detached`, one entry per changed file with its
-    /// `XY` columns, kind and `+a −d`, and the counts. An `ETag` over the
-    /// body answers 304 to `If-None-Match`, which is what the page's 3 s
-    /// poll sends. Full grade only, like the file routes.
+    /// `XY` columns, kind and `+a −d`, the counts, and `ignored` (the paths
+    /// `.gitignore` excludes, a directory ending in `/` and not listed again
+    /// for what sits under it, capped at `GitStatus.maxIgnored` with
+    /// `ignoredTruncated` set past the cap; never in `files` or `counts`).
+    /// An `ETag` over the body answers 304 to `If-None-Match`, which is
+    /// what the page's 3 s poll sends. Full grade only, like the file routes.
     private func serveGitStatus(grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext) {
         // `writes`: whether this daemon takes the git writes (round 6), so
         // the page shows its controls or the one sentence that says why not.
@@ -4670,6 +4673,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         var payload: [String: Any] = [
             "ok": true, "root": toplevel, "ahead": report.ahead, "behind": report.behind,
             "detached": report.detached, "branches": report.branches, "writes": writes,
+            "ignored": report.ignored, "ignoredTruncated": report.ignoredTruncated,
             "files": report.files.map { entry -> [String: Any] in
                 var item: [String: Any] = [
                     "path": entry.path, "index": String(entry.index), "worktree": String(entry.worktree),

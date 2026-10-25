@@ -349,16 +349,17 @@ body {
   .edit-project-line.radio { grid-template-columns: 4ch 1fr 9ch minmax(6ch, auto); }
 }
 
-/* --- the tree (rule 4, rule 12) ----------------------------------------- */
+/* --- the tree (rule 4, rule 12; the indent guides, the tags, the dimmed
+   entries and the compact rows of `code-editor` round 13, rules 17 to 20
+   of `Editor components 2`) --------------------------------------------- */
 .edit-tree { padding: var(--space-2) 0; }
 
 .edit-row {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
   width: 100%;
   height: var(--line-h);
-  padding: 0 var(--space-4) 0 calc(var(--space-4) + var(--depth, 0) * var(--space-3));
+  padding: 0 var(--space-4);
   border: 0;
   background: none;
   color: var(--ui-text);
@@ -370,13 +371,68 @@ body {
 
 .edit-row.open { background: var(--ui-surface-2); }
 
+/* The keyboard selection (rule 7, rule 21): a 1 px inset outline in the
+   muted grey; the open row may wear both. */
+.edit-row:focus-visible {
+  outline: 1px solid var(--ui-text-muted);
+  outline-offset: -1px;
+}
+
+/* One `--space-5` (24 px) cell per ancestor level, a 1 px rail in
+   `--ui-border` at the cell's x + 6 — the centre of an ancestor's 12 px
+   triangle cell — the full height of the row, so consecutive rows under
+   one open folder draw one continuous line (rule 18). No tick, no tee, no
+   elbow: a row simply carries one guide cell per ancestor depth. */
+.edit-guide {
+  position: relative;
+  flex: none;
+  align-self: stretch;
+  width: var(--space-5);
+}
+.edit-guide::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 6px;
+  width: 1px;
+  background: var(--ui-border);
+}
+
 .edit-triangle {
   flex: none;
-  width: var(--space-4);
+  width: var(--space-3);
+  margin-right: var(--space-2);
   text-align: center;
   font-size: var(--mark-size-disclosure);
   background: var(--ui-text-faint);
 }
+
+/* A file's tag (rule 17): 2 or 3 characters right-aligned in a 24 px cell
+   ending at the triangle cell's right edge — pulled left by the
+   difference between the two cells' widths, so a level's names start at
+   one x whichever marker sits before them (`36 + 24·d`). Empty for a
+   folder or an unknown extension, which still reserves the cell. */
+.edit-tag {
+  flex: none;
+  width: var(--space-5);
+  margin-right: var(--space-2);
+  margin-left: calc(-1 * var(--space-3));
+  text-align: right;
+  white-space: pre;
+}
+/* The tag's colour is its background, clipped to its glyphs, like every
+   other owned colour on the page: a plain `color` with the `--code-*`
+   tokens fails 4.5:1 on several bundled themes against the open row's
+   lifted `--ui-surface-2` (measured, `code-editor` round 13), the same
+   reason a mark and a triangle are clipped runs. */
+.edit-tag-name { background: var(--code-name); }
+.edit-tag-attr { background: var(--code-attr); }
+.edit-tag-link { background: var(--code-link); }
+.edit-tag-error { background: var(--code-error); }
+.edit-tag-string { background: var(--code-string); }
+.edit-tag-keyword { background: var(--code-keyword); }
+.edit-tag-number { background: var(--code-number); }
 
 .edit-row-name {
   min-width: 0;
@@ -384,8 +440,22 @@ body {
   text-overflow: ellipsis;
 }
 
+/* Dimmed (rule 19): an entry `.gitignore` excludes, and everything under
+   it, shows its triangle (already the faint grey by default), its tag and
+   its name in that same grey; it stays listed and keeps its click. The tag
+   and the name both become clipped runs here, for the same reason. */
+.edit-row.ignored .edit-tag { background: var(--ui-text-faint); }
+.edit-row.ignored .edit-row-name { background: var(--ui-text-faint); }
+
 /* The badge at the right of a tree row (rule 5): a one-letter mark. */
 .edit-row-badge { margin-left: auto; }
+
+/* A row's own pad is `--space-3` (12 px) below 768 px, so a name starts at
+   `32 + 24·d` there and `36 + 24·d` at 1200 (`rounds/011.md`). */
+@media (max-width: 767px) {
+  .edit-row { padding: 0 var(--space-3); }
+  .edit-row-empty { padding-left: calc(var(--space-3) + var(--space-3) + var(--space-2) + var(--depth, 0) * var(--space-5)); }
+}
 
 /* --- the git panel (rules 5 and 7) --------------------------------------- */
 .edit-git { padding: var(--space-2) 0; }
@@ -556,7 +626,9 @@ body {
   color: var(--ui-text-faint);
   font: var(--type-body);
 }
-.edit-row-empty { padding-left: calc(var(--space-4) + var(--space-4) + var(--depth, 0) * var(--space-3)); }
+/* The same x a row's name starts at (`36 + 24·d`, rule 18): `--depth` here
+   is already the child rows' depth, the folder's own plus one. */
+.edit-row-empty { padding-left: calc(var(--space-4) + var(--space-3) + var(--space-2) + var(--depth, 0) * var(--space-5)); }
 .edit-main .edit-note { color: var(--ui-text-muted); }
 
 /* --- the bars (rules 10 and 11) ----------------------------------------- */
@@ -812,6 +884,15 @@ body {
 .edit-state-word.success,
 .edit-state-word.faint,
 .edit-triangle,
+.edit-tag-name,
+.edit-tag-attr,
+.edit-tag-link,
+.edit-tag-error,
+.edit-tag-string,
+.edit-tag-keyword,
+.edit-tag-number,
+.edit-row.ignored .edit-tag,
+.edit-row.ignored .edit-row-name,
 .edit-save,
 .edit-terminal,
 .edit-bar-button,

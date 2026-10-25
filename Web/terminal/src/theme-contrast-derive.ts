@@ -733,6 +733,17 @@ const BLOCK_SURFACES: Array<{ block: string; stack: string[]; why: string }> = [
   { block: "edit-triangle", stack: ["var(--ui-surface-2)"], why: "in .edit-row, on the body or on the open row's --ui-surface-2, the lifted one measured; a clipped glyph" },
   { block: "edit-row-name", stack: ["var(--ui-surface-2)"], why: "in .edit-row, on the body or on the open row's --ui-surface-2, the lifted one measured" },
   { block: "edit-row-badge", stack: ["var(--ui-surface-2)"], why: "in .edit-row, on the body or on the open row's --ui-surface-2, the lifted one measured; a clipped glyph" },
+  // The file-type tag (round 13, rule 17): on the body or the open row's
+  // --ui-surface-2, the lifted one measured, like the row's own name; a
+  // clipped glyph, like the triangle, because a plain `color` with these
+  // tokens misses 4.5:1 on several themes against the lifted surface.
+  { block: "edit-tag-name", stack: ["var(--ui-surface-2)"], why: "in .edit-row, on the body or on the open row's --ui-surface-2, the lifted one measured; a clipped glyph" },
+  { block: "edit-tag-attr", stack: ["var(--ui-surface-2)"], why: "in .edit-row, on the body or on the open row's --ui-surface-2, the lifted one measured; a clipped glyph" },
+  { block: "edit-tag-link", stack: ["var(--ui-surface-2)"], why: "in .edit-row, on the body or on the open row's --ui-surface-2, the lifted one measured; a clipped glyph" },
+  { block: "edit-tag-error", stack: ["var(--ui-surface-2)"], why: "in .edit-row, on the body or on the open row's --ui-surface-2, the lifted one measured; a clipped glyph" },
+  { block: "edit-tag-string", stack: ["var(--ui-surface-2)"], why: "in .edit-row, on the body or on the open row's --ui-surface-2, the lifted one measured; a clipped glyph" },
+  { block: "edit-tag-keyword", stack: ["var(--ui-surface-2)"], why: "in .edit-row, on the body or on the open row's --ui-surface-2, the lifted one measured; a clipped glyph" },
+  { block: "edit-tag-number", stack: ["var(--ui-surface-2)"], why: "in .edit-row, on the body or on the open row's --ui-surface-2, the lifted one measured; a clipped glyph" },
   { block: "edit-note", stack: ["var(--ui-bg)"], why: "in .edit-tree on the body, or in .edit-main on the well, where the greys read higher" },
   { block: "edit-git", stack: ["var(--ui-bg)"], why: "in .edit-sidebar, in place of the tree" },
   { block: "edit-git-label", stack: ["var(--ui-bg)"], why: "in .edit-git" },

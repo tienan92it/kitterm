@@ -55,6 +55,13 @@ export interface GitStatus {
   branches?: string[];
   /** Whether the daemon takes the writes: `--agent-control` is on. */
   writes?: boolean;
+  /** Paths `.gitignore` excludes, relative to `root`, a directory ending in
+   * `/` and not listed again for what sits under it; never in `files` or
+   * `counts` (round 13, rule 19). Set only when the body carries it, like
+   * `branches` and `writes`, so a status from before it reads as before. */
+  ignored?: string[];
+  /** Set once a read held more than the daemon's cap. */
+  ignoredTruncated?: boolean;
 }
 
 const KINDS: GitKind[] = ["ordinary", "renamed", "copied", "unmerged", "untracked", "ignored"];
@@ -101,6 +108,11 @@ export function parseStatus(body: unknown): GitStatus {
   // from before them reads as before.
   if (Array.isArray(item.branches)) status.branches = item.branches.filter((name): name is string => typeof name === "string");
   if (item.writes === true) status.writes = true;
+  // The round 13 fields (rule 19): `ignored` is set whenever the body
+  // carries the array, even an empty one, so a repository with nothing
+  // ignored still reads as read rather than as a status from before it.
+  if (Array.isArray(item.ignored)) status.ignored = item.ignored.filter((path): path is string => typeof path === "string");
+  if (item.ignoredTruncated === true) status.ignoredTruncated = true;
   return status;
 }
 
@@ -164,6 +176,24 @@ export function badgeForPath(status: GitStatus | null, path: string, dir: boolea
   const prefix = path === "/" ? "/" : `${path}/`;
   const held = status.files.some((file) => file.kind !== "ignored" && entryPath(status, file).startsWith(prefix));
   return held ? { letter: "M", tone: "warning" } : null;
+}
+
+/**
+ * Whether `path` (absolute, under `status.root`) is ignored or sits under
+ * an ignored directory (rule 19 of `corpus/09-approved-frames.md`): the
+ * tree dims such a row — its triangle, tag and name in the faint grey —
+ * and still lists it and its children.
+ */
+export function isIgnoredPath(status: GitStatus | null, path: string): boolean {
+  if (!status?.ignored || status.ignored.length === 0) return false;
+  const prefix = status.root === "/" ? "/" : `${status.root}/`;
+  if (path !== status.root && !path.startsWith(prefix)) return false;
+  const relative = path === status.root ? "" : path.slice(prefix.length);
+  for (const entry of status.ignored) {
+    const dir = entry.endsWith("/") ? entry.slice(0, -1) : entry;
+    if (relative === dir || relative.startsWith(`${dir}/`)) return true;
+  }
+  return false;
 }
 
 // MARK: - The words (rule 7)

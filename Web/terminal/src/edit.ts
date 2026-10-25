@@ -83,6 +83,7 @@ import {
   type GitStatus,
   gitTabLabel,
   inFlightWord,
+  isIgnoredPath,
   NEW_BRANCH,
   NEW_BRANCH_QUESTION,
   NO_WRITES,
@@ -146,7 +147,24 @@ import {
   SWITCH_PROJECT_QUESTION,
   terminalUrl,
 } from "./edit-model";
-import { ancestorsOf, childrenOf, findNode, foldersToOpen, treeRoot, type TreeNode, triangle, visibleRows } from "./edit-tree";
+import {
+  ancestorsOf,
+  chainTail,
+  childrenOf,
+  compactCandidate,
+  findNode,
+  foldersToOpen,
+  MAX_COMPACT_CHAIN,
+  navigateTree,
+  type NavResult,
+  treeRoot,
+  type TreeKey,
+  type TreeNode,
+  type TreeRow,
+  triangle,
+  visibleRows,
+} from "./edit-tree";
+import { tagFor } from "./edit-tags";
 import { resolveFontFamily } from "./fonts";
 import { trackKeyboardInsets } from "./keyboard-insets";
 import { diffCounts, hunkHeader, type LineDiff, lineDiff } from "./line-diff";
@@ -1054,40 +1072,68 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
   document.title = pageTitle(path);
   terminalLink.href = terminalUrl(path);
   let treeModel: TreeNode | null = null;
+  // The roving-tabindex selection (rule 7, rule 21): the one row in the
+  // tab order, by its `tail` path; the first row until a click or a key
+  // moves it.
+  let focusedTreePath: string | null = null;
+
+  /** The key a row's identity is painted and found by: a chain's tail, a
+   * plain node's own path. */
+  const rowKey = (row: Pick<TreeRow, "tail">): string => row.tail.path;
 
   const paintTree = (): void => {
     // With no tree the panel holds a sentence (`NO_PROJECT`, a refused
     // project read), which a git repaint must not wipe.
     if (!treeModel) return;
+    const rows = visibleRows(treeModel);
     tree.replaceChildren();
-    for (const { node, depth } of visibleRows(treeModel)) {
-      const row = button("edit-row", "", `tree:${node.path}`);
+    const current = focusedTreePath !== null && rows.some((r) => rowKey(r) === focusedTreePath) ? focusedTreePath : (rows[0] ? rowKey(rows[0]) : null);
+    for (const treeRow of rows) {
+      const { node, tail, displayName, depth } = treeRow;
+      const key = rowKey(treeRow);
+      const row = button("edit-row", "", `tree:${key}`);
       row.style.setProperty("--depth", String(depth));
       row.setAttribute("role", "treeitem");
-      if (node.dir) row.setAttribute("aria-expanded", node.open ? "true" : "false");
-      if (node.path === path) {
+      row.tabIndex = key === current ? 0 : -1;
+      if (tail.dir) row.setAttribute("aria-expanded", tail.open ? "true" : "false");
+      if (key === path) {
         row.classList.add("open");
         row.setAttribute("aria-current", "true");
       }
-      row.title = node.path;
-      row.append(el("span", "edit-triangle", triangle(node)), el("span", "edit-row-name", node.name));
-      const badge = badgeForPath(gitStatus, node.path, node.dir);
+      if (isIgnoredPath(gitStatus, node.path)) row.classList.add("ignored");
+      row.title = key;
+      for (let level = 0; level < depth; level += 1) row.append(el("span", "edit-guide", ""));
+      if (tail.dir) {
+        row.append(el("span", "edit-triangle", triangle(tail)));
+      } else {
+        const tag = tagFor(node.name);
+        row.append(el("span", `edit-tag${tag ? ` ${tag.className}` : ""}`, tag?.text ?? ""));
+      }
+      row.append(el("span", "edit-row-name", displayName));
+      const badge = badgeForPath(gitStatus, key, tail.dir);
       if (badge) {
         const letter = mark(badge.letter, badge.tone, true);
         letter.classList.add("edit-row-badge");
         row.append(letter);
       }
       row.addEventListener("click", () => void onRow(node));
+      row.addEventListener("focus", () => {
+        focusedTreePath = key;
+      });
       tree.append(row);
-      if (node.dir && node.open && node.children && node.children.length === 0) {
-        const empty = el("p", "edit-note edit-row-empty", node.error ?? emptyFolder(node.name));
+      if (tail.dir && tail.open && tail.children && tail.children.length === 0) {
+        const empty = el("p", "edit-note edit-row-empty", tail.error ?? emptyFolder(displayName));
         empty.style.setProperty("--depth", String(depth + 1));
         tree.append(empty);
       }
     }
   };
 
-  const list = async (node: TreeNode): Promise<void> => {
+  /** One directory's listing, with no chain resolution of its own: `list`
+   * below is what a row's click or an ancestor-opening loop calls; this is
+   * what `resolveChain` calls on each link, so a chain never re-lists a
+   * folder its own expansion already covers. */
+  const listOne = async (node: TreeNode): Promise<void> => {
     const result = await readListing(fetchFn, listingUrl(node.path, session));
     if (result.kind === "ok") {
       node.children = childrenOf(node, result.entries);
@@ -1098,17 +1144,82 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
     }
   };
 
-  const onRow = async (node: TreeNode): Promise<void> => {
-    if (!node.dir) {
-      if (node.path === path) return selectTab("edit");
-      if (hasUnsavedWork(model) && !confirmFn("Discard your edits and open another file?")) return;
-      navigate(editUrl(node.path, session));
+  /** Whether `node` is itself the single link of a compact chain (rule 6):
+   * while its listing holds exactly one directory and nothing else, the
+   * chain continues into that directory's listing too, up to
+   * `MAX_COMPACT_CHAIN` links. */
+  const resolveChain = async (node: TreeNode, chainDepth: number): Promise<void> => {
+    if (chainDepth >= MAX_COMPACT_CHAIN) return;
+    if (node.children === null) await listOne(node);
+    const next = compactCandidate(node);
+    if (next) {
+      node.compactWith = next;
+      await resolveChain(next, chainDepth + 1);
+    }
+  };
+
+  /** A folder's listing, then every directory child's own chain resolved
+   * eagerly (rule 6), so a chain shows compacted the moment its parent is
+   * listed — never a bare single-child folder revealed one click at a
+   * time, which is what the approved frames show. */
+  const list = async (node: TreeNode): Promise<void> => {
+    await listOne(node);
+    if (node.children) await Promise.all(node.children.filter((child) => child.dir).map((child) => resolveChain(child, 0)));
+  };
+
+  /** The tree's keyboard (rule 7, rule 21): `↑` `↓` `←` `→` `Home` `End`
+   * move the roving selection and fold or open a row in place;
+   * `navigateTree` decides where, this applies it. */
+  const applyTreeNav = async (rows: readonly TreeRow[], result: NavResult): Promise<void> => {
+    const target = rows[result.focusIndex];
+    if (result.toggle) {
+      target.tail.open = result.toggle === "open";
+      if (target.tail.open && target.tail.children === null) await list(target.tail);
+    }
+    focusedTreePath = rowKey(target);
+    paintTree();
+    tree.querySelector<HTMLElement>(`[data-focus="tree:${CSS.escape(focusedTreePath)}"]`)?.focus();
+  };
+
+  const TREE_KEYS: Record<string, TreeKey> = {
+    ArrowUp: "up",
+    ArrowDown: "down",
+    ArrowLeft: "left",
+    ArrowRight: "right",
+    Home: "home",
+    End: "end",
+  };
+  tree.addEventListener("keydown", (event) => {
+    if (!treeModel) return;
+    const focusedPath = document.activeElement instanceof HTMLElement ? document.activeElement.dataset.focus : undefined;
+    if (!focusedPath?.startsWith("tree:")) return;
+    const rows = visibleRows(treeModel);
+    const index = rows.findIndex((r) => `tree:${rowKey(r)}` === focusedPath);
+    if (index < 0) return;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void onRow(rows[index].node);
       return;
     }
-    node.open = !node.open;
-    if (node.open && node.children === null) await list(node);
+    const key = TREE_KEYS[event.key];
+    if (!key) return;
+    event.preventDefault();
+    void applyTreeNav(rows, navigateTree(rows, index, key));
+  });
+
+  const onRow = async (node: TreeNode): Promise<void> => {
+    const tail = chainTail(node);
+    if (!tail.dir) {
+      if (tail.path === path) return selectTab("edit");
+      if (hasUnsavedWork(model) && !confirmFn("Discard your edits and open another file?")) return;
+      navigate(editUrl(tail.path, session));
+      return;
+    }
+    tail.open = !tail.open;
+    if (tail.open && tail.children === null) await list(tail);
+    focusedTreePath = tail.path;
     paintTree();
-    const focus = tree.querySelector<HTMLElement>(`[data-focus="tree:${CSS.escape(node.path)}"]`);
+    const focus = tree.querySelector<HTMLElement>(`[data-focus="tree:${CSS.escape(tail.path)}"]`);
     focus?.focus();
   };
 

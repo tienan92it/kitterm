@@ -515,10 +515,14 @@ never on the loop. The status is `status --porcelain=v2 -z --branch`, parsed by
 `GitStatus.parse` (pure, every record kind, paths with spaces and newlines under
 `-z`), with `+a −d` per file from one `diff --numstat -z HEAD` and an untracked
 file's lines counted by the daemon; an `ETag` over the body answers 304 to the
-page's 3 s poll. The diff is `diff --numstat -p [--cached] -- <path>` (one command
-gives the counts and the patch), `--no-index /dev/null` for an untracked file, cut
-at 512 KiB with `truncated` true. Full grade only, like the file routes. The status
-also lists the local `branches` (round 6) for the page's switcher.
+page's 3 s poll. The status also carries `ignored` (round 13): `--ignored=matching`
+names a top-level ignored path without descending into it, a directory ending in
+`/`, capped at `GitStatus.maxIgnored` with `ignoredTruncated` set past the cap,
+never in `files` or `counts` — the tree dims such a path and still lists it. The
+diff is `diff --numstat -p [--cached] -- <path>` (one command gives the counts and
+the patch), `--no-index /dev/null` for an untracked file, cut at 512 KiB with
+`truncated` true. Full grade only, like the file routes. The status also lists the
+local `branches` (round 6) for the page's switcher.
 
 ### The git writes
 
