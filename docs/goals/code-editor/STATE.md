@@ -1,14 +1,14 @@
 # STATE: code-editor
 
-- Status: active
-- Round: 4 of 5 in this budget (sixth budget, `corpus/07-projects-and-tree.md`)
-- Rounds total: 13
-- Last floor: green (2026-10-25, round 13 after: swift test 1351, vitest 2162, PR CI on 42e8865)
-- Updated: 2026-10-25, round 13 done: the livelier tree
+- Status: done
+- Round: 5 of 5 in this budget (sixth budget, `corpus/07-projects-and-tree.md`)
+- Rounds total: 14
+- Last floor: green (2026-10-25, round 14 after: swift test 1360, vitest 2198, PR CI on 5cf4c22)
+- Updated: 2026-10-25, round 14 done; the budget is spent and the goal is done
 
 ## Queue
 
-1. `quick-open-palette`: ⌘P with the file index (rule 8), PR #203.
+None.
 
 ## Failures
 
@@ -21,6 +21,8 @@ their words, and the tag-colour exception (`corpus/09-approved-frames.md`).
 
 ## Done
 
+- `quick-open-palette`, round 14, PR #203. See `rounds/014.md`. ⌘P with
+  the file index.
 - `tree-polish`, round 13, PR #203. See `rounds/013.md`. Guides, tags,
   dimmed ignored entries, compact folders, keys.
 - `project-access`, round 12, PR #203. See `rounds/012.md`. The `/edit`
@@ -50,4 +52,4 @@ their words, and the tag-colour exception (`corpus/09-approved-frames.md`).
 
 ## Next action
 
-Round 14: `quick-open-palette`.
+None. The goal is done. A later change to `/edit` resumes it for one round.
