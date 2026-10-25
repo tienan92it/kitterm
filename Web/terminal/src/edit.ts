@@ -1396,7 +1396,10 @@ export async function bootEditPage(root: HTMLElement, search: string, options: P
 
   const renderPaletteProjectRow = (entry: PaletteProjectRow, index: number): HTMLElement => {
     const line = entry.line;
-    const row = button(`edit-project-line edit-palette-row${index === paletteSelected ? " selected" : ""}`, "", `palette:project:${line.id}`);
+    // `.edit-project-line` alone (rule 25: the home line without the
+    // radio) — not `.edit-palette-row`, whose flex layout would win the
+    // cascade at equal specificity over the line's own grid.
+    const row = button(`edit-project-line${index === paletteSelected ? " selected" : ""}`, "", `palette:project:${line.id}`);
     row.setAttribute("role", "option");
     row.setAttribute("aria-selected", index === paletteSelected ? "true" : "false");
     row.append(el("span", "edit-project-name", line.name), el("span", "edit-project-home", line.home), el("span", "edit-project-branch", line.branch));

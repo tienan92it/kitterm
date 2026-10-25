@@ -305,6 +305,10 @@ body {
   cursor: pointer;
 }
 .edit-project-line.radio { grid-template-columns: 4ch 22ch minmax(0, 1fr) 9ch minmax(6ch, auto); }
+/* The palette's selected project row (round 14, rule 25): the line's own
+   grid kept, only the background added — never `.edit-palette-row`, whose
+   flex layout would win the cascade at equal specificity. */
+.edit-project-line.selected { background: var(--ui-surface-2); }
 .edit-project-radio { color: var(--ui-text-muted); }
 .edit-project-radio.current { color: var(--ui-text); }
 .edit-project-name {
