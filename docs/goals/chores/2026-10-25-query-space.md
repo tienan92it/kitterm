@@ -1,0 +1,1 @@
+- 2026-10-25 · The web client encodes every query it sends to the daemon with `encodeURIComponent` (`query.ts`), so a path with a space reaches the daemon as a space and not as a `+` · PR #204 · Cost: $7.50 · 29794k in (99% cached) · 54k out · 0h 25m
