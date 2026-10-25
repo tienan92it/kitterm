@@ -29,6 +29,19 @@ public final class GitRead: @unchecked Sendable {
     public static let toplevelCacheSeconds: TimeInterval = 60
     /// The options every read carries, before the subcommand.
     public static let readOptions = ["--no-optional-locks", "-c", "core.fsmonitor=", "-c", "color.ui=false"]
+    /// The bytes a `git` run is allowed to write before the read is cut:
+    /// `git ls-files` (`index`) on a very large repository is the one call
+    /// here that can exceed `diffMaxBytes`; `diff`'s own 512 KiB cut still
+    /// applies to the diff route regardless of how much this lets the
+    /// process write.
+    public static let indexMaxBytes = 4 << 20
+    /// The index route's own cap on the number of paths it answers
+    /// (`code-editor` round 14, rule 8 of `corpus/07-projects-and-tree.md`).
+    public static let maxIndexFiles = 20000
+    /// The names the `/edit` tree hides at any depth (`edit-tree.ts`'s
+    /// `HIDDEN_NAMES`); the index applies the same rule so no path under
+    /// `.git` reaches the palette.
+    static let hiddenNames: Set<String> = [".git", ".svn", ".hg", "CVS", ".DS_Store", "Thumbs.db"]
 
     public enum Failure: Error, Equatable {
         /// The file's parent is in no project.
@@ -86,7 +99,7 @@ public final class GitRead: @unchecked Sendable {
         self.run = run ?? { args in
             guard let git = PullRequestStatus.locate("git", in: searchPath) else { return nil }
             return KnowledgeBase.run(
-                executable: git, args: args, input: nil, maxOutput: GitRead.diffMaxBytes + 1, searchPath: searchPath
+                executable: git, args: args, input: nil, maxOutput: GitRead.indexMaxBytes, searchPath: searchPath
             )
         }
     }
@@ -248,6 +261,30 @@ public final class GitRead: @unchecked Sendable {
             diff.text = text
         }
         return diff
+    }
+
+    // MARK: - Index
+
+    /// The repository's file index behind the `/edit` page's palette
+    /// (`code-editor` round 14, rule 8 of `corpus/07-projects-and-tree.md`):
+    /// every tracked path plus every untracked path `.gitignore` does not
+    /// exclude, relative to `repository.toplevel`, with the tree's own
+    /// `HIDDEN_NAMES` filtered out and capped at `limit` with `truncated`
+    /// set past it. Blocking: the caller runs it on the repository's queue.
+    public func index(of repository: Repository, limit: Int = GitRead.maxIndexFiles) throws -> (files: [String], truncated: Bool) {
+        let base = ["-C", repository.toplevel] + Self.readOptions
+        guard let result = run(base + ["ls-files", "--cached", "--others", "--exclude-standard", "-z"]) else {
+            throw Failure.gitAbsent
+        }
+        guard result.status == 0 else { throw Failure.failed(Self.failure("git ls-files", result)) }
+        let filtered = Self.filterHidden(GitStatus.nulFields(result.output))
+        guard filtered.count > limit else { return (filtered, false) }
+        return (Array(filtered.prefix(limit)), true)
+    }
+
+    /// Drops a path with a component in `hiddenNames` at any depth.
+    static func filterHidden(_ paths: [String]) -> [String] {
+        paths.filter { path in !path.split(separator: "/").contains { hiddenNames.contains(String($0)) } }
     }
 
     /// The newlines of the file, nil for one over `countMaxBytes` or with

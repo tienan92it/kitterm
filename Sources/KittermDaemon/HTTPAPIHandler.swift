@@ -558,6 +558,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             serveFileContent(grade: grade, head: head, context: context)
         case (.GET, "/api/files/project"):
             serveFileProject(grade: grade, head: head, context: context)
+        case (.GET, "/api/files/index"):
+            serveFilesIndex(grade: grade, head: head, context: context)
         case (.GET, "/api/git/status"):
             serveGitStatus(grade: grade, head: head, context: context)
         case (.GET, "/api/git/diff"):
@@ -4638,6 +4640,30 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 let text = (try? JSONSerialization.data(withJSONObject: ["ok": false, "error": failure.reason]))
                     .flatMap { String(data: $0, encoding: .utf8) } ?? #"{"ok":false,"error":"git failed"}"#
                 self.writeJSON(status: status, body: text, context: context, version: head.version, keepAlive: false)
+            }
+        }
+    }
+
+    /// `GET /api/files/index?path=<file or folder>&session=<id>` — the file
+    /// index behind the `/edit` page's palette (`code-editor` round 14, rule
+    /// 8 of `corpus/07-projects-and-tree.md`): every path of the file's
+    /// repository (`GitRead.index`: `git ls-files --cached --others
+    /// --exclude-standard`), relative to `root`, with the tree's own
+    /// `HIDDEN_NAMES` filtered out, capped at `GitRead.maxIndexFiles` with
+    /// `truncated` set past it. An `ETag` over the body answers 304 to
+    /// `If-None-Match`. Full grade only, like the other file and git routes.
+    private func serveFilesIndex(grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext) {
+        withGitRepository(grade: grade, head: head, context: context) { gitRead, repository in
+            do {
+                let (files, truncated) = try gitRead.index(of: repository)
+                let payload: [String: Any] = ["ok": true, "root": repository.toplevel, "files": files, "truncated": truncated]
+                let data = (try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]))
+                    ?? Data(#"{"ok":false,"error":"encoding failed"}"#.utf8)
+                return .success((data, ["ETag": FileEdit.etag(data)]))
+            } catch let failure as GitRead.Failure {
+                return .failure(failure)
+            } catch {
+                return .failure(.failed("\(error)"))
             }
         }
     }
