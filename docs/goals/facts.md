@@ -156,6 +156,18 @@ decision moves to `docs/adr/`.
 
 ## Daemon and API
 
+- The daemon reads a query with Foundation's `URLComponents.queryItems`
+  (RFC 3986), which keeps a `+` as a literal `+`. `URLSearchParams`'s own
+  `toString()` form-encodes a space as `+`, so a client that builds a
+  query with it sends a path with a space as `+`, and the daemon 404s:
+  `GET /api/files?path=/x/Minimal+code+editor&hidden=1` answers 404, the
+  same request with `%20` answers 200. The web client's `query.ts`
+  (`queryString`) encodes with `encodeURIComponent` instead, so a space
+  is `%20` and a literal `+` is `%2B`; the daemon does not change, because
+  `kitterm open` sends a literal `+` unencoded (`URLComponents` in
+  `KittermMain.swift`) and a daemon that decoded `+` would break `~/c++`.
+  (2026-10-25, chore `query-space`, v0.48.0)
+
 - A transcript's last **assistant** line is not near the end of the
   file. Over the 40 newest on 2026-09-18 it sat within 4 KiB in 3 of 40,
   within 64 KiB in 39, and within 256 KiB in 40 — p50 6.8 KiB, p90

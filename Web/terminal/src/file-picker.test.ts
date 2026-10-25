@@ -61,6 +61,16 @@ describe("fetchListing", () => {
     const fetchImpl = vi.fn(async () => ({ ok: false, status: 404 }) as Response);
     await expect(fetchListing("/nope", null, fetchImpl as never)).rejects.toThrow(/could not be listed/);
   });
+
+  // `URLSearchParams.toString()` form-encodes a space as `+`; the daemon's
+  // `URLComponents` reads a `+` as a literal `+`, so a path with a space 404ed.
+  it("encodes a space in the path as %20, never +", async () => {
+    const fetchImpl = vi.fn(async () => ok({ ok: true, path: "/my notes", entries: [] }));
+    await fetchListing("/my notes", "sess-1", fetchImpl as never);
+    const url = (fetchImpl.mock.calls[0] as unknown as [string])[0];
+    expect(url).toContain("path=%2Fmy%20notes");
+    expect(url).not.toContain("+");
+  });
 });
 
 describe("clampSelection", () => {

@@ -10,6 +10,9 @@ import {
   editUrl,
   type EditorModel,
   encodeText,
+  filesIndexUrl,
+  gitDiffUrl,
+  gitStatusUrl,
   hasUnsavedWork,
   headerFacts,
   headerName,
@@ -196,13 +199,31 @@ describe("the header and the URLs", () => {
   });
 
   it("builds the page's, the terminal's and the routes' URLs", () => {
-    expect(editUrl("/w/a b.ts", "S1")).toBe("/edit?path=%2Fw%2Fa+b.ts&session=S1");
+    expect(editUrl("/w/a b.ts", "S1")).toBe("/edit?path=%2Fw%2Fa%20b.ts&session=S1");
     expect(editUrl("/w/a.ts")).toBe("/edit?path=%2Fw%2Fa.ts");
     expect(terminalUrl("/w/src/a.ts")).toBe("/?cwd=%2Fw%2Fsrc");
     expect(terminalUrl("/a.ts")).toBe("/?cwd=%2F");
     expect(contentUrl("/w/a.ts", "S1")).toBe("/api/files/content?path=%2Fw%2Fa.ts&session=S1");
     expect(projectUrl("/w/a.ts")).toBe("/api/files/project?path=%2Fw%2Fa.ts");
     expect(listingUrl("/w", "S1")).toBe("/api/files?path=%2Fw&hidden=1&session=S1");
+  });
+
+  // The web client sent a space as `+` (`URLSearchParams`'s form encoding);
+  // the daemon reads a query with Foundation's `URLComponents`, RFC 3986,
+  // which keeps a `+` as a literal `+`, so a path with a space 404ed.
+  it("encodes a space in a path as %20, never +", () => {
+    const space = "/w/Minimal code editor";
+    for (const url of [
+      contentUrl(space, "S1"),
+      projectUrl(space),
+      gitStatusUrl(space, "S1"),
+      gitDiffUrl(space, "S1", true),
+      filesIndexUrl(space, "S1"),
+      listingUrl(space, "S1"),
+    ]) {
+      expect(url).toContain("path=%2Fw%2FMinimal%20code%20editor");
+      expect(url).not.toContain("+");
+    }
   });
 });
 

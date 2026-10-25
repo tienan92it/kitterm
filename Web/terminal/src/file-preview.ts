@@ -19,6 +19,7 @@
  */
 
 import { languageFor } from "./highlight";
+import { queryString } from "./query";
 import {
   basename,
   cannotRead,
@@ -76,9 +77,7 @@ export interface PreviewOptions {
 /** `/edit?path=<file>&session=<id>`: the page that edits the same file
  * (`code-editor` round 4). */
 export function editPageUrl(path: string, session?: string): string {
-  const params = new URLSearchParams({ path });
-  if (session) params.set("session", session);
-  return `/edit?${params.toString()}`;
+  return `/edit?${queryString({ path, session: session || undefined })}`;
 }
 
 /** The `/edit` page for a pane's folder (round 7, the ⌘⇧E chord): the cwd

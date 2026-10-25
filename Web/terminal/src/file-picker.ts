@@ -12,6 +12,8 @@
  * middle of it, so reaching for the mouse breaks the thing you were doing.
  */
 
+import { queryString } from "./query";
+
 export interface FileEntry {
   name: string;
   dir: boolean;
@@ -29,10 +31,8 @@ export async function fetchListing(
   sessionId: string | null,
   fetchImpl: typeof fetch = fetch,
 ): Promise<Listing> {
-  const params = new URLSearchParams();
-  if (path) params.set("path", path);
-  if (sessionId) params.set("session", sessionId);
-  const response = await fetchImpl(`/api/files?${params.toString()}`);
+  const query = queryString({ path: path || undefined, session: sessionId || undefined });
+  const response = await fetchImpl(`/api/files?${query}`);
   if (!response.ok) {
     throw new Error(
       response.status === 403

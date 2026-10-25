@@ -28,7 +28,9 @@ import { showPreview, type PreviewHandle, type PreviewMeta } from "./file-previe
 import { contentShiftPx, inputModeFor } from "./soft-keyboard";
 import { parseOsc52 } from "./osc52";
 import { PathLinks, type PathStat } from "./path-links";
+import { queryString } from "./query";
 import { resolveFontFamily } from "./fonts";
+import { connectQuery, statPathsQuery } from "./terminal-pane-query";
 import { isModifierKey, matchPaneCommand, type PaneCommand } from "./pane-keys";
 import {
   MarkKind,
@@ -714,26 +716,20 @@ export class TerminalPane {
 
   private connect(): void {
     this.lastConnectAt = Date.now();
-    const params = new URLSearchParams();
-    if (this.sessionIdValue) {
-      params.set("session", this.sessionIdValue);
-      if (this.hasEverConnected) {
-        // Mid-session reconnect: ask for exactly the bytes we missed.
-        params.set("since", String(this.outputBytes));
-      } else {
-        params.set("fresh", "1");
-      }
-    }
-    // Sent alongside a session id on purpose: the daemon reattaches when the
-    // session is alive and otherwise spawns here, so a pane restored after a
-    // daemon restart comes back in the folder it was in.
-    if (this.cwd) params.set("cwd", this.cwd);
-    // Selects this pane's own history file so up-arrow survives a restart.
-    if (this.histKeyValue) params.set("hist", this.histKeyValue);
-    // Like cwd, sent alongside a session id: a reattach ignores it, and a
-    // respawn after a daemon restart re-runs the profile's connect command.
-    if (this.profileValue) params.set("profile", this.profileValue);
-    const query = params.toString();
+    const query = connectQuery({
+      sessionId: this.sessionIdValue,
+      hasEverConnected: this.hasEverConnected,
+      outputBytes: this.outputBytes,
+      // Sent alongside a session id on purpose: the daemon reattaches when the
+      // session is alive and otherwise spawns here, so a pane restored after a
+      // daemon restart comes back in the folder it was in.
+      cwd: this.cwd,
+      // Selects this pane's own history file so up-arrow survives a restart.
+      histKey: this.histKeyValue,
+      // Like cwd, sent alongside a session id: a reattach ignores it, and a
+      // respawn after a daemon restart re-runs the profile's connect command.
+      profile: this.profileValue,
+    });
     this.session.connect(query ? `${defaultWsUrl()}?${query}` : defaultWsUrl());
   }
 
@@ -1658,11 +1654,7 @@ export class TerminalPane {
    * relative path resolves against *this* shell's directory.
    */
   private async statPaths(paths: readonly string[]): Promise<Map<string, PathStat>> {
-    const params = new URLSearchParams();
-    for (const path of paths) params.append("path", path);
-    if (this.sessionIdValue) params.set("session", this.sessionIdValue);
-
-    const response = await fetch(`/api/files/stat?${params.toString()}`, {
+    const response = await fetch(`/api/files/stat?${statPathsQuery(paths, this.sessionIdValue)}`, {
       credentials: "same-origin",
     });
     if (!response.ok) throw new Error(`stat failed: ${response.status}`);
@@ -1755,9 +1747,7 @@ export class TerminalPane {
 
   /** The preview route for `path`, relative to this session's cwd. */
   private fileContentUrl(path: string): string {
-    const params = new URLSearchParams({ path });
-    if (this.sessionIdValue) params.set("session", this.sessionIdValue);
-    return `/api/files/content?${params.toString()}`;
+    return `/api/files/content?${queryString({ path, session: this.sessionIdValue || undefined })}`;
   }
 
   /** Copy selection: ⌘C, or Ctrl+Shift+C — never bare Ctrl+C, which is an
