@@ -97,6 +97,21 @@ final class GitFilesIndexTests: XCTestCase {
         XCTAssertFalse(notTruncated)
     }
 
+    /// The byte cap, through a small injected `maxBytes`: when the raw
+    /// output reaches it, the last field is dropped (it may be a path the
+    /// runner's own `maxOutput` cut mid-entry) and `truncated` is set, even
+    /// under `limit`.
+    func testTheByteCapDropsThePossiblyPartialLastFieldAndMarksTruncated() throws {
+        let gitRead = GitRead()
+        let repository = GitRead.Repository(toplevel: repo, relative: "")
+        let (full, untruncated) = try gitRead.index(of: repository, limit: 1000)
+        XCTAssertEqual(full.count, 4, "a.txt, src/b.ts, .gitignore, c.txt")
+        XCTAssertFalse(untruncated)
+        let (cut, truncated) = try gitRead.index(of: repository, limit: 1000, maxBytes: 5)
+        XCTAssertTrue(truncated)
+        XCTAssertEqual(cut.count, full.count - 1, "the last field is dropped, possibly partial at the byte cap")
+    }
+
     /// `filterHidden` (the tree's own `HIDDEN_NAMES`, `edit-tree.ts`): a
     /// path under any of the six names is dropped at any depth, a path that
     /// merely contains one of the names as a substring is kept.

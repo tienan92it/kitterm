@@ -270,15 +270,32 @@ public final class GitRead: @unchecked Sendable {
     /// every tracked path plus every untracked path `.gitignore` does not
     /// exclude, relative to `repository.toplevel`, with the tree's own
     /// `HIDDEN_NAMES` filtered out and capped at `limit` with `truncated`
-    /// set past it. Blocking: the caller runs it on the repository's queue.
-    public func index(of repository: Repository, limit: Int = GitRead.maxIndexFiles) throws -> (files: [String], truncated: Bool) {
+    /// set past it. **The runner itself keeps at most `maxBytes` of `git
+    /// ls-files`'s stdout** (`GitRead.init`'s default runner reads with
+    /// `maxOutput: GitRead.indexMaxBytes`): a read that reached that cap may
+    /// have cut the last path mid-entry, so when `result.output.count` is at
+    /// or past `maxBytes` the last NUL-terminated field is dropped — a
+    /// possibly-partial path is worse than one fewer entry — and `truncated`
+    /// is set, even under `limit`. `maxBytes` is a parameter, not the bare
+    /// constant, so a test can inject a small one against real output
+    /// without a 4 MiB repository. Blocking: the caller runs it on the
+    /// repository's queue.
+    public func index(
+        of repository: Repository, limit: Int = GitRead.maxIndexFiles, maxBytes: Int = GitRead.indexMaxBytes
+    ) throws -> (files: [String], truncated: Bool) {
         let base = ["-C", repository.toplevel] + Self.readOptions
         guard let result = run(base + ["ls-files", "--cached", "--others", "--exclude-standard", "-z"]) else {
             throw Failure.gitAbsent
         }
         guard result.status == 0 else { throw Failure.failed(Self.failure("git ls-files", result)) }
-        let filtered = Self.filterHidden(GitStatus.nulFields(result.output))
-        guard filtered.count > limit else { return (filtered, false) }
+        var fields = GitStatus.nulFields(result.output)
+        var cutByBytes = false
+        if result.output.count >= maxBytes, !fields.isEmpty {
+            fields.removeLast()
+            cutByBytes = true
+        }
+        let filtered = Self.filterHidden(fields)
+        guard filtered.count > limit else { return (filtered, cutByBytes) }
         return (Array(filtered.prefix(limit)), true)
     }
 
