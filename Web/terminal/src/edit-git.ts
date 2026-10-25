@@ -180,7 +180,7 @@ export function badgeForPath(status: GitStatus | null, path: string, dir: boolea
 
 /**
  * Whether `path` (absolute, under `status.root`) is ignored or sits under
- * an ignored directory (rule 19 of `corpus/09-approved-frames.md`): the
+ * an ignored directory (rule 19 of `Editor components 2`, `design/editor.pen`): the
  * tree dims such a row — its triangle, tag and name in the faint grey —
  * and still lists it and its children.
  */

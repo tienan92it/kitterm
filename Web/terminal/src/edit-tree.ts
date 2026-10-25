@@ -32,7 +32,7 @@ export interface TreeNode {
   error: string | null;
   /**
    * The next folder of a compact chain (rule 6 of `corpus/07-projects-and-
-   * tree.md`, rule 20 of `corpus/09-approved-frames.md`): set once this
+   * tree.md`, rule 20 of `Editor components 2`, `design/editor.pen`): set once this
    * node's listing is known to hold exactly one directory and nothing
    * else. One row names the whole chain, `Web/terminal`; its open state,
    * its children and its badge are the chain's last node's
@@ -160,7 +160,8 @@ export function triangle(tail: TreeNode): string {
   return tail.open ? "▼" : "▶";
 }
 
-// --- the keyboard (rule 7, rule 21 of `corpus/09-approved-frames.md`) -----
+// --- the keyboard (rule 7 of `corpus/07-projects-and-tree.md`, rule 21 of
+// `Editor components 2`, `design/editor.pen`) -----------------------------
 
 export type TreeKey = "up" | "down" | "left" | "right" | "home" | "end";
 

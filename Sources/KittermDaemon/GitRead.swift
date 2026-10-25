@@ -272,7 +272,7 @@ public final class GitRead: @unchecked Sendable {
 /// `git status --porcelain=v2 -z --branch`, parsed. Pure.
 public enum GitStatus {
     /// Paths `--ignored=matching` names at most, with `ignoredTruncated`
-    /// set once a read holds more (rule 19 of `corpus/09-approved-frames.md`).
+    /// set once a read holds more (rule 19 of `Editor components 2`, `design/editor.pen`).
     public static let maxIgnored = 2000
 
     public enum Kind: String, Sendable {

@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { isIgnoredPath, parseStatus } from "./edit-git";
 
 // The ignored paths of `GET /api/git/status` (`code-editor` round 13, rule
-// 19 of `corpus/09-approved-frames.md`): never in `files` or `counts`, so
-// the tree dims a path without counting it as a change.
+// 19 of `Editor components 2`, `design/editor.pen`): never in `files` or
+// `counts`, so the tree dims a path without counting it as a change.
 
 describe("parseStatus", () => {
   it("reads the ignored paths and the truncated flag", () => {

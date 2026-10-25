@@ -1,7 +1,7 @@
 /**
  * The file-type tag of the `/edit` tree (`code-editor` round 13, rule 4 of
- * `corpus/07-projects-and-tree.md`, rule 17 of `corpus/09-approved-frames.md`
- * and the table of `Editor components 2`): one tag per language, in its
+ * `corpus/07-projects-and-tree.md`, rule 17 and the table of `Editor
+ * components 2` of `design/editor.pen`): one tag per language, in its
  * `--code-*` token. A folder and an unknown extension carry no tag — both
  * `tagFor` returns `null` for.
  *

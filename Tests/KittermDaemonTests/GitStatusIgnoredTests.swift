@@ -3,8 +3,8 @@ import XCTest
 
 @testable import KittermDaemon
 
-/// `GET /api/git/status`'s `ignored` field (`code-editor` round 13,
-/// `corpus/09-approved-frames.md` rule 19): `--ignored=matching` names a
+/// `GET /api/git/status`'s `ignored` field (`code-editor` round 13, rule 19
+/// of `Editor components 2`, `design/editor.pen`): `--ignored=matching` names a
 /// top-level ignored path without descending into it, kept out of `files`
 /// and `counts`, capped at `GitStatus.maxIgnored`.
 final class GitStatusIgnoredTests: XCTestCase {

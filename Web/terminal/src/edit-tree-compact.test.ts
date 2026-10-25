@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 import { chainName, chainTail, childrenOf, compactCandidate, navigateTree, treeRoot, triangle, visibleRows } from "./edit-tree";
 
 // Compact folders (`code-editor` round 13, rule 6 of
-// `corpus/07-projects-and-tree.md`, rule 20 of `corpus/09-approved-
-// frames.md`): a chain of folders that each hold exactly one folder and
-// nothing else shows as one row, named by the chain; a file at any link
-// ends it.
+// `corpus/07-projects-and-tree.md`, rule 20 of `Editor components 2`,
+// `design/editor.pen`): a chain of folders that each hold exactly one
+// folder and nothing else shows as one row, named by the chain; a file at
+// any link ends it.
 
 describe("compactCandidate", () => {
   it("names the single directory a node holds and nothing else", () => {
