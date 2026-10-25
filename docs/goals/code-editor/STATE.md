@@ -1,18 +1,16 @@
 # STATE: code-editor
 
 - Status: active
-- Round: 2 of 5 in this budget (sixth budget, `corpus/07-projects-and-tree.md`)
-- Rounds total: 11
-- Last floor: green (2026-10-24, round 11 after: PR CI on 3ba7558)
-- Updated: 2026-10-24, the human approved the frames and the tag colour (`corpus/09-approved-frames.md`)
+- Round: 3 of 5 in this budget (sixth budget, `corpus/07-projects-and-tree.md`)
+- Rounds total: 12
+- Last floor: green (2026-10-25, round 12 after: vitest 2141, PR CI on f4bee7e)
+- Updated: 2026-10-25, round 12 done; the human asked to run to the end
 
 ## Queue
 
-1. `project-access`: the `/edit` home page and the header switcher
-   (rules 1, 2), PR #203.
-2. `tree-polish`: guides, tags, dimmed ignored files, compact folders,
-   keys (rules 3 to 7).
-3. `quick-open-palette`: ⌘P with the file index (rule 8).
+1. `tree-polish`: guides, tags, dimmed ignored files, compact folders,
+   keys (rules 3 to 7), PR #203.
+2. `quick-open-palette`: ⌘P with the file index (rule 8).
 
 ## Failures
 
@@ -25,6 +23,8 @@ their words, and the tag-colour exception (`corpus/09-approved-frames.md`).
 
 ## Done
 
+- `project-access`, round 12, PR #203. See `rounds/012.md`. The `/edit`
+  home page and the header switcher.
 - `tree-design-revision`, round 11, PR #203. See `rounds/011.md`.
   Vertical guides only, one space after the triangle.
 - `editor-design-2`, round 10, PR #203. See `rounds/010.md`. Seven
@@ -50,4 +50,4 @@ their words, and the tag-colour exception (`corpus/09-approved-frames.md`).
 
 ## Next action
 
-Round 12: `project-access`.
+Round 13: `tree-polish`, then round 14: `quick-open-palette`.
