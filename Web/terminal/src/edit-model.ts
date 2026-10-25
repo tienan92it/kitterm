@@ -14,6 +14,7 @@ import { LanguageDescription } from "@codemirror/language";
 
 import { fragmentTarget } from "./markdown";
 import { basename, formatBytes, isMarkdownName, resolveRelative } from "./markdown-view";
+import { queryString } from "./query";
 import { homePath } from "./sessions-tree";
 
 // MARK: - The buffer
@@ -268,9 +269,7 @@ export function pageTarget(search: string): { path: string; session: string | nu
 
 /** `/edit?path=<file>&session=<id>`, the page's own URL for a file. */
 export function editUrl(path: string, session: string | null = null): string {
-  const params = new URLSearchParams({ path });
-  if (session) params.set("session", session);
-  return `/edit?${params.toString()}`;
+  return `/edit?${queryString({ path, session: session || undefined })}`;
 }
 
 /** `/?cwd=<the file's directory>`: `open in terminal`. */
@@ -285,23 +284,17 @@ export function cwdUrl(directory: string): string {
 
 /** The content route for a path through a session, the read and the save. */
 export function contentUrl(path: string, session: string | null = null): string {
-  const params = new URLSearchParams({ path });
-  if (session) params.set("session", session);
-  return `/api/files/content?${params.toString()}`;
+  return `/api/files/content?${queryString({ path, session: session || undefined })}`;
 }
 
 /** The project route for a path through a session. */
 export function projectUrl(path: string, session: string | null = null): string {
-  const params = new URLSearchParams({ path });
-  if (session) params.set("session", session);
-  return `/api/files/project?${params.toString()}`;
+  return `/api/files/project?${queryString({ path, session: session || undefined })}`;
 }
 
 /** The git status route for the repository of a file through a session. */
 export function gitStatusUrl(path: string, session: string | null = null): string {
-  const params = new URLSearchParams({ path });
-  if (session) params.set("session", session);
-  return `/api/git/status?${params.toString()}`;
+  return `/api/git/status?${queryString({ path, session: session || undefined })}`;
 }
 
 /** `POST /api/git/<kind>` (round 6): the body names the file and the session. */
@@ -312,27 +305,20 @@ export function gitWriteUrl(kind: "stage" | "unstage" | "commit" | "push" | "bra
 /** The git diff route for one file: the working tree against the index,
  * or with `staged` the index against `HEAD`. */
 export function gitDiffUrl(path: string, session: string | null = null, staged = false): string {
-  const params = new URLSearchParams({ path });
-  if (session) params.set("session", session);
-  params.set("staged", staged ? "1" : "0");
-  return `/api/git/diff?${params.toString()}`;
+  return `/api/git/diff?${queryString({ path, session: session || undefined, staged: staged ? "1" : "0" })}`;
 }
 
 /** The file index route for the repository of a file or a folder through a
  * session (the palette, round 14). */
 export function filesIndexUrl(path: string, session: string | null = null): string {
-  const params = new URLSearchParams({ path });
-  if (session) params.set("session", session);
-  return `/api/files/index?${params.toString()}`;
+  return `/api/files/index?${queryString({ path, session: session || undefined })}`;
 }
 
 /** The listing route for a directory, with dotfiles included
  * (`corpus/06-dotfiles.md` rule 1): the tree hides only the six names
  * `edit-tree.ts`'s `HIDDEN_NAMES` lists, not every dotfile. */
 export function listingUrl(path: string, session: string | null = null): string {
-  const params = new URLSearchParams({ path, hidden: "1" });
-  if (session) params.set("session", session);
-  return `/api/files?${params.toString()}`;
+  return `/api/files?${queryString({ path, hidden: "1", session: session || undefined })}`;
 }
 
 /** The page's title: `md.ts — kitterm`. */

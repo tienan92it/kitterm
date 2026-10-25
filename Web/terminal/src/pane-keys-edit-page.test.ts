@@ -62,8 +62,9 @@ describe("the edit page chord", () => {
 describe("the tab the chord opens", () => {
   it("is /edit at the pane's cwd through its session", () => {
     expect(paneEditUrl("/Users/an/Workspace/kitterm", "A1B2")).toBe("/edit?path=%2FUsers%2Fan%2FWorkspace%2Fkitterm&session=A1B2");
-    // A space and a plus survive as themselves.
-    expect(paneEditUrl("/tmp/a b+c", "A1B2")).toBe("/edit?path=%2Ftmp%2Fa+b%2Bc&session=A1B2");
+    // A space is %20 and a literal + is %2B — never a bare + for either,
+    // which the daemon would read back as a literal + for both.
+    expect(paneEditUrl("/tmp/a b+c", "A1B2")).toBe("/edit?path=%2Ftmp%2Fa%20b%2Bc&session=A1B2");
   });
 
   it("asks the daemon for the session's own cwd before the first cwd frame", () => {
