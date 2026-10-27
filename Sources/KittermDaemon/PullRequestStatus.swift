@@ -38,6 +38,25 @@ import NIOConcurrencyHelpers
 /// read whose pulls or reason differ from the last appends `pulls.changed`
 /// with each project that asked for the repository to the event feed,
 /// never on an unchanged read, so the page asks at once.
+///
+/// **The change probe** (`sessions-workflow` round 9,
+/// `corpus/04-change-probe.md`) answers the two gaps the schedule above
+/// still leaves: a change made on github.com, and a crew's `gh pr create`
+/// or `git push`, whose Bash tool runs outside the pane's shell, so
+/// `PullNudge` never fires. While a full-grade page has asked the pulls
+/// route for a repository in the last `watchSeconds` (`watch(repository:)`),
+/// the daemon sends a conditional `gh api` request every
+/// `probeIntervalSeconds`, on `probeQueue`, apart from `queue` and the
+/// event loop; `probeQueue` is concurrent, so several repositories' probes
+/// run at once and one slow `gh` never delays another repository's tick,
+/// while `probeArmed` keeps at most one tick per repository, never two. A
+/// `304` costs nothing; a `200` with a changed `ETag` stores
+/// it and nudges through the same `nudge(repository:)` as a local push, so
+/// the ceiling and the one-read-at-a-time rule above still bound it; the
+/// first `200` only stores the tag. A failure backs the repository off to
+/// `probeBackoffSeconds`, and a later success resets it to
+/// `probeIntervalSeconds`. The probe never runs while a list read of the
+/// same repository is in flight.
 public final class PullRequestStatus: @unchecked Sendable {
     /// The interval of a repository with open work.
     public static let activeSeconds: TimeInterval = 15
@@ -50,6 +69,20 @@ public final class PullRequestStatus: @unchecked Sendable {
     /// The most list reads a minute, over every repository.
     public static let readsPerMinute = 24
     public static let timeoutSeconds: TimeInterval = 20
+    /// The change probe (`sessions-workflow` round 9,
+    /// `corpus/04-change-probe.md`): while a full-grade page has asked the
+    /// pulls route for a repository in the last `watchSeconds`, the daemon
+    /// sends a conditional `gh api` request every `probeIntervalSeconds`,
+    /// through `probeQueue`, never `queue` and never the event loop. A `200`
+    /// with a changed `ETag` nudges the repository (`nudge(repository:)`,
+    /// unchanged); a failure backs the repository off to
+    /// `probeBackoffSeconds`, and a later success resets it.
+    public static let probeIntervalSeconds: TimeInterval = 5
+    public static let probeBackoffSeconds: TimeInterval = 60
+    public static let watchSeconds: TimeInterval = 30
+    public static let probeTimeoutSeconds: TimeInterval = 10
+    /// `per_page` of the probe's own request; the full read keeps `limit`.
+    public static let probePerPage = 5
     /// How long a `gh` that got `SIGTERM` at the timeout has before `SIGKILL`.
     public static let killGraceSeconds: TimeInterval = 1
     /// How long the pipes are read after `gh` ended, for a child of `gh`
@@ -72,6 +105,26 @@ public final class PullRequestStatus: @unchecked Sendable {
     private static let queueMark = QueueMark()
     /// True on `queue`, so a test can tell where a `gh` ran.
     static var isOnQueue: Bool { DispatchQueue.getSpecific(key: queueMark.key) == true }
+
+    /// The change probe's own queue, apart from `queue`: a probe never
+    /// blocks behind a list read, and a list read never blocks behind a
+    /// probe. Concurrent, because `gh` takes about 0.8 s to start and a
+    /// fleet view can watch several repositories at once: a serial queue
+    /// would make their 5 s cadences collide, and one slow or hung `gh`
+    /// would delay every other repository's probe behind it. `probeArmed`
+    /// is the rule that still holds: one tick scheduled or running per
+    /// repository, never two.
+    static let probeQueue: DispatchQueue = {
+        let queue = DispatchQueue(label: "kitterm.pulls-probe", qos: .utility, attributes: .concurrent)
+        queue.setSpecific(key: probeQueueMark.key, value: true)
+        return queue
+    }()
+    private final class ProbeQueueMark: @unchecked Sendable {
+        let key = DispatchSpecificKey<Bool>()
+    }
+    private static let probeQueueMark = ProbeQueueMark()
+    /// True on `probeQueue`, so a test can tell where a probe ran.
+    static var isOnProbeQueue: Bool { DispatchQueue.getSpecific(key: probeQueueMark.key) == true }
 
     public static let noRemoteReason = "no GitHub remote"
     public static let notReadReason = "not read yet"
@@ -123,6 +176,18 @@ public final class PullRequestStatus: @unchecked Sendable {
         public var pulls: [Pull] = []
         public var readAt: Date?
         public var reason: String?
+    }
+
+    /// The status line and the `ETag` header of one `gh api -i` answer to
+    /// the change probe.
+    public struct ProbeResult: Equatable, Sendable {
+        public var status: Int
+        public var etag: String?
+
+        public init(status: Int, etag: String? = nil) {
+            self.status = status
+            self.etag = etag
+        }
     }
 
     /// The end of one `gh` process.
@@ -215,12 +280,21 @@ public final class PullRequestStatus: @unchecked Sendable {
         var endedAt: Date?
         var state = ReadState.idle
         var nudgePending = false
+        /// The change probe: the time this repository was last asked for by
+        /// a full-grade page, plus the last probe's own tag and cadence.
+        var watchedUntil: Date?
+        var probeETag: String?
+        var probeInterval: TimeInterval = PullRequestStatus.probeIntervalSeconds
+        /// A probe tick is scheduled or running for this repository.
+        var probeArmed = false
     }
 
     private let searchPath: String
     private let run: Runner
+    private let probeRun: Runner
     private let clock: @Sendable () -> Date
     private let schedule: Scheduler
+    private let probeSchedule: Scheduler
     private let eventLog: EventLog?
     private let lock = NIOLock()
     private var cache: [String: Entry] = [:]
@@ -231,10 +305,15 @@ public final class PullRequestStatus: @unchecked Sendable {
     /// `searchPath` is where `gh` is looked for, in `PATH` form. The default
     /// is the daemon's `PATH`, then the directories a `gh` is installed in:
     /// launchd starts the service with `/usr/bin:/bin:/usr/sbin:/sbin`.
+    /// `probeRun` and `probeSchedule` default to the same runner and
+    /// `probeQueue`, apart from `run` and `schedule`'s `queue`; a test hands
+    /// each its own fake.
     public init(
         searchPath: String = PullRequestStatus.defaultSearchPath, run: Runner? = nil,
+        probeRun: Runner? = nil,
         clock: @escaping @Sendable () -> Date = { Date() },
         schedule: Scheduler? = nil,
+        probeSchedule: Scheduler? = nil,
         eventLog: EventLog? = nil
     ) {
         self.searchPath = searchPath
@@ -242,11 +321,20 @@ public final class PullRequestStatus: @unchecked Sendable {
         self.schedule = schedule ?? { delay, work in
             PullRequestStatus.queue.asyncAfter(deadline: .now() + delay, execute: work)
         }
+        self.probeSchedule = probeSchedule ?? { delay, work in
+            PullRequestStatus.probeQueue.asyncAfter(deadline: .now() + delay, execute: work)
+        }
         self.eventLog = eventLog
         self.run = run ?? { executable, args, keepOutput in
             PullRequestStatus.run(
                 executable: executable, args: args, searchPath: searchPath,
                 timeout: PullRequestStatus.timeoutSeconds, keepOutput: keepOutput
+            )
+        }
+        self.probeRun = probeRun ?? { executable, args, keepOutput in
+            PullRequestStatus.run(
+                executable: executable, args: args, searchPath: searchPath,
+                timeout: PullRequestStatus.probeTimeoutSeconds, keepOutput: keepOutput
             )
         }
     }
@@ -343,6 +431,169 @@ public final class PullRequestStatus: @unchecked Sendable {
         guard let started else { return nil }
         let left = nudgeGapSeconds - now.timeIntervalSince(started)
         return left > 0 ? left : nil
+    }
+
+    // MARK: - the change probe
+
+    /// A full-grade page's pulls request named `repository` just now: keep
+    /// probing it every `probeIntervalSeconds` until no such request has
+    /// come for `watchSeconds` (`sessions-workflow` round 9,
+    /// `corpus/04-change-probe.md`, rule 1). The caller only reaches this
+    /// once it has resolved a repository, so a project with no
+    /// `pullRequestBase` gets no probe. Repeated calls extend the window; a
+    /// probe is armed once per repository, never twice.
+    public func watch(repository: String) {
+        let now = clock()
+        let shouldArm: Bool = lock.withLock {
+            var entry = cache[repository] ?? Entry()
+            defer { cache[repository] = entry }
+            entry.watchedUntil = now.addingTimeInterval(Self.watchSeconds)
+            guard !entry.probeArmed else { return false }
+            entry.probeArmed = true
+            return true
+        }
+        guard shouldArm else { return }
+        probeSchedule(Self.probeIntervalSeconds) { self.runProbe(repository: repository) }
+    }
+
+    private enum ProbeTick {
+        /// The watch window closed: no more ticks.
+        case stop
+        /// A list read of the repository is in flight: try again at the
+        /// same interval, with no `gh` call.
+        case skip(TimeInterval)
+        /// Run the probe with the stored `ETag`, nil for the first one.
+        case run(String?)
+    }
+
+    /// What the next probe tick of `repository` should do, decided under
+    /// the lock alone.
+    private func probeTick(repository: String, now: Date) -> ProbeTick {
+        lock.withLock {
+            guard var entry = cache[repository] else { return .stop }
+            guard let until = entry.watchedUntil, until > now else {
+                entry.probeArmed = false
+                entry.watchedUntil = nil
+                cache[repository] = entry
+                return .stop
+            }
+            if entry.state != .idle { return .skip(entry.probeInterval) }
+            return .run(entry.probeETag)
+        }
+    }
+
+    /// One probe tick of `repository`, on `probeQueue`: rule 3 of
+    /// `corpus/04-change-probe.md`. `gh` runs synchronously on this queue,
+    /// never the event loop, and never while a list read of the same
+    /// repository is in flight (`probeTick`'s `.skip`, never `queue`).
+    private func runProbe(repository: String) {
+        switch probeTick(repository: repository, now: clock()) {
+        case .stop:
+            return
+        case .skip(let interval):
+            probeSchedule(interval) { self.runProbe(repository: repository) }
+        case .run(let etag):
+            let outcome = Self.fetchProbe(repository: repository, etag: etag, searchPath: searchPath, run: probeRun)
+            let ended = clock()
+            switch applyProbe(repository: repository, outcome: outcome, ended: ended) {
+            case .stop:
+                return
+            case .reschedule(let interval):
+                probeSchedule(interval) { self.runProbe(repository: repository) }
+            }
+        }
+    }
+
+    private enum ProbeNext {
+        case stop
+        case reschedule(TimeInterval)
+    }
+
+    /// Applies one probe's outcome under the lock: a `304` does nothing; a
+    /// `200` with a changed `ETag` stores it and nudges, the first `200`
+    /// only stores it (rule 2); a failure backs the repository off to
+    /// `probeBackoffSeconds`, a success (`200` or `304`) resets it to
+    /// `probeIntervalSeconds` (rule 3). The nudge itself runs after the lock
+    /// is released, since `nudge(repository:)` takes it too.
+    private func applyProbe(repository: String, outcome: Result<ProbeResult, Failure>, ended: Date) -> ProbeNext {
+        var shouldNudge = false
+        let next: ProbeNext = lock.withLock {
+            var entry = cache[repository] ?? Entry()
+            defer { cache[repository] = entry }
+            switch outcome {
+            case .success(let result):
+                entry.probeInterval = Self.probeIntervalSeconds
+                if result.status == 200, let newTag = result.etag {
+                    if let old = entry.probeETag, old != newTag { shouldNudge = true }
+                    entry.probeETag = newTag
+                }
+            case .failure:
+                entry.probeInterval = Self.probeBackoffSeconds
+            }
+            guard let until = entry.watchedUntil, until > ended else {
+                entry.probeArmed = false
+                entry.watchedUntil = nil
+                return .stop
+            }
+            return .reschedule(entry.probeInterval)
+        }
+        if shouldNudge { nudge(repository: repository) }
+        return next
+    }
+
+    /// `gh api -i -H 'If-None-Match: <etag>' repos/<owner>/<repo>/pulls?…`,
+    /// the conditional request of rule 1; no `-H` with no stored tag yet.
+    static func probeArguments(repository: String, etag: String?) -> [String] {
+        var args = ["api", "-i"]
+        if let etag {
+            args += ["-H", "If-None-Match: \(etag)"]
+        }
+        args.append("repos/\(repository)/pulls?state=all&sort=updated&direction=desc&per_page=\(probePerPage)")
+        return args
+    }
+
+    /// The status and the `ETag` of one conditional read of `repository`'s
+    /// pull requests, or why it failed. Synchronous, like `fetch`.
+    static func fetchProbe(repository: String, etag: String?, searchPath: String, run: Runner) -> Result<ProbeResult, Failure> {
+        guard let gh = locate("gh", in: searchPath) else { return .failure(Failure(reason: absentReason)) }
+        guard let result = run(gh, probeArguments(repository: repository, etag: etag), true) else {
+            return .failure(Failure(reason: "gh did not start"))
+        }
+        if result.timedOut {
+            return .failure(Failure(reason: "gh api timed out after \(Int(probeTimeoutSeconds)) s"))
+        }
+        if let parsed = parseProbe(result.output) {
+            return .success(parsed)
+        }
+        let line = result.error.split(separator: "\n").first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+        let exit = "gh api exited \(result.status)"
+        return .failure(Failure(reason: line.isEmpty ? exit : exit + ": " + String(line.prefix(200))))
+    }
+
+    /// The status line and the `ETag` header of one `gh api -i` answer,
+    /// parsed by hand so no HTTP client is pulled in for five lines of
+    /// text; nil when the first line is not a status line. Both CRLF and
+    /// LF split lines, so an `HTTP/1.1 200 OK` or an `HTTP/2.0 304 Not
+    /// Modified` line parses the same either way; `ETag:` is matched
+    /// case-insensitively and a weak tag (`W/"abc"`) is kept whole; a
+    /// response with no `ETag` header answers a nil one.
+    public static func parseProbe(_ output: Data) -> ProbeResult? {
+        guard let text = String(data: output, encoding: .utf8) else { return nil }
+        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n")
+        let head = normalized.components(separatedBy: "\n\n").first ?? normalized
+        let lines = head.split(separator: "\n", omittingEmptySubsequences: true)
+        guard let statusLine = lines.first else { return nil }
+        let parts = statusLine.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: true)
+        guard parts.count >= 2, parts[0].hasPrefix("HTTP/"), let status = Int(parts[1]) else { return nil }
+        var etag: String?
+        for line in lines.dropFirst() {
+            guard let colon = line.firstIndex(of: ":") else { continue }
+            let name = line[line.startIndex..<colon].trimmingCharacters(in: .whitespaces).lowercased()
+            if name == "etag" {
+                etag = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return ProbeResult(status: status, etag: etag)
     }
 
     /// Start the claimed read of `repository`, or wait for the next slot

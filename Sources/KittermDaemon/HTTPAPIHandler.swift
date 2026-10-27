@@ -2232,6 +2232,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             guard let repository = base.flatMap(PullRequestStatus.repository(pullRequestBase:)) else {
                 return PullRequestStatus.Snapshot(reason: PullRequestStatus.noRemoteReason)
             }
+            // A full-grade page just asked for this repository: the change
+            // probe (`corpus/04-change-probe.md`) keeps it watched for
+            // `watchSeconds`, apart from this read's own interval.
+            status.watch(repository: repository)
             let labelled = await self.registry.labelledPulls()
             status.refreshIfDue(
                 repository: repository, project: id,

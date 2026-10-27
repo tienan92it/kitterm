@@ -1,10 +1,10 @@
 # STATE: sessions-workflow
 
 - Status: done
-- Round: 1 of 1 in this budget (resumed on the human's word, a third time)
-- Rounds total: 8
-- Last floor: green (2026-10-18, round 8 after: swift test 1241, vitest 1985, PR CI on c6b68ab)
-- Updated: 2026-10-18, round 8 done; the goal waits for the human's merge of PR #196
+- Round: 1 of 1 in this budget (resumed on the human's word, a fourth time)
+- Rounds total: 9
+- Last floor: green (2026-10-27, round 9 after: swift test 1379, PR CI on 3ade55b)
+- Updated: 2026-10-27, round 9 done: a free change probe
 
 ## Queue
 
@@ -22,6 +22,9 @@ None.
 
 ## Done
 
+- `change-probe`, round 9, PR #205. See `rounds/009.md`. A conditional
+  probe every 5 s per watched repository; a change reaches the page in
+  1 to 11 s.
 - `faster-pull-sync`, round 8, PR #196. See `rounds/008.md`. A change
   from a command reaches the page in about 2 s.
 - `review-rows`, round 7, PR #186. See `rounds/007.md`. REVIEW is a
@@ -48,5 +51,5 @@ None.
 
 ## Next action
 
-None. The human merges PR #196; the foreman releases, upgrades, and
-watches a PR change reach the REVIEW section live.
+None. The goal is done. A later change to the REVIEW section resumes it
+for one round.
