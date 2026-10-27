@@ -1,14 +1,14 @@
 # STATE: sessions-workflow
 
-- Status: done
-- Round: 1 of 1 in this budget (resumed on the human's word, a third time)
+- Status: active
+- Round: 0 of 1 in this budget (resumed on the human's word, a fourth time)
 - Rounds total: 8
 - Last floor: green (2026-10-18, round 8 after: swift test 1241, vitest 1985, PR CI on c6b68ab)
-- Updated: 2026-10-18, round 8 done; the goal waits for the human's merge of PR #196
+- Updated: 2026-10-27, resumed for one round: a free change probe (`corpus/04-change-probe.md`)
 
 ## Queue
 
-None.
+1. `change-probe` (`corpus/04-change-probe.md`).
 
 ## Failures
 
@@ -48,5 +48,4 @@ None.
 
 ## Next action
 
-None. The human merges PR #196; the foreman releases, upgrades, and
-watches a PR change reach the REVIEW section live.
+Round 9: `change-probe`, then `Status: done` again.
