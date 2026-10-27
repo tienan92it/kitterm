@@ -47,7 +47,10 @@ import NIOConcurrencyHelpers
 /// route for a repository in the last `watchSeconds` (`watch(repository:)`),
 /// the daemon sends a conditional `gh api` request every
 /// `probeIntervalSeconds`, on `probeQueue`, apart from `queue` and the
-/// event loop. A `304` costs nothing; a `200` with a changed `ETag` stores
+/// event loop; `probeQueue` is concurrent, so several repositories' probes
+/// run at once and one slow `gh` never delays another repository's tick,
+/// while `probeArmed` keeps at most one tick per repository, never two. A
+/// `304` costs nothing; a `200` with a changed `ETag` stores
 /// it and nudges through the same `nudge(repository:)` as a local push, so
 /// the ceiling and the one-read-at-a-time rule above still bound it; the
 /// first `200` only stores the tag. A failure backs the repository off to
@@ -105,9 +108,14 @@ public final class PullRequestStatus: @unchecked Sendable {
 
     /// The change probe's own queue, apart from `queue`: a probe never
     /// blocks behind a list read, and a list read never blocks behind a
-    /// probe.
+    /// probe. Concurrent, because `gh` takes about 0.8 s to start and a
+    /// fleet view can watch several repositories at once: a serial queue
+    /// would make their 5 s cadences collide, and one slow or hung `gh`
+    /// would delay every other repository's probe behind it. `probeArmed`
+    /// is the rule that still holds: one tick scheduled or running per
+    /// repository, never two.
     static let probeQueue: DispatchQueue = {
-        let queue = DispatchQueue(label: "kitterm.pulls-probe", qos: .utility)
+        let queue = DispatchQueue(label: "kitterm.pulls-probe", qos: .utility, attributes: .concurrent)
         queue.setSpecific(key: probeQueueMark.key, value: true)
         return queue
     }()

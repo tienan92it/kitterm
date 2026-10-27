@@ -177,6 +177,34 @@ final class PullRequestProbeScheduleTests: XCTestCase {
         XCTAssertEqual(probed.delays, [5], "a success (here a plain 200) keeps the 5 s cadence")
     }
 
+    /// `runProbe` always dispatches a tick onto `PullRequestStatus.probeQueue`
+    /// (`probeSchedule`'s default); every test above hands it a fake
+    /// scheduler instead, so none of them exercises the real queue. This
+    /// test does, directly: a repository whose `gh` call blocks must not
+    /// delay another repository's tick, because `gh` takes about 0.8 s to
+    /// start and a fleet view can watch several repositories at once
+    /// (`sessions-workflow` round 9, the foreman's correction). `probeQueue`
+    /// is `.concurrent` for exactly this; `probeArmed` is the rule that
+    /// still holds a single tick per repository.
+    func testProbeQueueRunsTwoRepositoriesConcurrentlySoASlowOneNeverDelaysAnother() {
+        let slowStarted = DispatchSemaphore(value: 0)
+        let releaseSlow = DispatchSemaphore(value: 0)
+        let fastDone = DispatchSemaphore(value: 0)
+        PullRequestStatus.probeQueue.async {
+            slowStarted.signal()
+            releaseSlow.wait()
+        }
+        XCTAssertEqual(slowStarted.wait(timeout: .now() + 2), .success, "the slow tick claimed a thread")
+        PullRequestStatus.probeQueue.async {
+            fastDone.signal()
+        }
+        XCTAssertEqual(
+            fastDone.wait(timeout: .now() + 2), .success,
+            "a second repository's tick ran while the first still blocks: the queue is concurrent, not serial"
+        )
+        releaseSlow.signal()
+    }
+
     func testTheWindowStopsTheProbeAfterThirtySecondsWithNoFurtherWatch() {
         let status = makeStatus()
         status.watch(repository: repository)
