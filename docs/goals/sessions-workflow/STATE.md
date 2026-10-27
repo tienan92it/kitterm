@@ -8,7 +8,7 @@
 
 ## Queue
 
-1. `change-probe` (`corpus/04-change-probe.md`).
+1. `change-probe` (`corpus/04-change-probe.md`), PR #205.
 
 ## Failures
 
