@@ -1,14 +1,14 @@
 # STATE: sessions-workflow
 
-- Status: active
-- Round: 0 of 1 in this budget (resumed on the human's word, a fourth time)
-- Rounds total: 8
-- Last floor: green (2026-10-18, round 8 after: swift test 1241, vitest 1985, PR CI on c6b68ab)
-- Updated: 2026-10-27, resumed for one round: a free change probe (`corpus/04-change-probe.md`)
+- Status: done
+- Round: 1 of 1 in this budget (resumed on the human's word, a fourth time)
+- Rounds total: 9
+- Last floor: green (2026-10-27, round 9 after: swift test 1379, PR CI on 3ade55b)
+- Updated: 2026-10-27, round 9 done: a free change probe
 
 ## Queue
 
-1. `change-probe` (`corpus/04-change-probe.md`), PR #205.
+None.
 
 ## Failures
 
@@ -22,6 +22,9 @@ None.
 
 ## Done
 
+- `change-probe`, round 9, PR #205. See `rounds/009.md`. A conditional
+  probe every 5 s per watched repository; a change reaches the page in
+  1 to 11 s.
 - `faster-pull-sync`, round 8, PR #196. See `rounds/008.md`. A change
   from a command reaches the page in about 2 s.
 - `review-rows`, round 7, PR #186. See `rounds/007.md`. REVIEW is a
@@ -48,4 +51,5 @@ None.
 
 ## Next action
 
-Round 9: `change-probe`, then `Status: done` again.
+None. The goal is done. A later change to the REVIEW section resumes it
+for one round.
