@@ -974,16 +974,7 @@ public final class PtySession: @unchecked Sendable {
         let notify: (recorder: SessionRecorder?, resizes: [(UInt16, UInt16) -> Void]) =
             try stateLock.withLock {
                 guard !terminated else { throw PtyError.closed }
-                var win = winsize(ws_row: r, ws_col: c, ws_xpixel: 0, ws_ypixel: 0)
-                // The request argument is UInt on Linux and Int32 on Darwin.
-                #if canImport(Darwin)
-                let request = TIOCSWINSZ
-                #else
-                let request = UInt(TIOCSWINSZ)
-                #endif
-                guard ioctl(masterFD, request, &win) == 0 else {
-                    throw PtyError.ioctlFailed
-                }
+                try setWindowSize(cols: c, rows: r)
                 self.cols = c
                 self.rows = r
                 return (recorder, observers.values.map(\.onResize))
@@ -991,6 +982,75 @@ public final class PtySession: @unchecked Sendable {
         notify.recorder?.recordResize(cols: c, rows: r)
         for handler in notify.resizes {
             handler(c, r)
+        }
+    }
+
+    /// The one `TIOCSWINSZ` write, for `resize` and the repaint nudge.
+    /// Called under `stateLock` with the session alive. The kernel sends
+    /// `SIGWINCH` to the foreground group when the size changed.
+    private func setWindowSize(cols: UInt16, rows: UInt16) throws {
+        var win = winsize(ws_row: rows, ws_col: cols, ws_xpixel: 0, ws_ypixel: 0)
+        // The request argument is UInt on Linux and Int32 on Darwin.
+        #if canImport(Darwin)
+        let request = TIOCSWINSZ
+        #else
+        let request = UInt(TIOCSWINSZ)
+        #endif
+        guard ioctl(masterFD, request, &win) == 0 else {
+            throw PtyError.ioctlFailed
+        }
+    }
+
+    /// How long the window stays one row short before `nudgeWindowSize`
+    /// restores it. Measured 2026-10-30 against an idle `claude` in a pane
+    /// at 120x32: two writes with no pause between them coalesce into one
+    /// `SIGWINCH` that reports the old size, and nothing repaints (0 bytes
+    /// in four runs); 2 ms apart and more, each write repaints the whole
+    /// screen (1685 bytes each). 50 ms keeps a margin on a loaded machine
+    /// and is under what a person sees.
+    static let windowNudgeRestoreDelay = TimeAmount.milliseconds(50)
+
+    /// Make the foreground program repaint its screen for a client that
+    /// just attached (ADR 0006): shrink the window by one row, then restore
+    /// it after `windowNudgeRestoreDelay`, each a `TIOCSWINSZ` the kernel
+    /// turns into a `SIGWINCH`. A full-screen program answers each with a
+    /// full frame, which reaches the new client through the normal read
+    /// path, after its replayed tail. The held `cols` and `rows`, the
+    /// observers and the recorder never see the one-row size: the restore
+    /// re-applies whatever the session holds then, so a resize that lands
+    /// between the two writes wins. Returns false and writes nothing while
+    /// the shell itself reads the terminal (its prompt needs no repaint, and
+    /// the replay holds the scrollback) or the session is gone.
+    ///
+    /// `foregroundIsShell` is the same microsecond kernel read the listing
+    /// row makes; this runs once per attach, never on the output path.
+    @discardableResult
+    public func nudgeWindowSize() -> Bool {
+        guard !foregroundIsShell else { return false }
+        let written: (ok: Bool, loop: EventLoop?) = stateLock.withLock {
+            guard !terminated else { return (false, nil) }
+            let shrunk = rows > 1 ? rows - 1 : rows + 1
+            guard (try? setWindowSize(cols: cols, rows: shrunk)) != nil else { return (false, nil) }
+            return (true, eventLoop)
+        }
+        guard written.ok else { return false }
+        guard let loop = written.loop else {
+            // No reader loop to come back on: restore at once rather than
+            // leave the window a row short.
+            restoreWindowSize()
+            return true
+        }
+        loop.scheduleTask(in: Self.windowNudgeRestoreDelay) { [weak self] in
+            self?.restoreWindowSize()
+        }
+        return true
+    }
+
+    /// The second half of `nudgeWindowSize`: the size the session holds now.
+    private func restoreWindowSize() {
+        stateLock.withLock {
+            guard !terminated else { return }
+            _ = try? setWindowSize(cols: cols, rows: rows)
         }
     }
 

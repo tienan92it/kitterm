@@ -210,6 +210,10 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         if !replay.data.isEmpty {
             batcher.append(replay.data)
         }
+        // The same repaint a controller gets on adopt (ADR 0006): the
+        // observer's tail is the same raw slice, and the program's frame
+        // reaches every attached client, the controller included.
+        session.nudgeWindowSize()
         startHeartbeat(context: context)
         pendingClientFrames = []
     }
@@ -383,6 +387,16 @@ final class WebSocketSessionHandler: ChannelInboundHandler, @unchecked Sendable 
         )
         if !snapshot.data.isEmpty {
             batcher.append(snapshot.data)
+        }
+        // A client that adopts a live session gets the program's own repaint
+        // after the replay (ADR 0006): the replayed tail is raw bytes that
+        // can start mid-frame, with the alternate-screen switch long out of
+        // the ring, and an idle full-screen program never repaints by
+        // itself. The nudge writes nothing to the stream; the repaint comes
+        // through the read path, after the tail queued above. A fresh shell
+        // has nothing to repaint, and a shell at its prompt gets no nudge.
+        if !freshShell {
+            session.nudgeWindowSize()
         }
 
         startHeartbeat(context: context)
