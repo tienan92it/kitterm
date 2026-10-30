@@ -1,1 +1,1 @@
-- 2026-10-30 · A reload of a `/?session=` link reattaches to the same session instead of resetting to a fresh root shell (`terminal-app.ts`) · PR #209 · Cost: TBD
+- 2026-10-30 · A reload of a `/?session=` link reattaches to the same session instead of resetting to a fresh root shell (`terminal-app.ts`) · PR #209 · Cost: $4.32 · 3504k in (96% cached) · 15k out · 0h 21m
