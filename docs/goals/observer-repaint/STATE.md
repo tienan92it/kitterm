@@ -1,15 +1,14 @@
 # STATE: observer-repaint
 
-- Status: active
+- Status: done
 - Round: 1 of 3 in this budget (first budget)
-- Rounds total: 0
-- Last floor: green (2026-10-30, base is merged PR #209 on ed17302)
+- Rounds total: 1
+- Last floor: green (2026-10-30, round 1; swift test 1411/0, PR #210 CI on ea9f06f)
 - Updated: 2026-10-30
 
 ## Queue
 
-1. `repaint-on-attach`, the daemon nudges the PTY window size on a new attach so a joined full-screen program repaints; record the decision in ADR 0006 (capability 1), PR #210.
-2. `guard-controller`, protect the controller and the normal-screen replay (capability 3)
+None.
 
 ## Failures
 
@@ -21,13 +20,17 @@ None.
 
 ## Done
 
-None.
+- `repaint-on-attach`, round 1, PR #210. See `rounds/001.md`. The daemon
+  nudges the PTY window size on attach (`PtySession.nudgeWindowSize`) so a
+  joined full-screen program repaints; ADR 0006.
+- `guard-controller`, round 1, PR #210. Folded into round 1: the test
+  proves the controller keeps the held size after two joins and a
+  normal-screen shell gets no nudge (completion conditions 2 and 3).
 
 ## Next action
 
-Round 1: `repaint-on-attach`. The human chose the SIGWINCH nudge over a
-replay-from-alt-screen-enter (`corpus/00-request.md`). The crew implements
-the nudge on the attach path, adds a daemon test, and drafts ADR 0006; the
-foreman proposes the ADR for the human to commit (`docs/adr/` is Propose
-tier). The capability touches `PtySession.swift` and the attach handler, so
-the round carries a review session.
+None. The completion condition in `goal.md` holds: a join repaints, a
+second join leaves the held size, and a normal-screen shell is untouched,
+all proven by `rounds/001.md`'s test and a browser join of a live `claude`.
+The human merges PR #210, which accepts ADR 0006. Reopen with
+`Status: active` and a new queue to harden further.
