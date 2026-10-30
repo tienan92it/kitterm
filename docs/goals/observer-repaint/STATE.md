@@ -1,16 +1,15 @@
 # STATE: observer-repaint
 
-- Status: waiting
-- Round: 0 of 3 in this budget (first budget)
+- Status: active
+- Round: 1 of 3 in this budget (first budget)
 - Rounds total: 0
-- Last floor: green (2026-10-30, not yet run; base CI green on 7d5dcb8)
+- Last floor: green (2026-10-30, base is merged PR #209 on ed17302)
 - Updated: 2026-10-30
 
 ## Queue
 
-1. `repaint-mechanism`, decide between a SIGWINCH nudge and a replay from the last alt-screen-enter; record it in an ADR (capability 1)
-2. `repaint-on-attach`, apply the chosen mechanism when a client attaches to an alt-screen session (capability 2)
-3. `guard-controller`, protect the controller and the normal-screen replay (capability 3)
+1. `repaint-on-attach`, the daemon nudges the PTY window size on a new attach so a joined full-screen program repaints; record the decision in ADR 0006 (capability 1)
+2. `guard-controller`, protect the controller and the normal-screen replay (capability 3)
 
 ## Failures
 
@@ -26,8 +25,9 @@ None.
 
 ## Next action
 
-The foreman drafted `goal.md` and `plan.md` from its diagnosis of the
-garbled-join bug. The human reviews them, edits as needed, and adds the
-approved request under `corpus/`. Then the human sets `Status: active`
-to run round 1 (`repaint-mechanism`), whose first product is an ADR the
-human accepts. No round runs while this stays `waiting`.
+Round 1: `repaint-on-attach`. The human chose the SIGWINCH nudge over a
+replay-from-alt-screen-enter (`corpus/00-request.md`). The crew implements
+the nudge on the attach path, adds a daemon test, and drafts ADR 0006; the
+foreman proposes the ADR for the human to commit (`docs/adr/` is Propose
+tier). The capability touches `PtySession.swift` and the attach handler, so
+the round carries a review session.
