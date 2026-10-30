@@ -1,15 +1,14 @@
 # STATE: foreman-event-driven
 
 - Status: active
-- Round: 0 of 2 in this budget
-- Rounds total: 0
-- Last floor: green (main e389733 before round 1)
-- Updated: 2026-10-30, goal opened from the closed chore PR #207 (option 1)
+- Round: 1 of 2 in this budget
+- Rounds total: 1
+- Last floor: green (2026-10-30, round 1 after: swift test 1404, PR CI on 53f01bd)
+- Updated: 2026-10-30, round 1 done: kitterm foreman watch
 
 ## Queue
 
-1. `foreman-watch`: the `kitterm foreman watch` command (`corpus/00-request.md`), PR #208.
-2. `skill-rewrite`: the `foreman-loop` skill adopts it.
+1. `skill-rewrite`: the `foreman-loop` skill adopts `kitterm foreman watch`, PR #208.
 
 ## Failures
 
@@ -21,8 +20,9 @@ None.
 
 ## Done
 
-None.
+- `foreman-watch`, round 1, PR #208. See `rounds/001.md`. The
+  `kitterm foreman watch` command.
 
 ## Next action
 
-Round 1: `foreman-watch`, then round 2: `skill-rewrite`.
+Round 2: `skill-rewrite` — the `foreman-loop` skill adopts the command.
