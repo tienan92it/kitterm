@@ -8,7 +8,7 @@
 
 ## Queue
 
-1. `repaint-on-attach`, the daemon nudges the PTY window size on a new attach so a joined full-screen program repaints; record the decision in ADR 0006 (capability 1)
+1. `repaint-on-attach`, the daemon nudges the PTY window size on a new attach so a joined full-screen program repaints; record the decision in ADR 0006 (capability 1), PR #210.
 2. `guard-controller`, protect the controller and the normal-screen replay (capability 3)
 
 ## Failures
