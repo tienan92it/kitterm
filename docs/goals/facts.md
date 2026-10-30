@@ -624,3 +624,12 @@ decision moves to `docs/adr/`.
   Fable limit") and wait at its prompt with no note and no hook event the
   foreman watches. Watch a crew's `lastOutputAt` too, and switch the pane
   with `/model` (2026-10-07, `screen-state` round 1).
+- `kitterm service install --help` ran the real command: no subcommand
+  checked for `--help`, and `DaemonFlags.parse` keeps the flags it knows
+  and silently drops the rest, so the command rewrote
+  `~/Library/LaunchAgents/com.kitterm.daemon.plist` with `serve --port
+  3418` alone and restarted the daemon — `--agent-control` and
+  `--retain-logs` were lost and every pane's program died.
+  `upgrade --help`, `restart --help`, `stop --help`, and `start --help`
+  were the same risk, since none of them checked their own arguments
+  either. (2026-10-30, `cli-help`)

@@ -22,6 +22,14 @@ func writeError(_ message: String) {
 enum KittermMain {
     static func main() {
         let args = Array(CommandLine.arguments.dropFirst())
+        // Checked before any subcommand runs, so `kitterm service install
+        // --help` prints and exits rather than reaching `DaemonFlags.parse`
+        // (see `HelpRequest`). No subcommand carries its own section yet, so
+        // every topic prints the whole usage.
+        if HelpRequest.decide(args) != nil {
+            printUsage()
+            exit(0)
+        }
         guard let command = args.first else {
             printUsage()
             exit(2)
@@ -30,7 +38,9 @@ enum KittermMain {
         do {
             switch command {
             case "start":
-                try start(parsePort(args.dropFirst()), flags: DaemonFlags.parse(args))
+                let rest = Array(args.dropFirst())
+                try DaemonFlags.validate(rest)
+                try start(parsePort(rest), flags: DaemonFlags.parse(rest))
             case "stop":
                 try stop()
             case "status":
@@ -44,10 +54,9 @@ enum KittermMain {
             case "service":
                 try service(args.dropFirst())
             case "upgrade", "update":
-                try upgrade(
-                    restartAfter: args.dropFirst().contains("--restart"),
-                    live: args.dropFirst().contains("--live")
-                )
+                let rest = Array(args.dropFirst())
+                try UpgradeFlags.validate(rest)
+                try upgrade(restartAfter: rest.contains("--restart"), live: rest.contains("--live"))
             case "integrate":
                 // Snippet only, nothing else on stdout — it is made for piping:
                 //   kitterm integrate >> ~/.zshrc
@@ -86,20 +95,28 @@ enum KittermMain {
             case "version", "--version", "-v":
                 print(installedVersion() ?? "dev")
             case "serve":
-                // Internal: foreground daemon process.
+                // Internal: foreground daemon process, exec'd by launchd and
+                // by a live takeover. Deliberately not `DaemonFlags.validate`
+                // — a daemon that refused to boot on a flag from an older
+                // plist would be worse than one that silently ignores it.
                 try serve(port: parsePort(args.dropFirst()), flags: DaemonFlags.parse(args))
             case "mcp":
                 // Stdio MCP server for a foreman agent. Proxies the HTTP API of
                 // the running daemon; `--port` overrides the discovered port.
                 let port = parsePortFlag(args.dropFirst()) ?? readPort() ?? KittermConstants.defaultPort
                 MCPBridge.run(port: port)
-            case "help", "-h", "--help":
-                printUsage()
             default:
                 writeError("Unknown command: \(command)\n")
                 printUsage()
                 exit(2)
             }
+        } catch let error as CLIError {
+            if case .unknownOption = error {
+                writeError("\(error.localizedDescription)\n")
+                exit(2)
+            }
+            writeError("error: \(error.localizedDescription)\n")
+            exit(1)
         } catch {
             writeError("error: \(error.localizedDescription)\n")
             exit(1)
@@ -178,6 +195,8 @@ enum KittermMain {
             kitterm — Mac loopback terminal daemon
 
             Usage:
+              kitterm --help | -h | help
+                                      # this usage; works after any command too
               kitterm start [--port PORT] [--lan] [--record] [--agent-control]
                             [--trusted-host NAME] [--tls-cert FILE --tls-key FILE [--tls-port PORT]]
               kitterm stop
@@ -185,7 +204,7 @@ enum KittermMain {
               kitterm restart [same flags as start]
               kitterm open [PATH]     # browser shell in PATH (default: cwd)
               kitterm edit [PATH]     # the editor page for a file or a folder (default: cwd)
-              kitterm service install [same flags as start]
+              kitterm service install [daemon flags]
               kitterm service uninstall | status
               kitterm service sync    # rewrite the plist from this build, no restart
               kitterm upgrade [--live | --restart]
@@ -457,6 +476,7 @@ enum KittermMain {
     /// `kitterm restart` — restarts whichever mechanism owns the daemon.
     private static func restart<S: Sequence>(_ args: S) throws where S.Element == String {
         let array = Array(args)
+        try DaemonFlags.validate(array)
         // The daemon reads a restart and a stop as the same SIGTERM, so say
         // which this is before anything signals (`StopIntent`): the stop path
         // reads the file once, for this pid alone, and records `restarted`.
@@ -839,6 +859,7 @@ enum KittermMain {
         let array = Array(args)
         switch array.first ?? "status" {
         case "install":
+            try DaemonFlags.validate(array)
             try installService(port: parsePort(array), flags: DaemonFlags.parse(array))
         case "uninstall":
             try uninstallService()
@@ -1755,6 +1776,12 @@ enum CLIError: Error, LocalizedError {
     case upgradeUnavailable(detail: String)
     case upgradeFailed(detail: String)
     case usage(String)
+    /// An argument that is not a known flag or a known flag's value
+    /// (`DaemonFlags.validate`, `UpgradeFlags.validate`). The message is the
+    /// complete two-line text to print as-is; `main()` exits 2 for this case,
+    /// the same code the top-level unknown-command and malformed-argv paths
+    /// use, because the fix is naming the right flag, not retrying.
+    case unknownOption(String)
 
     var errorDescription: String? {
         switch self {
@@ -1776,6 +1803,8 @@ enum CLIError: Error, LocalizedError {
         case .upgradeFailed(let detail):
             return "upgrade failed: \(detail)"
         case .usage(let detail):
+            return detail
+        case .unknownOption(let detail):
             return detail
         }
     }
