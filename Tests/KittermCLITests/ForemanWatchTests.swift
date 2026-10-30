@@ -81,9 +81,11 @@ final class ForemanWatchTests: XCTestCase {
         )
         XCTAssertEqual(parsed["type"] as? String, "event")
         XCTAssertEqual(parsed["epoch"] as? String, "epoch-1")
-        // The matched event's own seq + 1, not the batch's `next` (12): a
-        // later event in the same page must not be skipped by the cursor.
-        XCTAssertEqual(parsed["next"] as? Int, 12)
+        // The matched event's own seq (11), not the batch's `next` (12):
+        // the feed's `since` is exclusive (`seq > since`), so resuming at
+        // the matched event's own seq, not seq + 1, is "everything after
+        // it" with no event skipped (`EventLog.snapshotLocked`).
+        XCTAssertEqual(parsed["next"] as? Int, 11)
         let matched = try XCTUnwrap(parsed["event"] as? [String: Any])
         XCTAssertEqual(matched["seq"] as? Int, 11)
         XCTAssertEqual(matched["type"] as? String, "note")
@@ -178,7 +180,7 @@ final class ForemanWatchTests: XCTestCase {
         XCTAssertEqual(feed.calls[1].since, 50)
         XCTAssertEqual(feed.calls[1].epoch, "abc")
         XCTAssertEqual(lines.count, 1)
-        XCTAssertTrue(lines[0].contains("next=51"))
+        XCTAssertTrue(lines[0].contains("next=50"))
         XCTAssertTrue(lines[0].contains("epoch=abc"))
     }
 
@@ -238,14 +240,6 @@ final class ForemanWatchTests: XCTestCase {
         }
     }
 
-    // MARK: - Regression: the subcommand exists and dispatches
-
-    /// On `e389733` (the base before this round) `"watch"` was not a known
-    /// subcommand, so `ForemanCommand.run` fell to the default case and
-    /// threw `CLIError.usage` naming the two-command-less usage text before
-    /// ever parsing `--session`. After this round the same call reaches
-    /// `watch`'s own argument parser and usage check instead — reachable
-    /// only once `run` knows the subcommand.
     // MARK: - `--help` is caught before the subcommand ever runs
 
     /// `watch`'s own flags must be in `HelpRequest.valuedFlagNames`, so
@@ -259,6 +253,7 @@ final class ForemanWatchTests: XCTestCase {
         XCTAssertNil(HelpRequest.decide(["foreman", "watch", "--epoch", "-h"]))
         XCTAssertNil(HelpRequest.decide(["foreman", "watch", "--heartbeat", "-h"]))
         XCTAssertNil(HelpRequest.decide(["foreman", "watch", "--timeout", "-h"]))
+        XCTAssertNil(HelpRequest.decide(["foreman", "watch", "--port", "-h"]))
         // Once every valued flag has its own value, --help still counts.
         XCTAssertEqual(
             HelpRequest.decide(["foreman", "watch", "--session", "x", "--help"]),
@@ -266,6 +261,36 @@ final class ForemanWatchTests: XCTestCase {
         )
     }
 
+    // MARK: - `--port` overrides the default HTTP client's port lookup
+
+    func testPortOverridesWhichDaemonTheDefaultPollTargets() throws {
+        // No injected `poll`: this exercises the real `pollEvents` default,
+        // proving `--port` reaches it instead of the port file. No daemon
+        // listens on this port, so the call fails fast with a connection
+        // error rather than hanging — still proof the port was used, since
+        // a wrong port (or none) would fail identically but for a
+        // different reason ("no port file").
+        XCTAssertThrowsError(
+            try ForemanCommand.watch(
+                ["--session", sessionA, "--since", "0", "--port", "1"],
+                out: { _ in }
+            )
+        ) { error in
+            guard case CLIError.serviceFailed(_, let detail) = error else {
+                return XCTFail("expected serviceFailed, got \(error)")
+            }
+            XCTAssertFalse(detail.contains("no port file"), "the explicit --port must skip the port-file lookup: \(detail)")
+        }
+    }
+
+    // MARK: - Regression: the subcommand exists and dispatches
+
+    /// On `e389733` (the base before this round) `"watch"` was not a known
+    /// subcommand, so `ForemanCommand.run` fell to the default case and
+    /// threw `CLIError.usage` naming the two-command-less usage text before
+    /// ever parsing `--session`. After this round the same call reaches
+    /// `watch`'s own argument parser and usage check instead — reachable
+    /// only once `run` knows the subcommand.
     func testTheWatchSubcommandDispatchesRatherThanFallingToUnknownCommand() {
         // No `--session`: `watch`'s own usage check must fire. Before this
         // round there was no such check to fire — "watch" was unknown and

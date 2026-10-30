@@ -243,7 +243,7 @@ enum KittermMain {
                                       # scope (default: the working directory)
               kitterm foreman watch --session ID [--session ID ...]
                                       [--since N] [--epoch ID] [--heartbeat S]
-                                      [--timeout S] [--json]
+                                      [--timeout S] [--port N] [--json]
                                       # block on the event feed; exit on the
                                       # first matching event, a heartbeat, or
                                       # an epoch change; run it in the
@@ -346,7 +346,8 @@ enum KittermMain {
             epoch change (or a pruned cursor), printing that marker
             instead, and always prints the next since/epoch cursor to
             resume from. With no --since it starts at the current head, so
-            nothing already posted is replayed. It exits non-zero when the
+            nothing already posted is replayed. --port overrides the port
+            file, for a scratch daemon. It exits non-zero when the
             daemon does not answer. It blocks for the run, so it is the one
             command in this list meant to run in the background
             (run_in_background) rather than to finish and return; it never

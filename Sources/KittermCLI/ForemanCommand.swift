@@ -31,7 +31,7 @@ enum ForemanCommand {
     static let usage = """
     usage: kitterm foreman catch-up [--scope <path>] [--json]
            kitterm foreman watch --session <id> [--session <id> ...] \
-    [--since <seq>] [--epoch <id>] [--heartbeat <seconds>] [--timeout <seconds>] [--json]
+    [--since <seq>] [--epoch <id>] [--heartbeat <seconds>] [--timeout <seconds>] [--port <n>] [--json]
     """
 
     /// Run one subcommand. `out` takes every line meant for stdout.
@@ -542,8 +542,10 @@ enum ForemanCommand {
     /// `MCPHTTPClient` path `catch-up` uses for `/api/sessions` — never
     /// `curl`, never a new route. The HTTP timeout is past `timeoutSeconds`
     /// so the daemon's own long-poll answers before the client gives up.
-    static func pollEvents(since: Int, epoch: String?, timeoutSeconds: Int) -> WatchPoll {
-        guard let port = KittermMain.readPort() else {
+    /// `explicitPort` is `--port`, like `mcp`'s own override: it names a
+    /// scratch daemon on another port without touching the port file.
+    static func pollEvents(explicitPort: Int? = nil, since: Int, epoch: String?, timeoutSeconds: Int) -> WatchPoll {
+        guard let port = explicitPort ?? KittermMain.readPort() else {
             return .unavailable("no port file at \(DaemonPaths.portFile.path)")
         }
         var query = ["since=\(since)", "timeout=\(timeoutSeconds)"]
@@ -588,12 +590,13 @@ enum ForemanCommand {
         }
     }
 
-    /// `watch`. `poll` reads one page of the feed, and `now` is the wall
-    /// clock, so a test can make a heartbeat or a long poll arrive without
-    /// a real wait: it advances a fake clock inside its own `poll`.
+    /// `watch`. `poll` reads one page of the feed, overriding the default
+    /// HTTP client (`pollEvents`, honouring `--port`) for a test; `now` is
+    /// the wall clock, so a test can make a heartbeat or a long poll arrive
+    /// without a real wait: it advances a fake clock inside its own `poll`.
     static func watch(
         _ args: [String],
-        poll: (Int, String?, Int) -> WatchPoll = ForemanCommand.pollEvents,
+        poll: ((Int, String?, Int) -> WatchPoll)? = nil,
         now: () -> Date = Date.init,
         out: (String) -> Void
     ) throws {
@@ -602,6 +605,7 @@ enum ForemanCommand {
         var epochOption: String?
         var heartbeatSeconds = watchDefaultHeartbeatSeconds
         var pollSecondsOption: Int?
+        var portOption: Int?
         var asJSON = false
         var index = 0
         while index < args.count {
@@ -628,6 +632,10 @@ enum ForemanCommand {
                 let raw = try value()
                 guard let n = Int(raw), n > 0 else { throw CLIError.usage("--timeout needs a positive integer\n\(usage)") }
                 pollSecondsOption = n
+            case "--port":
+                let raw = try value()
+                guard let n = Int(raw), n > 0 else { throw CLIError.usage("--port needs a positive integer\n\(usage)") }
+                portOption = n
             case "--json":
                 asJSON = true
             default:
@@ -637,6 +645,9 @@ enum ForemanCommand {
         }
         guard !sessions.isEmpty else {
             throw CLIError.usage("--session is required (at least one)\n\(usage)")
+        }
+        let poll = poll ?? { since, epoch, timeout in
+            pollEvents(explicitPort: portOption, since: since, epoch: epoch, timeoutSeconds: timeout)
         }
         // Case-insensitive, like `isOwn`: a UUID's canonical form is
         // uppercase, and a caller may pass it in either case.
@@ -690,7 +701,12 @@ enum ForemanCommand {
                 var matched = false
                 for event in events {
                     guard let seq = event["seq"] as? Int else { continue }
-                    since = seq + 1
+                    // The feed's `since` is exclusive (`seq > since`) and its
+                    // `next` is the last event's own seq, not seq + 1
+                    // (`EventLog.snapshotLocked`): resuming at the matched
+                    // event's own seq, not seq + 1, is what asks for
+                    // "everything after it" without skipping the very next one.
+                    since = seq
                     if let type = event["type"] as? String, let session = event["session"] as? String,
                        watchMatchTypes.contains(type), watched.contains(session.uppercased()) {
                         emit(["type": "event", "event": event, "next": since, "epoch": gotEpoch])
