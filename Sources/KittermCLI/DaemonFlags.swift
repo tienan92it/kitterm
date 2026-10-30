@@ -113,6 +113,65 @@ struct DaemonFlags {
         return args
     }
 
+    /// Flags with no value, as `DaemonFlags.parse` reads them.
+    private static let booleanFlagNames: Set<String> = [
+        "--lan", "--record", "--agent-control", "--retain-logs", "--rotate-token",
+    ]
+
+    /// Flags that take a value, either `--name value` or `--name=value`, as
+    /// `DaemonFlags.parse`, `KittermMain.parsePort`, and `parsePortFlag`
+    /// read them.
+    private static let valuedFlagNames: Set<String> = [
+        "--port", "--trusted-host", "--tls-cert", "--tls-key", "--tls-port", "--session-linger",
+    ]
+
+    static let usage =
+        "usage: kitterm start|restart|service install [--port PORT] [--lan] [--record] "
+        + "[--agent-control] [--retain-logs] [--rotate-token] [--trusted-host NAME] "
+        + "[--tls-cert FILE --tls-key FILE [--tls-port PORT]] [--session-linger SECONDS]"
+
+    /// Reject any argument that is not a known flag or a known flag's value,
+    /// before `start`, `restart`, or `service install` does anything else.
+    ///
+    /// This is the fix the incident needed: `DaemonFlags.parse` keeps the
+    /// flags it knows and silently drops the rest, so `--help` (or any
+    /// typo) fell through, and the command that was supposed to only print
+    /// usage went on to rewrite the LaunchAgent plist with none of the
+    /// daemon's real flags — `--agent-control` and `--retain-logs` were
+    /// lost and every pane's program died (docs/goals/facts.md,
+    /// 2026-10-30).
+    ///
+    /// `serve` never calls this: it is what launchd and a live takeover
+    /// `exec`, and a daemon that refused to boot on a flag from an older
+    /// plist would be worse than one that silently ignores it.
+    static func validate<S: Sequence>(_ args: S) throws where S.Element == String {
+        let array = Array(args)
+        var index = 0
+        while index < array.count {
+            let arg = array[index]
+            guard arg.hasPrefix("-") else {
+                index += 1
+                continue
+            }
+            let name = arg.contains("=") ? String(arg.split(separator: "=", maxSplits: 1)[0]) : arg
+            if booleanFlagNames.contains(name), !arg.contains("=") {
+                index += 1
+                continue
+            }
+            if valuedFlagNames.contains(name) {
+                if arg.contains("=") {
+                    index += 1
+                } else if index + 1 < array.count, !array[index + 1].hasPrefix("--") {
+                    index += 2
+                } else {
+                    index += 1
+                }
+                continue
+            }
+            throw CLIError.unknownOption("kitterm: unknown option \(arg)\n\(usage)")
+        }
+    }
+
     func daemonConfig(port: Int) throws -> DaemonConfig {
         DaemonConfig(
             host: KittermConstants.defaultHost,
