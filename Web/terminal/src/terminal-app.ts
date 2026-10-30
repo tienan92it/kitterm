@@ -12,6 +12,7 @@ import { setFavicon, type FaviconState } from "./favicon";
 import { shouldShowIntro, showIntro, type IntroCard } from "./intro";
 import { LOCAL_FONT_ID, resolveFontFamily, type TerminalFontId } from "./fonts";
 import { trackKeyboardInsets } from "./keyboard-insets";
+import { persistedLayout, planBoot } from "./boot-plan";
 import {
   loadLayout,
   saveLayout,
@@ -23,9 +24,7 @@ import { paneEditUrl } from "./file-preview";
 import { isMacPlatform, type PaneCommand } from "./pane-keys";
 import {
   countPanes,
-  leaf,
   nextPane,
-  paneIds,
   paneInDirection,
   removePane,
   setSplitRatio,
@@ -116,8 +115,9 @@ export class TerminalApp implements PaneHost {
   /** What the user last asked the keyboard to do — see `soft-keyboard.ts`. */
   private keyboard: KeyboardState = initialKeyboardState(isTouchPrimary());
   private readonly wakeLock = createWakeLock();
-  /** A `/?session=` link is a view onto someone else's shell: it must not read
-   * or overwrite this tab's saved layout until the user makes it their own. */
+  /** A `/?session=` link is a view onto someone else's shell: it never reads
+   * this tab's saved layout, and its pane sends no history key. It is stored
+   * like any other pane once it has its session, so a reload reattaches. */
   private linkBoot = false;
   /** `?cmd=N` from the boot URL, applied to the link-boot pane. */
   private pendingCommandScroll: number | null = null;
@@ -171,68 +171,17 @@ export class TerminalApp implements PaneHost {
     focus: PaneId;
     panes: Array<{ id: PaneId; session: PaneSession }>;
   } {
-    const params = new URLSearchParams(window.location.search);
-    const linkSession = params.get("session");
-    const linkCwd = params.get("cwd");
-    const linkProfile = params.get("profile");
-    const cmd = Number.parseInt(params.get("cmd") ?? "", 10);
-    this.pendingCommandScroll = Number.isFinite(cmd) && cmd > 0 ? cmd : null;
-    this.watchBoot = params.get("watch") === "1";
-
-    // A share link or a cwd deep link is always a single fresh pane, and does
-    // not disturb whatever layout this tab already had saved.
-    if (linkSession || (linkCwd && !linkProfile)) {
-      this.linkBoot = true;
-      const id = this.nextPaneId();
-      return {
-        root: leaf(id),
-        focus: id,
-        panes: [{ id, session: { sessionId: linkSession, cwd: linkCwd ?? undefined } }],
-      };
-    }
-
-    // A profile link seeds this tab's own layout (unlike a share link): the
-    // pane persists, so a reload reattaches to its session and a respawn
-    // after a daemon restart re-runs the profile's connect command.
-    if (linkProfile) {
-      const id = this.nextPaneId();
-      return {
-        root: leaf(id),
-        focus: id,
-        panes: [
-          { id, session: { sessionId: null, cwd: linkCwd ?? undefined, profile: linkProfile } },
-        ],
-      };
-    }
-
-    const stored = loadLayout();
-    if (stored) {
-      const ids = paneIds(stored.root);
-      const focus = ids.includes(stored.focus) ? stored.focus : (ids[0] as PaneId);
-      // Keep the counter ahead of restored ids so a later split cannot collide.
-      for (const id of ids) {
-        const n = Number.parseInt(id.replace(/^p/, ""), 10);
-        if (Number.isFinite(n) && n > this.paneCounter) this.paneCounter = n;
-      }
-      return {
-        root: stored.root,
-        focus,
-        panes: ids.map((id) => ({
-          id,
-          session: stored.sessions.get(id) ?? { sessionId: null },
-        })),
-      };
-    }
-
-    // A tab reloading across the deploy that introduced splits still has its
-    // shell recorded under the old single-session key.
-    const legacy = takeLegacySessionId();
-    const id = this.nextPaneId();
-    return {
-      root: leaf(id),
-      focus: id,
-      panes: [{ id, session: { sessionId: legacy } }],
-    };
+    const plan = planBoot({
+      search: window.location.search,
+      loadLayout,
+      takeLegacySessionId,
+      paneCounter: this.paneCounter,
+    });
+    this.paneCounter = plan.paneCounter;
+    this.pendingCommandScroll = plan.commandScroll;
+    this.watchBoot = plan.watch;
+    this.linkBoot = plan.linkBoot;
+    return { root: plan.root, focus: plan.focus, panes: plan.panes };
   }
 
   private nextPaneId(): PaneId {
@@ -670,8 +619,13 @@ export class TerminalApp implements PaneHost {
 
   // MARK: Persistence
 
+  // A link boot (`/?session=`, `/?cwd=`) persists too. A same-tab navigation
+  // from the fleet view therefore replaces this tab's old saved splits with
+  // the one session: that is intended, the user navigated to it on purpose
+  // and the old shells still run on the daemon, and the reload reattaches to
+  // the session they opened instead of falling back to a fresh root shell.
   private scheduleLayoutPersist(): void {
-    if (this.linkBoot || this.disposed) return;
+    if (this.disposed) return;
     if (this.layoutPersistTimer !== null) return;
     this.layoutPersistTimer = window.setTimeout(() => {
       this.layoutPersistTimer = null;
@@ -684,17 +638,7 @@ export class TerminalApp implements PaneHost {
       window.clearTimeout(this.layoutPersistTimer);
       this.layoutPersistTimer = null;
     }
-    if (this.linkBoot) return;
-    const sessions = new Map<PaneId, PaneSession>();
-    for (const [id, pane] of this.panes) {
-      sessions.set(id, {
-        sessionId: pane.sessionId,
-        cwd: pane.lastCwd ?? undefined,
-        histKey: pane.histKey ?? undefined,
-        profile: pane.profile ?? undefined,
-      });
-    }
-    saveLayout({ root: this.root, focus: this.focusedId, sessions });
+    saveLayout(persistedLayout(this.root, this.focusedId, this.panes));
   }
 
   // MARK: Global listeners — one set for the page, fanned out to panes
