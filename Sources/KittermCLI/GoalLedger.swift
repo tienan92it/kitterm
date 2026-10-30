@@ -438,6 +438,7 @@ enum GoalLedger {
 
     /// The lines of one goal's table, the shape of
     /// `docs/goals/cost-per-round/corpus/01-what-did-that-goal-cost.md`.
+    @_optimize(none)
     static func table(_ goal: Goal) -> [String] {
         struct Cells {
             var name: String
