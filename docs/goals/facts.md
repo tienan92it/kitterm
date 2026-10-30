@@ -10,6 +10,14 @@ decision moves to `docs/adr/`.
 
 ## Toolchain
 
+- `Web/terminal/src/terminal-app.ts` imports xterm and touches the DOM, so
+  no vitest file can import it; a rule it owns is not directly unit-testable.
+  Extract the pure decision into its own module and test that instead:
+  `boot-plan.ts` (`planBoot`, `persistedLayout`) holds the boot and persist
+  rules `terminal-app.ts` delegates to, so the `/?session=` reload path is
+  pinned without a DOM. The app's call site still needs a browser check
+  (2026-10-30, chore `session-link-reload`).
+
 - `git status --porcelain=v2 --ignored=matching` costs nothing measurable
   beside a plain status on this repository (`.build`, `.playwright-mcp`,
   `Web/terminal/node_modules`): both `real 0.02s`. `--ignored=matching`
