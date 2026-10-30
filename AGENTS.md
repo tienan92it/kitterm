@@ -282,6 +282,11 @@ crashes after the exec.
 
 ## Commands
 
+`--help`/`-h`/`help` works after any command (`kitterm service install --help`
+included) and exits before any side effect; `start`, `restart`, and
+`service install` refuse an unknown flag the same way, exit 2, rather than
+let `DaemonFlags.parse` silently drop it.
+
 ```bash
 swift build
 swift test
