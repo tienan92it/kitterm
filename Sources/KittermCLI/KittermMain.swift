@@ -241,6 +241,13 @@ enum KittermMain {
               kitterm foreman catch-up [--scope PATH] [--json]
                                       # what a new foreman reads first, for one
                                       # scope (default: the working directory)
+              kitterm foreman watch --session ID [--session ID ...]
+                                      [--since N] [--epoch ID] [--heartbeat S]
+                                      [--timeout S] [--json]
+                                      # block on the event feed; exit on the
+                                      # first matching event, a heartbeat, or
+                                      # an epoch change; run it in the
+                                      # background, it does not daemonize
               kitterm skills install [--dir DIR] | list
                                       # write the foreman skills into ~/.claude/skills
               kitterm statusline install [--dir DIR] | print
@@ -329,6 +336,21 @@ enum KittermMain {
             prints nothing from outside the scope and writes nothing. The
             files need no daemon; when the daemon does not answer, one line
             says so and the live sessions are left out.
+
+            foreman watch blocks on GET /api/events (a Swift HTTP client,
+            like catch-up: no curl, no new route) and exits the moment an
+            event for one of its --session ids is a note, an agent.status
+            of any kind, an approval.pending, a command.failed, or a
+            session.exited/removed, printing it; it also exits on a
+            heartbeat (default 1200s, no match within it) or on a daemon
+            epoch change (or a pruned cursor), printing that marker
+            instead, and always prints the next since/epoch cursor to
+            resume from. With no --since it starts at the current head, so
+            nothing already posted is replayed. It exits non-zero when the
+            daemon does not answer. It blocks for the run, so it is the one
+            command in this list meant to run in the background
+            (run_in_background) rather than to finish and return; it never
+            daemonizes itself.
 
             skills install writes the reference foreman skills under
             examples/foreman/ (foreman-loop, review-crew, triage) to

@@ -31,7 +31,7 @@ enum HelpRequest {
     private static let valuedFlagNames: Set<String> = [
         "--port", "--trusted-host", "--tls-cert", "--tls-key", "--tls-port",
         "--session-linger", "--name", "--knowledge", "--dir", "--scope",
-        "--days", "--print",
+        "--days", "--print", "--session", "--since", "--epoch", "--heartbeat", "--timeout",
     ]
 
     /// `args` is the full argv with the command name first, if any. `nil`

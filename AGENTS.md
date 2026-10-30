@@ -259,6 +259,23 @@ crashes after the exec.
   `projects.json` and the goal folders with no daemon, asks `GET /api/sessions`
   for the live rows, says so in one line when the daemon does not answer, and
   writes nothing
+- `kitterm foreman watch --session <id> [--session <id> ...] [--since <seq>]
+  [--epoch <id>] [--heartbeat <seconds>] [--timeout <seconds>] [--json]`
+  (`ForemanCommand.swift`) blocks on `GET /api/events` (the same
+  `MCPTools.Call`/`MCPHTTPClient` path `catch-up` uses: no `curl`, no new
+  route) and exits the moment an event whose `session` is one of
+  `--session` is a `note`, an `agent.status` of any kind, an
+  `approval.pending`, a `command.failed`, or a `session.exited`/`removed`,
+  printing it; a non-matching event advances the cursor silently. It also
+  exits on a heartbeat (no match within `--heartbeat`, default 1200s) or on
+  a daemon epoch change or a pruned cursor, printing that marker instead,
+  and always prints the `next`/`epoch` cursor to resume from with no gap.
+  With no `--since` it bootstraps at the current head with one no-wait
+  poll, so nothing already posted is replayed. It exits non-zero when the
+  daemon does not answer, so a caller re-checks rather than loops forever.
+  It blocks for the run and never daemonizes — it is the command a foreman
+  runs in the background (`run_in_background`) and re-invokes itself on, not
+  one that returns and keeps going
 - `design/` at the root holds every approved design: `foundation.md` (the
   tokens, marks, fonts and rules every page follows), `palette.md`,
   one `.pen` file per surface (`dashboard.pen`, `sessions.pen`) and
