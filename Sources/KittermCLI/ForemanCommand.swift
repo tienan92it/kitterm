@@ -1,5 +1,6 @@
 import Foundation
 import KittermDaemon
+import KittermProtocol
 
 /// `kitterm foreman catch-up [--scope <path>] [--json]` — what a new
 /// foreman reads before anything else: the work of the foreman before it,
@@ -27,7 +28,11 @@ import KittermDaemon
 /// sessions come from `GET /api/sessions`; when the daemon does not answer,
 /// one line says so and the files go on. The command writes nothing.
 enum ForemanCommand {
-    static let usage = "usage: kitterm foreman catch-up [--scope <path>] [--json]"
+    static let usage = """
+    usage: kitterm foreman catch-up [--scope <path>] [--json]
+           kitterm foreman watch --session <id> [--session <id> ...] \
+    [--since <seq>] [--epoch <id>] [--heartbeat <seconds>] [--timeout <seconds>] [--port <n>] [--json]
+    """
 
     /// Run one subcommand. `out` takes every line meant for stdout.
     static func run<S: Sequence>(_ args: S, out: (String) -> Void = { print($0) }) throws
@@ -36,6 +41,8 @@ enum ForemanCommand {
         switch array.first {
         case "catch-up":
             try catchUp(Array(array.dropFirst()), out: out)
+        case "watch":
+            try watch(Array(array.dropFirst()), out: out)
         default:
             throw CLIError.usage(usage)
         }
@@ -508,6 +515,208 @@ enum ForemanCommand {
             out(try json(report))
         } else {
             for line in lines(report, timeZone: timeZone) { out(line) }
+        }
+    }
+
+    // MARK: - `watch`
+
+    /// `watch`'s matching event types (`docs/goals/foreman-event-driven/corpus/00-request.md`
+    /// rule 1): a crew event the foreman's turn is waiting on. `agent.status`
+    /// matches at any status — the caller reads `data.status`.
+    static let watchMatchTypes: Set<String> = [
+        "note", "agent.status", "approval.pending", "command.failed",
+        "session.exited", "session.removed",
+    ]
+
+    /// How long `watch` runs with no matching event before it exits with a
+    /// heartbeat marker, so a stall check still runs.
+    static let watchDefaultHeartbeatSeconds = 1200
+
+    /// One page of `GET /api/events`, or why the daemon did not answer.
+    enum WatchPoll {
+        case answer(epoch: String, events: [[String: Any]], next: Int, pruned: Bool)
+        case unavailable(String)
+    }
+
+    /// `GET /api/events?since=&epoch=&timeout=`, the same `MCPTools.Call` /
+    /// `MCPHTTPClient` path `catch-up` uses for `/api/sessions` — never
+    /// `curl`, never a new route. The HTTP timeout is past `timeoutSeconds`
+    /// so the daemon's own long-poll answers before the client gives up.
+    /// `explicitPort` is `--port`, like `mcp`'s own override: it names a
+    /// scratch daemon on another port without touching the port file.
+    static func pollEvents(explicitPort: Int? = nil, since: Int, epoch: String?, timeoutSeconds: Int) -> WatchPoll {
+        guard let port = explicitPort ?? KittermMain.readPort() else {
+            return .unavailable("no port file at \(DaemonPaths.portFile.path)")
+        }
+        var query = ["since=\(since)", "timeout=\(timeoutSeconds)"]
+        if let epoch, !epoch.isEmpty {
+            query.append("epoch=\(epoch.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? epoch)")
+        }
+        let call = MCPTools.Call(method: "GET", path: "/api/events?" + query.joined(separator: "&"))
+        switch MCPHTTPClient(port: port).send(call, timeout: TimeInterval(timeoutSeconds) + 10) {
+        case .failure(let why):
+            return .unavailable("no answer on port \(port) (\(why))")
+        case .success(let status, _, let data):
+            guard status == 200,
+                  let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  let epochValue = json["epoch"] as? String,
+                  let events = json["events"] as? [[String: Any]],
+                  let next = json["next"] as? Int
+            else { return .unavailable("port \(port) answered \(status) to GET /api/events") }
+            return .answer(epoch: epochValue, events: events, next: next, pruned: json["pruned"] as? Bool ?? false)
+        }
+    }
+
+    /// One line of stdout for a non-JSON printed marker.
+    private static func watchLine(_ fields: [String: Any]) -> String {
+        let next = fields["next"] as? Int
+        let epoch = fields["epoch"] as? String ?? ""
+        let cursor = "next=\(next.map(String.init) ?? "-") epoch=\(epoch)"
+        switch fields["type"] as? String {
+        case "event":
+            let event = fields["event"] as? [String: Any] ?? [:]
+            let type = event["type"] as? String ?? "?"
+            let session = event["session"] as? String ?? "?"
+            let seq = event["seq"] as? Int ?? 0
+            let data = event["data"] as? [String: String] ?? [:]
+            let dataText = data.isEmpty ? "" : (" " + data.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " "))
+            return "event \(type) session=\(session) seq=\(seq)\(dataText)  \(cursor)"
+        case "heartbeat":
+            return "heartbeat  \(cursor)"
+        case "epoch-change":
+            return "epoch-change  \(cursor)"
+        default:
+            return cursor
+        }
+    }
+
+    /// `watch`. `poll` reads one page of the feed, overriding the default
+    /// HTTP client (`pollEvents`, honouring `--port`) for a test; `now` is
+    /// the wall clock, so a test can make a heartbeat or a long poll arrive
+    /// without a real wait: it advances a fake clock inside its own `poll`.
+    static func watch(
+        _ args: [String],
+        poll: ((Int, String?, Int) -> WatchPoll)? = nil,
+        now: () -> Date = Date.init,
+        out: (String) -> Void
+    ) throws {
+        var sessions: [String] = []
+        var sinceOption: Int?
+        var epochOption: String?
+        var heartbeatSeconds = watchDefaultHeartbeatSeconds
+        var pollSecondsOption: Int?
+        var portOption: Int?
+        var asJSON = false
+        var index = 0
+        while index < args.count {
+            let arg = args[index]
+            func value() throws -> String {
+                guard index + 1 < args.count else { throw CLIError.usage("\(arg) needs a value\n\(usage)") }
+                index += 1
+                return args[index]
+            }
+            switch arg {
+            case "--session":
+                sessions.append(try value())
+            case "--since":
+                let raw = try value()
+                guard let n = Int(raw) else { throw CLIError.usage("--since needs an integer\n\(usage)") }
+                sinceOption = n
+            case "--epoch":
+                epochOption = try value()
+            case "--heartbeat":
+                let raw = try value()
+                guard let n = Int(raw), n > 0 else { throw CLIError.usage("--heartbeat needs a positive integer\n\(usage)") }
+                heartbeatSeconds = n
+            case "--timeout":
+                let raw = try value()
+                guard let n = Int(raw), n > 0 else { throw CLIError.usage("--timeout needs a positive integer\n\(usage)") }
+                pollSecondsOption = n
+            case "--port":
+                let raw = try value()
+                guard let n = Int(raw), n > 0 else { throw CLIError.usage("--port needs a positive integer\n\(usage)") }
+                portOption = n
+            case "--json":
+                asJSON = true
+            default:
+                throw CLIError.usage("unknown argument \(arg)\n\(usage)")
+            }
+            index += 1
+        }
+        guard !sessions.isEmpty else {
+            throw CLIError.usage("--session is required (at least one)\n\(usage)")
+        }
+        let poll = poll ?? { since, epoch, timeout in
+            pollEvents(explicitPort: portOption, since: since, epoch: epoch, timeoutSeconds: timeout)
+        }
+        // Case-insensitive, like `isOwn`: a UUID's canonical form is
+        // uppercase, and a caller may pass it in either case.
+        let watched = Set(sessions.map { $0.uppercased() })
+        let pollSeconds = min(pollSecondsOption ?? KittermConstants.eventWaitMaxSeconds, KittermConstants.eventWaitMaxSeconds)
+
+        func emit(_ fields: [String: Any]) {
+            if asJSON {
+                if let data = try? JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys]),
+                   let text = String(data: data, encoding: .utf8) {
+                    out(text)
+                }
+            } else {
+                out(watchLine(fields))
+            }
+        }
+
+        var since = sinceOption ?? 0
+        var epoch = epochOption
+        // No `--since` means start at the current head: a first bootstrap
+        // poll with no wait learns the head, and its own events (every one
+        // already old) are discarded rather than matched.
+        if sinceOption == nil {
+            switch poll(0, nil, 0) {
+            case .unavailable(let why):
+                throw CLIError.serviceFailed(action: "foreman watch", detail: why)
+            case .answer(let gotEpoch, _, let next, _):
+                since = next
+                epoch = gotEpoch
+            }
+        }
+
+        let start = now()
+        while true {
+            let elapsed = now().timeIntervalSince(start)
+            let remaining = Double(heartbeatSeconds) - elapsed
+            if remaining <= 0 {
+                emit(["type": "heartbeat", "next": since, "epoch": epoch ?? ""])
+                return
+            }
+            let thisPoll = max(1, min(pollSeconds, Int(remaining.rounded(.up))))
+            switch poll(since, epoch, thisPoll) {
+            case .unavailable(let why):
+                throw CLIError.serviceFailed(action: "foreman watch", detail: why)
+            case .answer(let gotEpoch, let events, let next, let pruned):
+                if pruned || (epoch != nil && gotEpoch != epoch) {
+                    emit(["type": "epoch-change", "epoch": gotEpoch, "next": next])
+                    return
+                }
+                epoch = gotEpoch
+                var matched = false
+                for event in events {
+                    guard let seq = event["seq"] as? Int else { continue }
+                    // The feed's `since` is exclusive (`seq > since`) and its
+                    // `next` is the last event's own seq, not seq + 1
+                    // (`EventLog.snapshotLocked`): resuming at the matched
+                    // event's own seq, not seq + 1, is what asks for
+                    // "everything after it" without skipping the very next one.
+                    since = seq
+                    if let type = event["type"] as? String, let session = event["session"] as? String,
+                       watchMatchTypes.contains(type), watched.contains(session.uppercased()) {
+                        emit(["type": "event", "event": event, "next": since, "epoch": gotEpoch])
+                        matched = true
+                        break
+                    }
+                }
+                if matched { return }
+                since = next
+            }
         }
     }
 }
