@@ -164,6 +164,13 @@ decision moves to `docs/adr/`.
 
 ## Daemon and API
 
+- Two `TIOCSWINSZ` writes with no pause between them coalesce into one
+  `SIGWINCH` that reports the old size, so a full-screen program repaints
+  nothing (0 bytes in 4 runs against an idle `claude` at 120x32). Writes
+  2 ms apart and more each deliver a `SIGWINCH` and a full repaint (1685
+  bytes each). A repaint-on-attach nudge (shrink one row, restore) uses a
+  50 ms gap for margin (2026-10-30, `observer-repaint` round 1, ADR 0006).
+
 - The daemon reads a query with Foundation's `URLComponents.queryItems`
   (RFC 3986), which keeps a `+` as a literal `+`. `URLSearchParams`'s own
   `toString()` form-encodes a space as `+`, so a client that builds a
