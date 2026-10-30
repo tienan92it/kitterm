@@ -78,4 +78,79 @@ final class ForemanProtocolRulesTests: XCTestCase {
         let onDisk = try Self.read("examples/foreman/foreman-loop.md")
         XCTAssertEqual(onDisk, ForemanSkills.foremanLoop)
     }
+
+    /// Round 2 of `foreman-event-driven`: the skill stops holding an in-turn
+    /// `wait_for_events` poll for the whole daemon and adopts
+    /// delegate → report → yield → woken instead, naming `kitterm foreman
+    /// watch`. `docs/foreman.md` still describes the old model (round 2's
+    /// authority does not reach it), so only the skill and its embedded
+    /// mirror are checked here — unlike `testEveryFileCarriesTheProtocolRules`
+    /// above, which checks all three files for the unrelated protocol rules.
+    private static func skillAndMirror() throws -> [(name: String, text: String)] {
+        [
+            ("examples/foreman/foreman-loop.md", try read("examples/foreman/foreman-loop.md")),
+            ("ForemanSkills.foremanLoop", ForemanSkills.foremanLoop),
+        ]
+    }
+
+    /// The sentence this round retires: holding one `wait_for_events` for
+    /// the whole daemon inside the foreman's own turn. Run against the
+    /// pre-change text, this assertion fails — which is the proof the round
+    /// asks for that the new assertions below are not vacuous.
+    func testTheSkillNoLongerHoldsAnInTurnEventWaitForTheWholeDaemon() throws {
+        for (name, text) in try Self.skillAndMirror() {
+            XCTAssertFalse(
+                Self.oneLine(text).contains(Self.oneLine("Hold one `wait_for_events` for the whole daemon")),
+                "\(name) still holds an in-turn `wait_for_events` loop for the whole daemon"
+            )
+        }
+    }
+
+    /// The foreman names `kitterm foreman watch`, runs it in the background,
+    /// and yields its turn after delegating — never `curl` (`GoalsLayoutDocsTests`
+    /// bans it in the skill), and never an in-turn wait.
+    func testTheSkillRunsForemanWatchInTheBackgroundAndYields() throws {
+        for (name, text) in try Self.skillAndMirror() {
+            XCTAssertTrue(text.contains("kitterm foreman watch"), "\(name) names `kitterm foreman watch`")
+            XCTAssertTrue(
+                Self.oneLine(text).contains(Self.oneLine(
+                    "do not hold an event wait inside this turn: start `kitterm foreman watch` in the background and end your turn"
+                )),
+                "\(name) yields its turn after starting `kitterm foreman watch` in the background"
+            )
+            XCTAssertFalse(text.contains("curl"), "\(name) names no shell workaround")
+        }
+    }
+
+    /// `kitterm foreman watch` is scoped to the foreman's own live crew
+    /// sessions, never the whole daemon: one `--session` per live crew, and
+    /// never the round's `crew:helper`.
+    func testForemanWatchIsScopedToTheForemansOwnLiveCrews() throws {
+        for (name, text) in try Self.skillAndMirror() {
+            XCTAssertTrue(
+                Self.oneLine(text).contains(Self.oneLine(
+                    "One `--session` per live crew in your scope — the round's own session, and any other goal's crew still running."
+                )),
+                "\(name) scopes the watch to its own live crews"
+            )
+            XCTAssertTrue(
+                Self.oneLine(text).contains(Self.oneLine("Never name a `crew:helper` session")),
+                "\(name) never watches a helper session"
+            )
+        }
+    }
+
+    /// The human's own words (`corpus/00-request.md` rule 5): the foreman
+    /// reports after each crew completes its piece of work, not while it
+    /// runs.
+    func testTheSkillReportsAfterEachCrewCompletes() throws {
+        for (name, text) in try Self.skillAndMirror() {
+            XCTAssertTrue(
+                Self.oneLine(text).contains(Self.oneLine(
+                    "Report after each crew completes, not while it runs"
+                )),
+                "\(name) reports after each crew completes, not while it runs"
+            )
+        }
+    }
 }

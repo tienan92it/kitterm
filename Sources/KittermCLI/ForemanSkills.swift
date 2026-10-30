@@ -32,7 +32,7 @@ enum ForemanSkills {
     static let foremanLoop = #"""
         ---
         name: foreman-loop
-        description: Run the goal loop in docs/goals/ for every registered project through kitterm — read every goal folder's STATE.md, schedule one round per active goal, delegate the round to a crew session, monitor the whole daemon on one event wait, write the round record under the goal's folder, commit the package, post a digest, and take the human's direction. Use when the user wants a standing foreman that runs goals round by round without visiting each session.
+        description: Run the goal loop in docs/goals/ for every registered project through kitterm — read every goal folder's STATE.md, schedule one round per active goal, delegate the round to a crew session, run `kitterm foreman watch` in the background and yield the turn until woken, write the round record under the goal's folder, commit the package, post a digest, and take the human's direction. Use when the user wants a standing foreman that runs goals round by round without visiting each session.
         ---
 
         # Foreman loop
@@ -217,7 +217,7 @@ enum ForemanSkills {
 
         ## Scan
 
-        Do this on start and after every `wait_for_events` result.
+        Do this on start and after every `kitterm foreman watch` wake ("Monitor").
 
         1. List the projects with `list_projects` and keep the ones whose root is
            your scope or lies under it. Each row carries the root and the
@@ -368,9 +368,10 @@ enum ForemanSkills {
 
            Send the whole prompt in one call, whatever its size; the daemon paces it.
            Then run step 5 of "Read before you type" and confirm the prompt sits
-           above the box. From here on "Monitor" applies: wait on `wait_for_events`,
-           route `needs-input` and `needs-approval` to the human, never answer for
-           them, relay every `note`.
+           above the box. From here on "Monitor" applies: delegate, report, run
+           `kitterm foreman watch` in the background, and yield your turn; on the
+           wake, route `needs-input` and `needs-approval` to the human, never answer
+           for them, relay every `note`.
 
         4. **Collect.** On `agent.status` with `completed` for the crew session:
 
@@ -485,33 +486,66 @@ enum ForemanSkills {
 
         ## Monitor
 
-        Hold one `wait_for_events` for the whole daemon, whatever the number of
-        projects and rounds:
+        Delegate, report, yield. Once you send the round prompt and confirm it
+        landed ("Send one request"), do not hold an event wait inside this turn:
+        start `kitterm foreman watch` in the background and end your turn.
 
         ```
-        wait_for_events since=<cursor> epoch=<epoch> timeout=300
+        kitterm foreman watch --session <id> [--session <id> ...] --since <cursor> --epoch <epoch> [--heartbeat <s>]
         ```
 
-        Start `cursor` at 0 with no epoch. After each call set them to the returned
-        `next` and `epoch`. A timeout with no events means the crew is still working.
-        Act on each event, then run "Scan":
+        One `--session` per live crew in your scope — the round's own session, and
+        any other goal's crew still running. Never name a `crew:helper` session: a
+        round is open while its `crew:<slug>` session is live, not its helper, so
+        watching the helper would hold your turn open past the round. Run it with
+        `Bash(run_in_background)`, so the command holds the wait, not your turn.
+        Start `cursor` at 0 with no `--epoch` the first run; after every run, carry
+        the `next` and `epoch` it printed into the next one — your turn ends
+        between runs, so keep the cursor in the pane's scratch note or your own
+        notes, not in memory.
 
-        - `agent.status` with `needs-input`, or `approval.pending`: report at once.
-          Name the project, the goal, the round, and link the pane. Do not act. When
-          the human gives you an answer, run "Read before you type" and pass it on
-          with `send_input`.
-        - `note`: relay its first line word for word ("Crew notes"). The round
-          record is the durable copy; the event ring drops a note on a daemon
-          restart. A `BLOCKER` note, or a new entry under "## Proposals waiting
-          on the human", creates its task, `Answer: <crew blocker>` or
-          `Decide: <proposal>` ("Task list"); mark it `completed` when the human
-          answers or decides.
-        - `command.failed`: read `/commands/<index>/output` with `read_output`.
-          Report it at once when it is the crew's floor or a command the round
-          depends on. Otherwise let the crew handle it; never act for the crew.
-        - `agent.status` with `completed`: run step 4 of "One round" for that goal.
-        - `session.exited` with a non-zero code: the crew failed. Report it. A
-          second non-zero exit in the same goal is a stop rule.
+        The command exits and the harness wakes you with exactly one of three
+        markers on its last line. Read it and act:
+
+        - `{type:"event", event, next, epoch}` — a watched session posted a `note`,
+          an `agent.status`, an `approval.pending`, a `command.failed`, or a
+          `session.exited`/`removed`. Run "Scan", then act on the event by its
+          type:
+          - `agent.status` with `needs-input`, or `approval.pending`: report at
+            once. Name the project, the goal, the round, and link the pane. Do not
+            act. When the human gives you an answer, run "Read before you type"
+            and pass it on with `send_input`.
+          - `note`: relay its first line word for word ("Crew notes"). The round
+            record is the durable copy; the event ring drops a note on a daemon
+            restart. A `BLOCKER` note, or a new entry under "## Proposals waiting
+            on the human", creates its task, `Answer: <crew blocker>` or
+            `Decide: <proposal>` ("Task list"); mark it `completed` when the human
+            answers or decides.
+          - `command.failed`: read `/commands/<index>/output` with `read_output`.
+            Report it at once when it is the crew's floor or a command the round
+            depends on. Otherwise let the crew handle it; never act for the crew.
+          - `agent.status` with `completed`: run step 4 of "One round" for that
+            goal.
+          - `session.exited` with a non-zero code, or `session.removed`: the crew
+            is gone. Report it. A second non-zero exit in the same goal is a stop
+            rule.
+        - `{type:"heartbeat", next, epoch}` — no watched session matched inside the
+          window. Run "Scan" and check "Stall" (below); there is no event to
+          report.
+        - `{type:"epoch-change", epoch, next}` — the feed's cursor was pruned or the
+          epoch no longer matches. Treat it exactly as "A result whose epoch
+          changed" below.
+
+        `kitterm foreman watch` can also exit non-zero with no marker, when the
+        daemon drops the connection mid-poll: a live upgrade
+        (`daemon.started` with `takeover` set to `"true"` and the same `epoch`)
+        does this once while it execs, and every session id you hold is still
+        good. Run the command again with the same `--since` and `--epoch` you gave
+        it, since nothing advanced. A `send_input` in flight may have been cut;
+        read the screen and send the text again when it is not there. Continue.
+
+        On every "Scan" — whatever woke you — also:
+
         - A merge to the base branch, which only the human makes: rebase every
           open goal or chore branch onto `origin/<base>` and push each one with
           `--force-with-lease`. Only you force-push, and only for this. Two green
@@ -524,27 +558,32 @@ enum ForemanSkills {
           `git worktree remove` and the local branch with `git branch -D`. A
           merged branch left on the remote reads as open work. Mark the goal's
           `Merge PR #N` task `completed`.
-        - `session.lingered`, and on every scan: compare `heldSince` with now.
-          Archive a crew session that sits at an empty prompt one hour past
-          `completed`. The linger clock holds a session with `claude` in the
-          foreground past every window; only you end it.
-        - `daemon.started` with `takeover` set to `"true"` and the same `epoch`: the
-          daemon upgraded in place. Every session id you hold is still good. A
-          `wait_for_events` or `wait_for_command` call that was in flight fails once
-          with a connection error; call it again with the same `since` and `epoch`.
-          A `send_input` in flight may have been cut; read the screen and send the
-          text again when it is not there. Continue.
-        - A result whose `epoch` changed: the daemon restarted and every session id
-          you hold is gone. Call `list_sessions` and match a respawned pane by its
-          labels and cwd, never by id. Respawn each open round's crew once with the
-          same five labels plus `resumed-from:<the id the pane held before>`, run
-          the floor, start `claude`, and send the round prompt again with the
-          instruction to continue from the branch's last commit. The branch and
-          the pull request are still there; the respawn keeps `pr:<N>`. When the
-          respawn does not restore the round, record a killed attempt (see "One
-          round") and stop that goal.
-        - The human's answer at a direction check (`LOOP.md`, "Direction") is an
-          edit to `STATE.md`:
+        - Compare `heldSince` with now for every live crew session. Archive a crew
+          session that sits at an empty prompt one hour past `completed`. The
+          linger clock holds a session with `claude` in the foreground past every
+          window; only you end it.
+
+        Report after each crew completes, not while it runs: a heartbeat, or an
+        event with nothing the human must see, prints nothing to the human
+        ("Reports"). When step 4 of "One round" closes the round — the floor
+        green, the record written, the package committed, the digest posted —
+        delegate the next runnable goal ("Schedule") or stop, per "Direction" and
+        the stop rules below. Otherwise run `kitterm foreman watch` again for the
+        crews still live, with the cursor and the epoch the last run printed, and
+        end your turn again.
+
+        A result whose `epoch` changed: the daemon restarted and every session id
+        you hold is gone. Call `list_sessions` and match a respawned pane by its
+        labels and cwd, never by id. Respawn each open round's crew once with the
+        same five labels plus `resumed-from:<the id the pane held before>`, run
+        the floor, start `claude`, and send the round prompt again with the
+        instruction to continue from the branch's last commit. The branch and
+        the pull request are still there; the respawn keeps `pr:<N>`. When the
+        respawn does not restore the round, record a killed attempt (see "One
+        round") and stop that goal.
+
+        The human's answer at a direction check (`LOOP.md`, "Direction") is an
+        edit to `STATE.md`:
           - **continue**: set `Round: 0 of 3 in this budget (<ordinal> budget)`, set
             `Status: active`, and set `Updated`. The goal is runnable on the next
             scan.
