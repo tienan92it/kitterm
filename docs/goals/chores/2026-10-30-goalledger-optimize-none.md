@@ -1,0 +1,1 @@
+- 2026-10-30 · `@_optimize(none)` on `GoalLedger.table` works around a Swift 6.3.3 release-build crash in the `CopyPropagation` ownership verifier, which blocked every `swift build -c release` of `kitterm` (`GoalLedger.swift`) · PR #211 · Cost: $0.55 · 904k in (87% cached) · 2k out · 0h 03m
