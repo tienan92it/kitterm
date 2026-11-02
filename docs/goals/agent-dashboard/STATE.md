@@ -1,14 +1,23 @@
 # STATE: agent-dashboard
 
-- Status: done
-- Round: 2 of 3 in this budget (eighth budget)
+- Status: active
+- Round: 3 of 3 in this budget (eighth budget)
 - Rounds total: 23
 - Last floor: green (2026-09-28, round 23 after: swift test 914, Linux build)
-- Updated: 2026-09-28, round 23 closed, done
+- Updated: 2026-11-02, round 24 queued, resumed
 
 ## Queue
 
-Empty.
+- `a-removed-window-leaves-the-panel`, round 24, PR #212. The QUOTA panel
+  hides a window the account no longer has: Anthropic removed the 5-hour
+  cap for the renamed Ultra ($200) tier, so the statusline stopped posting
+  `five_hour` (measured on this account: `five_hour` last posted ~48 h ago,
+  `seven_day` fresh every render). Round 18 keeps a window a post omits, so
+  the panel still draws a greyed `Session (5h)` row that never updates. A
+  window is dead, not transiently omitted, when it is past its `resets_at`
+  **and** its own post is older than its period (`five_hour` 5 h,
+  `seven_day` 7 d, `spend_limit` 30 d); `quotaPanel` drops a dead window.
+  The band already filters to live windows, so it is unchanged.
 
 ## Failures
 
@@ -205,5 +214,9 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-None. Merge the round's PR. To reopen, set `Status: active` with a new
-queue.
+Round 24: `quotaPanel` drops a dead window — one past its `resets_at`
+whose own post is older than its period. Add a period per key, hide a
+dead window from `bars`, keep a recently-reset window (its post is still
+within its period) as the greyed `reset` row. Update `sessions-quota.test.ts`
+and the QUOTA sentence of `AGENTS.md`. The floor is `pnpm test` for the
+changed modules. Then set `Status: done`.
