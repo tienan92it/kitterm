@@ -126,11 +126,11 @@ describe("quotaPanel", () => {
     // reset 1d 17h ago and the reading is 1d 19h old.
     const panel = quotaPanel(
       reading({
-        receivedAt: NOW - (43 * HOUR + 12 * MIN),
-        ageSeconds: 43 * 3600 + 12 * 60,
+        receivedAt: NOW - (4 * HOUR + 12 * MIN),
+        ageSeconds: 4 * 3600 + 12 * 60,
         stale: true,
         rateLimits: {
-          five_hour: { used_percentage: 91, resets_at: seconds(NOW - (41 * HOUR + 5 * MIN)) },
+          five_hour: { used_percentage: 91, resets_at: seconds(NOW - (2 * HOUR + 5 * MIN)) },
           seven_day: { used_percentage: 27, resets_at: seconds(NOW + 38 * HOUR) },
         },
       }),
@@ -142,7 +142,7 @@ describe("quotaPanel", () => {
       fill: 0.91,
       level: "accent",
       percent: "91%",
-      reset: "reset · read 1d 19h ago",
+      reset: "reset · read 4h 12m ago",
       state: "reset",
     });
     expect(panel?.bars.filter((b) => /^resets .* ago$/.test(b.reset)), "no window prints resets … ago").toEqual([]);
@@ -153,6 +153,35 @@ describe("quotaPanel", () => {
     expect(fresh?.bars[0]).toMatchObject({ percent: "91%", reset: "reset · read 4m ago", state: "reset", fill: 0.91 });
     expect(quotaReadAge({ ageSeconds: 20 }, NOW)).toBe("read just now");
     expect(quotaReadAge({ receivedAt: NOW - 3 * HOUR }, NOW), "from receivedAt when the daemon sends no age").toBe("read 3h ago");
+  });
+
+  it("drops a window past its reset whose own post is older than its period (Ultra has no 5-hour cap)", () => {
+    const panel = quotaPanel(
+      reading({
+        rateLimits: {
+          five_hour: { used_percentage: 91, resets_at: seconds(NOW - 7 * HOUR), receivedAt: NOW - 8 * HOUR, ageSeconds: 8 * 3600 },
+          seven_day: { used_percentage: 27, resets_at: seconds(NOW + 38 * HOUR), receivedAt: NOW - 4 * MIN, ageSeconds: 240 },
+        },
+      }),
+      NOW,
+    );
+    expect(panel?.bars.map((b) => b.key)).toEqual(["seven_day"]);
+    // Past reset but posted within its period: the greyed row stays.
+    const kept = quotaPanel(
+      reading({
+        rateLimits: {
+          five_hour: { used_percentage: 91, resets_at: seconds(NOW - 1 * HOUR), receivedAt: NOW - 4 * HOUR, ageSeconds: 4 * 3600 },
+        },
+      }),
+      NOW,
+    );
+    expect(kept?.bars[0]).toMatchObject({ key: "five_hour", state: "reset", reset: "reset · read 4h ago" });
+    // A key with no period is never dropped.
+    const unknown = quotaPanel(
+      reading({ rateLimits: { extra: { used_percentage: 5, resets_at: seconds(NOW - 99 * HOUR), ageSeconds: 99 * 3600 } } }),
+      NOW,
+    );
+    expect(unknown?.bars.map((b) => b.key)).toEqual(["extra"]);
   });
 
   it("draws both windows from one post as before: no window carries its own age", () => {
