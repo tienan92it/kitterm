@@ -380,6 +380,15 @@ decision moves to `docs/adr/`.
 
 ## Fleet view
 
+- The renamed Ultra ($200) Claude plan has no rolling 5-hour cap, so
+  Claude Code's statusline stops posting the `five_hour` quota window and
+  posts `seven_day` alone every render; measured on this account 2026-11-02,
+  `five_hour` last arrived ~48 h ago (reset 48 h past, 1%) while `seven_day`
+  came 31 s ago. Round 18's merge keeps a window a post omits, so a removed
+  window lingers until a consumer judges it dead; `quotaPanel` now drops a
+  window past its reset whose own post is older than its period
+  (`agent-dashboard` round 24).
+
 - The human's zsh loads iTerm2's shell integration, which sends OSC 133
   marks but no command line (OSC 633;E), so the daemon cannot name a
   command the human types there; `gh pr list` of this repository takes
