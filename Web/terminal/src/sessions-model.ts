@@ -1800,6 +1800,16 @@ export const QUOTA_CAUTION_PERCENT = 80;
 /** The windows in the order the page lists them; any other key follows,
  * by name, with its key as its label. */
 const QUOTA_ORDER = ["five_hour", "seven_day", "spend_limit"];
+
+/** The period of each window, by the keys of `QUOTA_ORDER`. A window past
+ * its reset whose own post is older than its period is dead: the plan
+ * removed it (Ultra has no 5-hour cap) and the statusline will not renew
+ * it. A key not here has no period and is never dropped. */
+const QUOTA_PERIOD_MS: Record<string, number> = {
+  five_hour: 5 * 3_600_000,
+  seven_day: 7 * 24 * 3_600_000,
+  spend_limit: 30 * 24 * 3_600_000,
+};
 const QUOTA_LABELS: Record<string, string> = {
   five_hour: "Session (5h)",
   seven_day: "Weekly",
@@ -1963,7 +1973,8 @@ function windowIsOlder(limits: UsageLimits, window: LimitWindow): boolean {
  * ago`; a window past its reset carries its own age too. A stale reading
  * keeps its bars, and the note says how old they are, because a bar from
  * three hours ago is still the account's last known state while the note
- * stands beside it.
+ * stands beside it. A window past its reset whose own post is older than
+ * its period (`QUOTA_PERIOD_MS`) is dropped: the plan removed it.
  */
 export function quotaPanel(limits: UsageLimits | null | undefined, now: number): QuotaPanel | null {
   if (!limits || !limits.ok) return null;
@@ -1987,7 +1998,14 @@ export function quotaPanel(limits: UsageLimits | null | undefined, now: number):
   };
   windows.sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b));
   const stale = limits.stale === true;
-  const bars = windows.map(([key, window]): QuotaBar => {
+  const dead = (key: string, window: LimitWindow): boolean => {
+    const period = QUOTA_PERIOD_MS[key];
+    if (period === undefined || window.resets_at * 1000 > now) return false;
+    const own = windowAge(limits, window);
+    const ageMs = typeof own.ageSeconds === "number" ? own.ageSeconds * 1000 : typeof own.receivedAt === "number" ? now - own.receivedAt : 0;
+    return ageMs > period;
+  };
+  const bars = windows.filter(([key, window]) => !dead(key, window)).map(([key, window]): QuotaBar => {
     const resetAt = window.resets_at * 1000;
     const percent = Math.round(Math.min(999, Math.max(0, window.used_percentage)));
     if (resetAt <= now) {

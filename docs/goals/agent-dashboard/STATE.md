@@ -1,10 +1,10 @@
 # STATE: agent-dashboard
 
 - Status: done
-- Round: 2 of 3 in this budget (eighth budget)
-- Rounds total: 23
-- Last floor: green (2026-09-28, round 23 after: swift test 914, Linux build)
-- Updated: 2026-09-28, round 23 closed, done
+- Round: 3 of 3 in this budget (eighth budget)
+- Rounds total: 24
+- Last floor: green (2026-11-02, round 24 after: pnpm test 2225, tsc --noEmit clean)
+- Updated: 2026-11-02, round 24 closed, done
 
 ## Queue
 
@@ -25,6 +25,11 @@ running estimate (PR #153) and the landing accent (PR #135).
 
 ## Done
 
+- `a-removed-window-leaves-the-panel`, round 24, `7bee5c1`, PR #212. See
+  `rounds/024.md`. `quotaPanel` drops a window past its reset whose own
+  post is older than its period (`five_hour` 5 h, `seven_day` 7 d,
+  `spend_limit` 30 d), so Ultra's removed 5-hour cap no longer leaves a
+  greyed `Session (5h)` row. The band already filtered to live windows.
 - `the-price-table-says-its-age`, round 23, PR #167. See
   `rounds/023.md`. The daemon warns in `server.log` once the rates are
   over 90 days old.
@@ -205,5 +210,4 @@ done tasks open at both widths. It is capability 10.
 
 ## Next action
 
-None. Merge the round's PR. To reopen, set `Status: active` with a new
-queue.
+None. Merge PR #212. To reopen, set `Status: active` with a new queue.

@@ -199,22 +199,22 @@ describe("the panels", () => {
   });
 
   it("QUOTA draws a window past its reset in the faint grey at its last value, its reset cell the word and the reading's age", async () => {
-    // Round 14: a stale reading whose session window reset 1d 17h ago.
+    // Round 14: a stale reading whose session window reset 2h ago (a window dead past its period is dropped, round 24).
     // The page never prints `resets … ago`; the fill and the percentage
     // are idle marks, the faint grey, and the weekly prints its clock
     // time (round 17), 38 hours ahead of 17:03 on Sep 16: the 18th.
     const clock = vi.spyOn(Date, "now").mockReturnValue(new Date(2026, 8, 16, 17, 3, 30).getTime());
     const now = Math.floor(Date.now() / 1000);
     routes["/api/usage/limits"] = {
-      ok: true, hasReading: true, receivedAt: Date.now() - (43 * 3600 + 12 * 60) * 1000, ageSeconds: 43 * 3600 + 12 * 60, stale: true,
-      rateLimits: { five_hour: { used_percentage: 91, resets_at: now - (41 * 3600 + 5 * 60) }, seven_day: { used_percentage: 27, resets_at: now + 38 * 3600 + 30 } },
+      ok: true, hasReading: true, receivedAt: Date.now() - (4 * 3600 + 12 * 60) * 1000, ageSeconds: 4 * 3600 + 12 * 60, stale: true,
+      rateLimits: { five_hour: { used_percentage: 91, resets_at: now - (2 * 3600 + 5 * 60) }, seven_day: { used_percentage: 27, resets_at: now + 38 * 3600 + 30 } },
     };
     await page.poll();
     const quota = panelNamed("quota");
     const bars = quota.querySelectorAll(".quota-bar");
     expect(bars.map((b) => b.className)).toEqual(["quota-bar reset", "quota-bar stale"]);
     expect(bars.map((b) => [b.querySelector(".quota-percent")?.textContent, b.querySelector(".quota-reset")?.textContent])).toEqual([
-      ["91%", "reset · read 1d 19h ago"], ["27%", "resets Sep 18, 07:04"],
+      ["91%", "reset · read 4h 12m ago"], ["27%", "resets Sep 18, 07:04"],
     ]);
     expect(quota.textContent).not.toMatch(/resets [^·]* ago/);
     expect(bars.map((b) => b.querySelector(".quota-track")?.children.map((c) => (typeof c === "string" ? c : `${c.className} ${(c.style as { width?: string }).width}`)))).toEqual([
