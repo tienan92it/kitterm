@@ -39,6 +39,7 @@ A tab is a real shell with a TTY: job control, `Ctrl+C`, and TUIs work locally.
 - Close the tab; reattach from any device replays the exact missed bytes.
 - `⌘D` / `⌘⇧D` split a pane; `⌘⌥T` opens a new tab, same directory.
 - `⌘⇧E` opens the pane's folder in `/edit`, the built-in editor with a git tab; `kitterm edit [path]` does the same from a shell.
+- In `/edit`, `⌘P` finds a file or a project, and a Markdown file has a preview.
 - Session profiles in `~/.kitterm/profiles.json` open a named remote shell.
 
 ### Linux
@@ -72,6 +73,8 @@ For a container with this already wired up, see
 
 - **USAGE** charts cost or tokens per day over 7, 30, 90 days, or `all`.
 - **QUOTA** draws one bar per Claude Code rate-limit window, with its age.
+  A window leaves the panel once it is past its reset and its last reading is
+  older than its period, so a limit your plan removed does not stay on the page.
 - **VALUE** counts merged PRs, lines, releases, and model hours, per dollar,
   plus two lifetime charts: growth since a base day, and unit cost over time.
 - **WHERE** breaks the range's spend down by project, goal, task, or role.
@@ -92,6 +95,8 @@ See [docs/foreman.md](docs/foreman.md) for the full procedure.
 - A goal folder holds `goal.md`, `plan.md`, `STATE.md`, `corpus/`, `rounds/`.
 - One foreman runs per scope (a directory) and reads every `STATE.md` under
   it; `kitterm foreman catch-up` tells a new foreman what its predecessor left.
+- `kitterm foreman watch` blocks until a crew reports, so a foreman yields its
+  turn while a crew works and wakes on the event.
 - A goal's branch is `goal/<slug>`, a chore's is `chore/<slug>`. Each goal or
   chore opens a draft PR before its crew starts; the dashboard shows the
   running round's task and PR link.
@@ -102,6 +107,7 @@ See [docs/foreman.md](docs/foreman.md) for the full procedure.
 - `kitterm archive cost <id> --line` prints an archived session's cost line.
 - `kitterm goal new <path> <slug>` writes a goal folder from the template.
 - `kitterm project init --refresh <path>` rewrites an unedited `LOOP.md` from the template.
+  Add `--check` to write nothing and print `current`, `behind`, or `edited`.
 
 ## The MCP bridge
 
@@ -115,7 +121,9 @@ See [docs/foreman.md](docs/foreman.md) for the full procedure.
 
 `screen_state` names what a pane shows (an empty prompt, a dialog, a working
 turn) from rules, with no network call; `kitterm screen-state stats` reports
-how often the rules answer `unknown`.
+how often the rules answer `unknown`. `kitterm screen-state capture on` keeps
+each `unknown` screen on this machine, and `kitterm screen-state samples` lists
+the files. The default is off: a sample can hold a secret the pane showed.
 
 Register with `claude mcp add kitterm -- kitterm mcp`, or add it to `.mcp.json`:
 
@@ -142,7 +150,8 @@ The tools that drive shells need `--agent-control` on the daemon.
 
 ## Security
 
-kitterm binds `127.0.0.1` by default; `--lan` widens that, and needs a token.
+kitterm binds `127.0.0.1` by default. `--lan` widens that: it needs
+`--trusted-host <your public name>`, and a remote client needs a token.
 
 - A **watch** token can observe sessions and read the API.
 - A **full** token can type, take control, or spawn a shell.
