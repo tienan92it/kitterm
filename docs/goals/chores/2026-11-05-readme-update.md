@@ -1,0 +1,1 @@
+- 2026-11-05 · The README names `--trusted-host` for `--lan`, the quota rule of round 24 and the tools added since its last edit (`README.md`) · PR #213 · Cost: none recorded (the foreman edited it, no crew session)
