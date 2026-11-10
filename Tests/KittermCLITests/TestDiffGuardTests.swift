@@ -129,7 +129,8 @@ final class TestDiffGuardTests: XCTestCase {
         process.standardError = pipe
         try process.run()
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return (process.terminationStatus, String(decoding: data, as: UTF8.self))
+        let output = String(decoding: data, as: UTF8.self)
+        waitForExit(of: process, output: output)
+        return (process.terminationStatus, output)
     }
 }
