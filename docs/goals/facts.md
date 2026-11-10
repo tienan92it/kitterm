@@ -238,6 +238,13 @@ decision moves to `docs/adr/`.
 
 ## Crew pane
 
+- Claude Code loads `AGENTS.md` whole into every session that starts in
+  a repository with no `CLAUDE.md`, and reads it again from the cache on
+  every request. At 333 lines and 178 KB it was the larger part of a crew's
+  first request: `claude -p` measured 101,664 input tokens at `d3a7711`
+  and 36,017 once the specification moved to `docs/`. Keep `AGENTS.md` to
+  what an agent cannot read from the code; `AgentsFileTests` holds it to
+  200 lines (2026-11-10, `lean-context` round 1).
 - A headless Chromium screenshot of the terminal page at
   `device_scale_factor=2` paints no pane text (the canvases stay blank); at
   scale 1 the same page paints. Take the 1200 px and 390 px shots at scale
@@ -367,7 +374,11 @@ decision moves to `docs/adr/`.
 - A crew's `lastOutputAt` stays fresh while Claude Code's screen redraws
   at an idle prompt, so it cannot show a crew stopped on a model limit.
   Watch the agent's state instead: `needs-input` or `completed` with no
-  note for minutes (2026-10-08, `value-lifetime` round 1).
+  note for minutes (2026-10-08, `value-lifetime` round 1). A crew can stop
+  on an account's model limit ("You've reached your Fable limit") and wait
+  at its prompt with no note; switch the pane with `/model` (2026-10-07,
+  `screen-state` round 1). This fact replaces the 2026-10-07 advice to
+  watch `lastOutputAt` (pruned 2026-11-10, `lean-context`).
 - A Claude Code update of 2026-10-08 held a long `send_input` text in the
   box with "Removed 1 invisible character · review and press Enter to
   send", and the paste's own Enter did not submit it. Read the screen
@@ -474,13 +485,9 @@ decision moves to `docs/adr/`.
   round's from that line; a bullet naming only a sha shows no pull
   request on the page. The foreman told another project's foreman this
   and then made the same mistake in five of its own records
-  (2026-09-24, after green-ci-again).
+  (2026-09-24, after green-ci-again; first recorded 2026-09-20,
+  landing-page round 2, and merged with that duplicate 2026-11-10).
 
-- The knowledge route reads a task's pull request from `PR #N` on the
-  first line of its `STATE.md` Done bullet, and a round's from its
-  record's `- Result:` line. A bullet that names a sha and no PR shows
-  no PR on the page; write `PR #N` into the bullet when the PR opens
-  (2026-09-20, landing-page round 2).
 - The installed daemon serves `Web/terminal/dist` of this checkout
   (`~/.kitterm/web-root`), so a `vite build` with no `--outDir` swaps the
   live page for the branch's. A floor builds to a scratch directory
@@ -526,7 +533,10 @@ decision moves to `docs/adr/`.
   conflict on the whole goal package and the round's five-file diff had
   to be re-applied onto `main` on a fresh branch. When an item needs
   another branch's code, the foreman merges that branch first.
-  (2026-09-16, workspace-ledger round 3)
+  (2026-09-16, workspace-ledger round 3). The foreman cuts the goal's
+  branch from `origin/main` in its own worktree; this replaces the
+  2026-09-08 rule to commit to the base branch before a round (pruned
+  2026-11-10, `lean-context`).
 
 - Gate a merge on the check's conclusion, never on `mergeable`. On
   2026-09-16 the foreman's merge script waited for `mergeable` to read
@@ -535,7 +545,9 @@ decision moves to `docs/adr/`.
   branches combine. `gh pr checks <n>` must show every job `pass` before
   `gh pr merge`. The red test was a live-repository assertion that broke
   the moment `main` moved; it is a smoke test now.
-  (2026-09-16, `cost-per-round` round 4)
+  (2026-09-16, `cost-per-round` round 4). The foreman no longer merges:
+  the human does (`LOOP.md`, "The pull request"). The rule holds for
+  whoever merges (marked 2026-11-10, `lean-context`).
 - A test that pins the real `docs/goals/` output breaks on the next round
   record. The fixture pins the exact table; the live repository gets a
   smoke test. (2026-09-16, `cost-per-round` round 4)
@@ -618,14 +630,12 @@ decision moves to `docs/adr/`.
   and killed two of the human's `fly ssh console` connections. Use
   `pkill -x <name>` or match on `$11` of `ps` output, and list what will
   die before killing it.
-- A foreman that runs as a background job wakes only when a background
-  command exits. A one-shot shell loop that polls `GET /api/sessions`
-  every 10 s, exits on a state change, and exits on its own after about
-  560 s is the pattern that works; arm it against a state that already
-  exists once before trusting it. An f-string with a backslash inside its
-  expression silenced every earlier watcher. (2026-09-06)
-- Commit to the base branch before sending a round's prompt; a crew
-  branches off the base's HEAD when it starts. (2026-09-08, round 5)
+- A foreman wakes only when a background command exits.
+  `kitterm foreman watch`, run with `run_in_background`, is that command:
+  it exits on a watched crew's note, state change, or exit, or on its
+  heartbeat (2026-10-30, PR #208). It replaces the 2026-09-06 shell loop
+  that polled `GET /api/sessions` every 10 s (pruned 2026-11-10,
+  `lean-context`).
 - A review gate on `main...<top>` found one blocking and twenty-two
   should-fix items across four dimensions that five green floors did not;
   four reviewers plus one crew fit the three-session cap two at a time,
@@ -644,10 +654,6 @@ decision moves to `docs/adr/`.
   in 10 minutes 21 seconds with no human input and stopped at the budget
   with the digest shape from `LOOP.md`; it left the package uncommitted
   until told. (2026-09-09, round 8)
-- A crew can stop on an account's model limit ("You've reached your
-  Fable limit") and wait at its prompt with no note and no hook event the
-  foreman watches. Watch a crew's `lastOutputAt` too, and switch the pane
-  with `/model` (2026-10-07, `screen-state` round 1).
 - `kitterm service install --help` ran the real command: no subcommand
   checked for `--help`, and `DaemonFlags.parse` keeps the flags it knows
   and silently drops the rest, so the command rewrote
