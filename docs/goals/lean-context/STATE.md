@@ -8,7 +8,7 @@
 
 ## Queue
 
-1. `the-spec-leaves-agents-md` (capability 1)
+1. `the-spec-leaves-agents-md` (capability 1), PR #214.
 
 ## Failures
 
