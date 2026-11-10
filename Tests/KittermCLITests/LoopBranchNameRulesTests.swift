@@ -7,7 +7,7 @@ import XCTest
 /// prefix per kind of work (chore `goal-branch-name`, the human's word,
 /// 2026-10-02). After the human merges, the foreman deletes the branch on
 /// the remote, its worktree, and the local branch. Every copy of the loop,
-/// the skill, the manual and `AGENTS.md` names the branch the same way, and
+/// the skill, the manual and `docs/control-plane.md` names the branch the same way, and
 /// none keeps the retired `<slug>/rounds`.
 final class LoopBranchNameRulesTests: XCTestCase {
     private static let root = CLIFixture.repositoryRoot
@@ -54,7 +54,7 @@ final class LoopBranchNameRulesTests: XCTestCase {
     func testEveryCopyNamesTheGoalBranchWithItsPrefix() throws {
         let copies = try Self.loopFiles() + Self.skillFiles() + [
             ("docs/foreman.md", try Self.read("docs/foreman.md")),
-            ("AGENTS.md", try Self.read("AGENTS.md")),
+            ("docs/control-plane.md", try Self.read("docs/control-plane.md")),
         ]
         for (name, text) in copies {
             XCTAssertTrue(text.contains("`goal/<slug>`"), "\(name) names the goal branch `goal/<slug>`")
