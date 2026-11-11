@@ -228,7 +228,9 @@ and the five sections in this order. What each parser takes:
   yields `a` and `b` and not the sha; `round N` and `PR #N` come from the
   whole first line. The foreman writes `, PR #N.` at the end of the
   item's first line when the pull request opens ("The pull request"), so
-  a running item already names it. Prose under a heading (`None.`) names
+  a running item already names it. `kitterm round open` writes the line:
+  the text before its first comma, less a final `.`, then `, round R.`
+  before the pull request opens and `, round R, PR #N.` after. Prose under a heading (`None.`) names
   no task. A slug in two sections keeps the state a reader needs most,
   `failed` over `pending` over `done`, at its first position. The fleet
   view lists every task that is not done and the first two done ones
@@ -249,6 +251,7 @@ request the foreman opened before the round, `PR #N`, from the queue line
 - Sessions: <id>, <id>   Archives: <id>
 - Base: <git sha>   Result: <git sha or PR #>
 - Cost: $D · Nk in (C% cached) · Nk out · Hh Mm
+- Foreman: ~$D · Nk in (C% cached) · Nk out
 
 ## Prompt
 <the request sent, verbatim or a path to it>
@@ -288,6 +291,18 @@ one `- Cost:` line per session, in that order, under the record's header.
 The command reads the archive's transcript under `~/.kitterm` with no
 daemon and prints the line above, or `- Cost: none recorded (<reason>)`;
 `--json` prints the bill as `GET /api/archives/<id>/cost` answers it.
+
+`kitterm round close` writes the record from these facts. Its
+`- Foreman:` line, after the `- Cost:` lines, is the estimate of the
+foreman's own turns between `Started` and `Ended`, from the foreman's
+transcript, priced by `ModelPricing`: `- Foreman: ~$D · Nk in (C% cached)
+· Nk out`, or `- Foreman: none recorded (<reason>)`. A model
+`ModelPricing` does not know adds ` · unpriced <model>` to the line:
+its tokens count and its dollars do not. The line does not start
+with `- Cost:`, so neither parser below counts it. Each of the six
+sections holds the marker line `[foreman writes this]`, and `Floor` holds
+two, `before:` and `after:`; the foreman replaces each, and
+`kitterm round close --commit` refuses while one remains.
 
 Two parsers read the record:
 
@@ -331,6 +346,10 @@ folder by `goal:<slug>` and marks the queue item `[working]` by
 `task:<slug>` under it. A session the crew spawns inside the round
 carries `crew:helper` with the round's `goal:` and `round:` labels, and
 the crew ends it.
+
+`kitterm round open` spawns the crew session with five labels:
+`crew:<slug>`, `goal:<slug>`, `round:<R>`, `task:<item>` and `pr:<N>`. A
+chore's session carries `crew:<slug>`, `task:<slug>` and `pr:<N>`.
 
 ## Budget
 

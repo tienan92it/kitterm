@@ -103,6 +103,36 @@ final class KnowledgeRoundTests: XCTestCase {
         XCTAssertNil(titled.task)
     }
 
+    /// A record with a `## Correction` section holding `body` (nil: no section).
+    private func correction(_ body: String?) -> Bool {
+        var text = "# Round 001: x\n\n- Started: 2026-11-11\n\n## Decision\ndone\n"
+        if let body { text += "\n## Correction\n\(body)\n" }
+        return KnowledgeSummary.roundRecord(number: 1, text: text).correction
+    }
+
+    func testNoCorrectionSectionIsNotACorrection() {
+        XCTAssertFalse(correction(nil))
+    }
+
+    func testAnEmptyCorrectionSectionIsNotACorrection() {
+        XCTAssertFalse(correction(""))
+        XCTAssertFalse(correction("  \n\n"))
+        XCTAssertFalse(correction("- "))
+    }
+
+    func testACorrectionSectionThatStartsWithNoneIsNotACorrection() {
+        XCTAssertFalse(correction("None."))
+        XCTAssertFalse(correction("none"))
+        XCTAssertFalse(correction("NONE this round"))
+        XCTAssertFalse(correction("- None"))
+        XCTAssertFalse(correction("  * none, the crew passed first time"))
+    }
+
+    func testACorrectionSectionWithOtherTextIsACorrection() {
+        XCTAssertTrue(correction("One correction inside the round."))
+        XCTAssertTrue(correction("- The crew missed the test; one correction sent."))
+    }
+
     func testThePRAfterResultOnTheBaseLineIsReadWithNoResultBullet() {
         let record = KnowledgeSummary.roundRecord(number: 3, text: resultOnBaseLine)
         XCTAssertEqual(record.pr, 158)

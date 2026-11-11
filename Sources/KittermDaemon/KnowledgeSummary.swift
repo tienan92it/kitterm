@@ -82,7 +82,7 @@ public struct KnowledgeSummary: Equatable, Sendable {
         /// The `PR #N` a `- Result:` bullet names, else the one after
         /// `Result:` on the `- Base:` line (`roundRecord`).
         public var pr: Int?
-        /// The record carries a `## Correction` section: the one correction
+        /// The record's `## Correction` section says a correction happened: the one correction
         /// `LOOP.md` allows a round was spent.
         public var correction: Bool
 
@@ -256,7 +256,8 @@ public struct KnowledgeSummary: Equatable, Sendable {
     /// `# Round NNN:` on the first `# ` heading, trimmed; the date is the
     /// first ten characters of the `- Started:` value when they are a day;
     /// the cost and the duration sum the header's `- Cost:` lines; the
-    /// correction is a `## Correction` heading.
+    /// correction is a `## Correction` section with text that says one
+    /// happened (`isCorrection`), not the heading alone.
     ///
     /// The PR is the first `PR #N` on a `- Result:` bullet, its own line;
     /// `LOOP.md`'s own shape instead puts `Result:` on the `- Base:` line
@@ -288,8 +289,17 @@ public struct KnowledgeSummary: Equatable, Sendable {
                   let resultRange = base.range(of: "Result:") {
             record.pr = firstNumber(prPattern, in: String(base[resultRange.upperBound...]))
         }
-        record.correction = section(text, heading: "Correction") != nil
+        record.correction = section(text, heading: "Correction").map(isCorrection) ?? false
         return record
+    }
+
+    /// Whether the text of a `## Correction` section says one happened: it
+    /// is true when the text, after list marks (`-`, `*`, `+`) and spaces,
+    /// is not empty and does not start with `None` in any case.
+    static func isCorrection(_ body: String) -> Bool {
+        let marks = CharacterSet(charactersIn: "-*+").union(.whitespacesAndNewlines)
+        let first = String(body.unicodeScalars.drop { marks.contains($0) })
+        return !first.isEmpty && !first.lowercased().hasPrefix("none")
     }
 
     /// Every record given, by number.

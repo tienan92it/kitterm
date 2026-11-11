@@ -86,6 +86,8 @@ enum KittermMain {
                 try ScreenStateCommand.run(args.dropFirst())
             case "foreman":
                 try ForemanCommand.run(args.dropFirst())
+            case "round":
+                try RoundCommand.run(args.dropFirst())
             case "skills":
                 try SkillsCommand.run(args.dropFirst())
             case "statusline":
@@ -248,6 +250,16 @@ enum KittermMain {
                                       # first matching event, a heartbeat, or
                                       # an epoch change; run it in the
                                       # background, it does not daemonize
+              kitterm round open ROOT SLUG --task ITEM [--chore] [--title T]
+                                      [--body B] [--knowledge DIR] [--port N] [--json]
+                                      # the branch, the worktree, the draft PR,
+                                      # the queue line and the crew session of
+                                      # one round; no claude, no prompt
+              kitterm round close ROOT SLUG [--chore] [--commit] [--round N]
+                                      [--bill-timeout S] [--foreman-session ID]
+                                      [--knowledge DIR] [--port N]
+                                      # archive the round's sessions, read their
+                                      # bills, write rounds/NNN.md and STATE.md
               kitterm skills install [--dir DIR] | list
                                       # write the foreman skills into ~/.claude/skills
               kitterm statusline install [--dir DIR] | print
@@ -307,7 +319,7 @@ enum KittermMain {
 
             project registers a directory in ~/.kitterm/projects.json, so
             /sessions groups its shells under one card (a registered root,
-            else the nearest .git; see AGENTS.md "Projects"). project init
+            else the nearest .git; see docs/http-api.md "Projects"). project init
             also writes the project files of the goal loop (LOOP.md and
             facts.md, from examples/goals/) into --knowledge, default
             docs/goals, and never overwrites a file. With --refresh it
@@ -352,6 +364,46 @@ enum KittermMain {
             command in this list meant to run in the background
             (run_in_background) rather than to finish and return; it never
             daemonizes itself.
+
+            round open does every step of a round before the crew's prompt.
+            It refuses while a session that has not exited carries
+            crew:SLUG. It then takes the base branch (origin/HEAD, else main,
+            else master), the branch goal/SLUG (chore/SLUG with --chore) from
+            origin/BASE, and the worktree ROOT/.claude/worktrees/SLUG. The
+            round is the highest rounds/NNN.md of the goal folder plus one,
+            and the item must be under ## Queue of its STATE.md. With no open
+            pull request for the branch, it commits the queue line, pushes,
+            and runs gh pr create --draft. It writes ", round R, PR #N." on
+            the queue line, commits and pushes, and spawns one shell session
+            in the worktree with the labels crew, goal, round, task and pr.
+            It prints the session id, the worktree, the branch, the pull
+            request number, the round and the base sha (the worktree's HEAD);
+            --json prints one object. Each step reuses what exists, so a
+            second run after a failure continues. A failure names its step
+            and what already exists, and exits 1. It never merges,
+            force-pushes or marks a pull request ready.
+
+            round close does every step after the crew's DONE note that needs
+            no judgment. The round is --round, else the round: label of the
+            live sessions with crew:SLUG, else of the newest archive with it.
+            It archives each live session with crew:SLUG and round:R, then
+            reads each bill as `kitterm archive cost` does, again every 2 s
+            until all read or --bill-timeout ends (default 60); a session
+            still without one gets "- Cost: none recorded (<reason>)". It
+            writes rounds/NNN.md once: the header (Started is the first
+            timestamp of the earliest session's transcript, Ended is now),
+            one Cost line per session, one "- Foreman:" line, and the six
+            sections. The Foreman line prices the turns between Started and
+            Ended in the transcript of KITTERM_SESSION_ID, or of
+            --foreman-session. Each section holds the marker line
+            "[foreman writes this]", and Floor holds two (before:, after:);
+            replace each one. It updates Round, Rounds total and Updated in
+            STATE.md and moves the item to ## Done. --commit refuses while a
+            marker remains, then commits the goal folder once and pushes,
+            never with force. --chore writes chores/<ISO date>-SLUG.md with
+            the marker, the model, the PR and the cost, and no record. It
+            prints the file, the round, the sessions and the marker count.
+            It never merges, marks a pull request ready, or runs a floor.
 
             skills install writes the reference foreman skills under
             examples/foreman/ (foreman-loop, review-crew, triage) to

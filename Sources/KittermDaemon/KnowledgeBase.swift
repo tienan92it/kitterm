@@ -388,14 +388,7 @@ public final class KnowledgeBase: @unchecked Sendable {
         guard word(run(["remote", "get-url", "origin"])) != nil else {
             return .none(Self.noRemoteReason)
         }
-        // What `origin/HEAD` names, else `main`, else `master`.
-        var base = "main"
-        if let head = word(run(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])), head.hasPrefix("origin/") {
-            base = String(head.dropFirst("origin/".count))
-        } else if word(run(["rev-parse", "--verify", "--quiet", "refs/remotes/origin/main"])) == nil,
-                  word(run(["rev-parse", "--verify", "--quiet", "refs/remotes/origin/master"])) != nil {
-            base = "master"
-        }
+        let base = Self.baseBranch { word(run($0)) }
         // The remote chose these names. A name git would read as an option,
         // or would not take as a branch, reaches no other command.
         func accepted(_ name: String) -> Bool {
@@ -571,6 +564,21 @@ public final class KnowledgeBase: @unchecked Sendable {
     }
 
     // MARK: - the tree
+
+    /// The base branch of a checkout: what `origin/HEAD` names, else
+    /// `main`, else `master` when only `origin/master` exists. `git` runs
+    /// git with the arguments in the checkout and answers its trimmed
+    /// stdout, nil on a failure. `kitterm round open` uses the same rule.
+    public static func baseBranch(git: ([String]) -> String?) -> String {
+        if let head = git(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]), head.hasPrefix("origin/") {
+            return String(head.dropFirst("origin/".count))
+        }
+        if git(["rev-parse", "--verify", "--quiet", "refs/remotes/origin/main"]) == nil,
+           git(["rev-parse", "--verify", "--quiet", "refs/remotes/origin/master"]) != nil {
+            return "master"
+        }
+        return "main"
+    }
 
     static func isObjectID(_ text: String) -> Bool {
         (text.count == 40 || text.count == 64) && text.allSatisfy { $0.isHexDigit }

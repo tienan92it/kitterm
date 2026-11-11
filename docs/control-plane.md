@@ -120,6 +120,94 @@ This file holds the section `AGENTS.md` carried until 2026-11-10 (goal `lean-con
   It blocks for the run and never daemonizes — it is the command a foreman
   runs in the background (`run_in_background`) and re-invokes itself on, not
   one that returns and keeps going
+- `kitterm round open <root> <slug> --task <item> [--chore] [--title <text>]
+  [--body <text>] [--knowledge <dir>] [--port <n>] [--json]`
+  (`RoundCommand.swift`) does every step of a round before the crew's prompt,
+  in this order:
+  1. `daemon`: `GET /api/sessions`. A session that has not exited and
+     carries `crew:<slug>` refuses the round, and nothing changes.
+  2. `base`: the base branch by `KnowledgeBase.baseBranch` (`origin/HEAD`,
+     else `main`, else `master`), then a fetch of it.
+  3. `branch`: `goal/<slug>` (`chore/<slug>` with `--chore`), from the local
+     branch, else `origin/<branch>`, else `origin/<base>`.
+  4. `worktree`: `<root>/.claude/worktrees/<slug>` on that branch.
+  5. `goal`: the goal folder in the worktree holds `STATE.md` with the item
+     under `## Queue`. The round is the highest `rounds/NNN.md` plus one. A
+     chore has no folder and gets one empty opening commit.
+  6. `pull request`: the open pull request of the branch (`gh pr list
+     --head`). With none, the command writes `, round R.` on the queue line,
+     commits the goal folder, pushes, and runs `gh pr create --draft`.
+     `--title` defaults to `<slug>: <goal.md title>`, `--body` to a pointer
+     at `goal.md`.
+  7. `queue line`: the item's first line becomes `<head>, round R, PR #N.`;
+     the command commits the goal folder and pushes, never with force.
+  8. `spawn`: `POST /api/sessions` with the worktree as cwd, the name
+     `<slug> round <R>` (the slug for a chore), and the labels `crew`,
+     `goal`, `round`, `task` and `pr` (`crew`, `task` and `pr` for a chore).
+     It types no input and starts no `claude`.
+
+  It prints `session`, `worktree`, `branch`, `pr`, `round` and `base` (the
+  worktree's `HEAD` after the last push), one per line; `--json` prints one
+  object with the same keys plus `task`, `slug` and `chore`. Each step reuses
+  what exists, so a second run after a failure continues: it does not create
+  a branch, a worktree or a pull request twice. A failure prints
+  `round open: <step> failed: <reason>` and what already exists, and exits 1.
+  It never merges, force-pushes or marks a pull request ready. Every `git`
+  and `gh` runs through one `Runner`, so `RoundOpenTests` uses a fake `gh`, a
+  scratch repository with a bare remote, and a scratch daemon in process
+- `kitterm round close <root> <slug> [--chore] [--commit] [--round <n>]
+  [--bill-timeout <s>] [--foreman-session <id>] [--knowledge <dir>]
+  [--port <n>]` (`RoundCloseCommand.swift`, the text in `RoundRecord.swift`)
+  does every step after the crew's `DONE` note that needs no judgment, in
+  this order:
+  1. `daemon`: `GET /api/sessions`.
+  2. `worktree`: `<root>/.claude/worktrees/<slug>`, its branch, and the goal
+     folder in it (`chores/` with `--chore`).
+  3. `sessions`: the round is `--round`, else the `round:` label of the live
+     sessions with `crew:<slug>`, else of the newest archive with it. The
+     round's sessions are the live and the archived ones with
+     `crew:<slug>`, `goal:<slug>` and `round:<R>` (`crew:<slug>` alone for a
+     chore). A helper with `crew:helper` is not one of them.
+  4. `archive`: `POST /api/sessions/<id>/archive` for each live one.
+  5. `bills`: `ArchiveCommand.answer`, the reader of `kitterm archive cost`,
+     for each session, again every 2 s until every bill reads or
+     `--bill-timeout` (default 60 s) ends. A session still without a bill
+     gets `- Cost: none recorded (<reason>)`.
+  6. `record`: `rounds/NNN.md` in the shape of `LOOP.md`, "The round
+     record", written once and never rewritten. The title is the `task:`
+     label. `Started` is the first `timestamp` of the earliest session's
+     Claude Code transcript, because a session row carries no creation
+     time; `Ended` is the time of the run. `Sessions:` names each model in
+     parentheses. `Base:` is the merge base with `origin/<base>` on round 1,
+     else the `Result:` sha of the previous record; `Result:` is the
+     worktree's `HEAD`, the branch and `PR #N` from the `pr:` label. One
+     `- Cost:` line per session follows, then one `- Foreman:` line: the
+     turns of the transcript of the session `KITTERM_SESSION_ID` names
+     (`--foreman-session` overrides) stamped between `Started` and `Ended`,
+     its subagents' too, priced by `ModelPricing`
+     (`TranscriptEstimateCache.estimate(forTranscriptAt:from:to:)`), as
+     `- Foreman: ~$D · Nk in (C% cached) · Nk out`, or
+     `- Foreman: none recorded (<reason>)` with no session, no transcript or
+     no turn. A model `ModelPricing` does not know adds
+     ` · unpriced <model>`: its tokens count and its dollars do not. The six sections each hold the marker line
+     `[foreman writes this]`; `Floor` holds two, `before:` and `after:`.
+  7. `state`: `- Round: n` grows by the rounds `- Rounds total:` has not
+     counted, `- Rounds total:` becomes R, `- Updated:` becomes the day, and
+     the item moves from `## Queue` to `## Done` as
+     ``- `<item>`, round R, `<sha>`, PR #N. See `rounds/NNN.md`.``.
+     `Status` and `Last floor` stay the foreman's.
+  8. `commit`, with `--commit` only: it refuses while a marker line remains
+     in the record, then makes one commit of the goal folder and pushes it,
+     never with force.
+
+  `--chore` writes `chores/<ISO date>-<slug>.md` in place of steps 6 and 7:
+  the marker, the model, `PR #N` and the cost line. The command prints
+  `file`, `round`, `sessions` and `markers`, and `commit` after `--commit`.
+  A second run reuses the archives, the record and the `STATE.md` edit. A
+  failure prints `round close: <step> failed: <reason>` and what already
+  exists, and exits 1. It never merges, never marks a pull request ready,
+  and runs no floor. `RoundCloseTests` proves each field with a scratch
+  repository, a scratch daemon in process and fixture transcripts.
 - `design/` at the root holds every approved design: `foundation.md` (the
   tokens, marks, fonts and rules every page follows), `palette.md`,
   one `.pen` file per surface (`dashboard.pen`, `sessions.pen`) and
