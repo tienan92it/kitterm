@@ -21,6 +21,12 @@ None.
   human's word, round 3 makes the edit with its own lines; with no
   word, `one-rule-one-place` makes it. It blocks no round.
 
+- `TranscriptBill`: read a bill that a late `assistant` line of the
+  same turn follows (`facts.md`, "Foreman", 2026-11-11). Existing tests
+  pin "an `assistant` line after the bill makes it stale", so the change
+  is outside this goal's charter. On the human's word it runs as a
+  chore after this goal. It blocks no round.
+
 ## Done
 
 - `corrections-count-when-real`, round 1, `e1a1d78`, PR #216. See
@@ -30,6 +36,4 @@ None.
 
 ## Next action
 
-Round 3: the crew adds `kitterm round close` (`plan.md`, row 3), and
-makes `TranscriptBill` read a bill that one late `assistant` line
-follows (`facts.md`, "Foreman", 2026-11-11).
+Round 3: the crew adds `kitterm round close` (`plan.md`, row 3).
