@@ -147,7 +147,8 @@ its CI run is part of the floor: a green run already proves the base sha.
   `gh pr checks <N>` on the crew's head sha. Green: it runs
   `kitterm round close`, replaces the record's markers, then runs
   `kitterm round close --commit`. Red: the check is the round's gap, a
-  correction goes to the crew ("Budget"), and the round is not closed.
+  correction goes to the crew ("Budget"), and the round closes only green
+  or failed: `--decision failed` commits on a red check.
 
 ## Authority
 

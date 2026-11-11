@@ -54,7 +54,7 @@ Do this before every `send_input` into a pane that runs an interactive agent.
 
 2. Spawn one session per dimension. Give each the same diff and a different
    review criterion:
-   `spawn_session name="review-<dimension>" labels={crew:"review", task:"<dimension>"} input="claude\n"`
+   `spawn_session name="review-<dimension>" labels={crew:"review", task:"<dimension>"} input="claude --settings ~/.claude/skills/foreman-loop/crew-settings.json\n"`
    Run "Read before you type", then `send_input` the review prompt: the diff
    to read, the one dimension to judge, the instruction to find issues, then
    try to refute each one and keep only the survivors, and the instruction

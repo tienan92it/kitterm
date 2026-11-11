@@ -69,6 +69,33 @@ final class CrewSettingsTests: XCTestCase {
         XCTAssertEqual(commands, [["type": "command", "command": "kitterm round guard || exit 2"]])
     }
 
+    /// Every session the three skills start runs `claude` with the crew
+    /// settings (`one-rule-one-place` round 3, correction 1): each
+    /// `claude` typed into a pane names the file, and each start in prose
+    /// points at step 2 of "One round", which does.
+    func testEveryStartCommandInTheSkillsNamesTheSettings() throws {
+        let settings = "--settings ~/.claude/skills/foreman-loop/crew-settings.json"
+        let skills = [
+            ("foreman-loop", ForemanSkills.foremanLoop), ("review-crew", ForemanSkills.reviewCrew),
+            ("triage", ForemanSkills.triage),
+        ]
+        var typed = 0
+        for (name, text) in skills {
+            let starts = try NSRegularExpression(pattern: #"(?:input|text)="claude[^"]*""#)
+                .matches(in: text, range: NSRange(text.startIndex..., in: text))
+                .map { String(text[Range($0.range, in: text)!]) }
+            typed += starts.count
+            for start in starts {
+                XCTAssertTrue(start.contains(settings), "\(name) starts claude without the crew settings: \(start)")
+            }
+            let prose = text.components(separatedBy: "start `claude`").dropFirst()
+            for after in prose {
+                XCTAssertTrue(after.hasPrefix(" as step 2"), "\(name) starts claude in prose with no pointer to step 2")
+            }
+        }
+        XCTAssertEqual(typed, 3, "one typed start in each skill")
+    }
+
     /// The skill starts each crew with the file `skills install` writes.
     func testTheSkillStartsTheCrewWithTheFile() {
         XCTAssertTrue(ForemanSkills.foremanLoop.contains(

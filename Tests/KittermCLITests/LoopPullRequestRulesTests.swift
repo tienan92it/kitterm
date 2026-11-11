@@ -246,7 +246,7 @@ final class LoopPullRequestRulesTests: XCTestCase {
     /// Chartered by `one-rule-one-place` round 1: `docs/foreman.md` restated
     /// the branch, the label and the merge; it now names `LOOP.md`, their one
     /// home, which the tests above pin.
-    func testTheManualNamesTheBranchTheLabelAndTheMerge() throws {
+    func testTheManualPointsAtTheLoopForTheBranchTheLabelAndTheMerge() throws {
         let manual = Self.oneLine(try Self.read("docs/foreman.md"))
         for phrase in ["`goal/<slug>`", "`docs/goals/LOOP.md` gives the scope, the package, the branch `goal/<slug>`, its pull request and the merge"] {
             XCTAssertTrue(manual.contains(Self.oneLine(phrase)), "docs/foreman.md names \(phrase)")

@@ -94,7 +94,8 @@ enum ForemanSkills {
         chore's one file, `docs/goals/chores/<ISO date>-<slug>.md`. Open a chore
         with `kitterm round open <root> <slug> --task <slug> --chore`: it cuts
         `chore/<slug>`, opens the draft pull request, and spawns the crew session
-        with `crew:<slug>`, `task:<slug>` and `pr:<N>`. Close it with
+        with `crew:<slug>`, `task:<slug>` and `pr:<N>`; start `claude` as step 2
+        of "One round" does. Close it with
         `kitterm round close <root> <slug> --chore`, which writes the file with
         the line `kitterm archive cost <id> --line` prints for the archived crew
         session. Replace the file's marker, then run the close again with
@@ -233,13 +234,12 @@ enum ForemanSkills {
         - no open round's queue item or `plan.md` row names a file that this
           goal's head item or its row names.
 
-        Keep to the caps of `LOOP.md`, "Budget"; Scan step 5 counts the sessions.
+        Keep to the caps of `LOOP.md`, "Budget".
         When more than one goal is runnable, start the one with the oldest
         `Updated` date first. Then run "One round" for it.
 
         ## One round
 
-        The crew session does the work. You read, route, verify, and record.
         `LOOP.md`, "Budget", gives the correction cap and the killed attempt.
         Every goal file below is under the goal's folder, `docs/goals/<slug>/`;
         no goal file sits directly under `docs/goals/`.
@@ -387,8 +387,9 @@ enum ForemanSkills {
            goal's branch first. Run `kitterm round close <root> <slug> --commit`
            only after `gh pr checks <N>` is green on the crew's head sha (step 4);
            the command refuses until it is, and while a marker line remains
-           (`--no-checks` only for a repository with no CI). It commits the goal
-           folder and pushes. The push starts a new CI run, and `gh pr ready`
+           (`--no-checks` only for a repository with no CI); a failed or `propose`
+           round commits on a red check and names it. It commits the goal folder
+           and pushes. The push starts a new CI run, and `gh pr ready`
            waits until it is green too. When the goal is done, run `gh pr ready
            <N>`; the human merges. Then report the digest under "Reports".
 
@@ -451,10 +452,8 @@ enum ForemanSkills {
             and pass it on with `send_input`.
           - `note`: relay it ("Crew notes"). The round
             record is the durable copy; the event ring drops a note on a daemon
-            restart. A `BLOCKER` note, or a new entry under "## Proposals waiting
-            on the human", creates its task, `Answer: <crew blocker>` or
-            `Decide: <proposal>` ("Task list"); mark it `completed` when the human
-            answers or decides.
+            restart. A `BLOCKER` note, or a new proposal, creates its task
+            ("Task list").
           - `command.failed`: read `/commands/<index>/output` with `read_output`.
             Report it at once when it is the crew's floor or a command the round
             depends on. Otherwise let the crew handle it; never act for the crew.
@@ -471,9 +470,7 @@ enum ForemanSkills {
         `kitterm foreman watch` can also exit non-zero with no marker, when the
         daemon drops the connection mid-poll, as a live upgrade does once
         (`docs/foreman.md`, "When the daemon upgrades in place"). Run the command
-        again with the same `--since` and `--epoch` you gave it, since nothing
-        advanced, and run "Read before you type" before you send again a text
-        that was in flight.
+        again with the same `--since` and `--epoch`.
 
         On every "Scan" — whatever woke you — also:
 
@@ -499,7 +496,7 @@ enum ForemanSkills {
         A result whose `epoch` changed: the daemon restarted; do the steps of
         `docs/foreman.md`, "When the daemon restarts". Respawn each open round's crew once with the
         same five labels plus `resumed-from:<the id the pane held before>`, run
-        the floor, start `claude`, and send the round prompt again with the
+        the floor, start `claude` as step 2 does, and send the round prompt again with the
         instruction to continue from the branch's last commit. When the
         respawn does not restore the round, record a killed attempt (`LOOP.md`,
         "Budget") and stop that goal.
@@ -520,7 +517,11 @@ enum ForemanSkills {
           `· 1 shell, 1 monitor ·` does (`screen_state` answers
           `waiting-on-own-job` then).
 
-        No `PLAN` note 15 minutes after the round prompt is a stall too.
+        At a `completed` or `needs-input` wake with no `DONE` or `BLOCKER` note
+        and no shell or monitor on the status bar, run the watch again with
+        `--heartbeat 150` and judge the stall on that heartbeat. While you wait
+        for a `PLAN` note, run it with `--heartbeat 900`: no `PLAN` note 15
+        minutes after the round prompt is a stall too.
 
         Answer a stall in that wake, or end the session. Read the screen. An API
         error, a model limit, a cut turn, or a prompt that waits with no
@@ -535,8 +536,7 @@ enum ForemanSkills {
 
         ## Reports
 
-        You report in three cases. The shape is the same in each case: what needs
-        the human first, then one block per project.
+        You report in three cases.
 
         | When | What |
         |---|---|
@@ -585,6 +585,8 @@ enum ForemanSkills {
           proposals open, and hold. Do not send a notification for that.
 
         A notification is one line the human acts on; the pane carries the rest.
+        Never notify for progress inside a round: a `PROGRESS` line goes to the
+        pane only.
 
         ### Crew notes
 
@@ -673,7 +675,7 @@ enum ForemanSkills {
 
         2. Spawn one session per dimension. Give each the same diff and a different
            review criterion:
-           `spawn_session name="review-<dimension>" labels={crew:"review", task:"<dimension>"} input="claude\n"`
+           `spawn_session name="review-<dimension>" labels={crew:"review", task:"<dimension>"} input="claude --settings ~/.claude/skills/foreman-loop/crew-settings.json\n"`
            Run "Read before you type", then `send_input` the review prompt: the diff
            to read, the one dimension to judge, the instruction to find issues, then
            try to refute each one and keep only the survivors, and the instruction
@@ -766,7 +768,7 @@ enum ForemanSkills {
         ## Steps
 
         1. Spawn a session for the bug:
-           `spawn_session name="triage-<bug>" cwd="<repo>" labels={crew:"triage", task:"<bug>"} input="claude\n"`
+           `spawn_session name="triage-<bug>" cwd="<repo>" labels={crew:"triage", task:"<bug>"} input="claude --settings ~/.claude/skills/foreman-loop/crew-settings.json\n"`
 
         2. Run "Read before you type", then send the triage prompt with `send_input`:
            the bug report, the repo, and the instruction to reproduce first.

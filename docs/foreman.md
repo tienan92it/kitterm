@@ -135,8 +135,7 @@ the skill's. This section says how the tools behave in any loop.
    ```
 
    Then read the pane before you send the task ("Read before you type",
-   below). A fresh `claude` may still sit at the folder-trust dialog, and a
-   task typed into that dialog is lost.
+   below).
 
 2. Watch the event feed. `kitterm foreman watch` blocks on the feed for the
    sessions it names and exits on the first event that matters, a

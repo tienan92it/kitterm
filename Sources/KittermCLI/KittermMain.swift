@@ -87,9 +87,8 @@ enum KittermMain {
             case "foreman":
                 try ForemanCommand.run(args.dropFirst())
             case "round" where args.dropFirst().first == "guard":
-                let input = FileHandle.standardInput.readDataToEndOfFile()
                 exit(RoundGuard.run(
-                    Array(args.dropFirst(2)), input: input,
+                    Array(args.dropFirst(2)), input: { FileHandle.standardInput.readDataToEndOfFile() },
                     out: { print($0) }, err: { writeError($0 + "\n") }
                 ))
             case "round":
@@ -413,9 +412,9 @@ enum KittermMain {
             STATE.md and files the item by --decision: done (the default)
             moves it to ## Done, failed to ## Failures, propose leaves it
             under ## Queue. A later run keeps what the first run filed.
-            --commit refuses while a marker remains, and while gh pr checks
-            on the pull request is not green (--no-checks skips that for a
-            repository with no CI), then commits the goal folder once and
+            --commit refuses while a marker remains, and, for a done round,
+            while gh pr checks on the pull request is not green (--no-checks
+            skips that for a repository with no CI), then commits the goal folder once and
             pushes, never with force. --chore writes chores/<ISO date>-SLUG.md with
             the marker, the model, the PR and the cost, and no record. It
             prints the file, the round, the sessions and the marker count.

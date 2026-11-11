@@ -49,7 +49,8 @@ final class LoopFloorRulesTests: XCTestCase {
             // Chartered by `one-rule-one-place` round 3: the last sentence
             // read `Red: the check is the round's gap, the one correction goes
             // to the crew, and the round is not closed.`; "Budget" now holds
-            // the correction cap, two per round.
+            // the correction cap, two per round, and a round the cap fails
+            // closes on a red check (correction 1 of round 3).
             "the foreman does not rerun what the crew or the pull request's CI already proved",
             """
             After the crew, the foreman does not rerun a check the crew already ran
@@ -58,7 +59,8 @@ final class LoopFloorRulesTests: XCTestCase {
             `gh pr checks <N>` on the crew's head sha. Green: it runs
             `kitterm round close`, replaces the record's markers, then runs
             `kitterm round close --commit`. Red: the check is the round's gap, a
-            correction goes to the crew ("Budget"), and the round is not closed.
+            correction goes to the crew ("Budget"), and the round closes only green
+            or failed: `--decision failed` commits on a red check.
             """
         ),
     ]
@@ -194,7 +196,7 @@ final class LoopFloorRulesTests: XCTestCase {
     /// Chartered by `one-rule-one-place` round 1: `docs/foreman.md` restated
     /// the floor practice in "Delegate"; it now names `LOOP.md`, the floor's
     /// one home, which `testTheLoopFilesCarryTheFloorRules` pins.
-    func testTheManualNamesTheFloorPractice() throws {
+    func testTheManualPointsAtTheLoopForTheFloor() throws {
         let manual = Self.oneLine(try Self.read("docs/foreman.md"))
         for phrase in [
             "`docs/goals/LOOP.md` holds its policy, from the roles to the stop rules",

@@ -38,7 +38,8 @@ enum GoalsTemplates {
     /// When `loop` changes, append the hash it had before the change;
     /// `GoalsTemplatesTests` pins that the current one is listed. Seeded
     /// from `git log -- examples/goals/LOOP.md`: `one-rule-one-place`
-    /// round 3 (current, two corrections per round and `round close
+    /// round 3 (current, the correction: a failed round closes on a red
+    /// check; 7f5357e, two corrections per round and `round close
     /// --decision`; a63788e, the round 1 correction: "The floor" reads `gh pr checks`
     /// before `kitterm round close`; 83ea45c, each rule has one home: the
     /// foreman's steps move to the skill, and `kitterm round open` and
@@ -54,6 +55,7 @@ enum GoalsTemplates {
     /// `human-file-edits` (#166), `loop-and-skill` round 2 (092652221ab1),
     /// round 1 (a5592bd), 7f30556 (#139), 41b6a76 (#113) and ac20d04 (#111).
     static let loopHistory: [String] = [
+        "a91c6753da227833b6e37ee69bc1fdbda5699d614dd344fa1e3e54427302551b",
         "7f5357e67a3e00c1242e68bf545a47130e19423dd60115a106c1d4b817af4bf9",
         "a63788e8fa76c0f120026f71ffa0cba817c0d92ac67f73e42d1e656c71ded55f",
         "83ea45c4d9740d76a7d11e5dc91f429529cb3b1102f1f6061b7226e974283d36",
@@ -248,7 +250,8 @@ enum GoalsTemplates {
           `gh pr checks <N>` on the crew's head sha. Green: it runs
           `kitterm round close`, replaces the record's markers, then runs
           `kitterm round close --commit`. Red: the check is the round's gap, a
-          correction goes to the crew ("Budget"), and the round is not closed.
+          correction goes to the crew ("Budget"), and the round closes only green
+          or failed: `--decision failed` commits on a red check.
 
         ## Authority
 

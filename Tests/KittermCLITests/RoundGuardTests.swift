@@ -65,9 +65,80 @@ final class RoundGuardTests: XCTestCase {
         }
     }
 
+    /// The fresh-context review of `c496542` (`one-rule-one-place` round 3,
+    /// correction 1): each of these ran past the guard.
+    func testRefusesThroughShellSyntaxWrappersAndNestedShells() {
+        for command in [
+            "if true; then git push origin main; fi",
+            "for i in 1; do git push --force origin goal/x; done",
+            "{ git push origin main; }",
+            "! git push -f",
+            "timeout 60 git push origin main",
+            "timeout 30 kitterm restart",
+            "sudo kitterm stop",
+            "nohup kitterm start &",
+            "git push origin $(git rev-parse HEAD):main",
+            "bash -c \"git push origin main\"",
+            "git --git-dir .git push origin main",
+            // The same holes, in their other forms.
+            "while true; do kitterm stop; done",
+            "until false; do git push origin main; done",
+            "if git push origin main; then echo ok; fi",
+            "(git push origin main)",
+            "timeout -s KILL 5 git push origin main",
+            "sudo -u root kitterm restart",
+            "env -i PATH=/bin kitterm stop",
+            "nice -n 5 git push origin main",
+            "time -p git push origin main",
+            "exec git push --force origin goal/x",
+            "echo main | xargs git push origin",
+            "echo stop | xargs kitterm",
+            "sh -lc 'kitterm stop'",
+            "zsh -c 'cd sub && git push origin main'",
+            "eval git push origin main",
+            "git -c user.name=x --work-tree . push origin main",
+            "echo `kitterm stop`",
+            "echo \"$(kitterm stop)\"",
+            "bash <<EOF\ngit push origin main\nEOF",
+            "git commit -m \"$(cat <<'EOF'\nDon't stop.\nEOF\n)\"; git push origin main",
+        ] {
+            XCTAssertNotNil(refusal(command), command)
+        }
+    }
+
+    /// A destination that a substitution or a variable builds cannot be
+    /// known, so the push is refused with the reason.
+    func testRefusesADestinationItCannotKnow() {
+        for command in [
+            "git push origin $(git branch --show-current)",
+            "git push origin \"$BRANCH\"",
+            "git push origin HEAD:`cat branch`",
+        ] {
+            let reason = refusal(command)
+            XCTAssertTrue(reason?.contains("a substitution builds") == true, "\(command): \(reason ?? "nil")")
+        }
+        XCTAssertNil(refusal("git push origin $(git rev-parse HEAD):goal/x"), "a built source, a known destination")
+    }
+
+    /// A here-document's body is text unless a shell reads it.
+    func testAHereDocumentBodyIsText() {
+        for command in [
+            "cat <<EOF > notes.md\nkitterm stop\ngit push origin main\nEOF",
+            "cat <<-'END'\n\tkitterm stop\n\tEND\ngit status",
+            "git commit -m \"$(cat <<'EOF'\nDon't run kitterm stop (or git push origin main).\nEOF\n)\"",
+        ] {
+            XCTAssertNil(refusal(command), command)
+        }
+    }
+
     func testLetsTheCrewWork() {
         for command in [
             "git push origin goal/x",
+            "git status",
+            "echo \"git push origin main\"",
+            "timeout 60 git push origin goal/x",
+            "bash -c \"git push origin goal/x\"",
+            "if true; then git status; fi",
             "git push -u origin goal/x",
             "git push origin HEAD",
             "git push",
@@ -98,6 +169,10 @@ final class RoundGuardTests: XCTestCase {
             RoundGuard.simpleCommands("a 'b c' \"d\\\"e\" && f|g; h\ni (j) k\\ l"),
             [["a", "b c", "d\"e"], ["f"], ["g"], ["h"], ["i"], ["j"], ["k l"]]
         )
+        XCTAssertEqual(
+            RoundGuard.simpleCommands("git push origin $(git rev-parse HEAD):main; ls"),
+            [["git", "rev-parse", "HEAD"], ["git", "push", "origin", "$(…):main"], ["ls"]]
+        )
     }
 
     // MARK: - the hook's exit codes
@@ -105,7 +180,7 @@ final class RoundGuardTests: XCTestCase {
     private func run(_ args: [String], _ input: String) -> (code: Int32, out: [String], err: [String]) {
         var out: [String] = [], err: [String] = []
         let code = RoundGuard.run(
-            args, input: Data(input.utf8), git: Self.git(current: "goal/x"),
+            args, input: { Data(input.utf8) }, git: Self.git(current: "goal/x"),
             out: { out.append($0) }, err: { err.append($0) }
         )
         return (code, out, err)
@@ -139,5 +214,33 @@ final class RoundGuardTests: XCTestCase {
         XCTAssertEqual(check.code, 0)
         XCTAssertEqual(check.out, ["kitterm round guard: ready"])
         XCTAssertEqual(run(["--bogus"], "").code, 2)
+    }
+
+    /// `--check` answers with stdin still open, as from a terminal: the
+    /// binary reads stdin only on the hook path (`one-rule-one-place`
+    /// round 3, correction 1). Before the fix it blocked until stdin closed.
+    func testCheckDoesNotReadStdin() throws {
+        let binary = Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("kitterm")
+        guard FileManager.default.isExecutableFile(atPath: binary.path) else {
+            throw XCTSkip("no kitterm binary beside the test bundle at \(binary.path)")
+        }
+        let process = Process()
+        process.executableURL = binary
+        process.arguments = ["round", "guard", "--check"]
+        let stdin = Pipe()
+        let stdout = Pipe()
+        process.standardInput = stdin
+        process.standardOutput = stdout
+        let exited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exited.signal() }
+        try process.run()
+        defer { try? stdin.fileHandleForWriting.close() }
+        guard exited.wait(timeout: .now() + 10) == .success else {
+            process.terminate()
+            return XCTFail("`kitterm round guard --check` still waits on stdin after 10 s")
+        }
+        XCTAssertEqual(process.terminationStatus, 0)
+        let text = String(decoding: stdout.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        XCTAssertEqual(text, "kitterm round guard: ready\n")
     }
 }

@@ -34,8 +34,10 @@ import KittermDaemon
 /// 7. `state`: `RoundRecord.closeState` on `STATE.md`, which files the
 ///    queue item by `--decision`; a later run keeps what the first filed.
 /// 8. `checks`, with `--commit` only: refused while a marker remains in the
-///    record, and while `gh pr checks <N>` on the pull request's head is not
-///    green (`--no-checks` skips it, for a repository with no CI).
+///    record, and, for a `done` round or a chore, while `gh pr checks <N>`
+///    on the pull request's head is not green (`--no-checks` skips it, for a
+///    repository with no CI). A failed or `propose` round names the red
+///    check in one stderr line and commits.
 /// 9. `commit`, with `--commit` only: one commit of the goal folder and a
 ///    push, never with force.
 ///
@@ -374,8 +376,17 @@ extension RoundCommand {
             }
             if !options.noChecks {
                 let result = runner("gh", ["pr", "checks", String(pr), "--json", "name,bucket"], worktree)
-                if let why = checksRefusal(result, pr: pr) { throw fail("checks", why) }
-                progress("round close: PR #\(pr) is green")
+                // A red check is why a round fails, so only a `done` round
+                // (a chore is one) waits for green.
+                let decided = decision ?? .done
+                if let problem = checksProblem(result, pr: pr) {
+                    guard decided != .done else {
+                        throw fail("checks", problem.fix.isEmpty ? problem.what : problem.what + "; " + problem.fix)
+                    }
+                    progress("round close: \(problem.what); the round is \(decided.rawValue), so its record commits")
+                } else {
+                    progress("round close: PR #\(pr) is green")
+                }
             }
             try tool("commit", "git", ["-C", worktree, "add", "--", folder], in: worktree)
             let staged = runner("git", ["-C", worktree, "diff", "--cached", "--quiet", "--", folder], worktree)
@@ -393,28 +404,28 @@ extension RoundCommand {
         )
     }
 
-    /// Why `gh pr checks <pr> --json name,bucket` does not show green, or
-    /// nil when every check is `pass` or `skipping`. `gh` exits 1 on a
-    /// failed check and 8 on a pending one, so the JSON is read whatever
-    /// the exit code; only an answer with no JSON list is a `gh` failure.
-    static func checksRefusal(_ result: PullRequestStatus.RunResult?, pr: Int) -> String? {
-        let fix = "pass --no-checks for a repository with no CI"
-        guard let result else { return "gh did not start (is it on PATH?)" }
-        if result.timedOut { return "gh pr checks \(pr) timed out after \(Int(toolTimeoutSeconds)) s" }
+    /// Why `gh pr checks <pr> --json name,bucket` does not show green, and
+    /// what to do about it, or nil when every check is `pass` or
+    /// `skipping`. `gh` exits 1 on a failed check and 8 on a pending one,
+    /// so the JSON is read whatever the exit code; only an answer with no
+    /// JSON list is a `gh` failure.
+    static func checksProblem(_ result: PullRequestStatus.RunResult?, pr: Int) -> (what: String, fix: String)? {
+        let noCI = "pass --no-checks for a repository with no CI"
+        guard let result else { return ("gh did not start (is it on PATH?)", "") }
+        if result.timedOut { return ("gh pr checks \(pr) timed out after \(Int(toolTimeoutSeconds)) s", "") }
         let detail = result.error.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let rows = (try? JSONSerialization.jsonObject(with: result.output)) as? [[String: Any]] else {
-            if detail.contains("no checks reported") { return "gh pr checks \(pr) reports no checks; \(fix)" }
-            return "gh pr checks \(pr) exited \(result.status)" + (detail.isEmpty ? "" : ": " + String(detail.prefix(400)))
+            if detail.contains("no checks reported") { return ("gh pr checks \(pr) reports no checks", noCI) }
+            return ("gh pr checks \(pr) exited \(result.status)" + (detail.isEmpty ? "" : ": " + String(detail.prefix(400))), "")
         }
-        guard !rows.isEmpty else { return "gh pr checks \(pr) reports no checks; \(fix)" }
+        guard !rows.isEmpty else { return ("gh pr checks \(pr) reports no checks", noCI) }
         let notGreen = rows.compactMap { row -> String? in
             let bucket = row["bucket"] as? String ?? "unknown"
             guard bucket != "pass", bucket != "skipping" else { return nil }
             return "\(row["name"] as? String ?? "?") \(bucket)"
         }
         guard !notGreen.isEmpty else { return nil }
-        return "PR #\(pr) is not green on its head: \(notGreen.joined(separator: ", ")); "
-            + "wait for green, or \(fix)"
+        return ("PR #\(pr) is not green on its head: \(notGreen.joined(separator: ", "))", "wait for green, or \(noCI)")
     }
 
     /// The `- Foreman:` line: the turns of the session `id`'s transcript

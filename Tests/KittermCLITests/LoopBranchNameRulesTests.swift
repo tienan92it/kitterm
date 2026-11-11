@@ -76,7 +76,7 @@ final class LoopBranchNameRulesTests: XCTestCase {
 
     /// Chartered by `one-rule-one-place` round 1: the manual restated the
     /// delete step; it now names `LOOP.md` as the home of the merge.
-    func testTheManualDeletesAMergedBranch() throws {
+    func testTheManualPointsAtTheLoopForTheMergedBranch() throws {
         let manual = Self.oneLine(try Self.read("docs/foreman.md"))
         let sentence = "`docs/goals/LOOP.md` gives the scope, the package, the branch `goal/<slug>`, its pull request and the merge"
         XCTAssertTrue(manual.contains(Self.oneLine(sentence)), "docs/foreman.md names the home of the delete step")

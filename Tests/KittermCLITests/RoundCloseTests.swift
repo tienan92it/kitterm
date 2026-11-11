@@ -354,6 +354,36 @@ final class RoundCloseTests: XCTestCase {
         XCTAssertEqual(summary.tasks?.first { $0.slug == "first-item" }?.state, .failed)
     }
 
+    /// A failed or a `propose` round commits its record on a red check:
+    /// the check is the reason the round failed, so `--commit` names it in
+    /// one stderr line and goes on (`one-rule-one-place` round 3,
+    /// correction 1). A `done` round still refuses.
+    func testAFailedOrProposeRoundCommitsOnARedCheckAndNamesIt() throws {
+        let red = #"[{"bucket":"fail","name":"test"}]"#
+        for (task, decision) in [("first-item", "failed"), ("second-item", "propose")] {
+            let crew = try openRound(task: task)
+            try join(crew, transcript: try crewTranscript(task, billed: true))
+            _ = try close(["--decision", decision])
+            let round = task == "first-item" ? "001" : "002"
+            let path = folder + "/rounds/\(round).md"
+            try write(
+                try String(contentsOfFile: path, encoding: .utf8)
+                    .replacingOccurrences(of: RoundRecord.marker, with: "written by the foreman"),
+                to: path
+            )
+            sharedGH.answerChecks(status: 1, output: red)
+            let before = try git(["rev-parse", "HEAD"], in: worktree)
+            var progress: [String] = []
+            let lines = try close(["--commit"], progress: { progress.append($0) })
+            let head = try git(["rev-parse", "HEAD"], in: worktree)
+            XCTAssertNotEqual(head, before, decision)
+            XCTAssertTrue(lines.contains("commit   \(head)"), "\(lines)")
+            XCTAssertEqual(progress.filter { $0.contains("not green") }, [
+                "round close: PR #7 is not green on its head: test fail; the round is \(decision), so its record commits",
+            ])
+        }
+    }
+
     /// `propose` leaves the item under `## Queue` and counts the round; a
     /// later run keeps it there, and a later `failed` refuses.
     func testCloseStateFilesAProposeRoundUnderQueueAndKeepsIt() throws {
@@ -660,11 +690,11 @@ final class RoundCloseTests: XCTestCase {
         return try XCTUnwrap(object["session"] as? String)
     }
 
-    private func close(_ flags: [String]) throws -> [String] {
+    private func close(_ flags: [String], progress: (String) -> Void = { _ in }) throws -> [String] {
         var lines: [String] = []
         try RoundCommand.run(
             ["close", root, "demo", "--port", String(port), "--bill-timeout", "10"] + flags, runner: runner(sharedGH),
-            out: { lines.append($0) }, progress: { _ in }
+            out: { lines.append($0) }, progress: progress
         )
         return lines
     }

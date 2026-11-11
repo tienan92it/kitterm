@@ -49,7 +49,7 @@ Do this before every `send_input` into a pane that runs an interactive agent.
 ## Steps
 
 1. Spawn a session for the bug:
-   `spawn_session name="triage-<bug>" cwd="<repo>" labels={crew:"triage", task:"<bug>"} input="claude\n"`
+   `spawn_session name="triage-<bug>" cwd="<repo>" labels={crew:"triage", task:"<bug>"} input="claude --settings ~/.claude/skills/foreman-loop/crew-settings.json\n"`
 
 2. Run "Read before you type", then send the triage prompt with `send_input`:
    the bug report, the repo, and the instruction to reproduce first.

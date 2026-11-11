@@ -205,11 +205,13 @@ This file holds the section `AGENTS.md` carried until 2026-11-10 (goal `lean-con
      keeps the item where the first run filed it; a `--decision` that names
      another place refuses. `Status` and `Last floor` stay the foreman's.
   8. `checks`, with `--commit` only: it refuses while a marker line remains
-     in the record, and while `gh pr checks <N> --json name,bucket` names a
-     check that is not `pass` or `skipping`, or no check:
+     in the record, and, for a `done` round or a chore, while
+     `gh pr checks <N> --json name,bucket` names a check that is not `pass`
+     or `skipping`, or no check:
      `round close: checks failed: PR #N is not green on its head: test fail,
      linux-build pending; wait for green, or pass --no-checks for a
-     repository with no CI`. `--no-checks` skips the read.
+     repository with no CI`. A `failed` or `propose` round names the red
+     check in one stderr line and commits. `--no-checks` skips the read.
   9. `commit`, with `--commit` only: one commit of the goal folder, with
      the message `<slug>: round <n> record`, and a push, never with force. The push starts a new CI run on the head.
 
@@ -230,18 +232,29 @@ This file holds the section `AGENTS.md` carried until 2026-11-10 (goal `lean-con
   human reads it. Its `permissions.deny` refuses `gh pr merge`,
   `kitterm start`, `stop` and `restart`, and an edit under
   `.github/workflows/`, of a `docs/goals/*/goal.md` or under a
-  `docs/goals/*/corpus/`. A path in a `--settings` file anchors at the
+  `docs/goals/*/corpus/`; a project whose knowledge directory is not
+  `docs/goals` has no deny rule on its `goal.md` or `corpus/`. A path in a
+  `--settings` file anchors at the
   file's folder, so the paths start `//`. An `Edit` rule also covers
   `Write`, `NotebookEdit` and a `>` redirect, not `sed -i` or a script.
   `CrewSettingsTests` pins the file and the copy.
 - `kitterm round guard [--check]` (`RoundGuard.swift`) is that file's
   `PreToolUse` hook on `Bash`, for what a prefix rule cannot match. It
-  reads the hook JSON on stdin, splits the command at `&&`, `||`, `;`, `|`
-  and a newline, follows `cd` and `git -C`, and exits 2 with the reason on
-  stderr for a `git push` with `-f`, `--force`, `--force-with-lease`,
+  reads the hook JSON on stdin (not with `--check`), splits the command at
+  `&&`, `||`, `;`, `|`, a newline and a parenthesis, follows `cd` and
+  `git -C`, `--git-dir` and `--work-tree`, and reads past the keywords of a
+  compound command (`if`, `then`, `do`, `{`, `!`, ...), a wrapper
+  (`timeout`, `sudo`, `nohup`, `env`, `time`, `command`, `exec`, `nice`,
+  `xargs`) with its options, a `$( )` or backtick substitution, the string
+  of `sh -c`, `bash -c`, `zsh -c` and `eval`, and the body of a
+  here-document that a shell reads; the body of any other here-document is
+  text. It does not read the input that a pipe feeds to a shell
+  (`echo ... | sh`), and it expands no variable. It exits 2 with the reason on stderr for a `git push` with `-f`, `--force`, `--force-with-lease`,
   `--force-if-includes`, `--mirror` or a `+` refspec; a push to the base
   branch (`KnowledgeBase.baseBranch`), as `main`, `x:main`,
-  `x:refs/heads/main`, `--all`, or a bare push from the base; and
+  `x:refs/heads/main`, `--all`, or a bare push from the base; a push whose
+  destination a substitution, a variable or `xargs` builds, which it cannot
+  know; and
   `kitterm start|stop|restart` by any path or `swift run`. It refuses input
   it cannot read. The file runs it as `kitterm round guard || exit 2`:
   Claude Code lets a call run when a hook exits with a code other than 0
