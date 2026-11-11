@@ -307,7 +307,7 @@ enum KittermMain {
 
             project registers a directory in ~/.kitterm/projects.json, so
             /sessions groups its shells under one card (a registered root,
-            else the nearest .git; see AGENTS.md "Projects"). project init
+            else the nearest .git; see docs/http-api.md "Projects"). project init
             also writes the project files of the goal loop (LOOP.md and
             facts.md, from examples/goals/) into --knowledge, default
             docs/goals, and never overwrites a file. With --refresh it
