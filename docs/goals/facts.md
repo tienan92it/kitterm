@@ -10,6 +10,12 @@ decision moves to `docs/adr/`.
 
 ## Toolchain
 
+- `RepaintNudgeTests.testTwoAttachesInOneWindowStillEndAtTheHeldSize` is
+  flaky: it failed once locally in `round-commands` round 3 and once in
+  `ci.yml` on PR #217 (`19390fe`), on changes that touch no file near
+  it, and passed on the next run of the same code. Rerun before you
+  treat it as a regression (2026-11-11,
+  `one-rule-one-place/rounds/001.md`).
 - `Web/terminal/src/terminal-app.ts` imports xterm and touches the DOM, so
   no vitest file can import it; a rule it owns is not directly unit-testable.
   Extract the pure decision into its own module and test that instead:
