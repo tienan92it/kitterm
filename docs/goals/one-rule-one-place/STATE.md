@@ -8,7 +8,7 @@
 
 ## Queue
 
-- `review-plan-overlap` (3).
+- `review-plan-overlap` (3), round 3, PR #217.
 
 ## Failures
 
