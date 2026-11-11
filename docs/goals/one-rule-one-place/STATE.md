@@ -1,14 +1,13 @@
 # STATE: one-rule-one-place
 
 - Status: active
-- Round: 0 of 3 in this budget (first budget)
-- Rounds total: 0
-- Last floor: green (2026-11-11, PR #216 at `5fed34c`)
+- Round: 1 of 3 in this budget (first budget)
+- Rounds total: 1
+- Last floor: green (2026-11-11, round 1)
 - Updated: 2026-11-11
 
 ## Queue
 
-- `each-rule-has-one-home` (1), round 1, PR #217.
 - `deny-rules-and-stalls` (2).
 - `review-plan-overlap` (3).
 
@@ -22,9 +21,10 @@ None.
 
 ## Done
 
-None.
+- `each-rule-has-one-home`, round 1, `31f2a0e`, PR #217. See `rounds/001.md`.
+  14,298 words to 11,489; a test of 25 stale phrases.
 
 ## Next action
 
-Round 1: the crew gives each rule one home and fixes the stale lines
-(`plan.md`, row 1).
+Round 2: the crew adds the deny rules for crew sessions and the stall
+rule (`plan.md`, row 2).
