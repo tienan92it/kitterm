@@ -1,14 +1,14 @@
 # STATE: round-commands
 
 - Status: active
-- Round: 1 of 3 in this budget (first budget)
+- Round: 2 of 3 in this budget (first budget)
 - Rounds total: 1
 - Last floor: green (2026-11-11, round 1)
 - Updated: 2026-11-11
 
 ## Queue
 
-- `round-open` (2).
+- `round-open` (2), round 2, PR #216.
 - `round-close` (3).
 
 ## Failures
