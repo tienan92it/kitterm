@@ -22,7 +22,7 @@ final class GoalsLayoutDocsTests: XCTestCase {
     /// The files checked: the three docs that describe the package, and
     /// every file under `examples/`.
     private static func documents() throws -> [(path: String, text: String)] {
-        var paths = ["AGENTS.md", "docs/foreman.md", "docs/architecture.md"]
+        var paths = ["AGENTS.md", "docs/control-plane.md", "docs/foreman.md", "docs/architecture.md"]
         let examples = root.appendingPathComponent("examples", isDirectory: true)
         paths += try CLIFixture.files(under: examples).keys.sorted().map { "examples/" + $0 }
         return try paths.map { path in
