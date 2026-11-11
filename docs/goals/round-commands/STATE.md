@@ -34,7 +34,7 @@ None.
   `rounds/001.md`. 17 "None" corrections no longer count.
 - `round-open`, round 2, `190a8e7`, PR #216. See `rounds/002.md`.
   `kitterm round open` with seven tests.
-- `round-close`, round 3, `2cddb8a`, PR #216. See `rounds/003.md`.
+- `round-close`, round 3, `8e74b36`, PR #216. See `rounds/003.md`.
   `kitterm round close` with 11 tests; it closed its own round.
 
 ## Next action
