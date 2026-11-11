@@ -520,12 +520,12 @@ enum ForemanSkills {
         No `PLAN` note 15 minutes after the round prompt is a stall too.
 
         Answer a stall in that wake, or end the session. Read the screen. An API
-        error, a cut turn, or a prompt that waits with no question: send one
-        `FOREMAN: continue from <the last step the screen or the notes show>`
-        and tell the human in one line. A
-        question: treat it as a `BLOCKER`, relay it, and create its `Answer:`
-        task ("Task list"). One automatic continue per round. A second stall in
-        the round: tell the human, link the pane, and wait for the human's word.
+        error, a model limit, a cut turn, or a prompt that waits with no
+        question: send one `FOREMAN: continue from <the last step the screen or
+        the notes show>` and tell the human in one line. A question: treat it as
+        a `BLOCKER`, relay it, and create its `Answer:` task ("Task list"). One
+        automatic continue per round. A second stall in the round: tell the
+        human, link the pane, and wait for the human's word.
 
         After a usage limit, Claude Code continues by itself
         (`autoContinueAtUsageLimit`, on by default, three times at most).
