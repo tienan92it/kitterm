@@ -8,7 +8,7 @@
 
 ## Queue
 
-- `each-rule-has-one-home` (1), round 1.
+- `each-rule-has-one-home` (1), round 1, PR #217.
 - `deny-rules-and-stalls` (2).
 - `review-plan-overlap` (3).
 
