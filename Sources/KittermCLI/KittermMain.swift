@@ -255,6 +255,11 @@ enum KittermMain {
                                       # the branch, the worktree, the draft PR,
                                       # the queue line and the crew session of
                                       # one round; no claude, no prompt
+              kitterm round close ROOT SLUG [--chore] [--commit] [--round N]
+                                      [--bill-timeout S] [--foreman-session ID]
+                                      [--knowledge DIR] [--port N]
+                                      # archive the round's sessions, read their
+                                      # bills, write rounds/NNN.md and STATE.md
               kitterm skills install [--dir DIR] | list
                                       # write the foreman skills into ~/.claude/skills
               kitterm statusline install [--dir DIR] | print
@@ -377,6 +382,28 @@ enum KittermMain {
             second run after a failure continues. A failure names its step
             and what already exists, and exits 1. It never merges,
             force-pushes or marks a pull request ready.
+
+            round close does every step after the crew's DONE note that needs
+            no judgment. The round is --round, else the round: label of the
+            live sessions with crew:SLUG, else of the newest archive with it.
+            It archives each live session with crew:SLUG and round:R, then
+            reads each bill as `kitterm archive cost` does, again every 2 s
+            until all read or --bill-timeout ends (default 60); a session
+            still without one gets "- Cost: none recorded (<reason>)". It
+            writes rounds/NNN.md once: the header (Started is the first
+            timestamp of the earliest session's transcript, Ended is now),
+            one Cost line per session, one "- Foreman:" line, and the six
+            sections. The Foreman line prices the turns between Started and
+            Ended in the transcript of KITTERM_SESSION_ID, or of
+            --foreman-session. Each section holds the marker line
+            "[foreman writes this]", and Floor holds two (before:, after:);
+            replace each one. It updates Round, Rounds total and Updated in
+            STATE.md and moves the item to ## Done. --commit refuses while a
+            marker remains, then commits the goal folder once and pushes,
+            never with force. --chore writes chores/<ISO date>-SLUG.md with
+            the marker, the model, the PR and the cost, and no record. It
+            prints the file, the round, the sessions and the marker count.
+            It never merges, marks a pull request ready, or runs a floor.
 
             skills install writes the reference foreman skills under
             examples/foreman/ (foreman-loop, review-crew, triage) to

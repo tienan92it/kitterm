@@ -37,8 +37,10 @@ enum GoalsTemplates {
     /// `LOOP.md` that is still a template and refuses one a human edited.
     /// When `loop` changes, append the hash it had before the change;
     /// `GoalsTemplatesTests` pins that the current one is listed. Seeded
-    /// from `git log -- examples/goals/LOOP.md`: `round-commands` round 2
-    /// (current, "Parsed shapes" names what `kitterm round open` writes),
+    /// from `git log -- examples/goals/LOOP.md`: `round-commands` round 3
+    /// (current, "The round record" names the `- Foreman:` line and the
+    /// marker `kitterm round close` writes), round 2 (5a0fa75, "Parsed
+    /// shapes" names what `kitterm round open` writes),
     /// `foreman-scope` round 3 (d9f708a, "One foreman for every scope", the
     /// `scope` label, the Start and Upkeep steps), chore `base-branch`
     /// (a7aae80, "The pull request" and "The floor" name the base branch,
@@ -47,6 +49,7 @@ enum GoalsTemplates {
     /// `human-file-edits` (#166), `loop-and-skill` round 2 (092652221ab1),
     /// round 1 (a5592bd), 7f30556 (#139), 41b6a76 (#113) and ac20d04 (#111).
     static let loopHistory: [String] = [
+        "883a88dd7d2cf04b8eee49f6ac58d99424243ecad22abc842345d7f0950e1c08",
         "5a0fa7547956395ad4220fe012a645beb969332605ff710deeafbdf953dd23c6",
         "d9f708a5b8b7e3548fc2f694a6009e4da0ac786af1dcd9be5d63d8f57fc909a7",
         "2caccfb9969d69be4447ee18488230bdfba02cee2c82da4d4278d614a7ce2b82",
@@ -340,6 +343,7 @@ enum GoalsTemplates {
         - Sessions: <id>, <id>   Archives: <id>
         - Base: <git sha>   Result: <git sha or PR #>
         - Cost: $D · Nk in (C% cached) · Nk out · Hh Mm
+        - Foreman: ~$D · Nk in (C% cached) · Nk out
 
         ## Prompt
         <the request sent, verbatim or a path to it>
@@ -379,6 +383,18 @@ enum GoalsTemplates {
         The command reads the archive's transcript under `~/.kitterm` with no
         daemon and prints the line above, or `- Cost: none recorded (<reason>)`;
         `--json` prints the bill as `GET /api/archives/<id>/cost` answers it.
+
+        `kitterm round close` writes the record from these facts. Its
+        `- Foreman:` line, after the `- Cost:` lines, is the estimate of the
+        foreman's own turns between `Started` and `Ended`, from the foreman's
+        transcript, priced by `ModelPricing`: `- Foreman: ~$D · Nk in (C% cached)
+        · Nk out`, or `- Foreman: none recorded (<reason>)`. A model
+        `ModelPricing` does not know adds ` · unpriced <model>` to the line:
+        its tokens count and its dollars do not. The line does not start
+        with `- Cost:`, so neither parser below counts it. Each of the six
+        sections holds the marker line `[foreman writes this]`, and `Floor` holds
+        two, `before:` and `after:`; the foreman replaces each, and
+        `kitterm round close --commit` refuses while one remains.
 
         Two parsers read the record:
 

@@ -196,6 +196,10 @@ public final class TranscriptEstimateCache: @unchecked Sendable {
         /// `cost-state` line, epoch milliseconds; a turn before it is not
         /// counted. Nil for the parent itself.
         var since: Int64?
+        /// Set for a window read (`estimate(forTranscriptAt:from:to:)`): a
+        /// turn stamped after it, or with no stamp, is not counted, and a
+        /// `cost-state` line does not close the sums. Nil for the cache.
+        var until: Int64? = nil
 
         static func fresh(since: Int64?, touched: Int64) -> Entry {
             Entry(size: 0, mtime: 0, offset: 0, sums: Sums(), droppingLongLine: false, bytesRead: 0, touched: touched, since: since)
@@ -218,6 +222,54 @@ public final class TranscriptEstimateCache: @unchecked Sendable {
 
     public init(maxBytes: Int64 = TranscriptEstimateCache.maxBytes) {
         self.maxBytes = maxBytes
+    }
+
+    /// The turns of the transcript at `path` and of its subagent files
+    /// stamped from `from` to `to` (epoch milliseconds, both included),
+    /// priced with `ModelPricing` like `estimate(forTranscriptAt:now:)`.
+    /// `kitterm round close` prices the foreman's own turns of one round
+    /// with it. It reads every file whole and keeps no cache entry: a round
+    /// closes once, and a window is not the cache's "since the last bill".
+    public static func estimate(forTranscriptAt path: String, from: Int64, to: Int64, now: Date = Date()) -> TranscriptEstimate.Outcome {
+        guard let (size, _) = TranscriptModelCache.fingerprint(path) else {
+            return .unreadable("cannot stat \(path): \(String(cString: strerror(errno)))")
+        }
+        let subagents = listSubagents(of: path)
+        guard subagents.reduce(size, { $0 + $1.size }) <= maxBytes else {
+            return .noEstimate(.transcriptTooLarge)
+        }
+        var sums = Sums()
+        let files = [(path: path, size: size)] + subagents.map { (path: $0.path, size: $0.size) }
+        for (index, file) in files.enumerated() {
+            var entry = Entry.fresh(since: from, touched: 0)
+            entry.until = to
+            switch walk(path: file.path, from: 0, to: file.size, entry: &entry) {
+            case .read: sums.add(entry.sums)
+            case .unreadable(let reason):
+                // A subagent file that vanished is not the round's; a
+                // parent that does not read is the answer.
+                if index == 0 { return .unreadable(reason) }
+            }
+        }
+        return outcome(of: sums, asOf: Int64(now.timeIntervalSince1970 * 1000), subagentFiles: subagents.count)
+    }
+
+    /// The first `timestamp` of the transcript at `path`, from the lines of
+    /// its first `window` bytes; nil when none of them carries one or the
+    /// file does not open. The daemon keeps no creation time on a session
+    /// row, so `kitterm round close` dates a session by when its Claude Code
+    /// session began.
+    public static func firstTimestamp(ofTranscriptAt path: String, window: Int = 1 << 20) -> Date? {
+        guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
+        defer { try? handle.close() }
+        guard let data = try? handle.read(upToCount: window) else { return nil }
+        for line in data.split(separator: UInt8(ascii: "\n")) {
+            guard let object = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
+                  let text = object["timestamp"] as? String, let date = TranscriptUsage.parseUTC(text)
+            else { continue }
+            return date
+        }
+        return nil
     }
 
     /// The estimate for the session whose transcript is at `path`, its
@@ -384,7 +436,7 @@ public final class TranscriptEstimateCache: @unchecked Sendable {
                 if entry.droppingLongLine {
                     entry.droppingLongLine = false
                 } else {
-                    take(carry[start..<newline], into: &entry.sums, since: entry.since)
+                    take(carry[start..<newline], into: &entry.sums, since: entry.since, until: entry.until)
                 }
                 start = newline + 1
             }
@@ -404,12 +456,14 @@ public final class TranscriptEstimateCache: @unchecked Sendable {
     /// One complete line: a `cost-state` line closes the sums, an
     /// assistant line adds its request's usage, anything else is skipped.
     /// With `since`, a turn timestamped before it is the old bill's and is
-    /// skipped too.
-    static func take(_ line: ArraySlice<UInt8>, into sums: inout Sums, since: Int64? = nil) {
+    /// skipped too. With `until`, the read is a window: a turn needs a
+    /// stamp at or before `until`, and a `cost-state` line closes nothing,
+    /// because a window counts turns by time, not since the last bill.
+    static func take(_ line: ArraySlice<UInt8>, into sums: inout Sums, since: Int64? = nil, until: Int64? = nil) {
         if contains(line, costStateGate),
            let object = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
            object["type"] as? String == "cost-state" {
-            sums = Sums()
+            if until == nil { sums = Sums() }
             return
         }
         guard contains(line, assistantGate),
@@ -420,6 +474,9 @@ public final class TranscriptEstimateCache: @unchecked Sendable {
               let usage = message["usage"] as? [String: Any]
         else { return }
         let stamp = (object["timestamp"] as? String).flatMap(TranscriptUsage.parseUTC).map { Int64($0.timeIntervalSince1970 * 1000) }
+        if let until {
+            guard let stamp, stamp <= until else { return }
+        }
         if let since, let stamp, stamp < since { return }
         let request = object["requestId"] as? String ?? ""
         if !request.isEmpty, request == sums.lastRequestId { return }

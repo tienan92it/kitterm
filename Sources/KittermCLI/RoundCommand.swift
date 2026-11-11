@@ -24,16 +24,23 @@ import KittermDaemon
 ///    one after the queue line names the round and the branch is pushed.
 /// 7. `queue line`: the item's first line ends `, round R, PR #N.`; the
 ///    command commits the goal folder and pushes, never with force.
-/// 8. `spawn`: `POST /api/sessions` with the worktree as cwd and the labels
-///    `crew`, `goal`, `round`, `task` and `pr`. No input is typed.
+/// 8. `spawn`: `POST /api/sessions` with the worktree as cwd, the name
+///    `<slug> round <R>`, and the labels `crew`, `goal`, `round`, `task`
+///    and `pr`. No input is typed.
 ///
 /// The command never merges, force-pushes or marks a pull request ready.
 /// Every `git` and `gh` goes through one `Runner`, so a test hands it a
 /// fake `gh`.
+///
+/// `kitterm round close`, the steps after the crew, is in
+/// `RoundCloseCommand.swift`; it shares `Steps`, `StepFailure` and the
+/// `Runner`.
 enum RoundCommand {
     static let usage = """
     usage: kitterm round open <root> <slug> --task <item> [--chore] [--title <text>] [--body <text>] \
     [--knowledge <dir>] [--port <n>] [--json]
+           kitterm round close <root> <slug> [--chore] [--commit] [--round <n>] [--bill-timeout <s>] \
+    [--foreman-session <id>] [--knowledge <dir>] [--port <n>]
     """
 
     /// Runs `tool` (`git` or `gh`) with `args` in `directory`; nil when it
@@ -54,6 +61,11 @@ enum RoundCommand {
         progress: (String) -> Void = { writeError($0 + "\n") }
     ) throws where S.Element == String {
         let array = Array(args)
+        if array.first == "close" {
+            let options = try CloseOptions.parse(Array(array.dropFirst()))
+            try close(options, runner: runner, progress: progress).lines.forEach(out)
+            return
+        }
         guard array.first == "open" else { throw CLIError.usage(usage) }
         let options = try Options.parse(Array(array.dropFirst()))
         let opened = try open(options, runner: runner, progress: progress)
@@ -161,20 +173,31 @@ enum RoundCommand {
         var step: String
         var reason: String
         var exists: [String]
+        /// `open` or `close`.
+        var command = "open"
 
         var errorDescription: String? {
             let there = exists.isEmpty ? "nothing changed" : "already there: " + exists.joined(separator: ", ")
-            return "round open: \(step) failed: \(reason)\n\(there)"
+            return "round \(command): \(step) failed: \(reason)\n\(there)"
         }
     }
 
-    // MARK: - The steps
-
-    static func open(_ options: Options, runner: Runner, progress: (String) -> Void) throws -> Opened {
+    /// The runner of one subcommand with what its steps made so far, so a
+    /// failure names its step and what a second run reuses.
+    final class Steps {
+        let command: String
+        let runner: Runner
         var exists: [String] = []
-        func fail(_ step: String, _ reason: String) -> StepFailure {
-            StepFailure(step: step, reason: reason, exists: exists)
+
+        init(command: String, runner: @escaping Runner) {
+            self.command = command
+            self.runner = runner
         }
+
+        func fail(_ step: String, _ reason: String) -> StepFailure {
+            StepFailure(step: step, reason: reason, exists: exists, command: command)
+        }
+
         /// Runs a tool and answers its trimmed stdout; a failure throws as
         /// `step` with the tool's stderr.
         @discardableResult
@@ -192,11 +215,26 @@ enum RoundCommand {
             }
             return String(decoding: result.output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         }
+
+        /// `git -C directory args`, its trimmed stdout, or nil on a failure
+        /// or an empty answer.
         func probe(_ args: [String], in directory: String) -> String? {
             guard let result = runner("git", ["-C", directory] + args, directory), !result.timedOut,
                   result.status == 0 else { return nil }
             let text = String(decoding: result.output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
             return text.isEmpty ? nil : text
+        }
+    }
+
+    // MARK: - The steps
+
+    static func open(_ options: Options, runner: @escaping Runner, progress: (String) -> Void) throws -> Opened {
+        let steps = Steps(command: "open", runner: runner)
+        let fail = steps.fail
+        func probe(_ args: [String], in directory: String) -> String? { steps.probe(args, in: directory) }
+        @discardableResult
+        func tool(_ step: String, _ name: String, _ args: [String], in directory: String) throws -> String {
+            try steps.tool(step, name, args, in: directory)
         }
 
         // 1. daemon
@@ -235,7 +273,7 @@ enum RoundCommand {
             try tool("branch", "git", ["-C", root, "branch", "--no-track", branch, "origin/\(base)"], in: root)
             progress("round open: created branch \(branch) from origin/\(base)")
         }
-        exists.append("branch \(branch)")
+        steps.exists.append("branch \(branch)")
 
         // 4. worktree
         let worktree = ProjectStore.canonicalRoot(root + "/.claude/worktrees/" + options.slug)
@@ -256,7 +294,7 @@ enum RoundCommand {
             try tool("worktree", "git", ["-C", root, "worktree", "add", "--quiet", worktree, branch], in: root)
             progress("round open: created worktree \(worktree)")
         }
-        exists.append("worktree \(worktree)")
+        steps.exists.append("worktree \(worktree)")
 
         // 5. goal
         let knowledge = options.knowledge ?? ProjectStore.load().first { $0.root == root }?.knowledge
@@ -320,7 +358,7 @@ enum RoundCommand {
         var pr = try openPull()
         if let pr {
             progress("round open: reused PR #\(pr)")
-            exists.append("PR #\(pr)")
+            steps.exists.append("PR #\(pr)")
         } else {
             try writeQueueLine(pr: nil)
             try commitGoalFolder("\(options.slug): round \(round) queues \(options.task)")
@@ -339,7 +377,7 @@ enum RoundCommand {
             }
             pr = number
             progress("round open: opened draft PR #\(number)")
-            exists.append("PR #\(number)")
+            steps.exists.append("PR #\(number)")
         }
         let number = pr!
         try writeQueueLine(pr: number)
@@ -355,7 +393,7 @@ enum RoundCommand {
             labelValues[SessionLabels.goalKey] = options.slug
             labelValues[SessionLabels.roundKey] = String(round)
         }
-        let name = options.chore ? options.slug : "\(options.slug) r\(round)"
+        let name = options.chore ? options.slug : "\(options.slug) round \(round)"
         let call = MCPTools.Call(method: "POST", path: "/api/sessions", jsonBody: [
             "name": name, "cwd": worktree, "labels": labelValues,
         ])
@@ -475,7 +513,7 @@ enum RoundCommand {
     }
 }
 
-private extension Result where Failure == RoundCommand.ReasonError {
+extension Result where Failure == RoundCommand.ReasonError {
     /// The value, or the reason thrown as the error `wrap` makes.
     func get(_ wrap: (String) -> Error) throws -> Success {
         switch self {

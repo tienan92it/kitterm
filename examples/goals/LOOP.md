@@ -256,6 +256,7 @@ request the foreman opened before the round, `PR #N`, from the queue line
 - Sessions: <id>, <id>   Archives: <id>
 - Base: <git sha>   Result: <git sha or PR #>
 - Cost: $D · Nk in (C% cached) · Nk out · Hh Mm
+- Foreman: ~$D · Nk in (C% cached) · Nk out
 
 ## Prompt
 <the request sent, verbatim or a path to it>
@@ -295,6 +296,18 @@ one `- Cost:` line per session, in that order, under the record's header.
 The command reads the archive's transcript under `~/.kitterm` with no
 daemon and prints the line above, or `- Cost: none recorded (<reason>)`;
 `--json` prints the bill as `GET /api/archives/<id>/cost` answers it.
+
+`kitterm round close` writes the record from these facts. Its
+`- Foreman:` line, after the `- Cost:` lines, is the estimate of the
+foreman's own turns between `Started` and `Ended`, from the foreman's
+transcript, priced by `ModelPricing`: `- Foreman: ~$D · Nk in (C% cached)
+· Nk out`, or `- Foreman: none recorded (<reason>)`. A model
+`ModelPricing` does not know adds ` · unpriced <model>` to the line:
+its tokens count and its dollars do not. The line does not start
+with `- Cost:`, so neither parser below counts it. Each of the six
+sections holds the marker line `[foreman writes this]`, and `Floor` holds
+two, `before:` and `after:`; the foreman replaces each, and
+`kitterm round close --commit` refuses while one remains.
 
 Two parsers read the record:
 
