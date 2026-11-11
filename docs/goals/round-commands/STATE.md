@@ -2,13 +2,12 @@
 
 - Status: active
 - Round: 1 of 3 in this budget (first budget)
-- Rounds total: 0
-- Last floor: green (2026-11-11, `ci.yml` on `main` at `5108dbc`)
+- Rounds total: 1
+- Last floor: green (2026-11-11, round 1)
 - Updated: 2026-11-11
 
 ## Queue
 
-- `corrections-count-when-real` (1), round 1, PR #216.
 - `round-open` (2).
 - `round-close` (3).
 
@@ -18,13 +17,17 @@ None.
 
 ## Proposals waiting on the human
 
-None.
+- `LOOP.md`, "Parsed shapes": say that the correction is a
+  `## Correction` section whose text does not start with "None". On the
+  human's word, round 3 makes the edit with its own lines; with no
+  word, `one-rule-one-place` makes it. It blocks no round.
 
 ## Done
 
-None.
+- `corrections-count-when-real`, round 1, `e1a1d78`, PR #216. See
+  `rounds/001.md`. 17 "None" corrections no longer count.
 
 ## Next action
 
-Round 1: the crew fixes the correction parser and the stale pointer in
-`KittermMain.swift`.
+Round 2: the crew adds `kitterm round open` (`plan.md`, row 2). It
+starts once the round 1 record is pushed.
