@@ -32,7 +32,7 @@ enum HelpRequest {
         "--port", "--trusted-host", "--tls-cert", "--tls-key", "--tls-port",
         "--session-linger", "--name", "--knowledge", "--dir", "--scope",
         "--days", "--print", "--session", "--since", "--epoch", "--heartbeat", "--timeout",
-        "--task", "--title", "--body", "--round", "--bill-timeout", "--foreman-session",
+        "--task", "--title", "--body", "--round", "--bill-timeout", "--foreman-session", "--decision",
     ]
 
     /// `args` is the full argv with the command name first, if any. `nil`

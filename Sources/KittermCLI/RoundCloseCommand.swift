@@ -31,10 +31,13 @@ import KittermDaemon
 ///    run. The `- Foreman:` line prices the turns of the foreman's own
 ///    transcript between the two (`TranscriptEstimateCache.estimate(
 ///    forTranscriptAt:from:to:)`).
-/// 7. `state`: `RoundRecord.closeState` on `STATE.md`.
-/// 8. `commit`, with `--commit` only: refused while a marker remains in the
-///    record, then one commit of the goal folder and a push, never with
-///    force.
+/// 7. `state`: `RoundRecord.closeState` on `STATE.md`, which files the
+///    queue item by `--decision`; a later run keeps what the first filed.
+/// 8. `checks`, with `--commit` only: refused while a marker remains in the
+///    record, and while `gh pr checks <N>` on the pull request's head is not
+///    green (`--no-checks` skips it, for a repository with no CI).
+/// 9. `commit`, with `--commit` only: one commit of the goal folder and a
+///    push, never with force.
 ///
 /// A chore writes `chores/<ISO date>-<slug>.md` in place of steps 6 and 7.
 /// The command never merges, never marks a pull request ready, and runs
@@ -48,6 +51,11 @@ extension RoundCommand {
         var slug: String
         var chore = false
         var commit = false
+        /// `--no-checks`: `--commit` does not read `gh pr checks`.
+        var noChecks = false
+        /// `--decision`; nil means `done` on the first run and "keep what
+        /// the first run filed" on a later one.
+        var decision: RoundRecord.Decision?
         var round: Int?
         var billTimeout: TimeInterval = 60
         var foremanSession: String?
@@ -68,6 +76,13 @@ extension RoundCommand {
                 switch arg {
                 case "--chore": options.chore = true
                 case "--commit": options.commit = true
+                case "--no-checks": options.noChecks = true
+                case "--decision":
+                    let text = try value(arg)
+                    guard let decision = RoundRecord.Decision(rawValue: text) else {
+                        throw CLIError.usage("--decision takes done, failed or propose, not \(text)\n\(usage)")
+                    }
+                    options.decision = decision
                 case "--knowledge": options.knowledge = try value(arg)
                 case "--round":
                     let text = try value(arg)
@@ -106,6 +121,12 @@ extension RoundCommand {
             guard !(options.chore && options.round != nil) else {
                 throw CLIError.usage("a chore has no round; drop --round\n\(usage)")
             }
+            guard !(options.chore && options.decision != nil) else {
+                throw CLIError.usage("a chore has no STATE.md; drop --decision\n\(usage)")
+            }
+            guard !options.noChecks || options.commit else {
+                throw CLIError.usage("--no-checks needs --commit\n\(usage)")
+            }
             options.root = positional[0]
             options.slug = positional[1]
             return options
@@ -119,11 +140,14 @@ extension RoundCommand {
         var round: Int?
         var sessions: [String]
         var markers: Int
+        /// Where `STATE.md` files the queue item; nil for a chore.
+        var decision: RoundRecord.Decision? = nil
         var commit: String?
 
         var lines: [String] {
             var lines = ["file     \(file)"]
             if let round { lines.append("round    \(round)") }
+            if let decision { lines.append("decision \(decision.rawValue)") }
             lines.append("sessions \(sessions.joined(separator: ", "))")
             lines.append("markers  \(markers)")
             if let commit { lines.append("commit   \(commit)") }
@@ -270,6 +294,7 @@ extension RoundCommand {
 
         // 6 and 7 for a chore: the one file, no record, no STATE.md.
         let file: String
+        var decision: RoundRecord.Decision?
         if options.chore {
             file = folderPath + "/\(RoundRecord.day(now))-\(options.slug).md"
             if FileManager.default.fileExists(atPath: file) {
@@ -326,7 +351,8 @@ extension RoundCommand {
             let updated: String
             do {
                 updated = try RoundRecord.closeState(
-                    state, task: task, round: round, sha: result, pr: pr, day: RoundRecord.day(now)
+                    state, task: task, round: round, sha: result, pr: pr, day: RoundRecord.day(now),
+                    decision: options.decision
                 )
             } catch let error as RoundRecord.StateError {
                 throw fail("state", error.reason)
@@ -335,15 +361,21 @@ extension RoundCommand {
                 try write(updated, to: stateURL.path, step: "state", steps: steps)
                 progress("round close: updated \(stateURL.path)")
             }
+            decision = RoundRecord.filed(updated, task: task, round: round)
         }
 
-        // 8. commit
+        // 8. checks, then 9. commit
         let text = (try? String(contentsOfFile: file, encoding: .utf8)) ?? ""
         let markers = RoundRecord.markerCount(text)
         var commit: String?
         if options.commit {
             guard markers == 0 else {
                 throw fail("commit", "\(file) still holds \(markers) line(s) with \(RoundRecord.marker); replace them first")
+            }
+            if !options.noChecks {
+                let result = runner("gh", ["pr", "checks", String(pr), "--json", "name,bucket"], worktree)
+                if let why = checksRefusal(result, pr: pr) { throw fail("checks", why) }
+                progress("round close: PR #\(pr) is green")
             }
             try tool("commit", "git", ["-C", worktree, "add", "--", folder], in: worktree)
             let staged = runner("git", ["-C", worktree, "diff", "--cached", "--quiet", "--", folder], worktree)
@@ -355,7 +387,34 @@ extension RoundCommand {
             try tool("push", "git", ["-C", worktree, "push", "--quiet", "origin", "refs/heads/\(branch):refs/heads/\(branch)"], in: worktree)
             commit = try tool("push", "git", ["-C", worktree, "rev-parse", "HEAD"], in: worktree)
         }
-        return Closed(file: file, round: round, sessions: sessionRows.map { $0.id }, markers: markers, commit: commit)
+        return Closed(
+            file: file, round: round, sessions: sessionRows.map { $0.id }, markers: markers,
+            decision: decision, commit: commit
+        )
+    }
+
+    /// Why `gh pr checks <pr> --json name,bucket` does not show green, or
+    /// nil when every check is `pass` or `skipping`. `gh` exits 1 on a
+    /// failed check and 8 on a pending one, so the JSON is read whatever
+    /// the exit code; only an answer with no JSON list is a `gh` failure.
+    static func checksRefusal(_ result: PullRequestStatus.RunResult?, pr: Int) -> String? {
+        let fix = "pass --no-checks for a repository with no CI"
+        guard let result else { return "gh did not start (is it on PATH?)" }
+        if result.timedOut { return "gh pr checks \(pr) timed out after \(Int(toolTimeoutSeconds)) s" }
+        let detail = result.error.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let rows = (try? JSONSerialization.jsonObject(with: result.output)) as? [[String: Any]] else {
+            if detail.contains("no checks reported") { return "gh pr checks \(pr) reports no checks; \(fix)" }
+            return "gh pr checks \(pr) exited \(result.status)" + (detail.isEmpty ? "" : ": " + String(detail.prefix(400)))
+        }
+        guard !rows.isEmpty else { return "gh pr checks \(pr) reports no checks; \(fix)" }
+        let notGreen = rows.compactMap { row -> String? in
+            let bucket = row["bucket"] as? String ?? "unknown"
+            guard bucket != "pass", bucket != "skipping" else { return nil }
+            return "\(row["name"] as? String ?? "?") \(bucket)"
+        }
+        guard !notGreen.isEmpty else { return nil }
+        return "PR #\(pr) is not green on its head: \(notGreen.joined(separator: ", ")); "
+            + "wait for green, or \(fix)"
     }
 
     /// The `- Foreman:` line: the turns of the session `id`'s transcript

@@ -126,17 +126,38 @@ enum RoundRecord {
         var reason: String
     }
 
+    /// The foreman's decision on a round (`LOOP.md`, "The round record"),
+    /// and the section of `STATE.md` that files its queue item.
+    enum Decision: String, CaseIterable, Equatable {
+        case done, failed, propose
+
+        /// `done` files the item under `## Done`, `failed` under
+        /// `## Failures`; `propose` leaves it under `## Queue`.
+        var section: String {
+            switch self {
+            case .done: return "Done"
+            case .failed: return "Failures"
+            case .propose: return "Queue"
+            }
+        }
+    }
+
     /// `state` after round `round` closed: `- Round:` counts it,
     /// `- Rounds total:` is at least `round`, `- Updated:` is `day`, and
-    /// the item `task` moves from `## Queue` to `## Done` as
-    /// ``- `<task>`, round R, `<sha>`, PR #N. See `rounds/NNN.md`.``.
+    /// the item `task` is filed by `decision` (nil means `done`): it moves
+    /// from `## Queue` to `## Done` or `## Failures` as
+    /// ``- `<task>`, round R, `<sha>`, PR #N. See `rounds/NNN.md`.``, or
+    /// stays under `## Queue` for `propose`.
     ///
     /// The counter `n` of `- Round: n of m` grows by the rounds that
-    /// `Rounds total` has not counted yet, so a second run, which finds the
-    /// total already at `round`, changes neither. `Last floor` and
-    /// `Status` stay the foreman's. An item already under `## Done` with
-    /// this round is not moved again.
-    static func closeState(_ state: String, task: String, round: Int, sha: String, pr: Int, day: String) throws -> String {
+    /// `Rounds total` has not counted yet. A later run, which finds the
+    /// total already at `round`, changes neither and keeps the item where
+    /// the first run filed it; a `decision` that names another place
+    /// throws, so a flag is never dropped in silence. `Last floor` and
+    /// `Status` stay the foreman's.
+    static func closeState(
+        _ state: String, task: String, round: Int, sha: String, pr: Int, day: String, decision: Decision? = nil
+    ) throws -> String {
         var lines = state.components(separatedBy: "\n")
         let total = bullet(lines, "Rounds total").flatMap { leadingInt($0.value) }
         guard let total else { throw StateError(reason: "STATE.md has no `- Rounds total: <n>` bullet") }
@@ -155,26 +176,60 @@ enum RoundRecord {
         }
         lines[updated.index] = "- Updated: \(day)"
 
-        let doneLine = "- `\(task)`, round \(round), `\(sha)`, PR #\(pr). See `rounds/\(String(format: "%03d", round)).md`."
-        if let done = section(lines, "Done"), lines[done].contains(where: { $0.hasPrefix("- `\(task)`, round \(round),") }) {
+        if missing == 0 {
+            // A later run: the first run already filed the item.
+            guard let filed = filed(lines, task: task, round: round) else {
+                throw StateError(reason: "no `\(task)` item under ## Queue, ## Failures or ## Done of STATE.md")
+            }
+            if let decision, decision != filed {
+                throw StateError(reason: "the first run filed `\(task)` under ## \(filed.section); "
+                    + "pass --decision \(filed.rawValue), or edit STATE.md by hand")
+            }
             return lines.joined(separator: "\n")
         }
+        let decision = decision ?? .done
         guard let queue = section(lines, "Queue"), let item = item(lines, in: queue, task: task) else {
-            throw StateError(reason: "no `\(task)` item under ## Queue or ## Done of STATE.md")
+            if decision != .propose, let target = section(lines, decision.section),
+               lines[target].contains(where: { $0.hasPrefix("- `\(task)`, round \(round),") }) {
+                return lines.joined(separator: "\n")
+            }
+            throw StateError(reason: "no `\(task)` item under ## Queue of STATE.md")
         }
+        if decision == .propose { return lines.joined(separator: "\n") }
+        let filedLine = "- `\(task)`, round \(round), `\(sha)`, PR #\(pr). See `rounds/\(String(format: "%03d", round)).md`."
         let others = queue.filter { !item.contains($0) && !lines[$0].trimmingCharacters(in: .whitespaces).isEmpty }
         // The last item leaves prose that names no task, as the template has.
         lines.replaceSubrange(item, with: others.isEmpty ? ["None."] : [])
-        guard let done = section(lines, "Done") else { throw StateError(reason: "STATE.md has no ## Done section") }
+        guard let target = section(lines, decision.section) else {
+            throw StateError(reason: "STATE.md has no ## \(decision.section) section")
+        }
         // "None." alone is prose that names no task; the first item replaces it.
-        if let none = lines[done].firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == "None." }),
-           !lines[done].contains(where: { $0.hasPrefix("- ") || $0.hasPrefix("* ") }) {
-            lines[none] = doneLine
+        if let none = lines[target].firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == "None." }),
+           !lines[target].contains(where: { $0.hasPrefix("- ") || $0.hasPrefix("* ") }) {
+            lines[none] = filedLine
         } else {
-            let last = lines[done].lastIndex { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? done.lowerBound
-            lines.insert(doneLine, at: last + 1)
+            let last = lines[target].lastIndex { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? target.lowerBound
+            lines.insert(filedLine, at: last + 1)
         }
         return lines.joined(separator: "\n")
+    }
+
+    /// Where a run that counted round `round` filed `task`: `## Done` or
+    /// `## Failures` when a line there names the item with this round,
+    /// else `## Queue` (`propose`) when the item is there; nil otherwise.
+    static func filed(_ state: String, task: String, round: Int) -> Decision? {
+        filed(state.components(separatedBy: "\n"), task: task, round: round)
+    }
+
+    private static func filed(_ lines: [String], task: String, round: Int) -> Decision? {
+        for decision in [Decision.done, .failed] {
+            if let range = section(lines, decision.section),
+               lines[range].contains(where: { $0.hasPrefix("- `\(task)`, round \(round),") }) {
+                return decision
+            }
+        }
+        if let queue = section(lines, "Queue"), item(lines, in: queue, task: task) != nil { return .propose }
+        return nil
     }
 
     /// The first `- <key>:` bullet before the first `## ` heading.
