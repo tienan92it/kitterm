@@ -468,6 +468,14 @@ decision moves to `docs/adr/`.
 
 ## Foreman
 
+- Claude Code 2.1.322 can write its `cost-state` line before the last
+  `assistant` line of the session. `TranscriptBill` then reads the bill
+  as stale and answers `noCostStateLine`, and no later bill comes once
+  the archive ends the pane. In `round-commands` round 2 the bill
+  ($3.54, `totalDuration` 957 s) sat one line above the crew's final
+  text, written 10 s after the request before it. A retry does not
+  help; read the `cost-state` line of the transcript by hand (2026-11-11,
+  `round-commands/rounds/002.md`).
 - `git merge-tree` proves two branches merge as text, not that the
   result builds. When one PR adds a check, the other PR's new code has
   never met it: PR #168 added `--build-tests` to Linux CI, PR #169
