@@ -8,7 +8,7 @@
 
 ## Queue
 
-- `deny-rules-and-stalls` (2).
+- `deny-rules-and-stalls` (2), round 2, PR #217.
 - `review-plan-overlap` (3).
 
 ## Failures
