@@ -55,9 +55,12 @@ enum ForemanSkills {
           agent (`LOOP.md`, "Roles"). Tell the human and link the pane.
         - Keep no state of your own. Rebuild your view from each project's
           `docs/goals/` and from the daemon on every scan.
-        - Post every digest with `post_note`, then print it in your pane. The event
+        - Post every digest with `post_note` in one call, then print it in your
+          pane. The event
           feed and the archive keep the note; the pane's raw output is not
           searchable.
+        - Verify before done: read the command output, the screen, the floor
+          result and the diff before you mark a round done.
         - Every message the foreman types into a crew pane starts with `FOREMAN:`
           and carries one instruction. The crew treats `FOREMAN:` text as the
           foreman's word.
@@ -153,7 +156,7 @@ enum ForemanSkills {
            every scope", stop and tell the human; do not act.
         4. Read the predecessor's note and the last message of its transcript, for
            what the human told it. Adopt its open pull requests and its live crews
-           by their labels, so you continue its work instead of starting over.
+           by their labels.
         5. Archive the predecessor's pane only when the human says so, and only
            when it sits inside your scope.
         6. Call `TaskList`, then rebuild your task list from the goals not done,
@@ -175,7 +178,8 @@ enum ForemanSkills {
         - `edited`: open a draft pull request on the project's base branch that
           brings the new template sections of `LOOP.md` into the project's own
           `LOOP.md`, keeping the project's own lines. The human's merge is the
-          Propose-tier approval (`LOOP.md`, "Authority").
+          Propose-tier approval (`LOOP.md`, "Authority"); you do not edit the
+          file yourself.
 
         ## Scan
 
@@ -193,8 +197,7 @@ enum ForemanSkills {
            `<root>/<knowledge>/<slug>/STATE.md`. Take `Status`, `Round: <n> of <m>`,
            `Updated`, the "Next action" section, and the proposals that wait on the
            human. A project with no goal folder: report "no goal" once, then skip it
-           on every later scan. `kitterm goal list <root>` prints the same folders
-           with their status.
+           on every later scan.
         4. Call `list_sessions`. A session belongs to a goal when its labels carry
            `goal:<slug>` and `round:<n>`. Never match a session to a goal by its id.
            The round's own session is the one with `crew:<slug>`; a `crew:helper`
@@ -226,8 +229,7 @@ enum ForemanSkills {
 
         1. **Read.** Read `docs/goals/<slug>/goal.md`, `docs/goals/<slug>/plan.md`,
            `docs/goals/<slug>/STATE.md`, the project's `docs/goals/facts.md`, and
-           the decision records `STATE.md` cites. Take the head of the queue. Stop
-           when the budget is spent.
+           the decision records `STATE.md` cites. Take the head of the queue.
 
         2. **Open the round, then verify the world.** Run one command in your
            shell:
@@ -268,8 +270,10 @@ enum ForemanSkills {
            send_input session=<id> text="claude --model <id>"
            ```
 
-           Run "Read before you type"; a fresh `claude` may sit at the
-           folder-trust dialog.
+           Run "Read before you type". A fresh `claude` may sit at the
+           folder-trust dialog, which opens with the mark on `No, exit`, so the
+           key is `down`; an empty prompt can show a dim placeholder such as
+           `Try "…"`.
 
         3. **Send one request.** Type the round prompt in one `send_input`. The
            prompt names the goal's files by their folder path; it does not restate
@@ -300,7 +304,7 @@ enum ForemanSkills {
            - when a decision needs a human, post a `BLOCKER` note and stop
              ("Crew notes").
 
-           Send the whole prompt in one call, whatever its size; the daemon paces it.
+           Send the whole prompt in one call, whatever its size.
            Then run step 5 of "Read before you type" and confirm the prompt sits
            above the box. From here on "Monitor" applies.
 
@@ -321,10 +325,9 @@ enum ForemanSkills {
            Collect the visible proof the crew posted: a screenshot path, a test
            name, a URL.
 
-           Wait on `gh pr checks <N>` for the crew's head sha; do not rerun the
-           checks yourself. Write the round record and `STATE.md` while that check
-           runs (steps 7 and 8), and push them once it is green. A red check is
-           the round's gap, like a red floor was before.
+           Read `gh pr checks <N>` on the crew's head sha first; do not rerun the
+           checks yourself. Green: go on. Red: the check is the round's gap; send
+           the correction (step 6) and do not close the round.
 
         5. **Classify the largest gap.** One class per round: `world` (the
            environment, the daemon build, the toolchain), `domain` (the product's
@@ -340,8 +343,8 @@ enum ForemanSkills {
            diff holds the check: the item is done; go to step 7. Otherwise record
            the gap, run "Read before you type", send one correction with
            `send_input`, starting it with `FOREMAN:`, and count it inside this
-           round. Go back to step 4. A second failure ends the round as failed.
-           `kitterm round close` archives the round's sessions, so run it only
+           round. Go back to step 4. A second failure ends the round as failed; go
+           to step 7. `kitterm round close` archives the round's sessions, so run it only
            once the round needs no more correction: the bill exists only once
            `claude` exits, and archiving is what ends it.
 
@@ -371,11 +374,12 @@ enum ForemanSkills {
            only after `gh pr checks <N>` is green on the crew's head sha (step 4):
            read the check's result first, and do not chain the two in one
            command. The command refuses while a marker line remains, commits the
-           goal folder, and pushes. Mark the round's task `completed` once the
-           record and `STATE.md` are pushed ("Task list"). When the goal is done,
-           run `gh pr ready <N>`; the human merges. Create the goal's
-           `Merge PR #N` task and leave it `in_progress` until the human merges.
-           Then report the digest under "Reports".
+           goal folder with the message `<slug>: round <n> record`, and pushes.
+           It moves the item to `## Done` on every run, so a `failed` or
+           `propose` round skips `--commit`: move the line by hand to
+           `## Failures` (failed) or back to `## Queue` (propose), commit the goal
+           folder with that message, and push. When the goal is done, run
+           `gh pr ready <N>`; the human merges. Then report the digest under "Reports".
 
         ### The model
 
@@ -396,7 +400,7 @@ enum ForemanSkills {
 
         ## Monitor
 
-        Delegate, report, yield. Once you send the round prompt and confirm it
+        Once you send the round prompt and confirm it
         landed ("Send one request"), do not hold an event wait inside this turn:
         start `kitterm foreman watch` in the background and end your turn.
 
@@ -436,11 +440,9 @@ enum ForemanSkills {
           - `agent.status` with `completed`: run step 4 of "One round" for that
             goal.
           - `session.exited` with a non-zero code, or `session.removed`: the crew
-            is gone. Report it. A second non-zero exit in the same goal is a stop
-            rule.
+            is gone. Report it; a second non-zero exit is a stop rule.
         - `{type:"heartbeat", next, epoch}` — no watched session matched inside the
-          window. Run "Scan" and check "Stall" (below); there is no event to
-          report.
+          window. Run "Scan" and check "Stall" (below).
         - `{type:"epoch-change", epoch, next}` — the feed's cursor was pruned or the
           epoch no longer matches. Treat it exactly as "A result whose epoch
           changed" below.
@@ -478,8 +480,7 @@ enum ForemanSkills {
         `docs/foreman.md`, "When the daemon restarts". Respawn each open round's crew once with the
         same five labels plus `resumed-from:<the id the pane held before>`, run
         the floor, start `claude`, and send the round prompt again with the
-        instruction to continue from the branch's last commit. The branch and
-        the pull request are still there; the respawn keeps `pr:<N>`. When the
+        instruction to continue from the branch's last commit. When the
         respawn does not restore the round, record a killed attempt (`LOOP.md`,
         "Budget") and stop that goal.
 
@@ -534,7 +535,8 @@ enum ForemanSkills {
         ```
 
         Every project gets a block, with one `<project> — <goal title>` block per
-        goal folder, a waiting, stopped, or done goal included. Send a push
+        goal folder, a waiting, stopped, or done goal included. Do not narrate
+        events; report the ones that need the human. Send a push
         notification for an "at once" item when the human is away from the terminal.
 
         ### Report latency
@@ -546,7 +548,7 @@ enum ForemanSkills {
 
         ### Proactive, not on request
 
-        The human does not ask for a catch-up. Bring the result:
+        Bring the result:
 
         - **A round closes**: the digest in the pane, and one push notification
           under 200 characters that names the outcome and the link: `round 12
@@ -587,7 +589,7 @@ enum ForemanSkills {
            each with the same first-line shape.
 
         Relay the first line of every note to the human word for word, as it
-        arrives. The prompt asks for all four by name. A crew that posts only
+        arrives. A crew that posts only
         `DONE` has still done the round; note the missing `PLAN` in the record's
         reflection, because the plan is what catches a wrong charter early.
 

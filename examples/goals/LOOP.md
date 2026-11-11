@@ -149,11 +149,11 @@ its CI run is part of the floor: a green run already proves the base sha.
   the round touches the surface it measures, as `plan.md`'s floor says.
 - After the crew, the foreman does not rerun a check the crew already ran
   or a check the pull request's CI already proves. It reads the diff and
-  sorts the paths into the Authority table below, then waits on
-  `gh pr checks <N>` for the crew's head sha; it writes the round record
-  and `STATE.md` while that check runs, and pushes them once the check is
-  green. A red check is the round's gap, and the one correction goes to
-  the crew, like any other gap.
+  sorts the paths into the Authority table below, then reads
+  `gh pr checks <N>` on the crew's head sha. Green: it runs
+  `kitterm round close`, replaces the record's markers, then runs
+  `kitterm round close --commit`. Red: the check is the round's gap, the
+  one correction goes to the crew, and the round is not closed.
 
 ## Authority
 

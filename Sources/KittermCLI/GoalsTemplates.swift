@@ -38,9 +38,10 @@ enum GoalsTemplates {
     /// When `loop` changes, append the hash it had before the change;
     /// `GoalsTemplatesTests` pins that the current one is listed. Seeded
     /// from `git log -- examples/goals/LOOP.md`: `one-rule-one-place`
-    /// round 1 (current, each rule has one home: the foreman's steps move to
-    /// the skill, and `kitterm round open` and `round close` do the round's
-    /// bookkeeping), `round-commands` round 3 (883a88d, "The round record"
+    /// round 1 (current, the correction: "The floor" reads `gh pr checks`
+    /// before `kitterm round close`; 83ea45c, each rule has one home: the
+    /// foreman's steps move to the skill, and `kitterm round open` and
+    /// `round close` do the round's bookkeeping), `round-commands` round 3 (883a88d, "The round record"
     /// names the `- Foreman:` line and the marker `kitterm round close`
     /// writes), round 2 (5a0fa75, "Parsed
     /// shapes" names what `kitterm round open` writes),
@@ -52,6 +53,7 @@ enum GoalsTemplates {
     /// `human-file-edits` (#166), `loop-and-skill` round 2 (092652221ab1),
     /// round 1 (a5592bd), 7f30556 (#139), 41b6a76 (#113) and ac20d04 (#111).
     static let loopHistory: [String] = [
+        "a63788e8fa76c0f120026f71ffa0cba817c0d92ac67f73e42d1e656c71ded55f",
         "83ea45c4d9740d76a7d11e5dc91f429529cb3b1102f1f6061b7226e974283d36",
         "883a88dd7d2cf04b8eee49f6ac58d99424243ecad22abc842345d7f0950e1c08",
         "5a0fa7547956395ad4220fe012a645beb969332605ff710deeafbdf953dd23c6",
@@ -240,11 +242,11 @@ enum GoalsTemplates {
           the round touches the surface it measures, as `plan.md`'s floor says.
         - After the crew, the foreman does not rerun a check the crew already ran
           or a check the pull request's CI already proves. It reads the diff and
-          sorts the paths into the Authority table below, then waits on
-          `gh pr checks <N>` for the crew's head sha; it writes the round record
-          and `STATE.md` while that check runs, and pushes them once the check is
-          green. A red check is the round's gap, and the one correction goes to
-          the crew, like any other gap.
+          sorts the paths into the Authority table below, then reads
+          `gh pr checks <N>` on the crew's head sha. Green: it runs
+          `kitterm round close`, replaces the record's markers, then runs
+          `kitterm round close --commit`. Red: the check is the round's gap, the
+          one correction goes to the crew, and the round is not closed.
 
         ## Authority
 

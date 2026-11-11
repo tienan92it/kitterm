@@ -26,11 +26,13 @@ This file holds the section `AGENTS.md` carried until 2026-11-10 (goal `lean-con
   in `LOOP.md`: `goal.md`, `corpus/`, and an existing check are frozen inside a round;
   `plan.md`, `LOOP.md`, and `docs/adr/` take a proposal in the round record, not an edit
 - The daemon reads this package for the fleet view and never writes it. The foreman
-  (`docs/foreman.md`) opens each goal's draft pull request on `goal/<slug>`
-  (a chore's on `chore/<slug>`) before its crew starts, writes each goal's
-  `STATE.md` and `rounds/NNN.md`, appends to `facts.md`, and commits and pushes
+  (`docs/foreman.md`) runs `kitterm round open`, which opens each goal's draft pull
+  request on `goal/<slug>` (a chore's on `chore/<slug>`) before its crew starts, and
+  `kitterm round close`, which writes `rounds/NNN.md` and the round's `STATE.md`
+  lines; the foreman fills the record, appends to `facts.md`, and commits and pushes
   the package on the goal's branch after every round; the crew pushes to that
-  branch and never to `main`, and the human merges once per goal
+  branch and never to `main`, and the human merges each pull request
+  (`LOOP.md`, "The pull request")
 - `examples/goals/` holds the generic templates: `LOOP.md` and `facts.md` for the
   project, and `examples/goals/goal/` for one goal folder. `kitterm project init <path>`
   writes the two project files into a project's knowledge directory and registers the
@@ -84,9 +86,9 @@ This file holds the section `AGENTS.md` carried until 2026-11-10 (goal `lean-con
   still prints on stdout either way; the exit code is 0 for a bill or a transcript
   with no bill, and 1, with the id and the path on stderr, for an id that is not a
   UUID, a missing archive, a missing transcript join, or a transcript that does not
-  open. The foreman archives the session, then runs this command for every session
-  the round record's `Sessions:` line names and pastes one `- Cost:` line per
-  session, in that order, under the record's header
+  open. `kitterm round close` archives the round's sessions and writes, with this
+  reader, one `- Cost:` line per session the round record's `Sessions:` line names,
+  in that order, under the record's header
 - `kitterm foreman catch-up [--scope <path>] [--json]` (`ForemanCommand.swift`)
   prints what a new foreman reads first, for the scope directory (`--scope`,
   else the cwd, as a real path) and nothing outside it: the predecessor (the

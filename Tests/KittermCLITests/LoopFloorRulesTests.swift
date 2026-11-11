@@ -38,15 +38,23 @@ final class LoopFloorRulesTests: XCTestCase {
             """
         ),
         (
+            // Chartered by `one-rule-one-place` round 1: the sentence ended
+            // `then waits on `gh pr checks <N>` for the crew's head sha; it
+            // writes the round record and `STATE.md` while that check runs, and
+            // pushes them once the check is green. A red check is the round's
+            // gap, and the one correction goes to the crew, like any other gap.`;
+            // `kitterm round close` archives the crew, so it runs after a green
+            // check. The intent (no rerun, the record waits for green, red is a
+            // correction) is kept.
             "the foreman does not rerun what the crew or the pull request's CI already proved",
             """
             After the crew, the foreman does not rerun a check the crew already ran
             or a check the pull request's CI already proves. It reads the diff and
-            sorts the paths into the Authority table below, then waits on
-            `gh pr checks <N>` for the crew's head sha; it writes the round record
-            and `STATE.md` while that check runs, and pushes them once the check is
-            green. A red check is the round's gap, and the one correction goes to
-            the crew, like any other gap.
+            sorts the paths into the Authority table below, then reads
+            `gh pr checks <N>` on the crew's head sha. Green: it runs
+            `kitterm round close`, replaces the record's markers, then runs
+            `kitterm round close --commit`. Red: the check is the round's gap, the
+            one correction goes to the crew, and the round is not closed.
             """
         ),
     ]
@@ -70,12 +78,17 @@ final class LoopFloorRulesTests: XCTestCase {
             """
         ),
         (
-            "the foreman waits on the pull request's checks and writes while they run",
+            // Chartered by `one-rule-one-place` round 1: the sentence read
+            // `Wait on `gh pr checks <N>` for the crew's head sha; do not rerun
+            // the checks yourself. Write the round record and `STATE.md` while
+            // that check runs (steps 7 and 8), and push them once it is green.
+            // A red check is the round's gap, like a red floor was before.`;
+            // the record now waits for the green check.
+            "the foreman reads the pull request's checks before it closes the round",
             """
-            Wait on `gh pr checks <N>` for the crew's head sha; do not rerun the
-            checks yourself. Write the round record and `STATE.md` while that check
-            runs (steps 7 and 8), and push them once it is green. A red check is
-            the round's gap, like a red floor was before.
+            Read `gh pr checks <N>` on the crew's head sha first; do not rerun the
+            checks yourself. Green: go on. Red: the check is the round's gap; send
+            the correction (step 6) and do not close the round.
             """
         ),
         (

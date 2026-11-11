@@ -35,9 +35,12 @@ final class StaleLoopPhrasesTests: XCTestCase {
         ("Archive the session, then run `kitterm archive cost", "`kitterm round close` archives and writes the `- Cost:` lines"),
         ("the next action, the round counter, and `Updated`", "`kitterm round close` raises `- Round:` and `- Updated:`"),
         ("Commit the record, the state, and the fact together", "`kitterm round close --commit` after a green `gh pr checks`"),
+        ("pastes one `- Cost:` line", "`kitterm round close` writes the `- Cost:` lines"),
+        ("`STATE.md` while that check runs", "read `gh pr checks` first; on green, `kitterm round close`"),
         // One pull request per goal, which the records contradict.
         ("its one pull request for all its rounds", "an open pull request for as many rounds as the human leaves it open"),
         ("The human merges, once per goal", "the human merges each pull request"),
+        ("merges once per goal", "the human merges each pull request"),
         // The correction rule before `round-commands` round 1.
         ("the correction is a `## Correction` heading", "a `## Correction` section whose text does not start with \"None\""),
         // Lines written before a tool shipped, and the old split of the documents.
@@ -55,7 +58,8 @@ final class StaleLoopPhrasesTests: XCTestCase {
         try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
     }
 
-    /// The three documents, the generic template, and the two embedded copies.
+    /// The three documents, the generic template, the two embedded copies,
+    /// and `docs/control-plane.md`, which names the round commands.
     private static func documents() throws -> [(name: String, text: String)] {
         [
             ("docs/goals/LOOP.md", try read("docs/goals/LOOP.md")),
@@ -64,6 +68,7 @@ final class StaleLoopPhrasesTests: XCTestCase {
             ("examples/foreman/foreman-loop.md", try read("examples/foreman/foreman-loop.md")),
             ("ForemanSkills.foremanLoop", ForemanSkills.foremanLoop),
             ("docs/foreman.md", try read("docs/foreman.md")),
+            ("docs/control-plane.md", try read("docs/control-plane.md")),
         ]
     }
 
