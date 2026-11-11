@@ -86,6 +86,8 @@ enum KittermMain {
                 try ScreenStateCommand.run(args.dropFirst())
             case "foreman":
                 try ForemanCommand.run(args.dropFirst())
+            case "round":
+                try RoundCommand.run(args.dropFirst())
             case "skills":
                 try SkillsCommand.run(args.dropFirst())
             case "statusline":
@@ -248,6 +250,11 @@ enum KittermMain {
                                       # first matching event, a heartbeat, or
                                       # an epoch change; run it in the
                                       # background, it does not daemonize
+              kitterm round open ROOT SLUG --task ITEM [--chore] [--title T]
+                                      [--body B] [--knowledge DIR] [--port N] [--json]
+                                      # the branch, the worktree, the draft PR,
+                                      # the queue line and the crew session of
+                                      # one round; no claude, no prompt
               kitterm skills install [--dir DIR] | list
                                       # write the foreman skills into ~/.claude/skills
               kitterm statusline install [--dir DIR] | print
@@ -352,6 +359,24 @@ enum KittermMain {
             command in this list meant to run in the background
             (run_in_background) rather than to finish and return; it never
             daemonizes itself.
+
+            round open does every step of a round before the crew's prompt.
+            It refuses while a session that has not exited carries
+            crew:SLUG. It then takes the base branch (origin/HEAD, else main,
+            else master), the branch goal/SLUG (chore/SLUG with --chore) from
+            origin/BASE, and the worktree ROOT/.claude/worktrees/SLUG. The
+            round is the highest rounds/NNN.md of the goal folder plus one,
+            and the item must be under ## Queue of its STATE.md. With no open
+            pull request for the branch, it commits the queue line, pushes,
+            and runs gh pr create --draft. It writes ", round R, PR #N." on
+            the queue line, commits and pushes, and spawns one shell session
+            in the worktree with the labels crew, goal, round, task and pr.
+            It prints the session id, the worktree, the branch, the pull
+            request number, the round and the base sha (the worktree's HEAD);
+            --json prints one object. Each step reuses what exists, so a
+            second run after a failure continues. A failure names its step
+            and what already exists, and exits 1. It never merges,
+            force-pushes or marks a pull request ready.
 
             skills install writes the reference foreman skills under
             examples/foreman/ (foreman-loop, review-crew, triage) to

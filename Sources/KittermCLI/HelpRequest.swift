@@ -24,7 +24,7 @@ enum HelpRequest {
 
     /// Flags that take a separate following token as their value, across
     /// every subcommand that has one (`DaemonFlags`, `project`, `goal`,
-    /// `skills`, `statusline`, `foreman`, `screen-state`). The token right
+    /// `skills`, `statusline`, `foreman`, `screen-state`, `round`). The token right
     /// after one of these is that flag's value, whatever it looks like —
     /// `kitterm project add x --name -h` names the project `-h`, it does not
     /// ask for help.
@@ -32,6 +32,7 @@ enum HelpRequest {
         "--port", "--trusted-host", "--tls-cert", "--tls-key", "--tls-port",
         "--session-linger", "--name", "--knowledge", "--dir", "--scope",
         "--days", "--print", "--session", "--since", "--epoch", "--heartbeat", "--timeout",
+        "--task", "--title", "--body",
     ]
 
     /// `args` is the full argv with the command name first, if any. `nil`

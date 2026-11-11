@@ -120,6 +120,40 @@ This file holds the section `AGENTS.md` carried until 2026-11-10 (goal `lean-con
   It blocks for the run and never daemonizes — it is the command a foreman
   runs in the background (`run_in_background`) and re-invokes itself on, not
   one that returns and keeps going
+- `kitterm round open <root> <slug> --task <item> [--chore] [--title <text>]
+  [--body <text>] [--knowledge <dir>] [--port <n>] [--json]`
+  (`RoundCommand.swift`) does every step of a round before the crew's prompt,
+  in this order:
+  1. `daemon`: `GET /api/sessions`. A session that has not exited and
+     carries `crew:<slug>` refuses the round, and nothing changes.
+  2. `base`: the base branch by `KnowledgeBase.baseBranch` (`origin/HEAD`,
+     else `main`, else `master`), then a fetch of it.
+  3. `branch`: `goal/<slug>` (`chore/<slug>` with `--chore`), from the local
+     branch, else `origin/<branch>`, else `origin/<base>`.
+  4. `worktree`: `<root>/.claude/worktrees/<slug>` on that branch.
+  5. `goal`: the goal folder in the worktree holds `STATE.md` with the item
+     under `## Queue`. The round is the highest `rounds/NNN.md` plus one. A
+     chore has no folder and gets one empty opening commit.
+  6. `pull request`: the open pull request of the branch (`gh pr list
+     --head`). With none, the command writes `, round R.` on the queue line,
+     commits the goal folder, pushes, and runs `gh pr create --draft`.
+     `--title` defaults to `<slug>: <goal.md title>`, `--body` to a pointer
+     at `goal.md`.
+  7. `queue line`: the item's first line becomes `<head>, round R, PR #N.`;
+     the command commits the goal folder and pushes, never with force.
+  8. `spawn`: `POST /api/sessions` with the worktree as cwd and the labels
+     `crew`, `goal`, `round`, `task` and `pr` (`crew`, `task` and `pr` for a
+     chore). It types no input and starts no `claude`.
+
+  It prints `session`, `worktree`, `branch`, `pr`, `round` and `base` (the
+  worktree's `HEAD` after the last push), one per line; `--json` prints one
+  object with the same keys plus `task`, `slug` and `chore`. Each step reuses
+  what exists, so a second run after a failure continues: it does not create
+  a branch, a worktree or a pull request twice. A failure prints
+  `round open: <step> failed: <reason>` and what already exists, and exits 1.
+  It never merges, force-pushes or marks a pull request ready. Every `git`
+  and `gh` runs through one `Runner`, so `RoundOpenTests` uses a fake `gh`, a
+  scratch repository with a bare remote, and a scratch daemon in process
 - `design/` at the root holds every approved design: `foundation.md` (the
   tokens, marks, fonts and rules every page follows), `palette.md`,
   one `.pen` file per surface (`dashboard.pen`, `sessions.pen`) and

@@ -37,15 +37,17 @@ enum GoalsTemplates {
     /// `LOOP.md` that is still a template and refuses one a human edited.
     /// When `loop` changes, append the hash it had before the change;
     /// `GoalsTemplatesTests` pins that the current one is listed. Seeded
-    /// from `git log -- examples/goals/LOOP.md`: `foreman-scope` round 3
-    /// (current, "One foreman for every scope", the `scope` label, the
-    /// Start and Upkeep steps), chore `base-branch`
+    /// from `git log -- examples/goals/LOOP.md`: `round-commands` round 2
+    /// (current, "Parsed shapes" names what `kitterm round open` writes),
+    /// `foreman-scope` round 3 (d9f708a, "One foreman for every scope", the
+    /// `scope` label, the Start and Upkeep steps), chore `base-branch`
     /// (a7aae80, "The pull request" and "The floor" name the base branch,
     /// not `main`), `foreman-flow` round 3 (8df2ab6, "The floor"),
     /// round 1 (e78e93d, "The pull request"),
     /// `human-file-edits` (#166), `loop-and-skill` round 2 (092652221ab1),
     /// round 1 (a5592bd), 7f30556 (#139), 41b6a76 (#113) and ac20d04 (#111).
     static let loopHistory: [String] = [
+        "5a0fa7547956395ad4220fe012a645beb969332605ff710deeafbdf953dd23c6",
         "d9f708a5b8b7e3548fc2f694a6009e4da0ac786af1dcd9be5d63d8f57fc909a7",
         "2caccfb9969d69be4447ee18488230bdfba02cee2c82da4d4278d614a7ce2b82",
         "a7aae8079cf2840429ff900add915e7cdd90ce10aef3e649886a0c195ef76127",
@@ -315,7 +317,9 @@ enum GoalsTemplates {
           yields `a` and `b` and not the sha; `round N` and `PR #N` come from the
           whole first line. The foreman writes `, PR #N.` at the end of the
           item's first line when the pull request opens ("The pull request"), so
-          a running item already names it. Prose under a heading (`None.`) names
+          a running item already names it. `kitterm round open` writes the line:
+          the text before its first comma, less a final `.`, then `, round R.`
+          before the pull request opens and `, round R, PR #N.` after. Prose under a heading (`None.`) names
           no task. A slug in two sections keeps the state a reader needs most,
           `failed` over `pending` over `done`, at its first position. The fleet
           view lists every task that is not done and the first two done ones
@@ -418,6 +422,10 @@ enum GoalsTemplates {
         `task:<slug>` under it. A session the crew spawns inside the round
         carries `crew:helper` with the round's `goal:` and `round:` labels, and
         the crew ends it.
+
+        `kitterm round open` spawns the crew session with five labels:
+        `crew:<slug>`, `goal:<slug>`, `round:<R>`, `task:<item>` and `pr:<N>`. A
+        chore's session carries `crew:<slug>`, `task:<slug>` and `pr:<N>`.
 
         ## Budget
 

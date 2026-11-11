@@ -233,7 +233,9 @@ and the five sections in this order. What each parser takes:
   yields `a` and `b` and not the sha; `round N` and `PR #N` come from the
   whole first line. The foreman writes `, PR #N.` at the end of the
   item's first line when the pull request opens ("The pull request"), so
-  a running item already names it. Prose under a heading (`None.`) names
+  a running item already names it. `kitterm round open` writes the line:
+  the text before its first comma, less a final `.`, then `, round R.`
+  before the pull request opens and `, round R, PR #N.` after. Prose under a heading (`None.`) names
   no task. A slug in two sections keeps the state a reader needs most,
   `failed` over `pending` over `done`, at its first position. The fleet
   view lists every task that is not done and the first two done ones
@@ -336,6 +338,10 @@ folder by `goal:<slug>` and marks the queue item `[working]` by
 `task:<slug>` under it. A session the crew spawns inside the round
 carries `crew:helper` with the round's `goal:` and `round:` labels, and
 the crew ends it.
+
+`kitterm round open` spawns the crew session with five labels:
+`crew:<slug>`, `goal:<slug>`, `round:<R>`, `task:<item>` and `pr:<N>`. A
+chore's session carries `crew:<slug>`, `task:<slug>` and `pr:<N>`.
 
 ## Budget
 
