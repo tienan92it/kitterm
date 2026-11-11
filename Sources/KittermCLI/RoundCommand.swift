@@ -41,6 +41,7 @@ enum RoundCommand {
     [--knowledge <dir>] [--port <n>] [--json]
            kitterm round close <root> <slug> [--chore] [--commit] [--round <n>] [--bill-timeout <s>] \
     [--foreman-session <id>] [--knowledge <dir>] [--port <n>]
+           kitterm round guard [--check]
     """
 
     /// Runs `tool` (`git` or `gh`) with `args` in `directory`; nil when it

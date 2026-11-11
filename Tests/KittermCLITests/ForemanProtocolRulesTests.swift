@@ -38,11 +38,16 @@ final class ForemanProtocolRulesTests: XCTestCase {
             text as the foreman's word.
             """
         ),
+        // Chartered (one-rule-one-place r2, completion condition 6: the
+        // stall rule is rewritten, and the foreman asked for "tell the human
+        // and link the pane"). Old: "One automatic continue per round. A
+        // second stall in the round: report it to the human at once and wait
+        // for the human's word."
         (
             "one automatic continue per round, then the human's word",
             """
-            One automatic continue per round. A second stall in the round: report
-            it to the human at once and wait for the human's word.
+            One automatic continue per round. A second stall in
+            the round: tell the human, link the pane, and wait for the human's word.
             """
         ),
     ]

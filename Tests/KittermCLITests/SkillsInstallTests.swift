@@ -49,15 +49,19 @@ final class SkillsInstallTests: XCTestCase {
         return dates
     }
 
-    /// The first run creates the directory and writes three files, each
-    /// equal to its embedded skill.
+    /// The first run creates the directory and writes every skill and the
+    /// crew settings file, each equal to its embedded copy.
+    // Chartered (one-rule-one-place r2, plan.md row 2: "`kitterm skills
+    // install` writes it"). Old: the lines and the keys were
+    // `ForemanSkills.files` alone, three `SKILL.md` files.
     func testInstallWritesEverySkill() throws {
         let lines = try run(["install", "--dir", dir.path])
-        XCTAssertEqual(lines, ForemanSkills.files.map { "wrote \(path($0.name))" })
+        XCTAssertEqual(lines, ForemanSkills.installed.map { "wrote \(dir.appendingPathComponent($0.path).path)" })
         let written = try files()
-        XCTAssertEqual(Set(written.keys), Set(ForemanSkills.files.map { "\($0.name)/SKILL.md" }))
-        for (name, contents) in ForemanSkills.files {
-            XCTAssertEqual(written["\(name)/SKILL.md"], Data(contents.utf8), name)
+        XCTAssertEqual(Set(written.keys), Set(ForemanSkills.installed.map(\.path)))
+        XCTAssertTrue(written.keys.contains("foreman-loop/crew-settings.json"))
+        for (path, contents) in ForemanSkills.installed {
+            XCTAssertEqual(written[path], Data(contents.utf8), path)
         }
     }
 
@@ -68,7 +72,8 @@ final class SkillsInstallTests: XCTestCase {
         let dates = try modificationDates()
 
         let lines = try run(["install", "--dir", dir.path])
-        XCTAssertEqual(lines, ForemanSkills.files.map { "unchanged \(path($0.name))" })
+        // Chartered (r2, plan.md row 2). Old: `ForemanSkills.files` alone.
+        XCTAssertEqual(lines, ForemanSkills.installed.map { "unchanged \(dir.appendingPathComponent($0.path).path)" })
         XCTAssertEqual(try files(), before)
         XCTAssertEqual(try modificationDates(), dates, "an unchanged file keeps its mtime")
     }
@@ -87,6 +92,8 @@ final class SkillsInstallTests: XCTestCase {
                 "unchanged \(path("foreman-loop"))",
                 "updated \(path("review-crew"))",
                 "unchanged \(path("triage"))",
+                // Chartered (r2, plan.md row 2): the crew settings file is new.
+                "unchanged \(dir.appendingPathComponent("foreman-loop/crew-settings.json").path)",
             ]
         )
         XCTAssertEqual(try Data(contentsOf: edited), Data(ForemanSkills.reviewCrew.utf8))
@@ -104,7 +111,8 @@ final class SkillsInstallTests: XCTestCase {
         defer { FileManager.default.changeCurrentDirectoryPath(cwd) }
         XCTAssertTrue(FileManager.default.changeCurrentDirectoryPath(dir.path))
         let lines = try run(["install", "--dir", "relative"])
-        XCTAssertEqual(lines.count, 3)
+        // Chartered (r2, plan.md row 2). Old: `XCTAssertEqual(lines.count, 3)`.
+        XCTAssertEqual(lines.count, ForemanSkills.installed.count)
         XCTAssertTrue(lines.allSatisfy { $0.hasPrefix("wrote ") }, "\(lines)")
         XCTAssertTrue(
             FileManager.default.fileExists(

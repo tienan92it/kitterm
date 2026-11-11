@@ -165,9 +165,7 @@ the skill's. This section says how the tools behave in any loop.
      Send a whole prompt in one call, whatever its size. The daemon types a
      body into `claude` in pieces of 512 bytes, 50ms apart, then presses
      Enter, because Claude Code keeps only the last read of a paste that
-     arrives faster than it reads (measured on 2026-09-07: one write of
-     2104 bytes reached 2.1.260 as its last 59, and 8193 bytes reached
-     2.1.263 as its last 16; the same bodies in paced pieces arrived whole).
+     arrives faster than it reads (`docs/http-api.md` gives the measures).
      A 64 KiB body, the route's cap, takes about 6.5s to type. A prompt
      split across calls is two pastes.
 
@@ -335,8 +333,9 @@ under that goal's sub-header with its round; a label no folder carries reads
 - `review-crew.md` — spawn a review session per dimension, collect the notes.
 - `triage.md` — reproduce a bug in its own session, confirm the root cause.
 
-`kitterm skills install` writes each of them to `~/.claude/skills/<name>/SKILL.md`
-(`--dir <path>` picks another directory) and prints one line per file:
+`kitterm skills install` writes each of them to `~/.claude/skills/<name>/SKILL.md`,
+and the crew settings file `crew-settings.json` (`docs/control-plane.md`)
+beside `foreman-loop` (`--dir <path>` picks another directory). It prints one line per file:
 `wrote`, `updated`, or `unchanged`. `kitterm skills list` prints the names and
 descriptions. The binary embeds the files, so the installed skills match the
 release that installed them.

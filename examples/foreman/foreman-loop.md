@@ -136,6 +136,10 @@ Do this once, before "Scan".
 Do this at start, and again whenever `kitterm skills install` changes this
 skill.
 
+Run `kitterm round guard --check`. Any answer but `kitterm round guard:
+ready` means the crew hook cannot run and refuses every `Bash` call of a
+crew: tell the human before you open a round.
+
 For every project in your scope, run
 `kitterm project init --refresh --check <root>`:
 
@@ -232,10 +236,11 @@ attempt. Every goal file below is under the goal's folder,
    the exit code and the output of every check. A red floor makes the
    regression this round's job and pushes the queue item back; write the red
    check in the record. Then start the agent with the model "The model"
-   below picks for the task:
+   below picks for the task, and the crew settings
+   (`docs/control-plane.md`):
 
    ```
-   send_input session=<id> text="claude --model <id>"
+   send_input session=<id> text="claude --model <id> --settings ~/.claude/skills/foreman-loop/crew-settings.json"
    ```
 
    Run "Read before you type". A fresh `claude` may sit at the
@@ -458,25 +463,27 @@ goal's branch, and tell the human when a new goal's folder is there.
 
 ### Stall
 
-A crew is stalled when it reports `needs-input` or `completed` and has
-posted no `BLOCKER` or `DONE` note since its last turn began, or when no
-`PLAN` note came 15 minutes after you sent the round prompt.
+A crew is stalled when all four hold at a wake:
 
-On a stall, in the same scan: call `screen_state` and `read_screen`. An
-API error, a model limit, a cut turn, or a prompt that waits with no
-question: send one `FOREMAN: continue from <the last step the screen or
-the notes show>` (through "Read before you type") and tell the human in
-one line. A question on the screen: treat it as a `BLOCKER`, relay it,
-and create its `Answer:` task ("Task list").
+- its status is `completed` or `needs-input`;
+- it posted no `DONE` or `BLOCKER` note since its last `working` status;
+- its `lastOutputAt` is more than 120 seconds old;
+- the status bar of `read_screen` names no shell and no monitor, as
+  `· 1 shell, 1 monitor ·` does (`screen_state` answers
+  `waiting-on-own-job` then).
 
-One automatic continue per round. A second stall in the round: report it
-to the human at once and wait for the human's word.
+No `PLAN` note 15 minutes after the round prompt is a stall too.
 
-`lastOutputAt` stays fresh while Claude Code redraws an idle prompt, so it
-cannot show a stopped crew, and a crew can stop silently on an account's
-model limit (`facts.md`, "Crew pane"). On 2026-10-11 a crew sat at its
-prompt for 3h 32m after an API drop while the foreman's watcher had
-already reported the stall, with no automatic continue to follow it up.
+Answer a stall in that wake, or end the session. Read the screen. An API
+error, a cut turn, or a prompt that waits with no question: send one
+`FOREMAN: continue from <the last step the screen or the notes show>`
+and tell the human in one line. A
+question: treat it as a `BLOCKER`, relay it, and create its `Answer:`
+task ("Task list"). One automatic continue per round. A second stall in
+the round: tell the human, link the pane, and wait for the human's word.
+
+After a usage limit, Claude Code continues by itself
+(`autoContinueAtUsageLimit`, on by default, three times at most).
 
 ## Reports
 

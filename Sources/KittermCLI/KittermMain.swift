@@ -86,6 +86,12 @@ enum KittermMain {
                 try ScreenStateCommand.run(args.dropFirst())
             case "foreman":
                 try ForemanCommand.run(args.dropFirst())
+            case "round" where args.dropFirst().first == "guard":
+                let input = FileHandle.standardInput.readDataToEndOfFile()
+                exit(RoundGuard.run(
+                    Array(args.dropFirst(2)), input: input,
+                    out: { print($0) }, err: { writeError($0 + "\n") }
+                ))
             case "round":
                 try RoundCommand.run(args.dropFirst())
             case "skills":
@@ -260,6 +266,10 @@ enum KittermMain {
                                       [--knowledge DIR] [--port N]
                                       # archive the round's sessions, read their
                                       # bills, write rounds/NNN.md and STATE.md
+              kitterm round guard [--check]
+                                      # the PreToolUse hook of a crew session:
+                                      # refuses a push to the base branch, a
+                                      # force push, kitterm start|stop|restart
               kitterm skills install [--dir DIR] | list
                                       # write the foreman skills into ~/.claude/skills
               kitterm statusline install [--dir DIR] | print

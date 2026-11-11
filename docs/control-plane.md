@@ -210,6 +210,32 @@ This file holds the section `AGENTS.md` carried until 2026-11-10 (goal `lean-con
   exists, and exits 1. It never merges, never marks a pull request ready,
   and runs no floor. `RoundCloseTests` proves each field with a scratch
   repository, a scratch daemon in process and fixture transcripts.
+- `examples/foreman/crew-settings.json` (embedded as
+  `ForemanSkills.crewSettings`) is the settings file of a crew session.
+  `kitterm skills install` writes it to
+  `<dir>/foreman-loop/crew-settings.json`, and the skill starts each crew
+  with `claude --settings <that file>`, so no session of the foreman or the
+  human reads it. Its `permissions.deny` refuses `gh pr merge`,
+  `kitterm start`, `stop` and `restart`, and an edit under
+  `.github/workflows/`, of a `docs/goals/*/goal.md` or under a
+  `docs/goals/*/corpus/`. A path in a `--settings` file anchors at the
+  file's folder, so the paths start `//`. An `Edit` rule also covers
+  `Write`, `NotebookEdit` and a `>` redirect, not `sed -i` or a script.
+  `CrewSettingsTests` pins the file and the copy.
+- `kitterm round guard [--check]` (`RoundGuard.swift`) is that file's
+  `PreToolUse` hook on `Bash`, for what a prefix rule cannot match. It
+  reads the hook JSON on stdin, splits the command at `&&`, `||`, `;`, `|`
+  and a newline, follows `cd` and `git -C`, and exits 2 with the reason on
+  stderr for a `git push` with `-f`, `--force`, `--force-with-lease`,
+  `--force-if-includes`, `--mirror` or a `+` refspec; a push to the base
+  branch (`KnowledgeBase.baseBranch`), as `main`, `x:main`,
+  `x:refs/heads/main`, `--all`, or a bare push from the base; and
+  `kitterm start|stop|restart` by any path or `swift run`. It refuses input
+  it cannot read. The file runs it as `kitterm round guard || exit 2`:
+  Claude Code lets a call run when a hook exits with a code other than 0
+  or 2, so a missing `kitterm` or a build with no guard would otherwise
+  open the gate. `--check` prints `kitterm round guard: ready`.
+  `RoundGuardTests` proves each refusal.
 - `design/` at the root holds every approved design: `foundation.md` (the
   tokens, marks, fonts and rules every page follows), `palette.md`,
   one `.pen` file per surface (`dashboard.pen`, `sessions.pen`) and

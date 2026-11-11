@@ -101,6 +101,9 @@ enum ScreenState {
     /// tokens)", "Churning… (2s · thinking)") and a `⏺` tool call still
     /// counting ("Waiting for 6 seconds · 4s"). Both carry a live elapsed
     /// count; a finished line reads "done" or ends in a period instead.
+    /// `prompt-empty-2`: a background agent's notice "⏺ Agent \"…\" finished
+    /// · 23s" also ends in a count, so a line with "finished ·" is not a
+    /// running tool call.
     private static let workingRules: [Rule] = [
         Rule(
             state: .working,
@@ -110,7 +113,7 @@ enum ScreenState {
         Rule(
             state: .working,
             name: "working: a \"⏺\" tool call still counting",
-            test: { matches(pendingToolCallPattern, $0) }
+            test: { matches(pendingToolCallPattern, $0) && !$0.contains(" finished · ") }
         ),
     ]
 
@@ -121,7 +124,10 @@ enum ScreenState {
     /// none of which are waiting on their own job — so the rule requires a
     /// "·" on both sides of the count, the status bar's own shape, not the
     /// looser "shell still running" sentence that a finished turn leaves
-    /// behind in scrollback.
+    /// behind in scrollback. `waiting-on-own-job-2` (2.1.322): the bar names
+    /// a monitor too, in the same segment, "· 1 shell, 1 monitor ·", so the
+    /// segment is one or more counts of shells or monitors. "← 1 agent" is
+    /// not a count of this kind: that screen shows it with no agent running.
     private static let ownJobRules: [Rule] = [
         Rule(
             state: .waitingOnOwnJob,
@@ -146,7 +152,7 @@ enum ScreenState {
         try! NSRegularExpression(pattern: "^⏺\\s.*\\d+s$")
     }()
     private static let ownJobPattern: NSRegularExpression = {
-        try! NSRegularExpression(pattern: "·\\s*\\d+\\s+shells?\\s*·")
+        try! NSRegularExpression(pattern: "·\\s*\\d+\\s+(shells?|monitors?)(,\\s*\\d+\\s+(shells?|monitors?))*\\s*·")
     }()
 
     private static func matches(_ pattern: NSRegularExpression, _ line: String) -> Bool {

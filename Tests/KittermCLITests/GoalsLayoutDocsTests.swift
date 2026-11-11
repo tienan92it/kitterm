@@ -328,7 +328,9 @@ final class GoalsLayoutDocsTests: XCTestCase {
         let next = try XCTUnwrap(GoalsTemplates.state.components(separatedBy: "## Next action\n\n").last)
         XCTAssertTrue(next.hasPrefix("Round 1: `<item>` from `plan.md` row 1; proof: `<test or screenshot>`."), next)
         XCTAssertEqual(GoalsTemplates.slugPlaceholder, "<goal slug>")
-        XCTAssertTrue(next.contains("`goal:<goal slug>`"), next)
+        // Chartered (one-rule-one-place r2: the template names `kitterm round
+        // open`, not a hand spawn). Old: `next.contains("`goal:<goal slug>`")`.
+        XCTAssertTrue(next.contains("`kitterm round open <root> <goal slug> --task <item>`"), next)
         XCTAssertFalse(GoalsTemplates.state.contains("<slug>"), "one placeholder for the goal")
         XCTAssertFalse(GoalsTemplates.state.contains("<capability slug>"), "one placeholder for the item")
         XCTAssertTrue(GoalsTemplates.state.hasPrefix("# STATE: <goal slug>\n"))
