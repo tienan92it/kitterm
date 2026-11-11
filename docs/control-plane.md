@@ -105,12 +105,14 @@ This file holds the section `AGENTS.md` carried until 2026-11-10 (goal `lean-con
   writes nothing
 - `kitterm foreman watch --session <id> [--session <id> ...] [--since <seq>]
   [--epoch <id>] [--heartbeat <seconds>] [--timeout <seconds>] [--port <n>]
-  [--json]` (`ForemanCommand.swift`) blocks on `GET /api/events` (the same
+  [--quiet-working] [--json]` (`ForemanCommand.swift`) blocks on `GET /api/events` (the same
   `MCPTools.Call`/`MCPHTTPClient` path `catch-up` uses: no `curl`, no new
   route) and exits the moment an event whose `session` is one of
   `--session` is a `note`, an `agent.status` of any kind, an
   `approval.pending`, a `command.failed`, or a `session.exited`/`removed`,
-  printing it; a non-matching event advances the cursor silently. It also
+  printing it; a non-matching event advances the cursor silently. With
+  `--quiet-working`, an `agent.status` whose status is `working` does not
+  match, because no rule of the foreman acts on it. It also
   exits on a heartbeat (no match within `--heartbeat`, default 1200s) or on
   a daemon epoch change or a pruned cursor, printing that marker instead,
   and always prints the `next`/`epoch` cursor to resume from with no gap.
@@ -157,8 +159,8 @@ This file holds the section `AGENTS.md` carried until 2026-11-10 (goal `lean-con
   It never merges, force-pushes or marks a pull request ready. Every `git`
   and `gh` runs through one `Runner`, so `RoundOpenTests` uses a fake `gh`, a
   scratch repository with a bare remote, and a scratch daemon in process
-- `kitterm round close <root> <slug> [--chore] [--commit] [--round <n>]
-  [--bill-timeout <s>] [--foreman-session <id>] [--knowledge <dir>]
+- `kitterm round close <root> <slug> [--chore] [--commit] [--no-checks]
+  [--decision done|failed|propose] [--round <n>] [--bill-timeout <s>] [--foreman-session <id>] [--knowledge <dir>]
   [--port <n>]` (`RoundCloseCommand.swift`, the text in `RoundRecord.swift`)
   does every step after the crew's `DONE` note that needs no judgment, in
   this order:
@@ -195,16 +197,26 @@ This file holds the section `AGENTS.md` carried until 2026-11-10 (goal `lean-con
      `[foreman writes this]`; `Floor` holds two, `before:` and `after:`.
   7. `state`: `- Round: n` grows by the rounds `- Rounds total:` has not
      counted, `- Rounds total:` becomes R, `- Updated:` becomes the day, and
-     the item moves from `## Queue` to `## Done` as
-     ``- `<item>`, round R, `<sha>`, PR #N. See `rounds/NNN.md`.``.
-     `Status` and `Last floor` stay the foreman's.
-  8. `commit`, with `--commit` only: it refuses while a marker line remains
-     in the record, then makes one commit of the goal folder and pushes it,
-     never with force.
+     `--decision` files the item: `done` (the default) moves it from
+     `## Queue` to `## Done` as
+     ``- `<item>`, round R, `<sha>`, PR #N. See `rounds/NNN.md`.``,
+     `failed` moves the same line to `## Failures`, and `propose` leaves the
+     item under `## Queue`. A later run, which finds the round counted,
+     keeps the item where the first run filed it; a `--decision` that names
+     another place refuses. `Status` and `Last floor` stay the foreman's.
+  8. `checks`, with `--commit` only: it refuses while a marker line remains
+     in the record, and while `gh pr checks <N> --json name,bucket` names a
+     check that is not `pass` or `skipping`, or no check:
+     `round close: checks failed: PR #N is not green on its head: test fail,
+     linux-build pending; wait for green, or pass --no-checks for a
+     repository with no CI`. `--no-checks` skips the read.
+  9. `commit`, with `--commit` only: one commit of the goal folder, with
+     the message `<slug>: round <n> record`, and a push, never with force. The push starts a new CI run on the head.
 
   `--chore` writes `chores/<ISO date>-<slug>.md` in place of steps 6 and 7:
   the marker, the model, `PR #N` and the cost line. The command prints
-  `file`, `round`, `sessions` and `markers`, and `commit` after `--commit`.
+  `file`, `round`, `decision`, `sessions` and `markers`, and `commit` after
+  `--commit`.
   A second run reuses the archives, the record and the `STATE.md` edit. A
   failure prints `round close: <step> failed: <reason>` and what already
   exists, and exits 1. It never merges, never marks a pull request ready,

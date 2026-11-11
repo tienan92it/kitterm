@@ -43,6 +43,9 @@ final class StaleLoopPhrasesTests: XCTestCase {
         ("merges once per goal", "the human merges each pull request"),
         // The correction rule before `round-commands` round 1.
         ("the correction is a `## Correction` heading", "a `## Correction` section whose text does not start with \"None\""),
+        // The correction cap and the hand step before `one-rule-one-place` round 3.
+        ("One correction per round", "two corrections per round, then a fresh session (`LOOP.md`, \"Budget\")"),
+        ("move the line by hand", "`kitterm round close --decision failed|propose`"),
         // Lines written before a tool shipped, and the old split of the documents.
         ("once capability 1 ships", "`list_projects`"),
         ("`kitterm goal new <path> <slug>` once it exists", "`kitterm goal new <path> <slug>`"),

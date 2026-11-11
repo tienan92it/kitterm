@@ -91,10 +91,9 @@ Do this before every `send_input` into a pane that runs an interactive agent.
    - Trust dialog — "Is this a project you created or one you trust?" with
      the options `No, exit` and `Yes, I trust this folder`. When the cwd is
      the repo the user named, move the mark to `Yes, I trust this folder`
-     with `send_input keys=["down"]`. A key goes by name because an escape
-     byte does not survive an MCP client's JSON string argument. Read the
-     screen to confirm `❯` sits on that option, then press Enter with
-     `send_input keys=["enter"]`. Any other cwd: stop and tell the user.
+     with `send_input keys=["down"]`. Read the screen to confirm `❯` sits
+     on that option, then press Enter with `send_input keys=["enter"]`.
+     Any other cwd: stop and tell the user.
    - Permission dialog — "Do you want to proceed?" or a numbered choice with
      a `Yes` and a `No`. Never answer it. Tell the user and link the pane.
    - In-progress turn — a spinner line with "esc to interrupt", or a `⏺`
@@ -103,9 +102,8 @@ Do this before every `send_input` into a pane that runs an interactive agent.
      `needs-input`, then read the screen again.
 4. Send the message with `send_input`. Send one dialog keystroke per call, and
    read the screen between keystrokes.
-   A `cooked reader` error means the program in the pane has not taken raw mode
-   yet (the error names it in `foregroundProgram`), a text over 1 KiB could not
-   arrive whole, and nothing was typed. Go back to step 1. Set `force:true`
+   A `cooked reader` error typed nothing (`docs/foreman.md`, "The loop"): go
+   back to step 1. Set `force:true`
    only for a shell that reads lines under 1 KiB as they come.
 5. Call `read_screen` again. Confirm the text you typed now appears above the
    input box as `❯ <your text>` and the box is empty again. When the text
@@ -180,13 +178,15 @@ Do this on start and after every `kitterm foreman watch` wake ("Monitor").
 
 ## Schedule
 
-A goal is runnable when all four hold:
+A goal is runnable when all five hold:
 
 - `Status: active` in `STATE.md`;
 - the budget has rounds left: `Round: <n> of <m>` with `n` below `m`;
 - no round is open: no live session carries `crew:<slug>`;
 - no proposal blocks the next action: the "Next action" section does not
-  depend on a proposal that waits on the human.
+  depend on a proposal that waits on the human;
+- no open round's queue item or `plan.md` row names a file that this
+  goal's head item or its row names.
 
 Keep to the caps of `LOOP.md`, "Budget"; Scan step 5 counts the sessions.
 When more than one goal is runnable, start the one with the oldest
@@ -195,9 +195,9 @@ When more than one goal is runnable, start the one with the oldest
 ## One round
 
 The crew session does the work. You read, route, verify, and record.
-`LOOP.md`, "Budget", gives the one correction per round and the killed
-attempt. Every goal file below is under the goal's folder,
-`docs/goals/<slug>/`; no goal file sits directly under `docs/goals/`.
+`LOOP.md`, "Budget", gives the correction cap and the killed attempt.
+Every goal file below is under the goal's folder, `docs/goals/<slug>/`;
+no goal file sits directly under `docs/goals/`.
 
 1. **Read.** Read `docs/goals/<slug>/goal.md`, `docs/goals/<slug>/plan.md`,
    `docs/goals/<slug>/STATE.md`, the project's `docs/goals/facts.md`, and
@@ -243,10 +243,7 @@ attempt. Every goal file below is under the goal's folder,
    send_input session=<id> text="claude --model <id> --settings ~/.claude/skills/foreman-loop/crew-settings.json"
    ```
 
-   Run "Read before you type". A fresh `claude` may sit at the
-   folder-trust dialog, which opens with the mark on `No, exit`, so the
-   key is `down`; an empty prompt can show a dim placeholder such as
-   `Try "…"`.
+   Run "Read before you type".
 
 3. **Send one request.** Type the round prompt in one `send_input`. The
    prompt names the goal's files by their folder path; it does not restate
@@ -277,7 +274,6 @@ attempt. Every goal file below is under the goal's folder,
    - when a decision needs a human, post a `BLOCKER` note and stop
      ("Crew notes").
 
-   Send the whole prompt in one call, whatever its size.
    Then run step 5 of "Read before you type" and confirm the prompt sits
    above the box. From here on "Monitor" applies.
 
@@ -311,14 +307,14 @@ attempt. Every goal file below is under the goal's folder,
    the class and its evidence in the record. A round with no gap records
    `none`.
 
-6. **Close or correct.** The floor green — the crew's own checks, and the
-   pull request's continuous integration on the crew's head sha — and the
-   diff holds the check: the item is done; go to step 7. Otherwise record
-   the gap, run "Read before you type", send one correction with
-   `send_input`, starting it with `FOREMAN:`, and count it inside this
-   round. Go back to step 4. A second failure ends the round as failed; go
-   to step 7. `kitterm round close` archives the round's sessions, so run it only
-   once the round needs no more correction: the bill exists only once
+6. **Close or correct.** The floor green (step 4) and the diff holds the
+   check: the item is done. When the goal's completion condition then
+   holds, run "Review before ready" now, while the crew is live. Otherwise
+   record the gap, run "Read before you type", send one correction with
+   `send_input`, and go back to step 4. When the cap of `LOOP.md`,
+   "Budget", fails the round, write the lesson in the record for the next
+   round's prompt. `kitterm round close` archives the round's sessions, so
+   run it only once the round needs no more correction: the bill exists only once
    `claude` exits, and archiving is what ends it.
 
 7. **Reflect.** Answer one question in the record: what cost time that a
@@ -331,12 +327,12 @@ attempt. Every goal file below is under the goal's folder,
 8. **Write the record and commit.** Run one command in your shell:
 
    ```
-   kitterm round close <root> <slug>
+   kitterm round close <root> <slug> --decision done|failed|propose
    ```
 
    It archives the round's sessions, writes
    `docs/goals/<slug>/rounds/NNN.md` with a marker line in each section,
-   and moves the item to `## Done` (`LOOP.md`, "Parsed shapes"). Replace
+   and files the item by the decision (`LOOP.md`, "Parsed shapes"). Replace
    every marker line. A review crew or a triage session that you delegate inside
    a round posts its findings with `post_note`. You copy them into the
    round record under "Effects" or "Gap"; the crew does not write the
@@ -344,15 +340,23 @@ attempt. Every goal file below is under the goal's folder,
    `Status`, `Last floor`, the failures, the proposals, and the next
    action; nothing else. Commit a new fact in `docs/goals/facts.md` on the
    goal's branch first. Run `kitterm round close <root> <slug> --commit`
-   only after `gh pr checks <N>` is green on the crew's head sha (step 4):
-   read the check's result first, and do not chain the two in one
-   command. The command refuses while a marker line remains, commits the
-   goal folder with the message `<slug>: round <n> record`, and pushes.
-   It moves the item to `## Done` on every run, so a `failed` or
-   `propose` round skips `--commit`: move the line by hand to
-   `## Failures` (failed) or back to `## Queue` (propose), commit the goal
-   folder with that message, and push. When the goal is done, run
-   `gh pr ready <N>`; the human merges. Then report the digest under "Reports".
+   only after `gh pr checks <N>` is green on the crew's head sha (step 4);
+   the command refuses until it is, and while a marker line remains
+   (`--no-checks` only for a repository with no CI). It commits the goal
+   folder and pushes. The push starts a new CI run, and `gh pr ready`
+   waits until it is green too. When the goal is done, run `gh pr ready
+   <N>`; the human merges. Then report the digest under "Reports".
+
+### Review before ready
+
+Once per goal, before `gh pr ready <N>`, run one review with fresh
+context: a subagent, or one session of the `review-crew` skill, that gets
+`goal.md` and `git diff origin/<base>...HEAD` and nothing else. It finds
+issues, tries to refute each one, and reports only the survivors. Send a
+survivor to the crew as a correction, or to the human as a note. The
+review does not replace the human's read: reported recall is 29 to 57
+percent. In `one-rule-one-place` round 1, one reviewer found in 3 minutes
+three inconsistencies that 1,442 green tests missed.
 
 ### The model
 
@@ -367,9 +371,9 @@ by the task, not by habit:
 | A mechanical script: capture screenshots, run a checklist, copy figures into a table | `claude-haiku-5-5` | fast and cheap; no judgment needed |
 
 `kitterm round close` writes the model in the round record's `Sessions:`
-line and in the chore line, so the cost has a model beside it. When a crew on the smaller
-model asks for a decision the task should not need, or fails its floor
-twice, rerun the round on the default; that is the one correction.
+line and in the chore line, so the cost has a model beside it. When a
+crew on a smaller model asks for a decision the task should not need, or
+fails its floor twice, the next round's fresh session runs on the default.
 
 ## Monitor
 
@@ -378,13 +382,12 @@ landed ("Send one request"), do not hold an event wait inside this turn:
 start `kitterm foreman watch` in the background and end your turn.
 
 ```
-kitterm foreman watch --session <id> [--session <id> ...] --since <cursor> --epoch <epoch> [--heartbeat <s>]
+kitterm foreman watch --session <id> [--session <id> ...] --since <cursor> --epoch <epoch> --quiet-working [--heartbeat <s>]
 ```
 
 One `--session` per live crew in your scope — the round's own session, and
-any other goal's crew still running. Never name a `crew:helper` session: a
-round is open while its `crew:<slug>` session is live, not its helper, so
-watching the helper would hold your turn open past the round. Run it with
+any other goal's crew still running. Never name a `crew:helper` session
+("Scan", step 4). Run it with
 `Bash(run_in_background)`, so the command holds the wait, not your turn.
 Start `cursor` at 0 with no `--epoch` the first run; after every run, carry
 the `next` and `epoch` it printed into the next one — your turn ends
@@ -440,9 +443,8 @@ On every "Scan" — whatever woke you — also:
   session that sits at an empty prompt one hour past `completed`; only you
   end it (`docs/foreman.md`, "The loop", step 5).
 
-Report after each crew completes, not while it runs: a heartbeat, or an
-event with nothing the human must see, prints nothing to the human
-("Reports"). When step 8 of "One round" closes the round — the floor
+Report after each crew completes, not while it runs ("Reports"). When
+step 8 of "One round" closes the round — the floor
 green, the record written, the package committed, the digest posted —
 delegate the next runnable goal ("Schedule") or stop, per `LOOP.md`,
 "Direction" and "Stop rules". Otherwise run `kitterm foreman watch` again for the
@@ -466,7 +468,8 @@ goal's branch, and tell the human when a new goal's folder is there.
 A crew is stalled when all four hold at a wake:
 
 - its status is `completed` or `needs-input`;
-- it posted no `DONE` or `BLOCKER` note since its last `working` status;
+- it posted no `DONE` or `BLOCKER` note, and no `PLAN` note that waits on
+  you, since its last `working` status;
 - its `lastOutputAt` is more than 120 seconds old;
 - the status bar of `read_screen` names no shell and no monitor, as
   `· 1 shell, 1 monitor ·` does (`screen_state` answers
@@ -531,17 +534,12 @@ Bring the result:
   rule: the same, with the reason.
 - **A goal is done** (its completion condition holds and the package is
   committed): after `gh pr ready <N>`, say so once, with the link,
-  and what merging changes for the running daemon. You cannot merge
-  (`LOOP.md`, "The pull request").
-- **Something needs the human** (`needs-input`, `needs-approval`, a
-  `propose`, a decision a crew asked for): a push notification at once,
-  then the pane.
+  and what merging changes for the running daemon.
 - **A day passes with work and no report**: one digest at the day's end.
 - **Nothing is running and nothing waits**: say so once, with the
   proposals open, and hold. Do not send a notification for that.
 
 A notification is one line the human acts on; the pane carries the rest.
-Never notify for progress inside a round.
 
 ### Crew notes
 
@@ -552,7 +550,10 @@ r<n>: <one line>` (a chore writes `<KIND> <slug>: <one line>`), and
 
 1. **PLAN**, before the first edit: the files it expects to touch, the
    check it will add, and any assertion it believes is chartered. Read it
-   and correct the scope before the work, not after.
+   and correct the scope before the work, not after. In a round that sets
+   a data model, an interface or a visual design, the prompt tells the
+   crew to wait for `FOREMAN: approved` or `FOREMAN: change <what>`
+   before code.
 2. **PROGRESS**, one line after each push: the short sha, what changed,
    and the floor's state.
 3. **BLOCKER**, when it needs a decision, a permission, or a fact only

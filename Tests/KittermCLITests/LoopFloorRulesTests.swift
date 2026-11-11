@@ -46,6 +46,10 @@ final class LoopFloorRulesTests: XCTestCase {
             // `kitterm round close` archives the crew, so it runs after a green
             // check. The intent (no rerun, the record waits for green, red is a
             // correction) is kept.
+            // Chartered by `one-rule-one-place` round 3: the last sentence
+            // read `Red: the check is the round's gap, the one correction goes
+            // to the crew, and the round is not closed.`; "Budget" now holds
+            // the correction cap, two per round.
             "the foreman does not rerun what the crew or the pull request's CI already proved",
             """
             After the crew, the foreman does not rerun a check the crew already ran
@@ -53,8 +57,8 @@ final class LoopFloorRulesTests: XCTestCase {
             sorts the paths into the Authority table below, then reads
             `gh pr checks <N>` on the crew's head sha. Green: it runs
             `kitterm round close`, replaces the record's markers, then runs
-            `kitterm round close --commit`. Red: the check is the round's gap, the
-            one correction goes to the crew, and the round is not closed.
+            `kitterm round close --commit`. Red: the check is the round's gap, a
+            correction goes to the crew ("Budget"), and the round is not closed.
             """
         ),
     ]
@@ -97,12 +101,15 @@ final class LoopFloorRulesTests: XCTestCase {
             // on the crew's head sha is green (step 4): write and commit while
             // it runs, and push after.`; `kitterm round close --commit` commits
             // and pushes in one step, so it runs after the green check.
+            // Chartered by `one-rule-one-place` round 3: the sentence ended
+            // `(step 4): read the check's result first, and do not chain the
+            // two in one command.`; `--commit` now reads `gh pr checks` itself
+            // and refuses until it is green (`RoundCloseTests`).
             "the commit and the push wait for the pull request's checks to go green",
             """
             Run `kitterm round close <root> <slug> --commit`
-            only after `gh pr checks <N>` is green on the crew's head sha (step 4):
-            read the check's result first, and do not chain the two in one
-            command.
+            only after `gh pr checks <N>` is green on the crew's head sha (step 4);
+            the command refuses until it is, and while a marker line remains
             """
         ),
     ]

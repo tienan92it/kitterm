@@ -27,10 +27,9 @@ Do this before every `send_input` into a pane that runs an interactive agent.
    - Trust dialog — "Is this a project you created or one you trust?" with
      the options `No, exit` and `Yes, I trust this folder`. When the cwd is
      the repo the user named, move the mark to `Yes, I trust this folder`
-     with `send_input keys=["down"]`. A key goes by name because an escape
-     byte does not survive an MCP client's JSON string argument. Read the
-     screen to confirm `❯` sits on that option, then press Enter with
-     `send_input keys=["enter"]`. Any other cwd: stop and tell the user.
+     with `send_input keys=["down"]`. Read the screen to confirm `❯` sits
+     on that option, then press Enter with `send_input keys=["enter"]`.
+     Any other cwd: stop and tell the user.
    - Permission dialog — "Do you want to proceed?" or a numbered choice with
      a `Yes` and a `No`. Never answer it. Tell the user and link the pane.
    - In-progress turn — a spinner line with "esc to interrupt", or a `⏺`
@@ -39,9 +38,8 @@ Do this before every `send_input` into a pane that runs an interactive agent.
      `needs-input`, then read the screen again.
 4. Send the message with `send_input`. Send one dialog keystroke per call, and
    read the screen between keystrokes.
-   A `cooked reader` error means the program in the pane has not taken raw mode
-   yet (the error names it in `foregroundProgram`), a text over 1 KiB could not
-   arrive whole, and nothing was typed. Go back to step 1. Set `force:true`
+   A `cooked reader` error typed nothing (`docs/foreman.md`, "The loop"): go
+   back to step 1. Set `force:true`
    only for a shell that reads lines under 1 KiB as they come.
 5. Call `read_screen` again. Confirm the text you typed now appears above the
    input box as `❯ <your text>` and the box is empty again. When the text
@@ -58,8 +56,9 @@ Do this before every `send_input` into a pane that runs an interactive agent.
    review criterion:
    `spawn_session name="review-<dimension>" labels={crew:"review", task:"<dimension>"} input="claude\n"`
    Run "Read before you type", then `send_input` the review prompt: the diff
-   to read, the one dimension to judge, and the instruction to post its
-   findings with a note whose first line is `REVIEW <slug> r<n>: <blockers>
+   to read, the one dimension to judge, the instruction to find issues, then
+   try to refute each one and keep only the survivors, and the instruction
+   to post the survivors with a note whose first line is `REVIEW <slug> r<n>: <blockers>
    blockers, <should-fix> should-fix, <nits> nits` (a chore: `REVIEW
    <slug>: ...`).
 
@@ -82,6 +81,9 @@ Do this before every `send_input` into a pane that runs an interactive agent.
 ## Rules
 
 - The review sessions are independent. Do not let one see another's findings.
+- A review before `gh pr ready` (the `foreman-loop` skill, "Review before
+  ready") is one session that gets `goal.md` and the diff against the base,
+  and nothing else.
 - You collect and dedupe; you do not add your own findings.
 - A finding is blocking only if it breaks correctness, security, or a shipped
   feature. Everything else is a nit or a suggestion.

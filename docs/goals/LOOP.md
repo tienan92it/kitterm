@@ -146,8 +146,8 @@ its CI run is part of the floor: a green run already proves the base sha.
   sorts the paths into the Authority table below, then reads
   `gh pr checks <N>` on the crew's head sha. Green: it runs
   `kitterm round close`, replaces the record's markers, then runs
-  `kitterm round close --commit`. Red: the check is the round's gap, the
-  one correction goes to the crew, and the round is not closed.
+  `kitterm round close --commit`. Red: the check is the round's gap, a
+  correction goes to the crew ("Budget"), and the round is not closed.
 
 ## Authority
 
@@ -221,7 +221,9 @@ and the five sections in this order. What each parser takes:
   writes them, `GoalsLayoutDocsTests` pins the five bullets and the five
   sections, and the skill's "Schedule" orders the goals by `Updated`.
 - `kitterm round close` writes `- Round:`, `- Rounds total:` and
-  `- Updated:` when a round ends; the foreman does not raise `- Round:`
+  `- Updated:` when a round ends, and files the item by `--decision`:
+  under `## Done`, under `## Failures`, or left under `## Queue` for
+  `propose`; the foreman does not raise `- Round:`
   when a round opens. The foreman writes `- Status:` and `- Last floor:`,
   and resets `- Round:` at a direction check ("Direction").
 - `## Next action`: the first paragraph, capped at 512 bytes
@@ -363,7 +365,9 @@ chore's session carries `crew:<slug>`, `task:<slug>` and `pr:<N>`.
 ## Budget
 
 - Three rounds per direction check. `STATE.md` counts them.
-- One correction per round. A second failure ends the round as failed.
+- Two corrections per round, to the round's one session. When the second
+  fails, the foreman ends the session and the round ends as failed; the
+  next round starts a fresh session with the lesson in its prompt.
 - A round attempt the host machine kills does not spend the budget and
   writes no round record. Note it in `STATE.md` under `Failures` as
   `attempt killed: <ISO date>, <what died>`. Leave the round counter and
