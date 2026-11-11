@@ -141,7 +141,8 @@ final class ChoreFilesMergeTests: XCTestCase {
             ("GoalsTemplates.loop", GoalsTemplates.loop, "`<knowledge directory>/chores/<ISO date>-<slug>.md`"),
             ("examples/foreman/foreman-loop.md", try text(root, "examples/foreman/foreman-loop.md"), "`docs/goals/chores/<ISO date>-<slug>.md`"),
             ("ForemanSkills.foremanLoop", ForemanSkills.foremanLoop, "`docs/goals/chores/<ISO date>-<slug>.md`"),
-            ("docs/foreman.md", try text(root, "docs/foreman.md"), "`docs/goals/chores/<ISO date>-<slug>.md`"),
+            // Chartered by `one-rule-one-place` round 1: `docs/foreman.md` no
+            // longer restates the chore rule; `LOOP.md` is its one home.
             ("docs/goals/CHORES.md", try text(root, "docs/goals/CHORES.md"), "`docs/goals/chores/<ISO date>-<slug>.md`"),
         ]
         for file in named {

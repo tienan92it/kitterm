@@ -1,5 +1,12 @@
 # Running a foreman with kitterm
 
+This file holds the set-up, the MCP tools, the typed state, and the daemon's
+behaviour on an upgrade and a restart. The goal loop that a foreman runs has
+two other homes: `docs/goals/LOOP.md` holds its policy, from the roles to
+the stop rules, and the skill `examples/foreman/foreman-loop.md` holds the
+foreman's procedure. This file names a rule of those two in one sentence
+and does not restate it.
+
 A foreman is an agent that manages a crew of other agent sessions. It spawns a
 session per task, watches each session's state, tells you when a session needs
 you, passes your messages into a session, and ends a session when the work is
@@ -100,8 +107,7 @@ A crew agent must run Claude Code with `kitterm hooks` installed for
 `needs-input`, `needs-approval`, and `completed`; `working` comes from its
 `PreToolUse` hook, which is recorded and never held. A session with no hooks still
 reports `working`, `idle`, `failed`, and `exited` from its shell-integration
-marks. So a non-Claude session works at a basic level, and a Claude session
-gets the full vocabulary.
+marks.
 
 ## What holds the terminal
 
@@ -118,13 +124,8 @@ call.
 
 ## The loop
 
-A foreman runs one loop. Beside the package it also keeps a Claude Code
-task list — `TaskCreate`, `TaskUpdate`, `TaskList` — as a view onto the
-open rounds, the chores, and the items that wait on the human; `STATE.md`
-and the chore files stay the record. One task per open round or chore,
-subject `<project> / <slug> round <n>: <queue item> · PR #N` (a chore:
-`<project> / chore <slug>: <what> · PR #N`), with an `activeForm`.
-`examples/foreman/foreman-loop.md`, "Task list", has the full shape.
+A foreman runs one loop over these tools; the goal loop's own steps are
+the skill's. This section says how the tools behave in any loop.
 
 1. Spawn a crew session for each task. Name it for the task; label it so the
    fleet is attributable:
@@ -137,26 +138,23 @@ subject `<project> / <slug> round <n>: <queue item> · PR #N` (a chore:
    below). A fresh `claude` may still sit at the folder-trust dialog, and a
    task typed into that dialog is lost.
 
-2. Wait on the event feed. One `wait_for_events` call watches every session at
-   once — it returns the moment any session changes state, an approval appears,
-   or an agent posts a note. The feed carries one `agent.status` event per
-   transition: a session that stays `working` across many tool calls is
-   silent, and a repeated `needs-input` is a new event only when its message
-   changes. Pass the `next` cursor from the last call as `since`, and its
-   `epoch` as `epoch`:
+2. Watch the event feed. `kitterm foreman watch` blocks on the feed for the
+   sessions it names and exits on the first event that matters, a
+   heartbeat, or an epoch change, so a foreman runs it in the background
+   and yields its turn (`docs/control-plane.md` gives its flags). The feed
+   carries one `agent.status` event per transition: a session that stays
+   `working` across many tool calls is silent, and a repeated `needs-input`
+   is a new event only when its message changes. `wait_for_events` reads
+   the same feed inside a turn; pass the `next` cursor from the last call
+   as `since`, and its `epoch` as `epoch`:
 
    ```
    wait_for_events since=<cursor> epoch=<epoch>
    ```
 
 3. Act on what changed.
-   - `needs-input` or `needs-approval` — tell the human, and route them to the
-     pane. Do not answer for them. When the human gives you the answer, run
-     "Read before you type", then pass the answer on with `send_input`:
-
-     ```
-     send_input session=<id> text="Use the retry budget from the config, not a constant."
-     ```
+   - `needs-input` or `needs-approval` — the human answers, in the pane or
+     the fleet view; the foreman routes it and does not answer.
 
      `send_input` presses Enter after the text the way the session's reader
      expects it: a newline for a shell, a carriage return for an interactive
@@ -164,20 +162,14 @@ subject `<project> / <slug> round <n>: <queue item> · PR #N` (a chore:
      works for both. Set `enter:false` only to send bare keystrokes, such as
      Ctrl-C.
 
-     Every message the foreman types into a crew pane starts with
-     `FOREMAN:` and carries one instruction. The crew treats `FOREMAN:`
-     text as the foreman's word.
-
      Send a whole prompt in one call, whatever its size. The daemon types a
      body into `claude` in pieces of 512 bytes, 50ms apart, then presses
      Enter, because Claude Code keeps only the last read of a paste that
      arrives faster than it reads (measured on 2026-09-07: one write of
      2104 bytes reached 2.1.260 as its last 59, and 8193 bytes reached
      2.1.263 as its last 16; the same bodies in paced pieces arrived whole).
-     A 64 KiB body, the route's cap, takes about 6.5s to type. Do not split
-     a prompt across calls to work around a loss: the split was the
-     workaround the daemon now does for you, and a split prompt is two
-     pastes.
+     A 64 KiB body, the route's cap, takes about 6.5s to type. A prompt
+     split across calls is two pastes.
 
      A text over 1 KiB is refused with a `cooked reader` error while the
      terminal is in cooked mode: a `sleep`, a program that has not yet
@@ -185,33 +177,16 @@ subject `<project> / <slug> round <n>: <queue item> · PR #N` (a chore:
      shell in a here-doc. The kernel keeps 1024 bytes of a cooked line and
      drops the rest, so the text could not arrive whole, and the daemon
      types nothing. The error names what holds the terminal
-     (`foregroundProgram`). Run "Read before you type" again: when the
-     prompt is at the cursor, `claude` reads raw keys and the same call
-     goes through. Set `force:true` only when you know the reader takes
-     lines under 1 KiB as they come, such as a shell fed a script.
-   - `note` — a crew agent reported progress. Every crew note's first line
-     is `<KIND> <slug> r<n>: <one line>` (a chore writes `<KIND> <slug>:
-     <one line>`), and `KIND` is one of `PLAN`, `PROGRESS`, `BLOCKER`, or
-     `DONE`. Relay the first line word for word, as it arrives.
-   - a stall — the crew reports `needs-input` or `completed` with no
-     `BLOCKER` or `DONE` note since its last turn began, or 15 minutes
-     pass with no `PLAN` note. Call `screen_state` and `read_screen`; an
-     API error, a model limit, or a prompt with no question gets one
-     `FOREMAN: continue from <the last step shown>`. One automatic
-     continue per round. A second stall in the round: report it to the
-     human at once and wait for the human's word.
+     (`foregroundProgram`). Once `claude` reads raw keys, the same call
+     goes through.
    - `command.failed` — a command exited non-zero in an orchestrated session.
-     Read `/commands/<index>/output` (`read_output`). Report it at once when
-     it is the crew's floor or a command the round depends on; otherwise let
-     the crew handle it. Never act for the crew.
+     Read `/commands/<index>/output` (`read_output`).
    - `agent.join-mismatch` — a hook named a session that holds another
      agent's join, from a `cwd` outside that session's project. The daemon
      kept the join and the status. The data names the stranger (`sessionId`,
      `cwd`, `transcript`): a process that inherited the pane's
      `KITTERM_SESSION_ID`. Report it once; the stranger's own state is on no
      row.
-   - `completed` — verify the work, then move the session to review or end it.
-     A correction goes in the same way: read first, then `send_input`.
 
 4. End a session when its work merges. `kill_session` ends the shell now.
    The linger clock does not do it for you: it reaps an idle shell, not a
@@ -241,86 +216,13 @@ subject `<project> / <slug> round <n>: <queue item> · PR #N` (a chore:
 
 ## One foreman for every scope
 
-One foreman runs per scope and serves every project under it. A scope is a
-directory: the value of the foreman's own `scope:<path>` label, else its
-pane's cwd. The foreman acts only on a project whose root is the scope or
-lies under it, and never on a session outside the scope; another live
-foreman in a different scope is not a conflict, and one in the same scope,
-or in a scope that holds or sits inside this one, is the conflict a new
-foreman stops and tells the human about. It keeps no state of its own: each
-project's `docs/goals/` package is the control plane, and the foreman
-rebuilds its view from the packages and from the daemon on every scan.
-`docs/goals/LOOP.md` in this repository is the source of the procedure;
-`examples/foreman/foreman-loop.md` is the same procedure as a skill, and
-`kitterm skills install` puts it in `~/.claude/skills/`.
-
-The package has two files for the project and one folder per goal. `LOOP.md`
-holds the procedure and the authority tiers; `facts.md` holds repository
-facts by topic, each dated with its source. Each goal is `docs/goals/<slug>/`
-with `goal.md`, `plan.md`, `STATE.md`, `corpus/`, and `rounds/`; the folder
-name is the slug, and a goal never moves. Two files, two scopes: only a
-repository fact is appended to `facts.md`, and a goal-local finding stays in
-the round record; `STATE.md` holds the status, the round counter, the queue,
-the failures, the proposals, the done items, and the next action, and
-nothing else. `kitterm goal new <path> <slug>` writes a goal folder from the
-template and refuses an existing one; `kitterm goal list <path>` prints every
-goal folder with its status. The steps are `LOOP.md`'s "One foreman for
-every scope", in one sentence each:
-
-1. **Start.** The foreman runs `kitterm foreman catch-up` before anything
-   else, with `--scope` when its pane carries a `scope:` label; it reads
-   the predecessor's note and last message, then stops and tells the human
-   when a second live foreman already holds this scope.
-2. **Upkeep.** At start, and after a skills update, the foreman runs
-   `kitterm project init --refresh --check <root>` for every project in its
-   scope: a chore pull request for a `behind` one, a draft proposal pull
-   request for an `edited` one, and nothing for a `current` one.
-3. **Scan.** The foreman lists the projects with `list_projects`, keeps the
-   ones under its scope, and reads every `docs/goals/<slug>/STATE.md`; a
-   live session belongs to a goal by its `goal:` and `round:` labels, never
-   by its id.
-4. **Schedule.** Only an `active` goal with rounds left, no open round, and
-   no blocking proposal runs, at most one round per goal and three crew
-   sessions across all projects, the oldest `Updated` date first.
-5. **Delegate.** Before the crew starts, the foreman cuts the goal's branch
-   `goal/<slug>` (a chore's is `chore/<slug>`) in a worktree, commits the
-   queue line, pushes, and opens a draft pull request; the number goes on
-   the queue line as `, PR #N.` and on the crew session as `pr:<N>`. It
-   then runs `LOOP.md`'s "One round" in one crew session with the labels
-   `crew:<slug>`, `goal:<slug>`, `round:<n>`, `task:<item>`, and `pr:<N>`;
-   the crew pushes to that branch after each commit and never to `main`.
-   The foreman skips the floor before a round when the base sha's or the
-   pull request's own continuous integration is already green (`LOOP.md`,
-   "The floor"), and after the crew it reads the diff and waits on the
-   pull request's checks instead of rerunning them itself. The foreman
-   writes `docs/goals/<slug>/rounds/NNN.md` with `PR #N` in its `Result:`
-   and updates the goal's `STATE.md` while that check runs, commits the
-   package on the goal's branch, and pushes it once the check is green,
-   before it reports; the record's `- Cost:` line is what
-   `kitterm archive cost <id> --line` prints for the archived crew
-   session, and a chore's one line goes in its own file,
-   `docs/goals/chores/<ISO date>-<slug>.md`, so two chore pull requests
-   merge in either order. A goal keeps one branch and one pull request for
-   all its rounds; the foreman runs `gh pr ready` when the goal is done,
-   rebases every open branch onto `main` after any merge
-   (`--force-with-lease`, the foreman's one force-push), and never merges:
-   the human merges, once per goal. After the merge, the foreman deletes
-   the branch on the remote, its worktree, and the local branch.
-6. **Monitor.** One `wait_for_events` watches the whole daemon; an idle crew
-   session is archived one hour past `completed`, and a crew lost to an
-   `epoch` change is respawned once.
-7. **Report.** The foreman reports at once for `needs-input`,
-   `needs-approval`, a `propose` decision, a stop rule, or a failed round,
-   and posts one digest with `post_note` after every round and on "status",
-   in the shape `LOOP.md` gives under "Reports".
-8. **Direction.** After a goal spends its budget the foreman sets it to
-   `waiting` and takes the human's answer per goal: continue, redirect,
-   stop, done, or new goal, as `LOOP.md` gives under "Direction".
-
-The review crew and the triage skills are procedures the foreman delegates
-inside a round. When such a session carries a `goal:` label, its findings or
-its root cause also go into the round record under
-`docs/goals/<slug>/rounds/`, and the foreman does the writing.
+One foreman runs per scope and serves every project under it.
+`docs/goals/LOOP.md` gives the scope, the package, the branch
+`goal/<slug>`, its pull request and the merge; the skill gives the steps,
+from `kitterm foreman catch-up` and
+`kitterm project init --refresh --check <root>` on. `docs/control-plane.md`
+gives the commands the steps run: `kitterm goal new`, `kitterm goal list`,
+`kitterm round open` and `kitterm round close`.
 
 ## Read before you type
 
@@ -330,53 +232,20 @@ TUI such as Claude Code, those bytes are spinner redraws and cursor moves.
 cursor position, and marks a dim run as `{dim}…{/dim}`. On 2026-09-04 a
 foreman read Claude Code's dim ghost suggestion on an empty prompt as typed
 text and pressed Enter on nothing, and it typed a task into a pane that was
-still at the folder-trust dialog. So the foreman reads before it types.
+still at the folder-trust dialog. So the foreman reads before it types, by
+the "Read before you type" steps of the skills under `examples/foreman/`.
+The steps rest on these facts:
 
-Do this before every `send_input` into a pane that runs an interactive agent.
-
-1. Call `screen_state` first. On `prompt-empty`, type the message and go
-   to step 4. On a dialog, a working turn or `waiting-on-own-job`, act as
-   step 3 says. On any other answer, and before any keystroke into a
-   dialog, call `read_screen`, find the row the cursor is on, and go on
-   from step 2. Every answer is counted in `~/.kitterm/screen-state.log`;
-   `kitterm screen-state stats` shows how often the rules say `unknown`.
-2. Type only when the prompt is at the cursor and the input box is empty: the
-   cursor row reads `❯` and the cursor sits right after it. A `{dim}…{/dim}`
-   run at the cursor is a placeholder, so an empty prompt can read as
-   `❯ {dim}Try "…"{/dim}`. Treat it as empty. Never treat it as text, and
-   never press Enter on it.
-3. When the screen shows something else, do not type the message. Act on what
-   the screen shows:
-   - Trust dialog. The pane reads "Is this a project you created or one you
-     trust?" with the options `No, exit` and `Yes, I trust this folder`, and
-     `❯` marks `No, exit`. This is not a permission dialog: it asks about the
-     folder the foreman chose. When the cwd is the repo the user named, send
-     `send_input keys=["down"]`, read the screen to confirm `❯` now marks
-     `Yes, I trust this folder`, then press Enter with
-     `send_input keys=["enter"]`. Any other cwd: stop and tell the user. A
-     key goes by name because an escape byte does not survive an MCP
-     client's JSON string argument: a client that strips it types `[B` as
-     text, and a client that passes it raw breaks the JSON-RPC line. Send
-     the arrow and the Enter in two calls: a keystroke and a carriage return
-     in one write can confirm the option that was marked before the
-     keystroke arrived.
-   - Permission dialog. The pane reads "Do you want to proceed?" or a
-     numbered choice with a `Yes` and a `No`. Never answer it. Tell the user
-     and link the pane; the fleet view holds the same dialog.
-   - In-progress turn. The pane shows a spinner line with "esc to
-     interrupt", or a `⏺` tool call that has not returned above the input
-     box. Wait. Call `wait_for_events` until the session reports `completed`
-     or `needs-input`, then read the screen again.
-4. Send the message with `send_input`. Send one dialog keystroke per call,
-   and read the screen between keystrokes.
-   A `cooked reader` error means the program in the pane has not taken raw mode
-   yet (the error names it in `foregroundProgram`), a text over 1 KiB could not
-   arrive whole, and nothing was typed. Go back to step 1. Set `force:true`
-   only for a shell that reads lines under 1 KiB as they come.
-5. Call `read_screen` again. Confirm the text you typed now appears above the
-   input box as `❯ <your text>` and the box is empty again. When the text
-   still sits in the box, press Enter alone (`send_input text=""`) and read
-   once more.
+- `screen_state` counts every answer in `~/.kitterm/screen-state.log`;
+  `kitterm screen-state stats` shows how often the rules say `unknown`.
+- The trust dialog is not a permission dialog: it asks about the folder the
+  foreman chose. A permission dialog is the human's, and the fleet view
+  holds the same dialog.
+- A client that strips an escape byte types `[B` as text, and a client
+  that passes it raw breaks the JSON-RPC line, so a key goes by name.
+- A keystroke and a carriage return in one write can confirm the option
+  that was marked before the keystroke arrived, so the arrow and the
+  Enter go in two calls.
 
 ## When the daemon upgrades in place
 
@@ -437,8 +306,8 @@ Use labels so a fleet of sessions stays attributable.
 Filter the fleet by any label: `list_sessions label="crew:alpha"`.
 
 The goal loop reserves keys of its own; the Labels table in
-`docs/goals/LOOP.md` is the one list of them. The foreman sets them on every
-crew session it spawns for a round. The foreman's own pane carries
+`docs/goals/LOOP.md` is the one list of them. `kitterm round open` sets them
+on every crew session it spawns for a round. The foreman's own pane carries
 `crew:foreman`; the fleet view pins that session above the project cards and
 reads "no foreman running" when none exists.
 
@@ -462,9 +331,7 @@ under that goal's sub-header with its round; a label no folder carries reads
 
 `examples/foreman/` holds reference Claude Code skills you copy and tune:
 
-- `foreman-loop.md` — the standing foreman: scan every goal folder, schedule
-  the active ones, delegate one round, monitor, record and commit, report,
-  direction, from `docs/goals/LOOP.md`.
+- `foreman-loop.md` — the standing foreman: the procedure of the goal loop.
 - `review-crew.md` — spawn a review session per dimension, collect the notes.
 - `triage.md` — reproduce a bug in its own session, confirm the root cause.
 
@@ -473,6 +340,3 @@ under that goal's sub-header with its round; a label no folder carries reads
 `wrote`, `updated`, or `unchanged`. `kitterm skills list` prints the names and
 descriptions. The binary embeds the files, so the installed skills match the
 release that installed them.
-
-These are documentation, not daemon features. The boundary holds: kitterm ships
-the machinery, the skill is the foreman's own prompt.

@@ -6,10 +6,10 @@ import XCTest
 /// The foreman protocol — a task list beside the package, a note's first
 /// line naming its kind, the `FOREMAN:` prefix on every message into a crew
 /// pane, and the one-automatic-continue stall rule (`foreman-protocol`,
-/// capability 1). The rule is written once and read in three places: the
-/// skill, its embedded copy, and `docs/foreman.md`, where it states the
-/// rule. Each sentence below must be held whole; only the line breaks may
-/// differ, the pattern of `LoopScopeRulesTests`.
+/// capability 1). The rule's one home is the skill, and the binary embeds a
+/// copy (`one-rule-one-place` round 1 took the restatement out of
+/// `docs/foreman.md`, Chartered). Each sentence below must be held whole;
+/// only the line breaks may differ, the pattern of `LoopScopeRulesTests`.
 final class ForemanProtocolRulesTests: XCTestCase {
     private static let root = CLIFixture.repositoryRoot
 
@@ -59,7 +59,6 @@ final class ForemanProtocolRulesTests: XCTestCase {
         [
             ("examples/foreman/foreman-loop.md", try read("examples/foreman/foreman-loop.md")),
             ("ForemanSkills.foremanLoop", ForemanSkills.foremanLoop),
-            ("docs/foreman.md", try read("docs/foreman.md")),
         ]
     }
 

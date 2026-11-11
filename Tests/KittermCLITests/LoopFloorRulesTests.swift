@@ -79,11 +79,17 @@ final class LoopFloorRulesTests: XCTestCase {
             """
         ),
         (
-            "the push waits for the pull request's checks to go green",
+            // Chartered by `one-rule-one-place` round 1: the sentence read
+            // `Push the branch once the pull request's continuous integration
+            // on the crew's head sha is green (step 4): write and commit while
+            // it runs, and push after.`; `kitterm round close --commit` commits
+            // and pushes in one step, so it runs after the green check.
+            "the commit and the push wait for the pull request's checks to go green",
             """
-            Push the branch once the pull request's continuous integration on the
-            crew's head sha is green (step 4): write and commit while it runs, and
-            push after.
+            Run `kitterm round close <root> <slug> --commit`
+            only after `gh pr checks <N>` is green on the crew's head sha (step 4):
+            read the check's result first, and do not chain the two in one
+            command.
             """
         ),
     ]
@@ -165,13 +171,13 @@ final class LoopFloorRulesTests: XCTestCase {
         }
     }
 
-    /// `docs/foreman.md` names the same practice in "Delegate".
+    /// Chartered by `one-rule-one-place` round 1: `docs/foreman.md` restated
+    /// the floor practice in "Delegate"; it now names `LOOP.md`, the floor's
+    /// one home, which `testTheLoopFilesCarryTheFloorRules` pins.
     func testTheManualNamesTheFloorPractice() throws {
         let manual = Self.oneLine(try Self.read("docs/foreman.md"))
         for phrase in [
-            "The foreman skips the floor before a round",
-            "waits on the pull request's checks instead of rerunning them itself",
-            "pushes it once the check is green",
+            "`docs/goals/LOOP.md` holds its policy, from the roles to the stop rules",
         ] {
             XCTAssertTrue(manual.contains(Self.oneLine(phrase)), "docs/foreman.md names \(phrase)")
         }

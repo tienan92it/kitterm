@@ -1,9 +1,13 @@
 # LOOP
 
-The contract for every goal loop in this repository: the authority tiers,
-the parsed shapes, the budget, and the stop rules. This file changes when
+Each rule of the goal loop has one home. This file holds the policy: the
+roles, goal or chore, the pull request, the floor, the authority tiers, the
+parsed shapes, the budget, direction, and the stop rules. The skill
+`examples/foreman/foreman-loop.md` holds the foreman's procedure.
+`docs/foreman.md` holds the set-up, the MCP tools, the typed state, and the
+daemon's behaviour on an upgrade and a restart. The other two name a rule
+of this file in one sentence and do not restate it. This file changes when
 the process changes.
-`STATE.md` changes after every round.
 
 The repository is the control plane. The package is small on purpose.
 Two files belong to the project: this file and `facts.md`. Each goal is
@@ -17,9 +21,7 @@ Two files, two scopes. `facts.md` holds repository facts by topic, each
 dated with its source; only a repository fact goes there, and a
 goal-local finding stays in its round record. `STATE.md` holds status,
 round counter, queue, failures, proposals, done, and next action, and
-nothing else; narrative goes to the records. The card parses the
-`- Status:`, `- Round: N of M`, and `## Next action` lines of `STATE.md`,
-so their shape is an interface.
+nothing else; narrative goes to the records.
 
 ## Roles
 
@@ -83,23 +85,28 @@ without a folder, and says so in the digest.
 
 ## The pull request
 
-Every goal and every chore has one branch and one pull request, open
-before its crew starts. The human watches the diff while the work runs,
-and the fleet view shows the round and its pull request.
+Every goal and every chore has one branch and one open pull request,
+open before its crew starts. The human watches the diff while the work
+runs, and the fleet view shows the round and its pull request.
 
 - A goal's branch is `goal/<slug>`. A chore's branch is `chore/<slug>`.
-  The foreman cuts the branch from `origin/main` in a worktree of its own.
-- Before it spawns the crew, the foreman commits the queue line, pushes
-  the branch, and opens a draft pull request with `gh pr create --draft`.
+  The branch is cut from `origin/main` in a worktree of its own.
+- `kitterm round open` does every step before the crew starts: it cuts
+  the branch, commits the queue line, pushes the branch, opens a draft
+  pull request with `gh pr create --draft` when none is open, and spawns
+  the crew session. `docs/control-plane.md` gives each step.
 - The pull request's number goes in three places: on the queue line in
   `STATE.md`, as `, PR #N.` at the end of the item's first line; on the
   crew session, as the label `pr:<N>`; and in the round record's
-  `Result:`, when the foreman writes the record. No record needs a later
-  commit to name its pull request.
-- A goal keeps its one branch and its one pull request for all its
-  rounds. Each round's record and `STATE.md` commit land on that branch.
-  When the goal is done, the foreman runs `gh pr ready <N>`, and the
-  human merges.
+  `Result:`, when `kitterm round close` writes the record. No record
+  needs a later commit to name its pull request.
+- A goal keeps its one branch for all its rounds, and an open pull
+  request for as many rounds as the human leaves it open. Each round's
+  record and `STATE.md` commit land on that branch. The human can merge
+  the pull request before the goal is done; the next `kitterm round open`
+  then opens a new one. The records show both: `code-editor` used 6 pull
+  requests and `sessions-workflow` 4. When the goal is done, the foreman
+  runs `gh pr ready <N>`, and the human merges.
 - A crew pushes to its branch after each commit. A crew never pushes to
   `main`, never force-pushes, and never merges.
 - After any merge to `main`, the foreman rebases every open goal or chore
@@ -113,8 +120,8 @@ and the fleet view shows the round and its pull request.
   `git worktree remove` and the local branch with `git branch -D`. A
   merged branch left on the remote reads as open work.
 - The foreman cannot merge: the auto-mode classifier refuses
-  `gh pr merge`. The human merges, once per goal, after the foreman has
-  committed the package and marked the pull request ready.
+  `gh pr merge`. The human merges each pull request, after the foreman
+  has committed the package and marked the pull request ready.
 
 ## The floor
 
@@ -151,8 +158,7 @@ its CI run is part of the floor: a green run already proves the base sha.
 | Frozen | `goal.md`, `corpus/`, an existing test file, an existing bench scenario and its gate, `Web/terminal/pnpm-lock.yaml` | Nobody changes these inside a round, except a Chartered assertion. A repair that needs one stops the loop. |
 | Chartered | an assertion in an existing test file that pins a text, a count, or a layout this round must change | The crew replaces the assertion inside the round and keeps its intent. The foreman records the replacement. |
 
-Before the foreman accepts a round it runs `git diff --name-only <base>` in
-the crew session and reads the output. A path under Frozen fails the round.
+A path under Frozen in the round's diff fails the round.
 A path under Propose turns the round's decision into `propose`. A deleted or
 weakened assertion in an existing test counts as a Frozen change.
 
@@ -213,8 +219,11 @@ and the five sections in this order. What each parser takes:
 - `- Last floor:`: the value, whole (`KnowledgeSummary.lastFloor`).
 - `- Rounds total:` and `- Updated:`: no parser reads them. The template
   writes them, `GoalsLayoutDocsTests` pins the five bullets and the five
-  sections, and "One foreman for every scope" orders the schedule by
-  `Updated`.
+  sections, and the skill's "Schedule" orders the goals by `Updated`.
+- `kitterm round close` writes `- Round:`, `- Rounds total:` and
+  `- Updated:` when a round ends; the foreman does not raise `- Round:`
+  when a round opens. The foreman writes `- Status:` and `- Last floor:`,
+  and resets `- Round:` at a direction check ("Direction").
 - `## Next action`: the first paragraph, capped at 512 bytes
   (`KnowledgeSummary.nextAction`).
 - `## Proposals waiting on the human`: the top-level bullets are counted
@@ -226,9 +235,7 @@ and the five sections in this order. What each parser takes:
   continuation. Its slugs are the backticked kebab words on its first line
   before the first comma, so ``- `a` (1) and `b` (2), round 1, `9784fd2`.``
   yields `a` and `b` and not the sha; `round N` and `PR #N` come from the
-  whole first line. The foreman writes `, PR #N.` at the end of the
-  item's first line when the pull request opens ("The pull request"), so
-  a running item already names it. `kitterm round open` writes the line:
+  whole first line. `kitterm round open` writes the line:
   the text before its first comma, less a final `.`, then `, round R.`
   before the pull request opens and `, round R, PR #N.` after. Prose under a heading (`None.`) names
   no task. A slug in two sections keeps the state a reader needs most,
@@ -238,10 +245,11 @@ and the five sections in this order. What each parser takes:
 
 ### The round record
 
-Write `<slug>/rounds/NNN.md` with this shape. Three-digit number, one file per
-round, never rewritten after the round ends. `Result:` names the pull
-request the foreman opened before the round, `PR #N`, from the queue line
-("The pull request"), so the record names it when it is written.
+`kitterm round close` writes `<slug>/rounds/NNN.md` with this shape.
+Three-digit number, one file per round, never rewritten after the round
+ends. `Result:` names the pull request `kitterm round open` opened before
+the round, `PR #N`, from the `pr:` label ("The pull request"), so the
+record names it when it is written.
 
 ```markdown
 # Round NNN: <queue item>
@@ -285,23 +293,23 @@ When `GET /api/archives/<id>/cost` answers `hasBill: false` or 404, the
 line reads `- Cost: none recorded (<reason>)` with the reason the route
 gave.
 
-Archive the session, then run `kitterm archive cost <id> --line` for
-every session the record's `Sessions:` line names and paste its output as
-one `- Cost:` line per session, in that order, under the record's header.
-The command reads the archive's transcript under `~/.kitterm` with no
-daemon and prints the line above, or `- Cost: none recorded (<reason>)`;
-`--json` prints the bill as `GET /api/archives/<id>/cost` answers it.
+`kitterm round close` archives every session the record's `Sessions:`
+line names and writes one `- Cost:` line per session, in that order,
+under the record's header, with the reader of
+`kitterm archive cost <id> --line`. That command reads the archive's
+transcript under `~/.kitterm` with no daemon and prints the line above,
+or `- Cost: none recorded (<reason>)`; `--json` prints the bill as
+`GET /api/archives/<id>/cost` answers it.
 
-`kitterm round close` writes the record from these facts. Its
-`- Foreman:` line, after the `- Cost:` lines, is the estimate of the
-foreman's own turns between `Started` and `Ended`, from the foreman's
-transcript, priced by `ModelPricing`: `- Foreman: ~$D · Nk in (C% cached)
-· Nk out`, or `- Foreman: none recorded (<reason>)`. A model
-`ModelPricing` does not know adds ` · unpriced <model>` to the line:
-its tokens count and its dollars do not. The line does not start
+The record's `- Foreman:` line, after the `- Cost:` lines, is the
+estimate of the foreman's own turns between `Started` and `Ended`, from
+the foreman's transcript, priced by `ModelPricing`: `- Foreman: ~$D · Nk
+in (C% cached) · Nk out`, or `- Foreman: none recorded (<reason>)`. A
+model `ModelPricing` does not know adds ` · unpriced <model>` to the
+line: its tokens count and its dollars do not. The line does not start
 with `- Cost:`, so neither parser below counts it. Each of the six
-sections holds the marker line `[foreman writes this]`, and `Floor` holds
-two, `before:` and `after:`; the foreman replaces each, and
+sections holds the marker line `[foreman writes this]`, and `Floor`
+holds two, `before:` and `after:`; the foreman replaces each, and
 `kitterm round close --commit` refuses while one remains.
 
 Two parsers read the record:
@@ -316,8 +324,10 @@ Two parsers read the record:
   (`KnowledgeSummary.costLine`); the pull request is the first `PR #N` on
   a `- Result:` bullet, else the first `PR #N` after `Result:` on the
   `- Base:` line; the bullet wins when a record carries both; a result
-  given as a sha, on either shape, names none; the correction is a
-  `## Correction` heading.
+  given as a sha, on either shape, names none; a correction is a
+  `## Correction` section whose text, after list marks and spaces, is not
+  empty and does not start with "None" in any case
+  (`KnowledgeSummary.isCorrection`).
 - `kitterm goal cost` (`GoalLedger`): the ids on the `- Sessions:` line
   and after `Archives:`; the sha on the `- Base:` line; the result sha
   and the `PR #N` by the same rule, from a `- Result:` bullet, else
@@ -339,7 +349,6 @@ Two parsers read the record:
 | `pr` | pull request number, the one the queue line names | foreman |
 | `resumed-from` | archive id, or the id the pane held before an epoch change | foreman, on a respawn |
 
-Filter the fleet by any label: `list_sessions label="goal:<slug>"`.
 `SessionLabels` names the keys the loop reserves and passes them through
 on every session row; the fleet view joins a live session to its goal
 folder by `goal:<slug>` and marks the queue item `[working]` by
@@ -363,15 +372,19 @@ chore's session carries `crew:<slug>`, `task:<slug>` and `pr:<N>`.
 - One crew session per round, plus review sessions when the round's
   capability touches `Sources/KittermDaemon/PtySession.swift` or
   `HTTPAPIHandler.swift`.
-- Commit after every round. The record, the state, and any fact go into
-  one commit on the goal's branch before the foreman reports the digest. A
-  record that sits uncommitted is not written. The foreman pushes the
-  branch after the commit, so the pull request carries the record.
+- At most one round per goal at a time, and at most three crew sessions
+  live across all projects. A review session and a crew's helper count
+  toward the cap of three.
+- Commit after every round. `kitterm round close --commit` commits the
+  record and the state on the goal's branch before the foreman reports
+  the digest; a new fact in `facts.md` goes in a commit of its own before
+  it. A record that sits uncommitted is not written. The command pushes
+  the branch after the commit, so the pull request carries the record.
 
 ## One foreman for every scope
 
-The foreman keeps no state of its own. The repositories are the control
-plane; the foreman rebuilds its view from them and from the daemon.
+The foreman keeps no state of its own; it rebuilds its view from the
+repositories and from the daemon.
 
 A foreman's scope is a directory: the value of its own pane's `scope:<path>`
 label, else its pane's cwd. Its projects are the registered projects whose
@@ -383,70 +396,35 @@ different scope is not a conflict. Another live foreman in the same scope,
 or in a scope that holds or sits inside this one, is the conflict: the
 foreman stops and tells the human.
 
-1. **Start.** Before anything else, run `kitterm foreman catch-up`, with
-   `--scope <path>` when the pane carries a `scope:` label. Read the
-   predecessor's note and the last message of its transcript for what the
-   human told it. Adopt its open pull requests and its live crews by their
-   labels. A second live foreman already in this scope is the conflict
-   above: stop and tell the human. Archive a predecessor's pane only on the
-   human's word, and only inside this scope.
-2. **Upkeep.** At start, and again after `kitterm skills install` changes
-   this skill, run `kitterm project init --refresh --check <root>` for
-   every project in the scope: `current` leaves it. `behind` runs it as a
-   chore on the branch `chore/refresh-loop`, with
-   `kitterm project init --refresh <root>`. `edited` opens a draft pull
-   request on the project's base branch that brings the new template
-   sections into its `LOOP.md`, keeping the project's own lines; the
-   human's merge is the Propose-tier approval.
-3. **Scan.** On start, and after every event batch, list the projects
-   (`list_projects` once capability 1 ships; until then the paths the human
-   gave) and keep the ones whose root is the scope or lies under it. For
-   each project read every `docs/goals/<slug>/STATE.md`. A project with no
-   goal folder is reported once as "no goal" and skipped. The folder name
-   is the goal's slug; the `goal:` label carries it. Match a live session
-   to its goal by the `goal:` and `round:` labels, never by id. The round's
-   own session is the one with `crew:<slug>`; a `crew:helper` session
-   beside it is a fixture the crew made. A round is open while a live
-   session carries `crew:<slug>`; a `crew:helper` session does not hold the
-   round open.
-4. **Schedule.** A goal is runnable when its `Status` is `active`, its
-   budget has rounds left, no round is open, and no proposal blocks the next
-   action. `Status` is one of `active`, `waiting`, `stopped`, `done`; only
-   `active` runs. Run at most one round per goal and at most three crew
-   sessions across all projects. A review session and a crew's helper count
-   toward the cap of three. Start the runnable goal with the oldest
-   `Updated` date first.
-5. **Delegate.** Run "One round" of the foreman's own procedure, in its
-   skill, for that goal. The branch and the draft pull request exist
-   before the crew is spawned ("The pull request"). The crew session does
-   the work. The foreman reads, routes, verifies, and records.
-6. **Monitor.** Hold one `wait_for_events` for the whole daemon. On each
-   scan compare `heldSince` with now: archive a crew session that sits at an
-   empty prompt one hour past `completed`. Respawn a crew once after an
-   `epoch` change; when the respawn does not restore the round, record a
-   killed attempt (see "Budget") and stop the goal.
-7. **Report.** See "Reports" of the foreman's own procedure, in its skill.
+A round is open while a live session carries `crew:<slug>`; a
+`crew:helper` session does not hold the round open. The foreman's steps
+inside its scope (Start, Upkeep, Scan, Schedule, One round, Monitor,
+Reports) are the skill's.
 
 ## Direction
 
 After a goal spends its budget the foreman sets its `Status` to `waiting`,
 reports, and keeps the other goals running. At every direction check the
 human prunes `facts.md` and the goal's open proposals. The human answers
-per goal:
+per goal, and the foreman commits every direction edit on the goal's
+branch:
 
-- **continue**: the foreman resets `Round: 0 of 3`, sets `Status: active`,
-  and notes the decision in `STATE.md`.
+- **continue**: the foreman resets `Round: 0 of 3 in this budget (<ordinal>
+  budget)`, sets `Status: active`, sets `Updated`, and notes the decision
+  in `STATE.md`. The goal is runnable on the next scan.
 - **redirect**: the human edits `goal.md` or `plan.md`, then says continue.
-- **stop**: the foreman sets `Status: stopped` and archives or ends the
-  goal's crew sessions. The folder stays where it is.
+- **stop**: the foreman sets `Status: stopped`, sets `Updated`, and
+  archives or ends the goal's crew sessions. The folder stays where it is.
 - **done**: when the completion condition in `goal.md` holds, the foreman
-  sets `Status: done`, notes the date, and stops scheduling the goal. The
+  sets `Status: done`, sets `Updated` to today, writes the next action as
+  `None.` with the way to reopen, and stops scheduling the goal. The
   folder stays; the human can reopen it with `Status: active` and a new
   queue at any time.
-- **new goal**: the human names a slug. The foreman creates
-  `docs/goals/<slug>/` from the template (`kitterm goal new <path> <slug>`
-  once it exists), and the human writes `goal.md`, `plan.md`, and the
-  corpus before the first round.
+- **new goal**: the human names a slug. The foreman runs
+  `kitterm goal new <path> <slug>`, which writes `docs/goals/<slug>/` from
+  the template and refuses an existing folder, and the human writes
+  `goal.md`, `plan.md`, and the corpus before the first round. No round
+  starts while the queue still reads `<item>`.
 
 ## Stop rules
 
