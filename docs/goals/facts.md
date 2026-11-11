@@ -244,6 +244,12 @@ decision moves to `docs/adr/`.
 
 ## Crew pane
 
+- A crew started with the crew settings file needs a `kitterm` on its
+  `PATH` that has `round guard`. The hook is `kitterm round guard ||
+  exit 2`, so an older build, or none, refuses every Bash call of the
+  crew. With the plain command the hook failed open and a force push
+  ran. Check with `kitterm round guard --check` (2026-11-11,
+  `one-rule-one-place/rounds/002.md`).
 - Claude Code loads `AGENTS.md` whole into every session that starts in
   a repository with no `CLAUDE.md`, and reads it again from the cache on
   every request. At 333 lines and 178 KB it was the larger part of a crew's
@@ -377,10 +383,14 @@ decision moves to `docs/adr/`.
   touch Pen's active editor, which another project's crew may hold. A
   PNG `Export` of a 1200 px frame timed out after 55 s in that mode
   (2026-10-08, `value-lifetime`).
-- A crew's `lastOutputAt` stays fresh while Claude Code's screen redraws
-  at an idle prompt, so it cannot show a crew stopped on a model limit.
-  Watch the agent's state instead: `needs-input` or `completed` with no
-  note for minutes (2026-10-08, `value-lifetime` round 1). A crew can stop
+- On Claude Code 2.1.322 an idle pane keeps `lastOutputAt` still: a
+  detached pane at its prompt did not move it for 584 s. So quiet output
+  is a usable stall signal beside the agent's state. This replaces the
+  2026-10-08 fact that redraws kept `lastOutputAt` fresh
+  (`value-lifetime` round 1). The status bar of 2.1.322 reads
+  `· 1 shell, 1 monitor ·` while the crew waits on its own jobs, and can
+  show `← 1 agent` with no agent running (2026-11-11,
+  `one-rule-one-place/rounds/002.md`). A crew can stop
   on an account's model limit ("You've reached your Fable limit") and wait
   at its prompt with no note; switch the pane with `/model` (2026-10-07,
   `screen-state` round 1). This fact replaces the 2026-10-07 advice to
