@@ -31,7 +31,7 @@ enum ForemanCommand {
     static let usage = """
     usage: kitterm foreman catch-up [--scope <path>] [--json]
            kitterm foreman watch --session <id> [--session <id> ...] \
-    [--since <seq>] [--epoch <id>] [--heartbeat <seconds>] [--timeout <seconds>] [--port <n>] [--json]
+    [--since <seq>] [--epoch <id>] [--heartbeat <seconds>] [--timeout <seconds>] [--port <n>] [--quiet-working] [--json]
     """
 
     /// Run one subcommand. `out` takes every line meant for stdout.
@@ -532,6 +532,15 @@ enum ForemanCommand {
     /// heartbeat marker, so a stall check still runs.
     static let watchDefaultHeartbeatSeconds = 1200
 
+    /// Is `event` an `agent.status` whose status is `working`? With
+    /// `--quiet-working` such an event advances the cursor and does not
+    /// exit: no rule of the foreman acts on it.
+    static func isWorkingStatus(_ event: [String: Any]) -> Bool {
+        guard event["type"] as? String == "agent.status" else { return false }
+        let data = event["data"] as? [String: Any]
+        return data?["status"] as? String == "working"
+    }
+
     /// One page of `GET /api/events`, or why the daemon did not answer.
     enum WatchPoll {
         case answer(epoch: String, events: [[String: Any]], next: Int, pruned: Bool)
@@ -607,6 +616,7 @@ enum ForemanCommand {
         var pollSecondsOption: Int?
         var portOption: Int?
         var asJSON = false
+        var quietWorking = false
         var index = 0
         while index < args.count {
             let arg = args[index]
@@ -638,6 +648,8 @@ enum ForemanCommand {
                 portOption = n
             case "--json":
                 asJSON = true
+            case "--quiet-working":
+                quietWorking = true
             default:
                 throw CLIError.usage("unknown argument \(arg)\n\(usage)")
             }
@@ -708,7 +720,8 @@ enum ForemanCommand {
                     // "everything after it" without skipping the very next one.
                     since = seq
                     if let type = event["type"] as? String, let session = event["session"] as? String,
-                       watchMatchTypes.contains(type), watched.contains(session.uppercased()) {
+                       watchMatchTypes.contains(type), watched.contains(session.uppercased()),
+                       !(quietWorking && isWorkingStatus(event)) {
                         emit(["type": "event", "event": event, "next": since, "epoch": gotEpoch])
                         matched = true
                         break

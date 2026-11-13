@@ -86,6 +86,11 @@ enum KittermMain {
                 try ScreenStateCommand.run(args.dropFirst())
             case "foreman":
                 try ForemanCommand.run(args.dropFirst())
+            case "round" where args.dropFirst().first == "guard":
+                exit(RoundGuard.run(
+                    Array(args.dropFirst(2)), input: { FileHandle.standardInput.readDataToEndOfFile() },
+                    out: { print($0) }, err: { writeError($0 + "\n") }
+                ))
             case "round":
                 try RoundCommand.run(args.dropFirst())
             case "skills":
@@ -245,7 +250,7 @@ enum KittermMain {
                                       # scope (default: the working directory)
               kitterm foreman watch --session ID [--session ID ...]
                                       [--since N] [--epoch ID] [--heartbeat S]
-                                      [--timeout S] [--port N] [--json]
+                                      [--timeout S] [--port N] [--quiet-working] [--json]
                                       # block on the event feed; exit on the
                                       # first matching event, a heartbeat, or
                                       # an epoch change; run it in the
@@ -255,11 +260,16 @@ enum KittermMain {
                                       # the branch, the worktree, the draft PR,
                                       # the queue line and the crew session of
                                       # one round; no claude, no prompt
-              kitterm round close ROOT SLUG [--chore] [--commit] [--round N]
+              kitterm round close ROOT SLUG [--chore] [--commit] [--no-checks]
+                                      [--decision done|failed|propose] [--round N]
                                       [--bill-timeout S] [--foreman-session ID]
                                       [--knowledge DIR] [--port N]
                                       # archive the round's sessions, read their
                                       # bills, write rounds/NNN.md and STATE.md
+              kitterm round guard [--check]
+                                      # the PreToolUse hook of a crew session:
+                                      # refuses a push to the base branch, a
+                                      # force push, kitterm start|stop|restart
               kitterm skills install [--dir DIR] | list
                                       # write the foreman skills into ~/.claude/skills
               kitterm statusline install [--dir DIR] | print
@@ -358,7 +368,8 @@ enum KittermMain {
             epoch change (or a pruned cursor), printing that marker
             instead, and always prints the next since/epoch cursor to
             resume from. With no --since it starts at the current head, so
-            nothing already posted is replayed. --port overrides the port
+            nothing already posted is replayed. --quiet-working skips an
+            agent.status whose status is working. --port overrides the port
             file, for a scratch daemon. It exits non-zero when the
             daemon does not answer. It blocks for the run, so it is the one
             command in this list meant to run in the background
@@ -398,9 +409,13 @@ enum KittermMain {
             --foreman-session. Each section holds the marker line
             "[foreman writes this]", and Floor holds two (before:, after:);
             replace each one. It updates Round, Rounds total and Updated in
-            STATE.md and moves the item to ## Done. --commit refuses while a
-            marker remains, then commits the goal folder once and pushes,
-            never with force. --chore writes chores/<ISO date>-SLUG.md with
+            STATE.md and files the item by --decision: done (the default)
+            moves it to ## Done, failed to ## Failures, propose leaves it
+            under ## Queue. A later run keeps what the first run filed.
+            --commit refuses while a marker remains, and, for a done round,
+            while gh pr checks on the pull request is not green (--no-checks
+            skips that for a repository with no CI), then commits the goal folder once and
+            pushes, never with force. --chore writes chores/<ISO date>-SLUG.md with
             the marker, the model, the PR and the cost, and no record. It
             prints the file, the round, the sessions and the marker count.
             It never merges, marks a pull request ready, or runs a floor.

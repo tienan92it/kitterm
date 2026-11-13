@@ -101,6 +101,30 @@ final class ForemanWatchTests: XCTestCase {
         XCTAssertTrue(lines[0].contains("agent.status"))
     }
 
+    /// `--quiet-working` (`one-rule-one-place` round 3): a `working` status
+    /// advances the cursor and does not exit; the next status matches.
+    func testQuietWorkingSkipsAWorkingStatusAndMatchesTheNextStatus() throws {
+        let feed = ScriptedFeed(pages: [
+            .init(epoch: "e", events: [event(seq: 1, type: "agent.status", session: sessionA, data: ["status": "working"])], next: 1),
+            .init(epoch: "e", events: [event(seq: 2, type: "agent.status", session: sessionA, data: ["status": "completed"])], next: 2),
+        ])
+        let lines = try run(["--session", sessionA, "--since", "0", "--epoch", "e", "--quiet-working"], feed: feed)
+        XCTAssertEqual(feed.calls.count, 2)
+        XCTAssertEqual(feed.calls[1].since, 1)
+        XCTAssertEqual(lines.count, 1)
+        XCTAssertTrue(lines[0].contains("seq=2") && lines[0].contains("status=completed"), lines[0])
+    }
+
+    /// Without the flag a `working` status still matches.
+    func testWithoutQuietWorkingAWorkingStatusMatches() throws {
+        let feed = ScriptedFeed(pages: [
+            .init(epoch: "e", events: [event(seq: 1, type: "agent.status", session: sessionA, data: ["status": "working"])], next: 1),
+        ])
+        let lines = try run(["--session", sessionA, "--since", "0", "--epoch", "e"], feed: feed)
+        XCTAssertEqual(lines.count, 1)
+        XCTAssertTrue(lines[0].contains("status=working"), lines[0])
+    }
+
     func testACommandFailedForAWatchedSessionMatches() throws {
         let feed = ScriptedFeed(pages: [
             .init(epoch: "e", events: [event(seq: 1, type: "command.failed", session: sessionA, data: ["exit": "1"])], next: 2),

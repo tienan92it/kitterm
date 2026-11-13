@@ -86,11 +86,19 @@ final class GoalsLayoutDocsTests: XCTestCase {
             """
         ),
         (
+            // Chartered by `one-rule-one-place` round 1: the sentence read
+            // `Commit after every round. The record, the state, and any fact go
+            // into one commit on the goal's branch before the foreman reports
+            // the digest. A record that sits uncommitted is not written.`;
+            // `kitterm round close --commit` commits only the goal folder, so a
+            // fact takes its own commit. The intent (committed every round,
+            // before the digest) is kept.
             "the package is committed after every round, before the digest",
             """
-            Commit after every round. The record, the state, and any fact go into
-            one commit on the goal's branch before the foreman reports the digest. A
-            record that sits uncommitted is not written.
+            Commit after every round. `kitterm round close --commit` commits the
+            record and the state on the goal's branch before the foreman reports
+            the digest; a new fact in `facts.md` goes in a commit of its own before
+            it. A record that sits uncommitted is not written.
             """
         ),
         (
@@ -140,11 +148,16 @@ final class GoalsLayoutDocsTests: XCTestCase {
             // in that order, under the record's header.`; now the command
             // writes the line, and the intent (archive first, one line per
             // session, in `Sessions:` order, under the header) is kept.
-            "the foreman archives the session, then runs `kitterm archive cost <id> --line` and pastes one `- Cost:` line per session",
+            //
+            // Chartered again by `one-rule-one-place` round 1: `kitterm round
+            // close` archives and writes the lines, with the same reader; the
+            // intent is kept.
+            "`kitterm round close` archives each session, then writes one `- Cost:` line per session with `kitterm archive cost`'s reader",
             """
-            Archive the session, then run `kitterm archive cost <id> --line` for
-            every session the record's `Sessions:` line names and paste its output as
-            one `- Cost:` line per session, in that order, under the record's header.
+            `kitterm round close` archives every session the record's `Sessions:`
+            line names and writes one `- Cost:` line per session, in that order,
+            under the record's header, with the reader of
+            `kitterm archive cost <id> --line`.
             """
         ),
         (
@@ -183,11 +196,16 @@ final class GoalsLayoutDocsTests: XCTestCase {
             """
         ),
         (
-            "the bill exists only once `claude` exits, so a session a correction still needs is archived at step 6",
+            // Chartered by `one-rule-one-place` round 1: the sentence read
+            // `The bill exists only once `claude` exits, and archiving is what
+            // ends it; a session the round still needs for a correction is
+            // archived at step 6 and its line written then.`; `kitterm round
+            // close` now archives. The intent is kept.
+            "the bill exists only once `claude` exits, so `kitterm round close` runs once no correction is needed",
             """
-            The bill exists only once `claude` exits, and archiving is what ends
-            it; a session the round still needs for a correction is archived at
-            step 6 and its line written then.
+            `kitterm round close` archives the round's sessions, so run it only
+            once the round needs no more correction: the bill exists only once
+            `claude` exits, and archiving is what ends it.
             """
         ),
     ]
@@ -287,8 +305,15 @@ final class GoalsLayoutDocsTests: XCTestCase {
             .replacingOccurrences(of: "<ordinal>", with: "first")
         XCTAssertEqual(try line(template, "Round"), filled)
         XCTAssertEqual(try line(template, "Last floor"), try line(loop, "Last floor"))
+        // Chartered by `one-rule-one-place` round 1: the continue edit's one
+        // home is `LOOP.md`, "Direction"; the skill names it there.
         XCTAssertTrue(
-            ForemanSkills.foremanLoop.contains("set `Round: 0 of 3 in this budget (<ordinal> budget)`"),
+            ForemanSkills.foremanLoop.contains("`LOOP.md`, \"Direction\", gives per answer"),
+            "the skill takes the continue edit from LOOP.md"
+        )
+        let ownLoop = try String(contentsOf: Self.root.appendingPathComponent("docs/goals/LOOP.md"), encoding: .utf8)
+        XCTAssertTrue(
+            Self.oneLine(ownLoop).contains(Self.oneLine("resets `Round: 0 of 3 in this budget (<ordinal> budget)`")),
             "the continue edit writes the shape"
         )
         XCTAssertTrue(
@@ -303,7 +328,9 @@ final class GoalsLayoutDocsTests: XCTestCase {
         let next = try XCTUnwrap(GoalsTemplates.state.components(separatedBy: "## Next action\n\n").last)
         XCTAssertTrue(next.hasPrefix("Round 1: `<item>` from `plan.md` row 1; proof: `<test or screenshot>`."), next)
         XCTAssertEqual(GoalsTemplates.slugPlaceholder, "<goal slug>")
-        XCTAssertTrue(next.contains("`goal:<goal slug>`"), next)
+        // Chartered (one-rule-one-place r2: the template names `kitterm round
+        // open`, not a hand spawn). Old: `next.contains("`goal:<goal slug>`")`.
+        XCTAssertTrue(next.contains("`kitterm round open <root> <goal slug> --task <item>`"), next)
         XCTAssertFalse(GoalsTemplates.state.contains("<slug>"), "one placeholder for the goal")
         XCTAssertFalse(GoalsTemplates.state.contains("<capability slug>"), "one placeholder for the item")
         XCTAssertTrue(GoalsTemplates.state.hasPrefix("# STATE: <goal slug>\n"))

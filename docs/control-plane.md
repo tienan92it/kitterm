@@ -26,11 +26,13 @@ This file holds the section `AGENTS.md` carried until 2026-11-10 (goal `lean-con
   in `LOOP.md`: `goal.md`, `corpus/`, and an existing check are frozen inside a round;
   `plan.md`, `LOOP.md`, and `docs/adr/` take a proposal in the round record, not an edit
 - The daemon reads this package for the fleet view and never writes it. The foreman
-  (`docs/foreman.md`) opens each goal's draft pull request on `goal/<slug>`
-  (a chore's on `chore/<slug>`) before its crew starts, writes each goal's
-  `STATE.md` and `rounds/NNN.md`, appends to `facts.md`, and commits and pushes
+  (`docs/foreman.md`) runs `kitterm round open`, which opens each goal's draft pull
+  request on `goal/<slug>` (a chore's on `chore/<slug>`) before its crew starts, and
+  `kitterm round close`, which writes `rounds/NNN.md` and the round's `STATE.md`
+  lines; the foreman fills the record, appends to `facts.md`, and commits and pushes
   the package on the goal's branch after every round; the crew pushes to that
-  branch and never to `main`, and the human merges once per goal
+  branch and never to `main`, and the human merges each pull request
+  (`LOOP.md`, "The pull request")
 - `examples/goals/` holds the generic templates: `LOOP.md` and `facts.md` for the
   project, and `examples/goals/goal/` for one goal folder. `kitterm project init <path>`
   writes the two project files into a project's knowledge directory and registers the
@@ -84,9 +86,9 @@ This file holds the section `AGENTS.md` carried until 2026-11-10 (goal `lean-con
   still prints on stdout either way; the exit code is 0 for a bill or a transcript
   with no bill, and 1, with the id and the path on stderr, for an id that is not a
   UUID, a missing archive, a missing transcript join, or a transcript that does not
-  open. The foreman archives the session, then runs this command for every session
-  the round record's `Sessions:` line names and pastes one `- Cost:` line per
-  session, in that order, under the record's header
+  open. `kitterm round close` archives the round's sessions and writes, with this
+  reader, one `- Cost:` line per session the round record's `Sessions:` line names,
+  in that order, under the record's header
 - `kitterm foreman catch-up [--scope <path>] [--json]` (`ForemanCommand.swift`)
   prints what a new foreman reads first, for the scope directory (`--scope`,
   else the cwd, as a real path) and nothing outside it: the predecessor (the
@@ -103,12 +105,14 @@ This file holds the section `AGENTS.md` carried until 2026-11-10 (goal `lean-con
   writes nothing
 - `kitterm foreman watch --session <id> [--session <id> ...] [--since <seq>]
   [--epoch <id>] [--heartbeat <seconds>] [--timeout <seconds>] [--port <n>]
-  [--json]` (`ForemanCommand.swift`) blocks on `GET /api/events` (the same
+  [--quiet-working] [--json]` (`ForemanCommand.swift`) blocks on `GET /api/events` (the same
   `MCPTools.Call`/`MCPHTTPClient` path `catch-up` uses: no `curl`, no new
   route) and exits the moment an event whose `session` is one of
   `--session` is a `note`, an `agent.status` of any kind, an
   `approval.pending`, a `command.failed`, or a `session.exited`/`removed`,
-  printing it; a non-matching event advances the cursor silently. It also
+  printing it; a non-matching event advances the cursor silently. With
+  `--quiet-working`, an `agent.status` whose status is `working` does not
+  match, because no rule of the foreman acts on it. It also
   exits on a heartbeat (no match within `--heartbeat`, default 1200s) or on
   a daemon epoch change or a pruned cursor, printing that marker instead,
   and always prints the `next`/`epoch` cursor to resume from with no gap.
@@ -155,8 +159,8 @@ This file holds the section `AGENTS.md` carried until 2026-11-10 (goal `lean-con
   It never merges, force-pushes or marks a pull request ready. Every `git`
   and `gh` runs through one `Runner`, so `RoundOpenTests` uses a fake `gh`, a
   scratch repository with a bare remote, and a scratch daemon in process
-- `kitterm round close <root> <slug> [--chore] [--commit] [--round <n>]
-  [--bill-timeout <s>] [--foreman-session <id>] [--knowledge <dir>]
+- `kitterm round close <root> <slug> [--chore] [--commit] [--no-checks]
+  [--decision done|failed|propose] [--round <n>] [--bill-timeout <s>] [--foreman-session <id>] [--knowledge <dir>]
   [--port <n>]` (`RoundCloseCommand.swift`, the text in `RoundRecord.swift`)
   does every step after the crew's `DONE` note that needs no judgment, in
   this order:
@@ -193,21 +197,70 @@ This file holds the section `AGENTS.md` carried until 2026-11-10 (goal `lean-con
      `[foreman writes this]`; `Floor` holds two, `before:` and `after:`.
   7. `state`: `- Round: n` grows by the rounds `- Rounds total:` has not
      counted, `- Rounds total:` becomes R, `- Updated:` becomes the day, and
-     the item moves from `## Queue` to `## Done` as
-     ``- `<item>`, round R, `<sha>`, PR #N. See `rounds/NNN.md`.``.
-     `Status` and `Last floor` stay the foreman's.
-  8. `commit`, with `--commit` only: it refuses while a marker line remains
-     in the record, then makes one commit of the goal folder and pushes it,
-     never with force.
+     `--decision` files the item: `done` (the default) moves it from
+     `## Queue` to `## Done` as
+     ``- `<item>`, round R, `<sha>`, PR #N. See `rounds/NNN.md`.``,
+     `failed` moves the same line to `## Failures`, and `propose` leaves the
+     item under `## Queue`. A later run, which finds the round counted,
+     keeps the item where the first run filed it; a `--decision` that names
+     another place refuses. `Status` and `Last floor` stay the foreman's.
+  8. `checks`, with `--commit` only: it refuses while a marker line remains
+     in the record, and, for a `done` round or a chore, while
+     `gh pr checks <N> --json name,bucket` names a check that is not `pass`
+     or `skipping`, or no check:
+     `round close: checks failed: PR #N is not green on its head: test fail,
+     linux-build pending; wait for green, or pass --no-checks for a
+     repository with no CI`. A `failed` or `propose` round names the red
+     check in one stderr line and commits. `--no-checks` skips the read.
+  9. `commit`, with `--commit` only: one commit of the goal folder, with
+     the message `<slug>: round <n> record`, and a push, never with force. The push starts a new CI run on the head.
 
   `--chore` writes `chores/<ISO date>-<slug>.md` in place of steps 6 and 7:
   the marker, the model, `PR #N` and the cost line. The command prints
-  `file`, `round`, `sessions` and `markers`, and `commit` after `--commit`.
+  `file`, `round`, `decision`, `sessions` and `markers`, and `commit` after
+  `--commit`.
   A second run reuses the archives, the record and the `STATE.md` edit. A
   failure prints `round close: <step> failed: <reason>` and what already
   exists, and exits 1. It never merges, never marks a pull request ready,
   and runs no floor. `RoundCloseTests` proves each field with a scratch
   repository, a scratch daemon in process and fixture transcripts.
+- `examples/foreman/crew-settings.json` (embedded as
+  `ForemanSkills.crewSettings`) is the settings file of a crew session.
+  `kitterm skills install` writes it to
+  `<dir>/foreman-loop/crew-settings.json`, and the skill starts each crew
+  with `claude --settings <that file>`, so no session of the foreman or the
+  human reads it. Its `permissions.deny` refuses `gh pr merge`,
+  `kitterm start`, `stop` and `restart`, and an edit under
+  `.github/workflows/`, of a `docs/goals/*/goal.md` or under a
+  `docs/goals/*/corpus/`; a project whose knowledge directory is not
+  `docs/goals` has no deny rule on its `goal.md` or `corpus/`. A path in a
+  `--settings` file anchors at the
+  file's folder, so the paths start `//`. An `Edit` rule also covers
+  `Write`, `NotebookEdit` and a `>` redirect, not `sed -i` or a script.
+  `CrewSettingsTests` pins the file and the copy.
+- `kitterm round guard [--check]` (`RoundGuard.swift`) is that file's
+  `PreToolUse` hook on `Bash`, for what a prefix rule cannot match. It
+  reads the hook JSON on stdin (not with `--check`), splits the command at
+  `&&`, `||`, `;`, `|`, a newline and a parenthesis, follows `cd` and
+  `git -C`, `--git-dir` and `--work-tree`, and reads past the keywords of a
+  compound command (`if`, `then`, `do`, `{`, `!`, ...), a wrapper
+  (`timeout`, `sudo`, `nohup`, `env`, `time`, `command`, `exec`, `nice`,
+  `xargs`) with its options, a `$( )` or backtick substitution, the string
+  of `sh -c`, `bash -c`, `zsh -c` and `eval`, and the body of a
+  here-document that a shell reads; the body of any other here-document is
+  text. It does not read the input that a pipe feeds to a shell
+  (`echo ... | sh`), and it expands no variable. It exits 2 with the reason on stderr for a `git push` with `-f`, `--force`, `--force-with-lease`,
+  `--force-if-includes`, `--mirror` or a `+` refspec; a push to the base
+  branch (`KnowledgeBase.baseBranch`), as `main`, `x:main`,
+  `x:refs/heads/main`, `--all`, or a bare push from the base; a push whose
+  destination a substitution, a variable or `xargs` builds, which it cannot
+  know; and
+  `kitterm start|stop|restart` by any path or `swift run`. It refuses input
+  it cannot read. The file runs it as `kitterm round guard || exit 2`:
+  Claude Code lets a call run when a hook exits with a code other than 0
+  or 2, so a missing `kitterm` or a build with no guard would otherwise
+  open the gate. `--check` prints `kitterm round guard: ready`.
+  `RoundGuardTests` proves each refusal.
 - `design/` at the root holds every approved design: `foundation.md` (the
   tokens, marks, fonts and rules every page follows), `palette.md`,
   one `.pen` file per surface (`dashboard.pen`, `sessions.pen`) and

@@ -45,31 +45,9 @@ final class LoopScopeRulesTests: XCTestCase {
             foreman stops and tells the human.
             """
         ),
-        (
-            "the start step runs the catch-up before anything else and stops on a conflict",
-            """
-            **Start.** Before anything else, run `kitterm foreman catch-up`, with
-            `--scope <path>` when the pane carries a `scope:` label. Read the
-            predecessor's note and the last message of its transcript for what the
-            human told it. Adopt its open pull requests and its live crews by their
-            labels. A second live foreman already in this scope is the conflict
-            above: stop and tell the human. Archive a predecessor's pane only on the
-            human's word, and only inside this scope.
-            """
-        ),
-        (
-            "the upkeep step checks every project in scope and routes behind and edited to a pull request",
-            """
-            **Upkeep.** At start, and again after `kitterm skills install` changes
-            this skill, run `kitterm project init --refresh --check <root>` for
-            every project in the scope: `current` leaves it. `behind` runs it as a
-            chore on the branch `chore/refresh-loop`, with
-            `kitterm project init --refresh <root>`. `edited` opens a draft pull
-            request on the project's base branch that brings the new template
-            sections into its `LOOP.md`, keeping the project's own lines; the
-            human's merge is the Propose-tier approval.
-            """
-        ),
+        // Chartered by `one-rule-one-place` round 1: the Start and Upkeep
+        // steps left `LOOP.md` for the skill, their one home; `skillRules`
+        // pins them there.
         (
             "`scope` is a reserved label, set by the foreman on its own pane",
             "| `scope` | the scope directory, an absolute path | foreman, on its own pane |"
@@ -84,14 +62,15 @@ final class LoopScopeRulesTests: XCTestCase {
             "You are the foreman. One foreman runs per scope and serves every project in\nit."
         ),
         (
+            // Chartered by `one-rule-one-place` round 1: the bullet restated
+            // the scope rule of `LOOP.md`, which `loopRules` pins; it now names
+            // that home.
             "the Rules bullet names the scope and the conflict a foreman stops on",
             """
             One foreman per scope, in a pane named `foreman` with the labels
             `crew:foreman` and `scope:<path>`. Your scope is the value of that label,
-            else your pane's cwd. Act only on a project whose root is your scope or
-            lies under it, and never on a session outside it. Another live foreman in
-            a different scope is not a conflict; one in your own scope, or in a scope
-            that holds or sits inside yours, is: stop and tell the human.
+            else your pane's cwd. Act only inside it, and stop on the conflict
+            `LOOP.md`, "One foreman for every scope", names.
             """
         ),
         (
@@ -107,6 +86,29 @@ final class LoopScopeRulesTests: XCTestCase {
             """
             For every project in your scope, run
             `kitterm project init --refresh --check <root>`:
+            """
+        ),
+        (
+            "the Start section stops on a second foreman in the scope, from `LOOP.md`'s Start step",
+            """
+            When the catch-up shows the conflict of `LOOP.md`, "One foreman for
+            every scope", stop and tell the human; do not act.
+            """
+        ),
+        (
+            "the Start section archives a predecessor only on the human's word, inside the scope",
+            """
+            Archive the predecessor's pane only when the human says so, and only
+            when it sits inside your scope.
+            """
+        ),
+        (
+            "the Upkeep section routes an edited `LOOP.md` to a draft pull request the human merges",
+            """
+            `edited`: open a draft pull request on the project's base branch that
+            brings the new template sections of `LOOP.md` into the project's own
+            `LOOP.md`, keeping the project's own lines. The human's merge is the
+            Propose-tier approval
             """
         ),
     ]
@@ -179,9 +181,11 @@ final class LoopScopeRulesTests: XCTestCase {
     /// `docs/foreman.md` describes the same rule in its own prose.
     func testTheManualNamesTheScopeAndTheNewSteps() throws {
         let manual = Self.oneLine(try Self.read("docs/foreman.md"))
+        // Chartered by `one-rule-one-place` round 1: "`scope:<path>`" left the
+        // manual; `LOOP.md` is the scope rule's one home.
         for phrase in [
             "One foreman runs per scope and serves every project under it.",
-            "`scope:<path>`", "`kitterm foreman catch-up`",
+            "`kitterm foreman catch-up`",
             "`kitterm project init --refresh --check <root>`",
             "## One foreman for every scope",
         ] {

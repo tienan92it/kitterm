@@ -38,15 +38,29 @@ final class LoopFloorRulesTests: XCTestCase {
             """
         ),
         (
+            // Chartered by `one-rule-one-place` round 1: the sentence ended
+            // `then waits on `gh pr checks <N>` for the crew's head sha; it
+            // writes the round record and `STATE.md` while that check runs, and
+            // pushes them once the check is green. A red check is the round's
+            // gap, and the one correction goes to the crew, like any other gap.`;
+            // `kitterm round close` archives the crew, so it runs after a green
+            // check. The intent (no rerun, the record waits for green, red is a
+            // correction) is kept.
+            // Chartered by `one-rule-one-place` round 3: the last sentence
+            // read `Red: the check is the round's gap, the one correction goes
+            // to the crew, and the round is not closed.`; "Budget" now holds
+            // the correction cap, two per round, and a round the cap fails
+            // closes on a red check (correction 1 of round 3).
             "the foreman does not rerun what the crew or the pull request's CI already proved",
             """
             After the crew, the foreman does not rerun a check the crew already ran
             or a check the pull request's CI already proves. It reads the diff and
-            sorts the paths into the Authority table below, then waits on
-            `gh pr checks <N>` for the crew's head sha; it writes the round record
-            and `STATE.md` while that check runs, and pushes them once the check is
-            green. A red check is the round's gap, and the one correction goes to
-            the crew, like any other gap.
+            sorts the paths into the Authority table below, then reads
+            `gh pr checks <N>` on the crew's head sha. Green: it runs
+            `kitterm round close`, replaces the record's markers, then runs
+            `kitterm round close --commit`. Red: the check is the round's gap, a
+            correction goes to the crew ("Budget"), and the round closes only green
+            or failed: `--decision failed` commits on a red check.
             """
         ),
     ]
@@ -70,20 +84,34 @@ final class LoopFloorRulesTests: XCTestCase {
             """
         ),
         (
-            "the foreman waits on the pull request's checks and writes while they run",
+            // Chartered by `one-rule-one-place` round 1: the sentence read
+            // `Wait on `gh pr checks <N>` for the crew's head sha; do not rerun
+            // the checks yourself. Write the round record and `STATE.md` while
+            // that check runs (steps 7 and 8), and push them once it is green.
+            // A red check is the round's gap, like a red floor was before.`;
+            // the record now waits for the green check.
+            "the foreman reads the pull request's checks before it closes the round",
             """
-            Wait on `gh pr checks <N>` for the crew's head sha; do not rerun the
-            checks yourself. Write the round record and `STATE.md` while that check
-            runs (steps 7 and 8), and push them once it is green. A red check is
-            the round's gap, like a red floor was before.
+            Read `gh pr checks <N>` on the crew's head sha first; do not rerun the
+            checks yourself. Green: go on. Red: the check is the round's gap; send
+            the correction (step 6) and do not close the round.
             """
         ),
         (
-            "the push waits for the pull request's checks to go green",
+            // Chartered by `one-rule-one-place` round 1: the sentence read
+            // `Push the branch once the pull request's continuous integration
+            // on the crew's head sha is green (step 4): write and commit while
+            // it runs, and push after.`; `kitterm round close --commit` commits
+            // and pushes in one step, so it runs after the green check.
+            // Chartered by `one-rule-one-place` round 3: the sentence ended
+            // `(step 4): read the check's result first, and do not chain the
+            // two in one command.`; `--commit` now reads `gh pr checks` itself
+            // and refuses until it is green (`RoundCloseTests`).
+            "the commit and the push wait for the pull request's checks to go green",
             """
-            Push the branch once the pull request's continuous integration on the
-            crew's head sha is green (step 4): write and commit while it runs, and
-            push after.
+            Run `kitterm round close <root> <slug> --commit`
+            only after `gh pr checks <N>` is green on the crew's head sha (step 4);
+            the command refuses until it is, and while a marker line remains
             """
         ),
     ]
@@ -165,13 +193,13 @@ final class LoopFloorRulesTests: XCTestCase {
         }
     }
 
-    /// `docs/foreman.md` names the same practice in "Delegate".
-    func testTheManualNamesTheFloorPractice() throws {
+    /// Chartered by `one-rule-one-place` round 1: `docs/foreman.md` restated
+    /// the floor practice in "Delegate"; it now names `LOOP.md`, the floor's
+    /// one home, which `testTheLoopFilesCarryTheFloorRules` pins.
+    func testTheManualPointsAtTheLoopForTheFloor() throws {
         let manual = Self.oneLine(try Self.read("docs/foreman.md"))
         for phrase in [
-            "The foreman skips the floor before a round",
-            "waits on the pull request's checks instead of rerunning them itself",
-            "pushes it once the check is green",
+            "`docs/goals/LOOP.md` holds its policy, from the roles to the stop rules",
         ] {
             XCTAssertTrue(manual.contains(Self.oneLine(phrase)), "docs/foreman.md names \(phrase)")
         }

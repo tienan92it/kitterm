@@ -39,8 +39,10 @@ enum RoundCommand {
     static let usage = """
     usage: kitterm round open <root> <slug> --task <item> [--chore] [--title <text>] [--body <text>] \
     [--knowledge <dir>] [--port <n>] [--json]
-           kitterm round close <root> <slug> [--chore] [--commit] [--round <n>] [--bill-timeout <s>] \
+           kitterm round close <root> <slug> [--chore] [--commit] [--no-checks] \
+    [--decision done|failed|propose] [--round <n>] [--bill-timeout <s>] \
     [--foreman-session <id>] [--knowledge <dir>] [--port <n>]
+           kitterm round guard [--check]
     """
 
     /// Runs `tool` (`git` or `gh`) with `args` in `directory`; nil when it

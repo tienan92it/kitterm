@@ -21,11 +21,11 @@ final class LoopBranchNameRulesTests: XCTestCase {
         merged branch left on the remote reads as open work.
         """
 
+    /// Chartered by `one-rule-one-place` round 1: the skill restated the
+    /// loop's delete rule; it now names the rule's home.
     static let skillDeleteRule = """
-        A merge of a goal's or a chore's pull request: delete its branch with
-        `git push origin --delete <branch>`, then remove the worktree with
-        `git worktree remove` and the local branch with `git branch -D`. A
-        merged branch left on the remote reads as open work.
+        A merge of a goal's or a chore's pull request: delete its branch, its
+        worktree and its local branch as `LOOP.md`, "The pull request", says
         """
 
     private static func oneLine(_ text: String) -> String {
@@ -74,9 +74,11 @@ final class LoopBranchNameRulesTests: XCTestCase {
         }
     }
 
-    func testTheManualDeletesAMergedBranch() throws {
+    /// Chartered by `one-rule-one-place` round 1: the manual restated the
+    /// delete step; it now names `LOOP.md` as the home of the merge.
+    func testTheManualPointsAtTheLoopForTheMergedBranch() throws {
         let manual = Self.oneLine(try Self.read("docs/foreman.md"))
-        let sentence = "After the merge, the foreman deletes the branch on the remote, its worktree, and the local branch."
-        XCTAssertTrue(manual.contains(Self.oneLine(sentence)), "docs/foreman.md names the delete step")
+        let sentence = "`docs/goals/LOOP.md` gives the scope, the package, the branch `goal/<slug>`, its pull request and the merge"
+        XCTAssertTrue(manual.contains(Self.oneLine(sentence)), "docs/foreman.md names the home of the delete step")
     }
 }

@@ -6,10 +6,10 @@ import XCTest
 /// The foreman protocol — a task list beside the package, a note's first
 /// line naming its kind, the `FOREMAN:` prefix on every message into a crew
 /// pane, and the one-automatic-continue stall rule (`foreman-protocol`,
-/// capability 1). The rule is written once and read in three places: the
-/// skill, its embedded copy, and `docs/foreman.md`, where it states the
-/// rule. Each sentence below must be held whole; only the line breaks may
-/// differ, the pattern of `LoopScopeRulesTests`.
+/// capability 1). The rule's one home is the skill, and the binary embeds a
+/// copy (`one-rule-one-place` round 1 took the restatement out of
+/// `docs/foreman.md`, Chartered). Each sentence below must be held whole;
+/// only the line breaks may differ, the pattern of `LoopScopeRulesTests`.
 final class ForemanProtocolRulesTests: XCTestCase {
     private static let root = CLIFixture.repositoryRoot
 
@@ -38,14 +38,76 @@ final class ForemanProtocolRulesTests: XCTestCase {
             text as the foreman's word.
             """
         ),
+        // Chartered (one-rule-one-place r2, completion condition 6: the
+        // stall rule is rewritten, and the foreman asked for "tell the human
+        // and link the pane"). Old: "One automatic continue per round. A
+        // second stall in the round: report it to the human at once and wait
+        // for the human's word."
         (
             "one automatic continue per round, then the human's word",
             """
-            One automatic continue per round. A second stall in the round: report
-            it to the human at once and wait for the human's word.
+            One automatic continue per round. A second stall in
+            the round: tell the human, link the pane, and wait for the human's word.
             """
         ),
+        // `one-rule-one-place` round 3, completion condition 7: the four
+        // rules of the procedure, each in one place.
+        (
+            "one fresh-context review before the pull request leaves draft: find, refute, report survivors",
+            """
+            Once per goal, before `gh pr ready <N>`, run one review with fresh
+            context: a subagent, or one session of the `review-crew` skill, that gets
+            `goal.md` and `git diff origin/<base>...HEAD` and nothing else. It finds
+            issues, tries to refute each one, and reports only the survivors.
+            """
+        ),
+        (
+            "a round that sets a design waits for the PLAN approval before code",
+            """
+            In a round that sets
+            a data model, an interface or a visual design, the prompt tells the
+            crew to wait for `FOREMAN: approved` or `FOREMAN: change <what>`
+            before code.
+            """
+        ),
+        (
+            "the correction cap lives in LOOP.md, Budget",
+            """
+            When
+            the cap of `LOOP.md`, "Budget", fails the round, write the lesson in the
+            record for the next round's prompt.
+            """
+        ),
+        (
+            "two rounds that name the same files do not run at once",
+            """
+            no open round's queue item or `plan.md` row names a file that this
+            goal's head item or its row names.
+            """
+        ),
+        (
+            "the monitor does not wake on a working status",
+            "--epoch <epoch> --quiet-working"
+        ),
     ]
+
+    /// The correction cap's one home is `LOOP.md`, "Budget", and each copy
+    /// holds it (`one-rule-one-place` round 3; old: "One correction per
+    /// round. A second failure ends the round as failed.").
+    func testLoopHoldsTheCorrectionCap() throws {
+        let sentence = """
+        Two corrections per round, to the round's one session. When the second
+        fails, the foreman ends the session and the round ends as failed; the
+        next round starts a fresh session with the lesson in its prompt.
+        """
+        for (name, text) in [
+            ("docs/goals/LOOP.md", try Self.read("docs/goals/LOOP.md")),
+            ("examples/goals/LOOP.md", try Self.read("examples/goals/LOOP.md")),
+            ("GoalsTemplates.loop", GoalsTemplates.loop),
+        ] {
+            XCTAssertTrue(Self.oneLine(text).contains(Self.oneLine(sentence)), "\(name) does not hold the correction cap")
+        }
+    }
 
     private static func oneLine(_ text: String) -> String {
         text.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ").lowercased()
@@ -59,7 +121,6 @@ final class ForemanProtocolRulesTests: XCTestCase {
         [
             ("examples/foreman/foreman-loop.md", try read("examples/foreman/foreman-loop.md")),
             ("ForemanSkills.foremanLoop", ForemanSkills.foremanLoop),
-            ("docs/foreman.md", try read("docs/foreman.md")),
         ]
     }
 

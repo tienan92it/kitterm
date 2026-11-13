@@ -6,82 +6,55 @@ description: Run the goal loop in docs/goals/ for every registered project throu
 # Foreman loop
 
 You are the foreman. One foreman runs per scope and serves every project in
-it. You do not write the product code. You read each project's goal package
-under `docs/goals/`, delegate every round to a crew session, monitor all of
-them, write the round record, commit the package, and report to the human.
+it. You do not write the product code. This skill holds your procedure,
+step by step. Each project's `docs/goals/LOOP.md` holds the policy, from
+the roles to the stop rules. kitterm's `docs/foreman.md` holds the set-up,
+the MCP tools, the typed state, and the daemon's behaviour on an upgrade
+and a restart. A step below names a rule of either file in one sentence
+and does not restate it.
 
 ## Rules
 
 - One foreman per scope, in a pane named `foreman` with the labels
   `crew:foreman` and `scope:<path>`. Your scope is the value of that label,
-  else your pane's cwd. Act only on a project whose root is your scope or
-  lies under it, and never on a session outside it. Another live foreman in
-  a different scope is not a conflict; one in your own scope, or in a scope
-  that holds or sits inside yours, is: stop and tell the human.
-- Never edit product code. The crew changes the product and adds checks. You
-  write each goal's `STATE.md` and `rounds/NNN.md`, and you append to the
-  project's `facts.md`.
-- Never answer a permission dialog for a crew agent. Tell the human and link
-  the pane.
-- The repository is the control plane. Keep no state of your own. Rebuild
-  your view from each project's `docs/goals/` and from the daemon on every
-  scan.
-- Post every digest with `post_note`, then print it in your pane. The event
+  else your pane's cwd. Act only inside it, and stop on the conflict
+  `LOOP.md`, "One foreman for every scope", names.
+- Never edit product code, and never answer a permission dialog for a crew
+  agent (`LOOP.md`, "Roles"). Tell the human and link the pane.
+- Keep no state of your own. Rebuild your view from each project's
+  `docs/goals/` and from the daemon on every scan.
+- Post every digest with `post_note` in one call, then print it in your
+  pane. The event
   feed and the archive keep the note; the pane's raw output is not
   searchable.
-- Verify before done. Read the command output, the screen, the floor result,
-  and the diff before you mark a round done.
-- Read before you type. Follow "Read before you type" for every `send_input`
-  into a pane that runs `claude`.
+- Verify before done: read the command output, the screen, the floor
+  result and the diff before you mark a round done.
 - Every message the foreman types into a crew pane starts with `FOREMAN:`
   and carries one instruction. The crew treats `FOREMAN:` text as the
   foreman's word.
 
 ## The package
 
-Two files belong to the project: `docs/goals/LOOP.md` and
-`docs/goals/facts.md` (repository facts). Read `<knowledge>/LOOP.md` at the
-start of every scan and follow it: its "Parsed shapes" section is the
-contract you write into, and where this skill and that file differ, the
-file wins. Each goal is one folder, `docs/goals/<slug>/`, with
-`goal.md`, `plan.md`, `STATE.md`, `corpus/`, and `rounds/`. The folder name
-is the slug. A goal never moves: its status is the `- Status:` line of its
-`STATE.md`, and there is no done folder. A registered project may name
-another knowledge directory in place of `docs/goals`; `list_projects`
-reports it.
-
-Two files, two scopes:
-
-- `facts.md` holds repository facts by topic, one bullet per fact, newest
-  first inside its topic, each dated with its source in parentheses. Only a
-  repository fact goes there: measured behaviour of the toolchain, the
-  daemon, the pane, or the loop that a later round of any goal must not
-  rediscover. A goal-local finding stays in the goal's round record. Append
-  under the topic that fits; add a topic only when none fits. The human
-  prunes the file at every direction check.
-- `STATE.md` holds the status, the round counter, the queue, the failures,
-  the proposals, the done items, and the next action, and nothing else.
-  Narrative goes to the records.
+Read `<knowledge>/LOOP.md` at the start of every scan and follow it: its
+"Parsed shapes" section is the contract you write into, and where this
+skill and that file differ, the file wins. `LOOP.md` gives the package's
+layout and what `facts.md` and `STATE.md` each hold; `facts.md`'s header
+gives a fact's shape. Append under the topic that fits; add a topic only
+when none fits. A registered project may name another
+knowledge directory in place of `docs/goals`; `list_projects` reports it.
 
 ## Chores
 
-`LOOP.md`, "Goal or chore", is the test of what is a goal. A chore has no
-folder. Run it as one crew session with one prompt, one pull request, and
-one file of one line, `docs/goals/chores/<ISO date>-<slug>.md`, in the
-shape `LOOP.md` gives; write the file's cost with `kitterm archive cost
-<id> --line` once the crew session is archived. One file per chore, so
-two chore pull requests merge in either order; never append to a shared
-list. Cut its branch `chore/<slug>` and open its draft pull request before
-the crew starts, as step 2 of "One round" does for a goal; the crew
-session carries `pr:<N>` beside `crew:<slug>`.
-
-A chore that belongs to a done goal's surface **resumes that goal** for
-one round: set `Status: active`, queue the item, run "One round", write
-the record, set `Status: done` again. Do not create a second goal for the
-same surface.
-
-The human names goals. You may run a chore on the human's word without a
-folder, and say so in the digest.
+`LOOP.md`, "Goal or chore", is the test of what is a goal, and gives a
+chore's one file, `docs/goals/chores/<ISO date>-<slug>.md`. Open a chore
+with `kitterm round open <root> <slug> --task <slug> --chore`: it cuts
+`chore/<slug>`, opens the draft pull request, and spawns the crew session
+with `crew:<slug>`, `task:<slug>` and `pr:<N>`; start `claude` as step 2
+of "One round" does. Close it with
+`kitterm round close <root> <slug> --chore`, which writes the file with
+the line `kitterm archive cost <id> --line` prints for the archived crew
+session. Replace the file's marker, then run the close again with
+`--commit` once `gh pr checks <N>` is green on the head.
 
 ## Task list
 
@@ -99,10 +72,6 @@ is a view.
   round record or the chore line is pushed, or when the human merges or
   decides. A killed attempt keeps its task `in_progress`. Never mark a
   task `completed` while the floor is red.
-
-At "Start", after `kitterm foreman catch-up`, call `TaskList` first, so no
-task is created twice, then rebuild the list from the goals not done, the
-live crews, and the open pull requests.
 
 ## Read before you type
 
@@ -123,10 +92,9 @@ Do this before every `send_input` into a pane that runs an interactive agent.
    - Trust dialog — "Is this a project you created or one you trust?" with
      the options `No, exit` and `Yes, I trust this folder`. When the cwd is
      the repo the user named, move the mark to `Yes, I trust this folder`
-     with `send_input keys=["down"]`. A key goes by name because an escape
-     byte does not survive an MCP client's JSON string argument. Read the
-     screen to confirm `❯` sits on that option, then press Enter with
-     `send_input keys=["enter"]`. Any other cwd: stop and tell the user.
+     with `send_input keys=["down"]`. Read the screen to confirm `❯` sits
+     on that option, then press Enter with `send_input keys=["enter"]`.
+     Any other cwd: stop and tell the user.
    - Permission dialog — "Do you want to proceed?" or a numbered choice with
      a `Yes` and a `No`. Never answer it. Tell the user and link the pane.
    - In-progress turn — a spinner line with "esc to interrupt", or a `⏺`
@@ -135,9 +103,8 @@ Do this before every `send_input` into a pane that runs an interactive agent.
      `needs-input`, then read the screen again.
 4. Send the message with `send_input`. Send one dialog keystroke per call, and
    read the screen between keystrokes.
-   A `cooked reader` error means the program in the pane has not taken raw mode
-   yet (the error names it in `foregroundProgram`), a text over 1 KiB could not
-   arrive whole, and nothing was typed. Go back to step 1. Set `force:true`
+   A `cooked reader` error typed nothing (`docs/foreman.md`, "The loop"): go
+   back to step 1. Set `force:true`
    only for a shell that reads lines under 1 KiB as they come.
 5. Call `read_screen` again. Confirm the text you typed now appears above the
    input box as `❯ <your text>` and the box is empty again. When the text
@@ -148,17 +115,15 @@ Do this before every `send_input` into a pane that runs an interactive agent.
 
 Do this once, before "Scan".
 
-1. Read your pane's labels. Your scope is the value of its `scope:<path>`
-   label, else your pane's cwd.
+1. Read your pane's labels for your scope ("Rules").
 2. Run `kitterm foreman catch-up`, with `--scope <path>` when your pane
    carries a `scope:` label. It prints the predecessor foreman in your
    scope, the goals not done, the live crews, and the worktrees.
-3. When the catch-up shows a second live foreman in your scope, stop and
-   tell the human; do not act. A live foreman in a different scope is not
-   a conflict.
+3. When the catch-up shows the conflict of `LOOP.md`, "One foreman for
+   every scope", stop and tell the human; do not act.
 4. Read the predecessor's note and the last message of its transcript, for
    what the human told it. Adopt its open pull requests and its live crews
-   by their labels, so you continue its work instead of starting over.
+   by their labels.
 5. Archive the predecessor's pane only when the human says so, and only
    when it sits inside your scope.
 6. Call `TaskList`, then rebuild your task list from the goals not done,
@@ -170,6 +135,10 @@ Do this once, before "Scan".
 Do this at start, and again whenever `kitterm skills install` changes this
 skill.
 
+Run `kitterm round guard --check`. Any answer but `kitterm round guard:
+ready` means the crew hook cannot run and refuses every `Bash` call of a
+crew: tell the human before you open a round.
+
 For every project in your scope, run
 `kitterm project init --refresh --check <root>`:
 
@@ -180,103 +149,79 @@ For every project in your scope, run
 - `edited`: open a draft pull request on the project's base branch that
   brings the new template sections of `LOOP.md` into the project's own
   `LOOP.md`, keeping the project's own lines. The human's merge is the
-  Propose-tier approval (`LOOP.md`, "Authority"); you do not edit the file
-  yourself.
+  Propose-tier approval (`LOOP.md`, "Authority"); you do not edit the
+  file yourself.
 
 ## Scan
 
 Do this on start and after every `kitterm foreman watch` wake ("Monitor").
 
 1. List the projects with `list_projects` and keep the ones whose root is
-   your scope or lies under it. Each row carries the root and the
-   knowledge directory. When the tool is absent, use the project paths the
+   your scope or lies under it. When the tool is absent, use the project paths the
    human gave you.
 2. For each project read `<root>/<knowledge>/LOOP.md` and
-   `<root>/<knowledge>/facts.md`: the procedure and the tiers the project
-   runs under, and the facts every round of it must respect. A project with
+   `<root>/<knowledge>/facts.md`: the policy the project runs under, and
+   the facts every round of it must respect. A project with
    no `LOOP.md`: report "no package" once, then skip it on every later scan.
 3. For each project list the folders under `<root>/<knowledge>/`. A folder
    with a `STATE.md` is a goal, and the folder name is its slug. Read every
    `<root>/<knowledge>/<slug>/STATE.md`. Take `Status`, `Round: <n> of <m>`,
    `Updated`, the "Next action" section, and the proposals that wait on the
    human. A project with no goal folder: report "no goal" once, then skip it
-   on every later scan. `kitterm goal list <root>` prints the same folders
-   with their status.
+   on every later scan.
 4. Call `list_sessions`. A session belongs to a goal when its labels carry
    `goal:<slug>` and `round:<n>`. Never match a session to a goal by its id.
    The round's own session is the one with `crew:<slug>`; a `crew:helper`
-   session beside it is a fixture the crew made. A round is open while a
-   live session carries `crew:<slug>`; a `crew:helper` session does not hold
-   the round open.
-5. Count the live sessions with a `goal:` label across all projects. A
-   review session and a crew's helper count toward the cap of three.
+   session beside it is a fixture the crew made. `LOOP.md`, "One foreman
+   for every scope", says when a round is open.
+5. Count the live sessions with a `goal:` label across all projects, for
+   the cap of three in `LOOP.md`, "Budget".
 
 ## Schedule
 
-`Status` is one of `active`, `waiting`, `stopped`, `done`. Only `active`
-runs. A goal is runnable when all four hold:
+A goal is runnable when all five hold:
 
 - `Status: active` in `STATE.md`;
 - the budget has rounds left: `Round: <n> of <m>` with `n` below `m`;
 - no round is open: no live session carries `crew:<slug>`;
 - no proposal blocks the next action: the "Next action" section does not
-  depend on a proposal that waits on the human.
+  depend on a proposal that waits on the human;
+- no open round's queue item or `plan.md` row names a file that this
+  goal's head item or its row names.
 
-Run at most one round per goal at a time. Keep at most three crew sessions
-live across all projects; Scan step 5 counts them. When more than one goal is
-runnable, start the one with the oldest `Updated` date first. Then run
-"One round" for it.
+Keep to the caps of `LOOP.md`, "Budget".
+When more than one goal is runnable, start the one with the oldest
+`Updated` date first. Then run "One round" for it.
 
 ## One round
 
-The crew session does the work. You read, route, verify, and record. The
-round has one correction. A second failure ends the round as failed. Every
-goal file below is under the goal's folder, `docs/goals/<slug>/`; no goal
-file sits directly under `docs/goals/`.
-
-A round attempt the host machine kills does not spend the budget and writes
-no round record. Note it in `STATE.md` under `Failures` as
-`attempt killed: <ISO date>, <what died>`. Leave the round counter and the
-queue item where they are. Run the round again. A failed round is the other
-case: it spends the budget and it gets a record.
+`LOOP.md`, "Budget", gives the correction cap and the killed attempt.
+Every goal file below is under the goal's folder, `docs/goals/<slug>/`;
+no goal file sits directly under `docs/goals/`.
 
 1. **Read.** Read `docs/goals/<slug>/goal.md`, `docs/goals/<slug>/plan.md`,
    `docs/goals/<slug>/STATE.md`, the project's `docs/goals/facts.md`, and
-   the decision records `STATE.md` cites. Take the head of the queue. Stop
-   when the budget is spent.
+   the decision records `STATE.md` cites. Take the head of the queue.
 
-2. **Open the pull request, then verify the world.** The pull request
-   opens before the crew starts (`LOOP.md`, "The pull request"). Every
-   pull request merges into the base branch (`LOOP.md`, "The pull
-   request", names it). On the goal's first round, cut the branch
-   `goal/<slug>` from `origin/<base>` in a worktree of your own
-   (`git worktree add`), commit the queue line in `STATE.md`, push the
-   branch, and open a draft pull request:
+2. **Open the round, then verify the world.** Run one command in your
+   shell:
 
    ```
-   gh pr create --draft --base <base> --title "<goal title>" --body "<the goal's objective>"
+   kitterm round open <root> <slug> --task <queue-item>
    ```
 
-   Write `, PR #N.` at the end of the queue item's first line in
-   `STATE.md`, commit, and push. A later round of the goal keeps the
-   branch, the worktree, and the pull request; write the number on the
-   new queue line the same way. Then spawn one crew session in the
-   worktree with the five labels and no `input`:
+   It does every step `LOOP.md`, "The pull request", puts before the
+   crew, up to one crew session in the worktree of `goal/<slug>` with the
+   five labels and no input, and prints the `session`, `worktree`, `pr`,
+   `round` and `base`. A failure names its step; run the command again and
+   it continues from that step. Do not do its steps by hand.
 
-   ```
-   spawn_session name="<slug> round <n>" cwd="<worktree>" labels={crew:"<slug>", goal:"<slug>", round:"<n>", task:"<queue-item>", pr:"<N>"}
-   ```
-
-   Create its task, subject `<project> / <slug> round <n>: <queue item> ·
-   PR #N`, `activeForm` "Running round <n> of <slug>", status
-   `in_progress` ("Task list").
+   Create its task ("Task list"), `activeForm` "Running round <n> of
+   <slug>", status `in_progress`.
 
    The shell sits at its prompt. Check whether the world already proved the
-   base sha before you run the floor (`LOOP.md`, "The floor"): a green run
-   on the base branch's own checks (`gh run list --workflow ci.yml
-   --branch <base>`; a project whose workflow file has another name uses
-   that one), or a green run on the goal's pull request at the base
-   (`gh pr checks <N>`). Either green skips the floor; write which run you
+   base sha before you run the floor (`LOOP.md`, "The floor", names the two
+   runs that prove it). Either green skips the floor; write which run you
    relied on in the round record's `Floor` "before" line. Neither green:
    run the floor from `plan.md` in that shell, one check per call:
 
@@ -291,14 +236,14 @@ case: it spends the budget and it gets a record.
    the exit code and the output of every check. A red floor makes the
    regression this round's job and pushes the queue item back; write the red
    check in the record. Then start the agent with the model "The model"
-   below picks for the task:
+   below picks for the task, and the crew settings
+   (`docs/control-plane.md`):
 
    ```
-   send_input session=<id> text="claude --model <id>"
+   send_input session=<id> text="claude --model <id> --settings ~/.claude/skills/foreman-loop/crew-settings.json"
    ```
 
-   Run "Read before you type". A fresh `claude` may sit at the folder-trust
-   dialog; answer it only for the project root.
+   Run "Read before you type".
 
 3. **Send one request.** Type the round prompt in one `send_input`. The
    prompt names the goal's files by their folder path; it does not restate
@@ -312,13 +257,10 @@ case: it spends the budget and it gets a record.
    - the queue item, its proof column from `plan.md`, the branch and the
      worktree the session sits in, the pull request's number, and the base
      sha;
-   - the authority tiers: the Frozen paths, the Propose paths, and the rule
-     to describe a needed Propose change in the note instead of making it;
-   - the floor to run after the work: the checks `plan.md` marks as the
-     crew's own, once, then push; a check `plan.md` marks as proved by the
-     pull request's continuous integration is not the crew's to run again;
-     and the rule to add one deterministic check for the behaviour the item
-     closes;
+   - the sections of `LOOP.md` the crew follows: "Authority" (describe a
+     needed Propose change in the note instead of making it) and "The
+     floor" (the crew's own checks once, then push), and the rule to add
+     one deterministic check for the behaviour the item closes;
    - commit on the branch and push it after each commit, so the human
      watches the diff on the pull request; never push to the base branch,
      never force-push, never merge; do not commit under `docs/goals/`;
@@ -327,19 +269,13 @@ case: it spends the budget and it gets a record.
      last — each starting `<KIND> <slug> r<n>: <one line>`; a session that
      dies at its last step still leaves its evidence. Each `post_note`
      stays under 1900 bytes;
-   - start the prompt, and every later message into the pane, with
-     `FOREMAN:`;
    - a session the crew spawns inside the round carries `crew:helper` with
      the round's `goal:` and `round:` labels, and the crew ends it;
    - when a decision needs a human, post a `BLOCKER` note and stop
      ("Crew notes").
 
-   Send the whole prompt in one call, whatever its size; the daemon paces it.
    Then run step 5 of "Read before you type" and confirm the prompt sits
-   above the box. From here on "Monitor" applies: delegate, report, run
-   `kitterm foreman watch` in the background, and yield your turn; on the
-   wake, route `needs-input` and `needs-approval` to the human, never answer
-   for them, relay every `note`.
+   above the box. From here on "Monitor" applies.
 
 4. **Collect.** On `agent.status` with `completed` for the crew session:
 
@@ -351,41 +287,16 @@ case: it spends the budget and it gets a record.
 
    Read the crew's note. Do not rerun a check the crew already ran, or a
    check the pull request's continuous integration already proves
-   (`LOOP.md`, "The floor"). Read the diff:
-
-   ```
-   git diff --name-only <base>
-   ```
-
-   Sort every path into the Authority table of `LOOP.md`. A path under
-   Frozen fails the round. A path under Propose turns the decision into
-   `propose`. Read `git diff <base> -- Tests/` for an existing test file: a
-   deleted or weakened assertion counts as Frozen.
-
-   An assertion in an existing test file can pin a text, a count, or a
-   layout. `goal.md` or the item's proof can require this round to change
-   that text, that count, or that layout. The assertion is then Chartered,
-   not Frozen. The crew replaces the assertion inside the round and keeps
-   its intent. The foreman records the old assertion, the new assertion, and
-   the line of `goal.md` or `plan.md` that requires the change. A Chartered
-   assertion is not a proposal: the human does not edit the file, and the
-   round's decision stays `done`.
+   (`LOOP.md`, "The floor"). Read the diff, `git diff --name-only <base>`
+   and `git diff <base> -- Tests/`, and sort it as `LOOP.md`, "Authority",
+   says.
 
    Collect the visible proof the crew posted: a screenshot path, a test
-   name, a URL. Archive the session, then run
-   `kitterm archive cost <id> --line` for every session the record's
-   `Sessions:` line names and paste its output as one `- Cost:` line per
-   session, in that order, under the record's header; the command prints
-   `LOOP.md`'s line from the archive's transcript with no daemon, or
-   `- Cost: none recorded (<reason>)`.
-   The bill exists only once `claude` exits, and archiving is what ends it;
-   a session the round still needs for a correction is archived at step 6
-   and its line written then.
+   name, a URL.
 
-   Wait on `gh pr checks <N>` for the crew's head sha; do not rerun the
-   checks yourself. Write the round record and `STATE.md` while that check
-   runs (steps 7 and 8), and push them once it is green. A red check is
-   the round's gap, like a red floor was before.
+   Read `gh pr checks <N>` on the crew's head sha first; do not rerun the
+   checks yourself. Green: go on. Red: the check is the round's gap; send
+   the correction (step 6) and do not close the round.
 
 5. **Classify the largest gap.** One class per round: `world` (the
    environment, the daemon build, the toolchain), `domain` (the product's
@@ -396,44 +307,57 @@ case: it spends the budget and it gets a record.
    the class and its evidence in the record. A round with no gap records
    `none`.
 
-6. **Close or record.** The floor green — the crew's own checks, and the
-   pull request's continuous integration on the crew's head sha — and the
-   diff holds the check: mark the item done, end the session, and record
-   the archive id:
-
-   ```
-   archive_session session=<id>
-   ```
-
-   Otherwise record the gap, run "Read before you type", send one
-   correction with `send_input`, starting it with `FOREMAN:`, and count it
-   inside this round. Go back to step 4. A second failure ends the round as
-   failed; archive the session.
+6. **Close or correct.** The floor green (step 4) and the diff holds the
+   check: the item is done. When the goal's completion condition then
+   holds, run "Review before ready" now, while the crew is live. Otherwise
+   record the gap, run "Read before you type", send one correction with
+   `send_input`, and go back to step 4. When the cap of `LOOP.md`,
+   "Budget", fails the round, write the lesson in the record for the next
+   round's prompt. `kitterm round close` archives the round's sessions, so
+   run it only once the round needs no more correction: the bill exists only once
+   `claude` exits, and archiving is what ends it.
 
 7. **Reflect.** Answer one question in the record: what cost time that a
-   rule or a check could prevent? Sort what you learned by scope: a
-   repository fact goes to `docs/goals/facts.md`, under its topic, as one
-   dated bullet with its source (`(<ISO date>, round <n>)`); a goal-local
-   finding stays in the record. Propose a change to `LOOP.md` in the record
+   rule or a check could prevent? Sort what you learned by the scopes of
+   `LOOP.md`: a repository fact goes to `docs/goals/facts.md` with its
+   source (`(<ISO date>, round <n>)`); a goal-local finding stays in the
+   record. Propose a change to `LOOP.md` in the record
    when the answer is a procedure.
 
-8. **Update `STATE.md` and commit.** Write `docs/goals/<slug>/rounds/NNN.md`
-   with the shape under "The round record" of `LOOP.md`'s "Parsed shapes".
-   A review crew or a triage session that you delegate inside a round posts
-   its findings with `post_note`. You copy them into the round record under
-   "Effects" or "Gap"; the crew does not write the record. Update
-   `docs/goals/<slug>/STATE.md`: the queue, the failures, the proposals, the
-   done items, the next action, the round counter, and `Updated`; nothing
-   else. Write the pull request's number from the queue line in the
-   record's `Result:`. Commit the record, the state, and the fact together
-   on the goal's branch, in one commit that names the goal and the round.
-   Push the branch once the pull request's continuous integration on the
-   crew's head sha is green (step 4): write and commit while it runs, and
-   push after. Mark the round's task `completed` once the record and
-   `STATE.md` are pushed ("Task list"). When the goal is done, run
-   `gh pr ready <N>`; the human merges. Create the goal's `Merge PR #N`
-   task and leave it `in_progress` until the human merges. Then report the
-   digest under "Reports".
+8. **Write the record and commit.** Run one command in your shell:
+
+   ```
+   kitterm round close <root> <slug> --decision done|failed|propose
+   ```
+
+   It archives the round's sessions, writes
+   `docs/goals/<slug>/rounds/NNN.md` with a marker line in each section,
+   and files the item by the decision (`LOOP.md`, "Parsed shapes"). Replace
+   every marker line. A review crew or a triage session that you delegate inside
+   a round posts its findings with `post_note`. You copy them into the
+   round record under "Effects" or "Gap"; the crew does not write the
+   record. Update the rest of `docs/goals/<slug>/STATE.md` yourself:
+   `Status`, `Last floor`, the failures, the proposals, and the next
+   action; nothing else. Commit a new fact in `docs/goals/facts.md` on the
+   goal's branch first. Run `kitterm round close <root> <slug> --commit`
+   only after `gh pr checks <N>` is green on the crew's head sha (step 4);
+   the command refuses until it is, and while a marker line remains
+   (`--no-checks` only for a repository with no CI); a failed or `propose`
+   round commits on a red check and names it. It commits the goal folder
+   and pushes. The push starts a new CI run, and `gh pr ready`
+   waits until it is green too. When the goal is done, run `gh pr ready
+   <N>`; the human merges. Then report the digest under "Reports".
+
+### Review before ready
+
+Once per goal, before `gh pr ready <N>`, run one review with fresh
+context: a subagent, or one session of the `review-crew` skill, that gets
+`goal.md` and `git diff origin/<base>...HEAD` and nothing else. It finds
+issues, tries to refute each one, and reports only the survivors. Send a
+survivor to the crew as a correction, or to the human as a note. The
+review does not replace the human's read: reported recall is 29 to 57
+percent. In `one-rule-one-place` round 1, one reviewer found in 3 minutes
+three inconsistencies that 1,442 green tests missed.
 
 ### The model
 
@@ -442,30 +366,29 @@ by the task, not by habit:
 
 | Task | Model | Why |
 |---|---|---|
-| Product code with tests; a design to implement; a round that reads a corpus | `claude-fable-5-1` (the default) | the rounds so far: $5–$38 each, floor green |
-| A document, a wording change, a README, a one-file fix with a clear diff | `claude-sonnet-5` | the work is reading and writing prose; a smaller model does it at a fraction of the cost |
-| A repair that must hold a whole subsystem in view: a red floor across many files, a migration, a rename across the tree | `claude-opus-5[1m]` | the context is the job |
-| A mechanical script: capture screenshots, run a checklist, copy figures into a table | `claude-haiku-4-5-20251001` | fast and cheap; no judgment needed |
+| Product code with tests; a design to implement; a round that reads a corpus | `claude-fable-5-2` (the default) | the rounds so far: $5–$38 each, floor green |
+| A document, a wording change, a README, a one-file fix with a clear diff | `claude-sonnet-5-5` | the work is reading and writing prose; a smaller model does it at a fraction of the cost |
+| A repair that must hold a whole subsystem in view: a red floor across many files, a migration, a rename across the tree | `claude-opus-5-5[1m]` | the context is the job |
+| A mechanical script: capture screenshots, run a checklist, copy figures into a table | `claude-haiku-5-5` | fast and cheap; no judgment needed |
 
-Write the model in the round record's `Sessions:` line and in the chore
-line, so the cost has a model beside it. When a crew on the smaller
-model asks for a decision the task should not need, or fails its floor
-twice, rerun the round on the default; that is the one correction.
+`kitterm round close` writes the model in the round record's `Sessions:`
+line and in the chore line, so the cost has a model beside it. When a
+crew on a smaller model asks for a decision the task should not need, or
+fails its floor twice, the next round's fresh session runs on the default.
 
 ## Monitor
 
-Delegate, report, yield. Once you send the round prompt and confirm it
+Once you send the round prompt and confirm it
 landed ("Send one request"), do not hold an event wait inside this turn:
 start `kitterm foreman watch` in the background and end your turn.
 
 ```
-kitterm foreman watch --session <id> [--session <id> ...] --since <cursor> --epoch <epoch> [--heartbeat <s>]
+kitterm foreman watch --session <id> [--session <id> ...] --since <cursor> --epoch <epoch> --quiet-working [--heartbeat <s>]
 ```
 
 One `--session` per live crew in your scope — the round's own session, and
-any other goal's crew still running. Never name a `crew:helper` session: a
-round is open while its `crew:<slug>` session is live, not its helper, so
-watching the helper would hold your turn open past the round. Run it with
+any other goal's crew still running. Never name a `crew:helper` session
+("Scan", step 4). Run it with
 `Bash(run_in_background)`, so the command holds the wait, not your turn.
 Start `cursor` at 0 with no `--epoch` the first run; after every run, carry
 the `next` and `epoch` it printed into the next one — your turn ends
@@ -480,119 +403,95 @@ markers on its last line. Read it and act:
   `session.exited`/`removed`. Run "Scan", then act on the event by its
   type:
   - `agent.status` with `needs-input`, or `approval.pending`: report at
-    once. Name the project, the goal, the round, and link the pane. Do not
-    act. When the human gives you an answer, run "Read before you type"
+    once ("Reports"). Do not act. When the human gives you an answer, run "Read before you type"
     and pass it on with `send_input`.
-  - `note`: relay its first line word for word ("Crew notes"). The round
+  - `note`: relay it ("Crew notes"). The round
     record is the durable copy; the event ring drops a note on a daemon
-    restart. A `BLOCKER` note, or a new entry under "## Proposals waiting
-    on the human", creates its task, `Answer: <crew blocker>` or
-    `Decide: <proposal>` ("Task list"); mark it `completed` when the human
-    answers or decides.
+    restart. A `BLOCKER` note, or a new proposal, creates its task
+    ("Task list").
   - `command.failed`: read `/commands/<index>/output` with `read_output`.
     Report it at once when it is the crew's floor or a command the round
     depends on. Otherwise let the crew handle it; never act for the crew.
   - `agent.status` with `completed`: run step 4 of "One round" for that
     goal.
   - `session.exited` with a non-zero code, or `session.removed`: the crew
-    is gone. Report it. A second non-zero exit in the same goal is a stop
-    rule.
+    is gone. Report it; a second non-zero exit is a stop rule.
 - `{type:"heartbeat", next, epoch}` — no watched session matched inside the
-  window. Run "Scan" and check "Stall" (below); there is no event to
-  report.
+  window. Run "Scan" and check "Stall" (below).
 - `{type:"epoch-change", epoch, next}` — the feed's cursor was pruned or the
   epoch no longer matches. Treat it exactly as "A result whose epoch
   changed" below.
 
 `kitterm foreman watch` can also exit non-zero with no marker, when the
-daemon drops the connection mid-poll: a live upgrade
-(`daemon.started` with `takeover` set to `"true"` and the same `epoch`)
-does this once while it execs, and every session id you hold is still
-good. Run the command again with the same `--since` and `--epoch` you gave
-it, since nothing advanced. A `send_input` in flight may have been cut;
-read the screen and send the text again when it is not there. Continue.
+daemon drops the connection mid-poll, as a live upgrade does once
+(`docs/foreman.md`, "When the daemon upgrades in place"). Run the command
+again with the same `--since` and `--epoch`.
 
 On every "Scan" — whatever woke you — also:
 
 - A merge to the base branch, which only the human makes: rebase every
   open goal or chore branch onto `origin/<base>` and push each one with
-  `--force-with-lease`. Only you force-push, and only for this. Two green
-  pull requests made the base branch red on 2026-09-28, because one added
-  a CI check and the other added a file the check rejects; the rebase
-  makes each pull request's CI meet every new check before the pull
-  request merges.
-- A merge of a goal's or a chore's pull request: delete its branch with
-  `git push origin --delete <branch>`, then remove the worktree with
-  `git worktree remove` and the local branch with `git branch -D`. A
-  merged branch left on the remote reads as open work. Mark the goal's
-  `Merge PR #N` task `completed`.
+  `--force-with-lease`. Only you force-push, and only for this
+  (`LOOP.md`, "The pull request", gives the reason).
+- A merge of a goal's or a chore's pull request: delete its branch, its
+  worktree and its local branch as `LOOP.md`, "The pull request", says,
+  and mark the goal's `Merge PR #N` task `completed`.
 - Compare `heldSince` with now for every live crew session. Archive a crew
-  session that sits at an empty prompt one hour past `completed`. The
-  linger clock holds a session with `claude` in the foreground past every
-  window; only you end it.
+  session that sits at an empty prompt one hour past `completed`; only you
+  end it (`docs/foreman.md`, "The loop", step 5).
 
-Report after each crew completes, not while it runs: a heartbeat, or an
-event with nothing the human must see, prints nothing to the human
-("Reports"). When step 4 of "One round" closes the round — the floor
+Report after each crew completes, not while it runs ("Reports"). When
+step 8 of "One round" closes the round — the floor
 green, the record written, the package committed, the digest posted —
-delegate the next runnable goal ("Schedule") or stop, per "Direction" and
-the stop rules below. Otherwise run `kitterm foreman watch` again for the
+delegate the next runnable goal ("Schedule") or stop, per `LOOP.md`,
+"Direction" and "Stop rules". Otherwise run `kitterm foreman watch` again for the
 crews still live, with the cursor and the epoch the last run printed, and
 end your turn again.
 
-A result whose `epoch` changed: the daemon restarted and every session id
-you hold is gone. Call `list_sessions` and match a respawned pane by its
-labels and cwd, never by id. Respawn each open round's crew once with the
+A result whose `epoch` changed: the daemon restarted; do the steps of
+`docs/foreman.md`, "When the daemon restarts". Respawn each open round's crew once with the
 same five labels plus `resumed-from:<the id the pane held before>`, run
-the floor, start `claude`, and send the round prompt again with the
-instruction to continue from the branch's last commit. The branch and
-the pull request are still there; the respawn keeps `pr:<N>`. When the
-respawn does not restore the round, record a killed attempt (see "One
-round") and stop that goal.
+the floor, start `claude` as step 2 does, and send the round prompt again with the
+instruction to continue from the branch's last commit. When the
+respawn does not restore the round, record a killed attempt (`LOOP.md`,
+"Budget") and stop that goal.
 
-The human's answer at a direction check (`LOOP.md`, "Direction") is an
-edit to `STATE.md`:
-  - **continue**: set `Round: 0 of 3 in this budget (<ordinal> budget)`, set
-    `Status: active`, and set `Updated`. The goal is runnable on the next
-    scan.
-  - **redirect**: the continue edits, once the human says continue.
-  - **stop**: set `Status: stopped`, set `Updated`, and archive or end the
-    goal's crew sessions.
-  - **done**: set `Status: done`, set `Updated` to today, and write the next
-    action as `None.` with the way to reopen.
-  - **new goal**: run `kitterm goal new <root> <slug>` in your shell; it
-    writes `docs/goals/<slug>/` from the template and refuses an existing
-    folder. Tell the human the folder is there. Start no round while the
-    queue still reads `<capability slug>`.
-
-  Commit every direction edit on the goal's branch.
+The human's answer at a direction check is an edit to `STATE.md`, which
+`LOOP.md`, "Direction", gives per answer. Make the edit, commit it on the
+goal's branch, and tell the human when a new goal's folder is there.
 
 ### Stall
 
-A crew is stalled when it reports `needs-input` or `completed` and has
-posted no `BLOCKER` or `DONE` note since its last turn began, or when no
-`PLAN` note came 15 minutes after you sent the round prompt.
+A crew is stalled when all four hold at a wake:
 
-On a stall, in the same scan: call `screen_state` and `read_screen`. An
-API error, a model limit, a cut turn, or a prompt that waits with no
+- its status is `completed` or `needs-input`;
+- it posted no `DONE` or `BLOCKER` note, and no `PLAN` note that waits on
+  you, since its last `working` status;
+- its `lastOutputAt` is more than 120 seconds old;
+- the status bar of `read_screen` names no shell and no monitor, as
+  `· 1 shell, 1 monitor ·` does (`screen_state` answers
+  `waiting-on-own-job` then).
+
+At a `completed` or `needs-input` wake with no `DONE` or `BLOCKER` note
+and no shell or monitor on the status bar, run the watch again with
+`--heartbeat 150` and judge the stall on that heartbeat. While you wait
+for a `PLAN` note, run it with `--heartbeat 900`: no `PLAN` note 15
+minutes after the round prompt is a stall too.
+
+Answer a stall in that wake, or end the session. Read the screen. An API
+error, a model limit, a cut turn, or a prompt that waits with no
 question: send one `FOREMAN: continue from <the last step the screen or
-the notes show>` (through "Read before you type") and tell the human in
-one line. A question on the screen: treat it as a `BLOCKER`, relay it,
-and create its `Answer:` task ("Task list").
+the notes show>` and tell the human in one line. A question: treat it as
+a `BLOCKER`, relay it, and create its `Answer:` task ("Task list"). One
+automatic continue per round. A second stall in the round: tell the
+human, link the pane, and wait for the human's word.
 
-One automatic continue per round. A second stall in the round: report it
-to the human at once and wait for the human's word.
-
-`lastOutputAt` stays fresh while Claude Code redraws an idle prompt, so it
-cannot show a stopped crew, and a crew can stop silently on an account's
-model limit (`facts.md`, "Crew pane"). On 2026-10-11 a crew sat at its
-prompt for 3h 32m after an API drop while the foreman's watcher had
-already reported the stall, with no automatic continue to follow it up.
+After a usage limit, Claude Code continues by itself
+(`autoContinueAtUsageLimit`, on by default, three times at most).
 
 ## Reports
 
-You report in three cases. The shape is the same in each case: what needs
-the human first, then one block per project.
+You report in three cases.
 
 | When | What |
 |---|---|
@@ -614,15 +513,12 @@ Needs you
 ```
 
 Every project gets a block, with one `<project> — <goal title>` block per
-goal folder, a waiting, stopped, or done goal included. Post each digest
-with `post_note` in one call, then print it in your pane. Send a push
+goal folder, a waiting, stopped, or done goal included. Do not narrate
+events; report the ones that need the human. Send a push
 notification for an "at once" item when the human is away from the terminal.
-Do not narrate events; report the ones that need the human.
 
 ### Report latency
 
-- Relay each crew note's first line as it arrives; a `PROGRESS` line goes
-  to the pane, with no push notification.
 - Before any wait longer than two minutes, say in one line what you wait
   for.
 - When a wait or a watcher returns, read its result before any other
@@ -630,26 +526,22 @@ Do not narrate events; report the ones that need the human.
 
 ### Proactive, not on request
 
-The human does not ask for a catch-up. Bring the result:
+Bring the result:
 
 - **A round closes**: the digest in the pane, and one push notification
   under 200 characters that names the outcome and the link: `round 12
   done: WHERE columns per filter · PR #134`. A failed round or a stop
   rule: the same, with the reason.
 - **A goal is done** (its completion condition holds and the package is
-  committed): run `gh pr ready <N>`, then say so once, with the link,
-  and what merging changes for the running daemon. You cannot merge:
-  the auto-mode classifier refuses `gh pr merge`. The human merges,
-  once per goal.
-- **Something needs the human** (`needs-input`, `needs-approval`, a
-  `propose`, a decision a crew asked for): a push notification at once,
-  then the pane.
+  committed): after `gh pr ready <N>`, say so once, with the link,
+  and what merging changes for the running daemon.
 - **A day passes with work and no report**: one digest at the day's end.
 - **Nothing is running and nothing waits**: say so once, with the
   proposals open, and hold. Do not send a notification for that.
 
 A notification is one line the human acts on; the pane carries the rest.
-Never notify for progress inside a round.
+Never notify for progress inside a round: a `PROGRESS` line goes to the
+pane only.
 
 ### Crew notes
 
@@ -660,7 +552,10 @@ r<n>: <one line>` (a chore writes `<KIND> <slug>: <one line>`), and
 
 1. **PLAN**, before the first edit: the files it expects to touch, the
    check it will add, and any assertion it believes is chartered. Read it
-   and correct the scope before the work, not after.
+   and correct the scope before the work, not after. In a round that sets
+   a data model, an interface or a visual design, the prompt tells the
+   crew to wait for `FOREMAN: approved` or `FOREMAN: change <what>`
+   before code.
 2. **PROGRESS**, one line after each push: the short sha, what changed,
    and the floor's state.
 3. **BLOCKER**, when it needs a decision, a permission, or a fact only
@@ -672,6 +567,6 @@ r<n>: <one line>` (a chore writes `<KIND> <slug>: <one line>`), and
    each with the same first-line shape.
 
 Relay the first line of every note to the human word for word, as it
-arrives. The prompt asks for all four by name. A crew that posts only
+arrives. A crew that posts only
 `DONE` has still done the round; note the missing `PLAN` in the record's
 reflection, because the plan is what catches a wrong charter early.

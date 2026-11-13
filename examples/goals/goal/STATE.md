@@ -26,6 +26,5 @@ None.
 ## Next action
 
 Round 1: `<item>` from `plan.md` row 1; proof: `<test or screenshot>`.
-Spawn one crew session in the repository root with labels
-`crew:<goal slug>`, `goal:<goal slug>`, `round:1`, `task:<item>`, and no
-input. Run the floor in the shell, start `claude`, and send the row.
+Open it with `kitterm round open <root> <goal slug> --task <item>`, then
+start the crew and send the row as the `foreman-loop` skill says.

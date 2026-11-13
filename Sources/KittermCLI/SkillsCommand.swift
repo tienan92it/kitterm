@@ -2,7 +2,8 @@ import Foundation
 
 /// `kitterm skills install|list` — the reference foreman skills under
 /// `examples/foreman/`, embedded in the binary as `ForemanSkills`, written
-/// where Claude Code reads a skill: `<dir>/<name>/SKILL.md`.
+/// where Claude Code reads a skill: `<dir>/<name>/SKILL.md`, with the crew
+/// settings file beside the `foreman-loop` skill.
 enum SkillsCommand {
     static let usage = "usage: kitterm skills install [--dir <path>] | list"
 
@@ -56,15 +57,16 @@ enum SkillsCommand {
         return FileManager.default.currentDirectoryPath + "/" + directory
     }
 
-    /// Write every skill to `<dir>/<name>/SKILL.md` and print one line per
-    /// file: `wrote` for a new file, `updated` for a file whose bytes
-    /// differed, `unchanged` for a file that already matched. An unchanged
-    /// file is not rewritten, so its mtime stays.
+    /// Write every skill to `<dir>/<name>/SKILL.md`, and each support file
+    /// (`foreman-loop/crew-settings.json`) to its path under `<dir>`. Print
+    /// one line per file: `wrote` for a new file, `updated` for a file whose
+    /// bytes differed, `unchanged` for a file that already matched. An
+    /// unchanged file is not rewritten, so its mtime stays.
     static func install(directory: String, out: (String) -> Void) throws {
         let root = URL(fileURLWithPath: directory, isDirectory: true)
-        for (name, contents) in ForemanSkills.files {
-            let folder = root.appendingPathComponent(name, isDirectory: true)
-            let file = folder.appendingPathComponent("SKILL.md")
+        for (path, contents) in ForemanSkills.installed {
+            let file = root.appendingPathComponent(path)
+            let folder = file.deletingLastPathComponent()
             let bytes = Data(contents.utf8)
             let verb: String
             if let existing = try? Data(contentsOf: file) {

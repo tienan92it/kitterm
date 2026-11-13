@@ -272,6 +272,188 @@ final class RoundCloseTests: XCTestCase {
         XCTAssertTrue(state.contains("\n- Round: 2 of 2 in this budget (first budget)\n"), state)
     }
 
+    /// `--commit` reads `gh pr checks <N>` for the `pr:` label and refuses
+    /// a failed, a pending or an empty answer, naming each check that is
+    /// not green; `--no-checks` commits with no read
+    /// (`one-rule-one-place` round 3).
+    func testCommitRefusesUntilThePullRequestChecksAreGreen() throws {
+        let crew = try openRound(task: "first-item")
+        try join(crew, transcript: try crewTranscript("crew", billed: true))
+        _ = try close([])
+        let path = folder + "/rounds/001.md"
+        try write(
+            try String(contentsOfFile: path, encoding: .utf8)
+                .replacingOccurrences(of: RoundRecord.marker, with: "written by the foreman"),
+            to: path
+        )
+        let before = try git(["rev-parse", "HEAD"], in: worktree)
+
+        sharedGH.answerChecks(
+            status: 8,
+            output: #"[{"bucket":"pass","name":"lint"},{"bucket":"fail","name":"test"},{"bucket":"pending","name":"linux-build"}]"#
+        )
+        XCTAssertThrowsError(try close(["--commit"])) { error in
+            XCTAssertEqual((error as? RoundCommand.StepFailure)?.step, "checks")
+            XCTAssertTrue(error.localizedDescription.contains(
+                "PR #7 is not green on its head: test fail, linux-build pending; wait for green, "
+                    + "or pass --no-checks for a repository with no CI"
+            ), error.localizedDescription)
+        }
+        XCTAssertEqual(sharedGH.checkCalls.last, ["pr", "checks", "7", "--json", "name,bucket"])
+
+        sharedGH.answerChecks(status: 1, error: "no checks reported on the 'goal/demo' branch\n")
+        XCTAssertThrowsError(try close(["--commit"])) { error in
+            XCTAssertTrue(error.localizedDescription.contains(
+                "gh pr checks 7 reports no checks; pass --no-checks for a repository with no CI"
+            ), error.localizedDescription)
+        }
+        XCTAssertEqual(try git(["rev-parse", "HEAD"], in: worktree), before)
+
+        let calls = sharedGH.checkCalls.count
+        let lines = try close(["--commit", "--no-checks"])
+        XCTAssertEqual(sharedGH.checkCalls.count, calls, "--no-checks reads no checks")
+        let head = try git(["rev-parse", "HEAD"], in: worktree)
+        XCTAssertNotEqual(head, before)
+        XCTAssertTrue(lines.contains("commit   \(head)"), "\(lines)")
+    }
+
+    /// `--decision failed` files the item under `## Failures`; a later
+    /// `--commit` run with no `--decision` keeps it there instead of
+    /// moving it to `## Done`, and a later `--decision done` refuses
+    /// (`one-rule-one-place` round 1, "Gap").
+    func testAFailedRoundStaysUnderFailuresOnALaterCommitRun() throws {
+        let crew = try openRound(task: "first-item")
+        try join(crew, transcript: try crewTranscript("crew", billed: true))
+        let head = try git(["rev-parse", "--short=7", "HEAD"], in: worktree)
+        let lines = try close(["--decision", "failed"])
+        XCTAssertTrue(lines.contains("decision failed"), "\(lines)")
+        let failedLine = "- `first-item`, round 1, `\(head)`, PR #7. See `rounds/001.md`."
+        var state = try String(contentsOfFile: folder + "/STATE.md", encoding: .utf8)
+        XCTAssertTrue(state.contains("## Failures\n\n\(failedLine)\n\n## Proposals"), state)
+        XCTAssertTrue(state.contains("## Done\n\nNone.\n"), state)
+        XCTAssertTrue(state.contains("\n- Round: 1 of 2 in this budget (first budget)\n"), "a failed round spends the budget")
+
+        let path = folder + "/rounds/001.md"
+        try write(
+            try String(contentsOfFile: path, encoding: .utf8)
+                .replacingOccurrences(of: RoundRecord.marker, with: "written by the foreman"),
+            to: path
+        )
+        XCTAssertThrowsError(try close(["--decision", "done"])) { error in
+            XCTAssertEqual((error as? RoundCommand.StepFailure)?.step, "state")
+            XCTAssertTrue(error.localizedDescription.contains(
+                "the first run filed `first-item` under ## Failures; pass --decision failed, or edit STATE.md by hand"
+            ), error.localizedDescription)
+        }
+        let committed = try close(["--commit"])
+        XCTAssertTrue(committed.contains("decision failed"), "\(committed)")
+        state = try String(contentsOfFile: folder + "/STATE.md", encoding: .utf8)
+        XCTAssertTrue(state.contains("## Failures\n\n\(failedLine)\n\n## Proposals"), state)
+        XCTAssertTrue(state.contains("## Done\n\nNone.\n"), state)
+        let summary = KnowledgeSummary.parse(state: state, goal: nil, roundNames: ["001.md"], latestRound: nil)
+        XCTAssertEqual(summary.tasks?.first { $0.slug == "first-item" }?.state, .failed)
+    }
+
+    /// A failed or a `propose` round commits its record on a red check:
+    /// the check is the reason the round failed, so `--commit` names it in
+    /// one stderr line and goes on (`one-rule-one-place` round 3,
+    /// correction 1). A `done` round still refuses.
+    func testAFailedOrProposeRoundCommitsOnARedCheckAndNamesIt() throws {
+        let red = #"[{"bucket":"fail","name":"test"}]"#
+        for (task, decision) in [("first-item", "failed"), ("second-item", "propose")] {
+            let crew = try openRound(task: task)
+            try join(crew, transcript: try crewTranscript(task, billed: true))
+            _ = try close(["--decision", decision])
+            let round = task == "first-item" ? "001" : "002"
+            let path = folder + "/rounds/\(round).md"
+            try write(
+                try String(contentsOfFile: path, encoding: .utf8)
+                    .replacingOccurrences(of: RoundRecord.marker, with: "written by the foreman"),
+                to: path
+            )
+            sharedGH.answerChecks(status: 1, output: red)
+            let before = try git(["rev-parse", "HEAD"], in: worktree)
+            var progress: [String] = []
+            let lines = try close(["--commit"], progress: { progress.append($0) })
+            let head = try git(["rev-parse", "HEAD"], in: worktree)
+            XCTAssertNotEqual(head, before, decision)
+            XCTAssertTrue(lines.contains("commit   \(head)"), "\(lines)")
+            XCTAssertEqual(progress.filter { $0.contains("not green") }, [
+                "round close: PR #7 is not green on its head: test fail; the round is \(decision), so its record commits",
+            ])
+        }
+    }
+
+    /// `propose` leaves the item under `## Queue` and counts the round; a
+    /// later run keeps it there, and a later `failed` refuses.
+    func testCloseStateFilesAProposeRoundUnderQueueAndKeepsIt() throws {
+        let state = Self.unitState
+        let once = try RoundRecord.closeState(state, task: "a", round: 5, sha: "1b1b1b1", pr: 9, day: "2026-11-02", decision: .propose)
+        XCTAssertTrue(once.contains("\n- Rounds total: 5\n"), once)
+        XCTAssertTrue(once.contains("## Queue\n\n- `a` (1), round 5, PR #9.\n  A continuation line.\n- `b` (2).\n"), once)
+        XCTAssertEqual(RoundRecord.filed(once, task: "a", round: 5), .propose)
+        XCTAssertEqual(try RoundRecord.closeState(once, task: "a", round: 5, sha: "1b1b1b1", pr: 9, day: "2026-11-02"), once)
+        XCTAssertThrowsError(
+            try RoundRecord.closeState(once, task: "a", round: 5, sha: "1b1b1b1", pr: 9, day: "2026-11-02", decision: .failed)
+        ) { error in
+            XCTAssertEqual(
+                (error as? RoundRecord.StateError)?.reason,
+                "the first run filed `a` under ## Queue; pass --decision propose, or edit STATE.md by hand"
+            )
+        }
+    }
+
+    /// `failed` moves the item to `## Failures`, after a line already there.
+    func testCloseStateFilesAFailedRoundUnderFailures() throws {
+        let once = try RoundRecord.closeState(
+            Self.unitState, task: "a", round: 5, sha: "1b1b1b1", pr: 9, day: "2026-11-02", decision: .failed
+        )
+        XCTAssertTrue(once.contains(
+            "## Failures\n\n- attempt killed: 2026-10-30, the host slept\n- `a`, round 5, `1b1b1b1`, PR #9. See `rounds/005.md`.\n"
+        ), once)
+        XCTAssertTrue(once.contains("## Queue\n\n- `b` (2).\n\n## Failures"), once)
+        XCTAssertEqual(RoundRecord.filed(once, task: "a", round: 5), .failed)
+        XCTAssertEqual(try RoundRecord.closeState(once, task: "a", round: 5, sha: "1b1b1b1", pr: 9, day: "2026-11-02"), once)
+    }
+
+    func testDecisionAndNoChecksAreParsed() throws {
+        let options = try RoundCommand.CloseOptions.parse(["r", "demo", "--commit", "--no-checks", "--decision", "propose"])
+        XCTAssertEqual(options.decision, .propose)
+        XCTAssertTrue(options.noChecks)
+        XCTAssertNil(try RoundCommand.CloseOptions.parse(["r", "demo"]).decision)
+        for args in [["r", "demo", "--decision", "maybe"], ["r", "demo", "--chore", "--decision", "done"], ["r", "demo", "--no-checks"]] {
+            XCTAssertThrowsError(try RoundCommand.CloseOptions.parse(args), "\(args)")
+        }
+    }
+
+    private static let unitState = """
+    # STATE: x
+
+    - Status: active
+    - Round: 1 of 3 in this budget (second budget)
+    - Rounds total: 4
+    - Last floor: green (2026-11-01, round 4)
+    - Updated: 2026-11-01
+
+    ## Queue
+
+    - `a` (1), round 5, PR #9.
+      A continuation line.
+    - `b` (2).
+
+    ## Failures
+
+    - attempt killed: 2026-10-30, the host slept
+
+    ## Done
+
+    - `z`, round 4, `0a0a0a0`, PR #9. See `rounds/004.md`.
+
+    ## Next action
+
+    Round 5.
+    """
+
     // MARK: - Condition 7: the foreman line
 
     /// The window counts the foreman's turns between Started and Ended, its
@@ -464,9 +646,20 @@ final class RoundCloseTests: XCTestCase {
     private final class FakeGH: @unchecked Sendable {
         private let lock = NIOLock()
         private var open: [Int] = []
+        private var checks = PullRequestStatus.RunResult(status: 0, output: Data("[{\"bucket\":\"pass\",\"name\":\"test\"}]\n".utf8))
+        private(set) var checkCalls: [[String]] = []
+
+        /// What the next `gh pr checks` answers; green by default.
+        func answerChecks(status: Int32, output: String = "", error: String = "") {
+            lock.withLock { checks = PullRequestStatus.RunResult(status: status, output: Data(output.utf8), error: error) }
+        }
 
         func run(_ args: [String]) -> PullRequestStatus.RunResult {
             lock.withLock {
+                if args.starts(with: ["pr", "checks"]) {
+                    checkCalls.append(args)
+                    return checks
+                }
                 if args.starts(with: ["pr", "list"]) {
                     let rows = open.map { "{\"number\":\($0)}" }.joined(separator: ",")
                     return PullRequestStatus.RunResult(status: 0, output: Data("[\(rows)]\n".utf8))
@@ -497,11 +690,11 @@ final class RoundCloseTests: XCTestCase {
         return try XCTUnwrap(object["session"] as? String)
     }
 
-    private func close(_ flags: [String]) throws -> [String] {
+    private func close(_ flags: [String], progress: (String) -> Void = { _ in }) throws -> [String] {
         var lines: [String] = []
         try RoundCommand.run(
             ["close", root, "demo", "--port", String(port), "--bill-timeout", "10"] + flags, runner: runner(sharedGH),
-            out: { lines.append($0) }, progress: { _ in }
+            out: { lines.append($0) }, progress: progress
         )
         return lines
     }

@@ -22,23 +22,36 @@ final class LoopPullRequestRulesTests: XCTestCase {
             "A goal's branch is `goal/<slug>`. A chore's branch is `chore/<slug>`."
         ),
         (
+            // Chartered by `one-rule-one-place` round 1: "when the foreman
+            // writes the record" became "when `kitterm round close` writes the
+            // record"; the three places are kept.
             "the number goes on the queue line, on the session and in the record at once",
             """
             The pull request's number goes in three places: on the queue line in
             `STATE.md`, as `, PR #N.` at the end of the item's first line; on the
             crew session, as the label `pr:<N>`; and in the round record's
-            `Result:`, when the foreman writes the record. No record needs a later
-            commit to name its pull request.
+            `Result:`, when `kitterm round close` writes the record. No record
+            needs a later commit to name its pull request.
             """
         ),
         (
-            "a goal keeps one branch and one pull request, and the human merges once",
+            // Chartered by `one-rule-one-place` round 1: the sentence read
+            // `A goal keeps its one branch and its one pull request for all its
+            // rounds.`; the records show 6 pull requests for `code-editor` and
+            // 4 for `sessions-workflow`, so the rule says the practice. One
+            // branch per goal, the ready mark and the human merge are kept.
+            "a goal keeps one branch, a pull request stays open while the human leaves it, and the human merges",
             """
-            A goal keeps its one branch and its one pull request for all its
-            rounds. Each round's record and `STATE.md` commit land on that branch.
-            When the goal is done, the foreman runs `gh pr ready <N>`, and the
-            human merges.
+            A goal keeps its one branch for all its rounds, and an open pull
+            request for as many rounds as the human leaves it open. Each round's
+            record and `STATE.md` commit land on that branch. The human can merge
+            the pull request before the goal is done; the next `kitterm round open`
+            then opens a new one.
             """
+        ),
+        (
+            "the foreman marks the pull request ready when the goal is done, and the human merges",
+            "When the goal is done, the foreman runs `gh pr ready <N>`, and the human merges."
         ),
         (
             "the foreman cannot merge",
@@ -54,10 +67,16 @@ final class LoopPullRequestRulesTests: XCTestCase {
     /// kitterm's base branch is `main`, and this file keeps naming it.
     static let kittermLoopRules: [(rule: String, sentence: String)] = [
         (
+            // Chartered by `one-rule-one-place` round 1: the sentence read
+            // `Before it spawns the crew, the foreman commits the queue line,
+            // pushes the branch, and opens a draft pull request with
+            // `gh pr create --draft`.`; `kitterm round open` does those steps.
             "the draft pull request opens before the crew is spawned",
             """
-            Before it spawns the crew, the foreman commits the queue line, pushes
-            the branch, and opens a draft pull request with `gh pr create --draft`.
+            `kitterm round open` does every step before the crew starts: it cuts
+            the branch, commits the queue line, pushes the branch, opens a draft
+            pull request with `gh pr create --draft` when none is open, and spawns
+            the crew session.
             """
         ),
         (
@@ -82,11 +101,13 @@ final class LoopPullRequestRulesTests: XCTestCase {
     /// or `dev`.
     static let genericLoopRules: [(rule: String, sentence: String)] = [
         (
+            // Chartered by `one-rule-one-place` round 1, as in `kittermLoopRules`.
             "the draft pull request opens before the crew is spawned",
             """
-            Before it spawns the crew, the foreman commits the queue line, pushes
-            the branch, and opens a draft pull request with
-            `gh pr create --draft --base <base>`.
+            `kitterm round open` does every step before the crew starts: it cuts
+            the branch, commits the queue line, pushes the branch, opens a draft
+            pull request with `gh pr create --draft --base <base>` when none is
+            open, and spawns the crew session.
             """
         ),
         (
@@ -116,10 +137,19 @@ final class LoopPullRequestRulesTests: XCTestCase {
             """
         ),
         (
-            "the crew session carries the pull request as a label",
+            // Chartered by `one-rule-one-place` round 1: the skill typed
+            // `spawn_session ... labels={crew:"<slug>", goal:"<slug>",
+            // round:"<n>", task:"<queue-item>", pr:"<N>"}`; `kitterm round open`
+            // spawns the session with the five labels of `LOOP.md`, "Labels",
+            // which pins the `pr` row.
+            "the crew session is spawned by `kitterm round open` with the five labels",
             """
-            labels={crew:"<slug>", goal:"<slug>", round:"<n>", task:"<queue-item>", pr:"<N>"}
+            kitterm round open <root> <slug> --task <queue-item>
             """
+        ),
+        (
+            "the crew session carries the five labels of the loop",
+            "crew, up to one crew session in the worktree of `goal/<slug>` with the five labels and no input"
         ),
         (
             "the foreman rebases every open branch after the human's merge",
@@ -213,10 +243,12 @@ final class LoopPullRequestRulesTests: XCTestCase {
         }
     }
 
-    /// `docs/foreman.md` describes the same steps in one sentence each.
-    func testTheManualNamesTheBranchTheLabelAndTheMerge() throws {
+    /// Chartered by `one-rule-one-place` round 1: `docs/foreman.md` restated
+    /// the branch, the label and the merge; it now names `LOOP.md`, their one
+    /// home, which the tests above pin.
+    func testTheManualPointsAtTheLoopForTheBranchTheLabelAndTheMerge() throws {
         let manual = Self.oneLine(try Self.read("docs/foreman.md"))
-        for phrase in ["`goal/<slug>`", "`chore/<slug>`", "`pr:<n>`", "opens a draft pull request", "the human merges, once per goal"] {
+        for phrase in ["`goal/<slug>`", "`docs/goals/LOOP.md` gives the scope, the package, the branch `goal/<slug>`, its pull request and the merge"] {
             XCTAssertTrue(manual.contains(Self.oneLine(phrase)), "docs/foreman.md names \(phrase)")
         }
     }
