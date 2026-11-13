@@ -47,4 +47,39 @@ final class ModelPricingTests: XCTestCase {
                 + "until the rates are read again\n"
         )
     }
+
+    // MARK: rates of the models in use, as read from the pricing page
+
+    func testFable52AndMythos52Rates() {
+        let want = ModelPricing(input: 8, cacheWrite5m: 10, cacheWrite1h: 16, cacheRead: 0.2, output: 40)
+        XCTAssertEqual(ModelPricing.rates(for: "claude-fable-5-2"), want)
+        XCTAssertEqual(ModelPricing.rates(for: "claude-mythos-5-2"), want)
+    }
+
+    func testOpus55Rates() {
+        let want = ModelPricing(input: 4, cacheWrite5m: 5, cacheWrite1h: 8, cacheRead: 0.2, output: 20)
+        XCTAssertEqual(ModelPricing.rates(for: "claude-opus-5-5"), want)
+    }
+
+    func testSonnet55Rates() {
+        let want = ModelPricing(input: 2, cacheWrite5m: 2.5, cacheWrite1h: 4, cacheRead: 0.1, output: 10)
+        XCTAssertEqual(ModelPricing.rates(for: "claude-sonnet-5-5"), want)
+    }
+
+    func testLongContextAndDatedIdsFindTheirRate() {
+        let opus = ModelPricing.rates(for: "claude-opus-5-5")
+        XCTAssertNotNil(opus)
+        XCTAssertEqual(ModelPricing.rates(for: "claude-opus-5-5[1m]"), opus)
+        XCTAssertEqual(ModelPricing.rates(for: "claude-opus-5-5-20261101"), opus)
+    }
+
+    func testAShorterKeyDoesNotSwallowALongerId() {
+        // `opus-5` is a key; `opus-5-5` and `opus-5-9` must not fall back to it.
+        XCTAssertNotEqual(ModelPricing.rates(for: "claude-opus-5-5"), ModelPricing.rates(for: "claude-opus-5"))
+        XCTAssertNil(ModelPricing.rates(for: "claude-opus-5-9"))
+    }
+
+    func testHaiku55StaysUnpricedBecauseThePageTiersIt() {
+        XCTAssertNil(ModelPricing.rates(for: "claude-haiku-5-5"))
+    }
 }
