@@ -32,13 +32,20 @@ public struct ModelPricing: Equatable, Sendable {
     public var cacheRead: Double
     public var output: Double
 
+    /// `haiku-5-5` is absent on purpose: the page prices it by prompt length
+    /// (up to 100,000 tokens, or over), and this table holds one rate per
+    /// model, so any single rate would misprice one of the two tiers.
+    ///
     /// Keyed by the id less the `claude-` prefix, a `[1m]` suffix and a
     /// trailing date, the way `ModelName` reads an id.
     static let table: [String: ModelPricing] = [
+        "fable-5-2": ModelPricing(input: 8, cacheWrite5m: 10, cacheWrite1h: 16, cacheRead: 0.2, output: 40),
+        "mythos-5-2": ModelPricing(input: 8, cacheWrite5m: 10, cacheWrite1h: 16, cacheRead: 0.2, output: 40),
         "fable-5-1": ModelPricing(input: 10, cacheWrite5m: 12.5, cacheWrite1h: 20, cacheRead: 0.25, output: 50),
         "mythos-5-1": ModelPricing(input: 10, cacheWrite5m: 12.5, cacheWrite1h: 20, cacheRead: 0.25, output: 50),
         "fable-5": ModelPricing(input: 10, cacheWrite5m: 12.5, cacheWrite1h: 20, cacheRead: 1, output: 50),
         "mythos-5": ModelPricing(input: 10, cacheWrite5m: 12.5, cacheWrite1h: 20, cacheRead: 1, output: 50),
+        "opus-5-5": ModelPricing(input: 4, cacheWrite5m: 5, cacheWrite1h: 8, cacheRead: 0.2, output: 20),
         "opus-5": ModelPricing(input: 5, cacheWrite5m: 6.25, cacheWrite1h: 10, cacheRead: 0.5, output: 25),
         "opus-4-8": ModelPricing(input: 5, cacheWrite5m: 6.25, cacheWrite1h: 10, cacheRead: 0.5, output: 25),
         "opus-4-7": ModelPricing(input: 5, cacheWrite5m: 6.25, cacheWrite1h: 10, cacheRead: 0.5, output: 25),
@@ -46,6 +53,7 @@ public struct ModelPricing: Equatable, Sendable {
         "opus-4-5": ModelPricing(input: 5, cacheWrite5m: 6.25, cacheWrite1h: 10, cacheRead: 0.5, output: 25),
         "opus-4-1": ModelPricing(input: 15, cacheWrite5m: 18.75, cacheWrite1h: 30, cacheRead: 1.5, output: 75),
         "opus-4": ModelPricing(input: 15, cacheWrite5m: 18.75, cacheWrite1h: 30, cacheRead: 1.5, output: 75),
+        "sonnet-5-5": ModelPricing(input: 2, cacheWrite5m: 2.5, cacheWrite1h: 4, cacheRead: 0.1, output: 10),
         "sonnet-5": ModelPricing(input: 2, cacheWrite5m: 2.5, cacheWrite1h: 4, cacheRead: 0.2, output: 10),
         "sonnet-4-6": ModelPricing(input: 3, cacheWrite5m: 3.75, cacheWrite1h: 6, cacheRead: 0.3, output: 15),
         "sonnet-4-5": ModelPricing(input: 3, cacheWrite5m: 3.75, cacheWrite1h: 6, cacheRead: 0.3, output: 15),
