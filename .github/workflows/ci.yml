@@ -32,6 +32,33 @@ jobs:
           pnpm build
           pnpm test
 
+  # CI builds debug only, so a release-only compiler crash (PR #211) reached
+  # main. Same runner and toolchain as the test job.
+  release-build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift release build
+        run: swift build -c release --product kitterm
+
+  # Flags removed assertions, added skips, snapshot changes and workflow edits.
+  # A "Chartered:" line in the PR body passes it (scripts/test-diff-guard.sh).
+  test-diff-guard:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Test diff guard
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: ./scripts/test-diff-guard.sh "origin/$BASE_REF" "$HEAD_SHA"
+
   # The daemon ships to Linux containers, so a Darwin-only import or an
   # unavailable Foundation type has to fail here rather than in someone's box.
   # Compile only: `--build-tests` compiles every test target too, so a test
