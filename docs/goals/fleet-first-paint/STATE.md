@@ -8,7 +8,7 @@
 
 ## Queue
 
-2. `yield-never-waits` (capability 2)
+2. `yield-never-waits` (capability 2), round 2, PR #220.
 3. `archives-cheap` (capability 3)
 
 ## Failures
