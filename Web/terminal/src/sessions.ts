@@ -504,8 +504,9 @@ function lifetimeWaits(): boolean {
 }
 
 /** Ask for the archive list when it is stale (`archivesStale`). A failed
- * request keeps the last list and the next poll asks again. A daemon too
- * old to have the route has none. */
+ * request, or an answer that is not ok (a 401, a 5xx), keeps the last list
+ * and its tag, and the next poll asks again. A daemon too old to have the
+ * route answers 404: it has no list, and the page does not ask again. */
 async function fetchArchives(): Promise<void> {
   if (archivesInFlight || !archivesStale) return;
   archivesInFlight = true;
@@ -516,8 +517,17 @@ async function fetchArchives(): Promise<void> {
     const res = await fetch("/api/archives", { headers });
     // 304: the daemon's list is the one the page holds.
     if (res.status === 304) return;
-    archives = res.ok ? (((await res.json()) as { archives?: ArchivedRow[] }).archives ?? []) : [];
-    archivesTag = res.ok ? res.headers.get("etag") : null;
+    if (res.status === 404) {
+      archives = [];
+      archivesTag = null;
+      return;
+    }
+    if (!res.ok) {
+      archivesStale = true;
+      return;
+    }
+    archives = ((await res.json()) as { archives?: ArchivedRow[] }).archives ?? [];
+    archivesTag = res.headers.get("etag");
   } catch {
     archivesStale = true;
   } finally {
