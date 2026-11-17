@@ -39,15 +39,22 @@ final class RepositoryYieldPendingTests: XCTestCase {
 
         init(blocked: Bool) { self.blocked = blocked }
 
+        /// `NSCondition` has no `withLock` in corelibs-foundation.
+        private func locked<T>(_ body: () -> T) -> T {
+            condition.lock()
+            defer { condition.unlock() }
+            return body()
+        }
+
         /// The reads that started.
-        var reads: Int { condition.withLock { readCount } }
+        var reads: Int { locked { readCount } }
 
-        func setLines(_ lines: Int) { condition.withLock { lineCount = lines } }
+        func setLines(_ lines: Int) { locked { lineCount = lines } }
 
-        func block() { condition.withLock { blocked = true } }
+        func block() { locked { blocked = true } }
 
         func release() {
-            condition.withLock {
+            locked {
                 blocked = false
                 condition.broadcast()
             }
@@ -73,7 +80,7 @@ final class RepositoryYieldPendingTests: XCTestCase {
             case "remote":
                 return (0, "origin\n")
             case "log":
-                let lines = condition.withLock { lineCount }
+                let lines = locked { lineCount }
                 let head = command.contains { $0.contains("%cI") } ? "2026-09-02T10:00:00+07:00" : "abc123"
                 return (0, "\u{1E}\(head)\u{1F}One (#1)\n\n 1 file changed, \(lines) insertions(+)\n")
             default:
