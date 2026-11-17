@@ -2088,7 +2088,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             var headers = HTTPHeaders()
             headers.add(name: "ETag", value: body.etag)
             headers.add(name: "Cache-Control", value: "no-cache")
-            if head.headers["if-none-match"].contains(body.etag) {
+            if Self.ifNoneMatch(head.headers, names: body.etag) {
                 self.writeBytes(status: .notModified, headers: headers, data: Data(),
                                 context: bound.value, version: head.version, keepAlive: head.isKeepAlive)
                 return
@@ -2251,7 +2251,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             var headers = HTTPHeaders()
             headers.add(name: "ETag", value: etag)
             headers.add(name: "Cache-Control", value: "no-cache")
-            if head.headers["if-none-match"].contains(etag) {
+            if Self.ifNoneMatch(head.headers, names: etag) {
                 self.writeBytes(status: .notModified, headers: headers, data: Data(),
                                 context: context, version: head.version, keepAlive: head.isKeepAlive)
                 return
@@ -2324,7 +2324,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             var headers = HTTPHeaders()
             headers.add(name: "ETag", value: etag)
             headers.add(name: "Cache-Control", value: "no-cache")
-            if head.headers["if-none-match"].contains(etag) {
+            if Self.ifNoneMatch(head.headers, names: etag) {
                 self.writeBytes(status: .notModified, headers: headers, data: Data(),
                                 context: context, version: head.version, keepAlive: head.isKeepAlive)
                 return
@@ -2463,7 +2463,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 var headers = HTTPHeaders()
                 headers.add(name: "ETag", value: etag)
                 headers.add(name: "Cache-Control", value: "no-cache")
-                if head.headers["if-none-match"].contains(etag) {
+                if Self.ifNoneMatch(head.headers, names: etag) {
                     self.writeBytes(status: .notModified, headers: headers, data: Data(),
                                     context: context, version: head.version, keepAlive: head.isKeepAlive)
                     return
@@ -2536,6 +2536,22 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             return .failed(.notFound, "symlink refused")
         } catch {
             return .failed(.notFound, "not found")
+        }
+    }
+
+    /// Whether the request's `If-None-Match` names `etag`, by the weak
+    /// comparison of RFC 9110: the header is a list of tags, and a `W/`
+    /// prefix does not count. A proxy that changes the encoding of a body
+    /// makes its tag weak, and the page then sends the weak tag back.
+    static func ifNoneMatch(_ headers: HTTPHeaders, names etag: String) -> Bool {
+        func strong(_ tag: String) -> String {
+            let trimmed = tag.trimmingCharacters(in: .whitespaces)
+            return trimmed.hasPrefix("W/") ? String(trimmed.dropFirst(2)) : trimmed
+        }
+        let wanted = strong(etag)
+        // The daemon's tags hold no comma, so a split at each comma is exact.
+        return headers["if-none-match"].contains { value in
+            value.split(separator: ",").contains { strong(String($0)) == wanted }
         }
     }
 
@@ -4624,7 +4640,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 var headers = HTTPHeaders()
                 headers.add(name: "Cache-Control", value: "no-cache")
                 for (name, value) in extra { headers.add(name: name, value: value) }
-                if let etag = extra["ETag"], head.headers["if-none-match"].contains(etag) {
+                if let etag = extra["ETag"], Self.ifNoneMatch(head.headers, names: etag) {
                     self.writeBytes(status: .notModified, headers: headers, data: Data(),
                                     context: context, version: head.version, keepAlive: head.isKeepAlive)
                     return

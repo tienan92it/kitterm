@@ -135,6 +135,28 @@ final class ArchiveIndexTests: XCTestCase {
         XCTAssertEqual(other.data, first.data, "the same list gives the same bytes")
     }
 
+    /// A proxy that encodes the body makes the tag weak, and a client can
+    /// send a list of tags.
+    func testAWeakTagAndAListOfTagsAnswer304() async throws {
+        try writeArchive(name: "one", archivedAt: 1000)
+        try ageDirectory()
+        let first = try await request("GET", "/api/archives")
+        let etag = try XCTUnwrap(first.etag)
+
+        let weak = try await request("GET", "/api/archives", ifNoneMatch: "W/\(etag)")
+        XCTAssertEqual(weak.status, 304)
+        XCTAssertEqual(weak.etag, etag)
+        XCTAssertTrue(weak.data.isEmpty)
+
+        let listed = try await request("GET", "/api/archives", ifNoneMatch: "\"another\", W/\(etag) , \"third\"")
+        XCTAssertEqual(listed.status, 304)
+
+        let others = try await request("GET", "/api/archives", ifNoneMatch: "W/\"another\", \"third\"")
+        XCTAssertEqual(others.status, 200, "a list that does not name the tag gets the body")
+        let bare = try await request("GET", "/api/archives", ifNoneMatch: String(etag.dropFirst().dropLast()))
+        XCTAssertEqual(bare.status, 200, "a tag is a quoted string")
+    }
+
     func testTheETagMovesWhenTheListChanges() async throws {
         try writeArchive(name: "one", archivedAt: 1000)
         try ageDirectory()
