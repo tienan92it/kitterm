@@ -1191,9 +1191,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// then the totals over the projects that had them. The bounds take
     /// the usage route's defaults and refusals. Full grade only, like the
     /// usage route it is read beside: what the spend bought is the spend's
-    /// own information class. The `git` runs happen on
-    /// `RepositoryYields.queue`, never on the loop, and are cached five
-    /// minutes per root and range.
+    /// own information class. The request never waits for `git`: it
+    /// answers what `RepositoryYields` keeps, with `pending`, `unread`,
+    /// `readAt` and `ageSeconds`, and the body is built in a task, never
+    /// on the loop.
     private func serveYield(grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext) {
         guard grade == .full else {
             writeJSON(
@@ -1228,11 +1229,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 byID[project.id] = .init(id: project.id, name: project.name, root: root, registered: project.registered)
             }
             let listed = byID.values.sorted { ($0.name.lowercased(), $0.id) < ($1.name.lowercased(), $1.id) }
-            return await withCheckedContinuation { continuation in
-                RepositoryYields.queue.async {
-                    continuation.resume(returning: Self.yieldBody(yields.report(projects: listed, from: from, to: to)))
-                }
-            }
+            // Still in the task, off the loop: the cache read and the
+            // encoding of the body, which no `git` read can hold.
+            return Self.yieldBody(yields.report(projects: listed, from: from, to: to))
         }
         promise.futureResult.whenComplete { result in
             let body = (try? result.get()) ?? #"{"ok":false,"error":"could not read the repositories"}"#
@@ -1265,10 +1264,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// the extra `git log` the day-by-day bucketing costs; keeping it
     /// separate also leaves `/api/yield`'s `Report` shape and its tests
     /// untouched. Same bounds, defaults and refusals as `/api/yield`;
-    /// full grade only. The `git` runs happen on `RepositoryYields.queue`,
-    /// never on the loop, one `git log` per project per range, and are
-    /// cached five minutes per root and range, in a cache of their own so
-    /// a caller of one route never pays for the other's read.
+    /// full grade only. The request never waits for `git`, as on
+    /// `/api/yield`: the reads run on `RepositoryYields.queue`, one `git
+    /// log` per project per range, kept in a cache of their own so a
+    /// caller of one route never pays for the other's read.
     private func serveYieldDaily(grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext) {
         guard grade == .full else {
             writeJSON(
@@ -1303,11 +1302,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 byID[project.id] = .init(id: project.id, name: project.name, root: root, registered: project.registered)
             }
             let listed = byID.values.sorted { ($0.name.lowercased(), $0.id) < ($1.name.lowercased(), $1.id) }
-            return await withCheckedContinuation { continuation in
-                RepositoryYields.queue.async {
-                    continuation.resume(returning: Self.yieldDailyBody(yields.dailyReport(projects: listed, from: from, to: to)))
-                }
-            }
+            // Still in the task, off the loop: the body of a wide range
+            // is hundreds of kilobytes to encode.
+            return Self.yieldDailyBody(yields.dailyReport(projects: listed, from: from, to: to))
         }
         promise.futureResult.whenComplete { result in
             let body = (try? result.get()) ?? #"{"ok":false,"error":"could not read the repositories"}"#
@@ -2075,33 +2072,31 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         }
     }
 
-    /// `GET /api/archives` — every archived session's metadata, newest first.
-    /// Read-only; a small local-file read like `/api/profiles`.
+    /// `GET /api/archives` — every archived session's metadata, newest first,
+    /// from the list `ArchiveIndex` keeps. The `ETag` covers the whole body;
+    /// `If-None-Match` answers 304. Read-only, any grade.
     private func serveArchiveList(head: HTTPRequestHead, context: ChannelHandlerContext) {
-        // Directory scan + a file read per archive: off the loop, like every
-        // other file I/O, then hop back with the encoded bytes.
         guard let projectFilter = projectFilter(head: head, context: context) else { return }
         let loop = context.eventLoop
         let bound = NIOLoopBound(context, eventLoop: loop)
-        let promise = loop.makePromise(of: Data.self)
-        let projects = self.projects
-        // Each record gets its `project` (label, then the archived cwd) on
-        // the archive queue, where the `.git` walk belongs with the file reads.
-        SessionArchive.list(
-            transform: { record in
-                let project = projects.project(forArchive: record)
-                if let projectFilter, project?.id != projectFilter { return nil }
-                var record = record
-                if let project { record["project"] = project.rowJSON }
-                return record
-            },
-            completion: { promise.succeed($0) }
-        )
-        promise.futureResult.whenSuccess { data in
-            self.writeJSON(
-                status: .ok, body: String(decoding: data, as: UTF8.self),
-                context: bound.value, version: head.version, keepAlive: head.isKeepAlive
-            )
+        let promise = loop.makePromise(of: ArchiveIndex.Body.self)
+        // The directory `stat`, a directory read when the list changed, the
+        // `project` of each record and the encoding all run on the archive
+        // queue; the loop gets the bytes and the tag.
+        SessionArchive.list(projects: self.projects, filter: projectFilter) { promise.succeed($0) }
+        promise.futureResult.whenSuccess { body in
+            var headers = HTTPHeaders()
+            headers.add(name: "ETag", value: body.etag)
+            headers.add(name: "Cache-Control", value: "no-cache")
+            if Self.ifNoneMatch(head.headers, names: body.etag) {
+                self.writeBytes(status: .notModified, headers: headers, data: Data(),
+                                context: bound.value, version: head.version, keepAlive: head.isKeepAlive)
+                return
+            }
+            headers.add(name: "Content-Type", value: "application/json")
+            headers.add(name: "X-Content-Type-Options", value: "nosniff")
+            self.writeBytes(status: .ok, headers: headers, data: body.data,
+                            context: bound.value, version: head.version, keepAlive: head.isKeepAlive)
         }
     }
 
@@ -2256,7 +2251,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             var headers = HTTPHeaders()
             headers.add(name: "ETag", value: etag)
             headers.add(name: "Cache-Control", value: "no-cache")
-            if head.headers["if-none-match"].contains(etag) {
+            if Self.ifNoneMatch(head.headers, names: etag) {
                 self.writeBytes(status: .notModified, headers: headers, data: Data(),
                                 context: context, version: head.version, keepAlive: head.isKeepAlive)
                 return
@@ -2329,7 +2324,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             var headers = HTTPHeaders()
             headers.add(name: "ETag", value: etag)
             headers.add(name: "Cache-Control", value: "no-cache")
-            if head.headers["if-none-match"].contains(etag) {
+            if Self.ifNoneMatch(head.headers, names: etag) {
                 self.writeBytes(status: .notModified, headers: headers, data: Data(),
                                 context: context, version: head.version, keepAlive: head.isKeepAlive)
                 return
@@ -2468,7 +2463,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 var headers = HTTPHeaders()
                 headers.add(name: "ETag", value: etag)
                 headers.add(name: "Cache-Control", value: "no-cache")
-                if head.headers["if-none-match"].contains(etag) {
+                if Self.ifNoneMatch(head.headers, names: etag) {
                     self.writeBytes(status: .notModified, headers: headers, data: Data(),
                                     context: context, version: head.version, keepAlive: head.isKeepAlive)
                     return
@@ -2541,6 +2536,22 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             return .failed(.notFound, "symlink refused")
         } catch {
             return .failed(.notFound, "not found")
+        }
+    }
+
+    /// Whether the request's `If-None-Match` names `etag`, by the weak
+    /// comparison of RFC 9110: the header is a list of tags, and a `W/`
+    /// prefix does not count. A proxy that changes the encoding of a body
+    /// makes its tag weak, and the page then sends the weak tag back.
+    static func ifNoneMatch(_ headers: HTTPHeaders, names etag: String) -> Bool {
+        func strong(_ tag: String) -> String {
+            let trimmed = tag.trimmingCharacters(in: .whitespaces)
+            return trimmed.hasPrefix("W/") ? String(trimmed.dropFirst(2)) : trimmed
+        }
+        let wanted = strong(etag)
+        // The daemon's tags hold no comma, so a split at each comma is exact.
+        return headers["if-none-match"].contains { value in
+            value.split(separator: ",").contains { strong(String($0)) == wanted }
         }
     }
 
@@ -2637,8 +2648,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         }
     }
 
-    /// `DELETE /api/archives/<uuid>` — remove an archive permanently.
-    /// Destructive, so `--agent-control` + full grade.
+    /// `DELETE /api/archives/<uuid>` — remove an archive permanently, and
+    /// append `archive.removed` to the event feed with the archive's id as
+    /// `session`. Destructive, so `--agent-control` + full grade.
     private func serveArchiveDelete(
         path: String, grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext
     ) {
@@ -2668,6 +2680,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         let promise = loop.makePromise(of: Bool.self)
         SessionArchive.delete(id) { promise.succeed($0) }
         promise.futureResult.whenSuccess { existed in
+            // The list changed with no session event: a page that holds the
+            // list asks again on this.
+            if existed { self.eventLog.append(type: "archive.removed", session: id, data: [:]) }
             self.writeJSON(
                 status: existed ? .ok : .notFound,
                 body: existed ? #"{"ok":true}"# : #"{"ok":false,"error":"no such archive"}"#,
@@ -4625,7 +4640,7 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 var headers = HTTPHeaders()
                 headers.add(name: "Cache-Control", value: "no-cache")
                 for (name, value) in extra { headers.add(name: name, value: value) }
-                if let etag = extra["ETag"], head.headers["if-none-match"].contains(etag) {
+                if let etag = extra["ETag"], Self.ifNoneMatch(head.headers, names: etag) {
                     self.writeBytes(status: .notModified, headers: headers, data: Data(),
                                     context: context, version: head.version, keepAlive: head.isKeepAlive)
                     return

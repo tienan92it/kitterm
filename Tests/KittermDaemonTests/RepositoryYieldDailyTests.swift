@@ -145,7 +145,15 @@ final class RepositoryYieldDailyTests: XCTestCase {
         ]
         let from = DayKey("2026-09-01")!, to = DayKey("2026-09-03")!
         let start = Date()
+        // The first answer does not wait for `git` (`fleet-first-paint`,
+        // capability 2): it says pending, and the read runs on the queue.
+        let waiting = yields.dailyReport(projects: projects, from: from, to: to, now: start)
+        XCTAssertTrue(waiting.pending)
+        XCTAssertEqual(waiting.unread, 3)
+        RepositoryYields.queue.sync {}
         let report = yields.dailyReport(projects: projects, from: from, to: to, now: start)
+        XCTAssertFalse(report.pending)
+        XCTAssertEqual(report.unread, 0)
         XCTAssertEqual(report.days.map(\.day), ["2026-09-01", "2026-09-02", "2026-09-03"])
         XCTAssertEqual(report.days[0].mergedPullRequests, 0, "zero-filled")
         XCTAssertEqual(report.days[0].mergedLines, 0)
@@ -161,11 +169,14 @@ final class RepositoryYieldDailyTests: XCTestCase {
         let first = calls
         XCTAssertGreaterThan(first, 0)
         _ = yields.dailyReport(projects: projects, from: from, to: to, now: start.addingTimeInterval(60))
+        RepositoryYields.queue.sync {}
         XCTAssertEqual(calls, first, "inside the ttl nothing runs")
         _ = yields.dailyReport(projects: projects, from: from, to: to.advanced(by: 1), now: start.addingTimeInterval(60))
+        RepositoryYields.queue.sync {}
         XCTAssertGreaterThan(calls, first, "another range is another read")
         let again = calls
         _ = yields.dailyReport(projects: projects, from: from, to: to, now: start.addingTimeInterval(RepositoryYields.ttlSeconds + 1))
+        RepositoryYields.queue.sync {}
         XCTAssertGreaterThan(calls, again, "past the ttl the root is read again")
     }
 
@@ -187,9 +198,11 @@ final class RepositoryYieldDailyTests: XCTestCase {
         let from = DayKey("2026-09-01")!, to = DayKey("2026-09-03")!
         let now = Date()
         _ = yields.report(projects: projects, from: from, to: to, now: now)
+        RepositoryYields.queue.sync {}
         let afterTotals = calls
         XCTAssertGreaterThan(afterTotals, 0)
-        _ = yields.dailyReport(projects: projects, from: from, to: to, now: now)
+        XCTAssertEqual(yields.dailyReport(projects: projects, from: from, to: to, now: now).unread, 1, "the totals answer is not a daily answer")
+        RepositoryYields.queue.sync {}
         XCTAssertGreaterThan(calls, afterTotals, "the daily read is not served from the totals cache")
     }
 
@@ -235,8 +248,15 @@ final class RepositoryYieldDailyTests: XCTestCase {
 
         let channel = try server(policy: .loopbackOnly, yields: yields)
         let port = channel.localAddress!.port!
+        // The first answer says pending; the counts are in the next one,
+        // after the read on the queue ended.
+        let (firstStatus, waiting) = try await get(port, "/api/yield/daily?from=2026-09-01&to=2026-09-03")
+        XCTAssertEqual(firstStatus, 200)
+        XCTAssertEqual(waiting["pending"] as? Bool, true)
+        RepositoryYields.queue.sync {}
         let (status, json) = try await get(port, "/api/yield/daily?from=2026-09-01&to=2026-09-03")
         XCTAssertEqual(status, 200)
+        XCTAssertEqual(json["pending"] as? Bool, false)
         XCTAssertEqual(json["ok"] as? Bool, true)
         let days = try XCTUnwrap(json["days"] as? [[String: Any]])
         XCTAssertEqual(days.map { $0["day"] as? String }, ["2026-09-01", "2026-09-02", "2026-09-03"])

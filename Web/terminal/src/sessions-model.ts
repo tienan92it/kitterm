@@ -78,7 +78,15 @@ export type SessionBill = {
   startTime?: number;
   /** The running session's turns priced, when there is no bill. */
   estimate?: SessionEstimate;
+  /** The page's own state, never the route's: the first cost read of the
+   * session has not answered (`fleet-first-paint`, round 1). */
+  waiting?: boolean;
 };
+
+/** What the cost column prints while a session's first cost read waits,
+ * and its tooltip. */
+export const BILL_WAITING = "…";
+export const BILL_WAITING_TITLE = "reading this session's cost";
 
 /** The estimate the cost route answers for a running session, with when
  * the page fetched it, for the tooltip's `updated 12s ago`. */
@@ -2338,6 +2346,7 @@ export function taskCost(summary: Pick<KnowledgeSummary, "rounds">, round: numbe
  * in the range by its first turn the same way; null for a session with
  * neither, or none fetched. */
 export function sessionCost(bill: SessionBill | null | undefined, range: DayRange): string | null {
+  if (bill?.waiting) return BILL_WAITING;
   if (bill?.hasBill && typeof bill.totalCostUSD === "number") {
     return inRange(bill.startTime, range) ? dollars(bill.totalCostUSD) : null;
   }
@@ -2358,6 +2367,7 @@ function inRange(startTime: number | undefined, range: DayRange): boolean {
  * is the transcript's; an estimate says how many turns it prices and how
  * old it is, `estimated from 12 turns · updated 12s ago` (round 16). */
 export function sessionCostTitle(bill: SessionBill | null | undefined, now: number): string {
+  if (bill?.waiting) return BILL_WAITING_TITLE;
   const estimate = bill?.estimate;
   if (bill?.hasBill || !estimate) return BILL_TITLE;
   return `estimated from ${plural(estimate.turns, "turn", "turns")} · updated ${secondsAgo(now - estimate.updatedAt)}`;

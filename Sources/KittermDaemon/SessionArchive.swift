@@ -123,33 +123,32 @@ public enum SessionArchive {
                 )
                 try metadata.write(to: dir.appendingPathComponent("archive.json"), options: .atomic)
                 try output.write(to: dir.appendingPathComponent("output.log"), options: .atomic)
+                index.invalidate()
                 completion(true)
             } catch {
+                // A failed write can leave the directory behind.
+                index.invalidate()
                 completion(false)
             }
         }
     }
 
-    /// Every archived session's metadata as serialized JSON, newest first.
-    /// Reads the small `archive.json` of each directory (never `output.log`)
-    /// and strips the command/mark arrays — the detail route carries those.
-    /// Runs on the archive queue; `completion` fires there with the encoded
-    /// listing, so the route hops back to its loop with only `Data`.
-    ///
-    /// `transform` runs on the archive queue for each record, after the
-    /// arrays are stripped: it returns the record to list, or nil to leave
-    /// it out (`GET /api/archives?project=<id>`).
-    public static func list(
-        transform: @escaping @Sendable ([String: Any]) -> [String: Any]?,
-        completion: @escaping @Sendable (Data) -> Void
+    /// The list `GET /api/archives` answers from. On the archive queue only.
+    static let index = ArchiveIndex()
+
+    /// The archive list as serialized JSON with its `ETag`, newest first,
+    /// from what `ArchiveIndex` keeps: the directory is read again only
+    /// after it changed. The records carry no command or mark arrays; the
+    /// detail route carries those. `filter` is a project id
+    /// (`GET /api/archives?project=<id>`) or nil for every archive. Runs on
+    /// the archive queue; `completion` fires there with the encoded listing,
+    /// so the route hops back to its loop with only `Data` and the tag.
+    static func list(
+        projects: ProjectStore, filter: String?,
+        completion: @escaping @Sendable (ArchiveIndex.Body) -> Void
     ) {
         queue.async {
-            let records = readRecords().compactMap(transform).sorted {
-                ($0["archivedAt"] as? Int ?? 0) > ($1["archivedAt"] as? Int ?? 0)
-            }
-            let encoded = (try? JSONSerialization.data(withJSONObject: ["ok": true, "archives": records]))
-                ?? Data(#"{"ok":true,"archives":[]}"#.utf8)
-            completion(encoded)
+            completion(index.body(projects: projects, filter: filter))
         }
     }
 
@@ -224,7 +223,9 @@ public enum SessionArchive {
         queue.async {
             let dir = DaemonPaths.archiveDirectory.appendingPathComponent(id.uuidString, isDirectory: true)
             guard FileManager.default.fileExists(atPath: dir.path) else { return completion(false) }
-            completion((try? FileManager.default.removeItem(at: dir)) != nil)
+            let removed = (try? FileManager.default.removeItem(at: dir)) != nil
+            index.invalidate()
+            completion(removed)
         }
     }
 }

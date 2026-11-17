@@ -403,7 +403,8 @@ Four panels between the meters and the tree say what the range's dollars deliver
 (`sessions-value.ts`, pure and tested; `design/foundation.md`, "The panels"). The
 counts are the repositories' own history, not the rollup: `RepositoryYield` runs
 `git log --first-parent` on the remote's branch in each project root, off the loop and
-cached five minutes, and counts a first-parent commit whose subject ends in `(#N)` or
+kept five minutes (a request answers what is kept and never waits for `git`; the
+answers live in `yield-cache.json`), and counts a first-parent commit whose subject ends in `(#N)` or
 starts with `Merge pull request` as a merged pull request, its insertions as merged
 lines, and a tag created in the range as a release; `GET /api/yield` serves them. A root
 that is not a checkout has no history and every count is absent; a checkout with no
@@ -428,7 +429,10 @@ project's and a workspace's cost in the tree (the rollup's buckets), and every f
 from a round record — a goal's spend in `WHERE` and in the tree (`goalCost`), a task's
 row, and the `LEAKS` round counts — which `roundsInRange` filters by the record's
 `- Started:` day. A record with no start day is in no range. A toggle change asks the two
-routes and repaints every one of them at once (`sessions-range-page.test.ts`). The page
+routes and repaints every one of them (`sessions-range-page.test.ts`). The two routes load
+apart (`fleet-first-paint` round 1): the rollup's figures repaint when the rollup answers,
+and the figures that read the yield wait for the yield of the same range, so no figure
+divides one range's spend by another range's counts. The page
 refuses what the research refuses: no quality
 rate (every round on record says `done`), no rework rate (two fix commits are noise),
 and no money value for the human's time (nothing here knows their rate, and the page
@@ -866,6 +870,10 @@ State lives in `~/.kitterm/`. The default port is 3418.
 ├── usage-daily.json          the daily cost and token rollup, one record per transcript
 │                             read, kept after Claude Code deletes the transcript (0600)
 ├── usage-limits.json         the quota windows the statusline posted, a time per window (0600)
+├── yield-cache.json          what `git` answered for each root and range, behind the two
+│                             yield routes, so a restart keeps the figures (0600; per route
+│                             the 4 newest ranges whole, older ones up to 64 answers,
+│                             none unasked for 48 hours)
 ├── vapid.json                the VAPID key pair every subscription is bound to (0600)
 ├── takeover/                 live-upgrade handoff, between execv and adoption
 ├── web-root                  the web bundle the running daemon pinned
