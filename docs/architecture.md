@@ -403,7 +403,8 @@ Four panels between the meters and the tree say what the range's dollars deliver
 (`sessions-value.ts`, pure and tested; `design/foundation.md`, "The panels"). The
 counts are the repositories' own history, not the rollup: `RepositoryYield` runs
 `git log --first-parent` on the remote's branch in each project root, off the loop and
-cached five minutes, and counts a first-parent commit whose subject ends in `(#N)` or
+kept five minutes (a request answers what is kept and never waits for `git`; the
+answers live in `yield-cache.json`), and counts a first-parent commit whose subject ends in `(#N)` or
 starts with `Merge pull request` as a merged pull request, its insertions as merged
 lines, and a tag created in the range as a release; `GET /api/yield` serves them. A root
 that is not a checkout has no history and every count is absent; a checkout with no
@@ -869,6 +870,9 @@ State lives in `~/.kitterm/`. The default port is 3418.
 ├── usage-daily.json          the daily cost and token rollup, one record per transcript
 │                             read, kept after Claude Code deletes the transcript (0600)
 ├── usage-limits.json         the quota windows the statusline posted, a time per window (0600)
+├── yield-cache.json          what `git` answered for each root and range, behind the two
+│                             yield routes, so a restart keeps the figures (0600; at most
+│                             64 answers per route, none unasked for 48 hours)
 ├── vapid.json                the VAPID key pair every subscription is bound to (0600)
 ├── takeover/                 live-upgrade handoff, between execv and adoption
 ├── web-root                  the web bundle the running daemon pinned

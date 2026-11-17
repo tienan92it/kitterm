@@ -58,9 +58,16 @@ export type RepositoryYield = {
 
 export type ProjectYield = { id: string; name: string; root: string; registered: boolean; yield: RepositoryYield };
 
+/** What both yield routes say about the reads behind an answer. The
+ * routes never wait for `git`: `pending` is true while a read runs, and
+ * `unread` counts the roots that have no figures yet, so an answer is
+ * complete when `unread` is 0. A daemon before `fleet-first-paint` sends
+ * neither, and its answer is complete. */
+export type YieldReadState = { pending?: boolean; unread?: number; readAt?: string; ageSeconds?: number };
+
 /** The route's answer: every project the daemon lists, and the counts
  * summed over the ones that have them. */
-export type YieldReport = {
+export type YieldReport = YieldReadState & {
   ok: boolean;
   from: string;
   to: string;
@@ -267,7 +274,7 @@ export function valuePanel(report: UsageDaily | null | undefined, yieldReport: Y
 export type YieldDailyDay = { day: string; mergedPullRequests: number; mergedLines: number; releases: number };
 
 /** The route's answer: one entry per day in the range, zero-filled. */
-export type YieldDaily = { ok: boolean; from: string; to: string; days: YieldDailyDay[] };
+export type YieldDaily = YieldReadState & { ok: boolean; from: string; to: string; days: YieldDailyDay[] };
 
 /** The note under the two charts, approved with the frames
  * (`corpus/03-approved-design.md`): a fixed fact, not a value the page

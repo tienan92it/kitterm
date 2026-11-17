@@ -327,13 +327,45 @@ public struct RepositoryYield: Codable, Equatable, Sendable {
     }
 }
 
-/// The yield of every project the daemon knows, behind `GET /api/yield`.
-/// Reads run on `queue`, never on the event loop, and an answer is kept for
-/// `ttlSeconds` per root and range, the rollup's own refresh interval, so
-/// a page that polls every thirty seconds costs one `git log` per project
-/// every five minutes.
+/// The yield of every project the daemon knows, behind `GET /api/yield`
+/// and `GET /api/yield/daily`.
+///
+/// ## A request never waits for `git`
+///
+/// `report` and `dailyReport` answer what the cache holds under the lock
+/// (`fleet-first-paint`, capability 2), the way `PullRequestStatus` answers
+/// for `gh`. One key is a route, a root and a range. A request claims each
+/// key that has no read running and either no answer or an answer
+/// `ttlSeconds` old or more, and queues one read on `queue`; a claimed key
+/// takes no second read. The answer says `pending` while a read of one of
+/// its keys runs, and counts in `unread` the roots it has no figures for.
+///
+/// ## The midnight roll
+///
+/// A range that ends today is a new key each day. A root with no answer
+/// for the exact range is served from the newest answer of an earlier
+/// `to` while the read of the new key runs: for the totals, the answer of
+/// the same `from`; for the day-by-day series, an answer that starts at
+/// or before `from`, cut to the range, with the days it does not hold
+/// absent. `readAt` and `ageSeconds` say how old that answer is.
+///
+/// ## The file
+///
+/// The answers are kept in `file` (`yield-cache.json`), so the first
+/// request after a restart is served from them. The file is read once in
+/// `init` and written on `queue` when the last claimed read ends. At each
+/// write the cache drops every answer that no request asked for
+/// `keepSeconds`, then keeps the `maxEntries` most recently asked per
+/// route. A file that does not decode, or that names another
+/// `formatVersion` or another zone (the day bounds depend on the zone),
+/// is ignored with one line on stderr and replaced by the next write.
 public final class RepositoryYields: @unchecked Sendable {
     public static let ttlSeconds: TimeInterval = 300
+    /// An answer that no request asked for this long is dropped at a write.
+    public static let keepSeconds: TimeInterval = 48 * 3600
+    /// The answers kept per route after a write, the most recently asked.
+    public static let maxEntries = 64
+    public static let formatVersion = 1
     static let queue = DispatchQueue(label: "kitterm.yield", qos: .utility)
 
     /// One project the page can name: what `GET /api/projects` lists.
@@ -357,6 +389,9 @@ public final class RepositoryYields: @unchecked Sendable {
         public var root: String
         public var registered: Bool
         public var yield: RepositoryYield
+        /// True when no answer is kept for the root: `yield` then carries
+        /// no count. Absent for a root that has figures.
+        public var pending: Bool?
     }
 
     /// The counts summed over the projects that have them, and how many
@@ -375,6 +410,15 @@ public final class RepositoryYields: @unchecked Sendable {
         public var to: String
         public var projects: [ProjectYield]
         public var totals: Totals
+        /// A read of one of the listed roots runs for this range.
+        public var pending = false
+        /// The listed roots with no answer kept; the figures are complete
+        /// when it is 0.
+        public var unread = 0
+        /// When the oldest answer served was read, ISO 8601; absent when
+        /// no answer is kept.
+        public var readAt: String?
+        public var ageSeconds: Int?
     }
 
     /// One project's day in the `GET /api/yield/daily` series, the same
@@ -403,12 +447,17 @@ public final class RepositoryYields: @unchecked Sendable {
 
     /// The day-by-day counterpart of `Report`, behind `GET
     /// /api/yield/daily`: one entry per day in the range, zero-filled,
-    /// oldest first.
+    /// oldest first. `pending`, `unread`, `readAt` and `ageSeconds` read
+    /// as on `Report`; an unread root's counts are absent in every day.
     public struct DailyReport: Codable, Equatable, Sendable {
         public var ok = true
         public var from: String
         public var to: String
         public var days: [Day]
+        public var pending = false
+        public var unread = 0
+        public var readAt: String?
+        public var ageSeconds: Int?
     }
 
     private struct Key: Hashable {
@@ -417,34 +466,117 @@ public final class RepositoryYields: @unchecked Sendable {
         var to: Int
     }
 
-    private let zone: TimeZone
-    private let git: RepositoryYield.Git
-    private let lock = NIOLock()
-    private var cache: [Key: (at: Date, yield: RepositoryYield)] = [:]
-    private var dailyCache: [Key: (at: Date, series: [RepositoryYield.DailyCounts])] = [:]
-
-    public init(zone: TimeZone = .current, git: @escaping RepositoryYield.Git = { RepositoryYield.run(args: $0) }) {
-        self.zone = zone
-        self.git = git
+    /// One key's state: the answer and when its read was asked, the last
+    /// request that named the key, and whether a read is claimed.
+    private struct Entry<Value> {
+        var value: Value?
+        var readAt: Date?
+        var askedAt: Date
+        var running = false
     }
 
-    /// The report for `projects` over the range, reading each root whose
-    /// answer is older than `ttlSeconds` or not kept. Synchronous; the route
-    /// calls it on `queue`.
+    /// What one key answers a request with.
+    private struct Served<Value> {
+        var value: Value?
+        var readAt: Date?
+        /// The key the value was read for; differs from the asked key
+        /// after the midnight roll.
+        var key: Key
+        var running: Bool
+        /// The request claimed the key: the caller queues the read.
+        var claimed: Bool
+    }
+
+    /// One kept answer of the file: the key as `root` and the two day
+    /// numbers, the two times in epoch milliseconds.
+    private struct FileTotals: Codable {
+        var root: String
+        var from: Int
+        var to: Int
+        var readAt: Int64
+        var askedAt: Int64
+        var yield: RepositoryYield
+    }
+
+    private struct FileDaily: Codable {
+        var root: String
+        var from: Int
+        var to: Int
+        var readAt: Int64
+        var askedAt: Int64
+        var days: [RepositoryYield.DailyCounts]
+    }
+
+    private struct FileShape: Codable {
+        var version: Int
+        var zone: String
+        var totals: [FileTotals]
+        var daily: [FileDaily]
+    }
+
+    private let zone: TimeZone
+    private let git: RepositoryYield.Git
+    private let file: URL?
+    private let queue: DispatchQueue
+    private let lock = NIOLock()
+    private var cache: [Key: Entry<RepositoryYield>] = [:]
+    private var dailyCache: [Key: Entry<[RepositoryYield.DailyCounts]>] = [:]
+    /// The reads claimed and not ended, over both routes.
+    private var running = 0
+
+    /// `file` is where the answers are kept across a restart, nil for
+    /// none; `queue` is where the reads and the write run, a test passes
+    /// its own so a stub that blocks holds no other test.
+    public init(
+        zone: TimeZone = .current,
+        file: URL? = nil,
+        queue: DispatchQueue? = nil,
+        git: @escaping RepositoryYield.Git = { RepositoryYield.run(args: $0) }
+    ) {
+        self.zone = zone
+        self.git = git
+        self.file = file
+        self.queue = queue ?? Self.queue
+        if let file, let shape = Self.load(file, zone: zone) {
+            for item in shape.totals {
+                cache[Key(root: item.root, from: item.from, to: item.to)] = Entry(
+                    value: item.yield, readAt: Self.date(item.readAt), askedAt: Self.date(item.askedAt)
+                )
+            }
+            for item in shape.daily {
+                dailyCache[Key(root: item.root, from: item.from, to: item.to)] = Entry(
+                    value: item.days, readAt: Self.date(item.readAt), askedAt: Self.date(item.askedAt)
+                )
+            }
+        }
+    }
+
+    /// The report for `projects` over the range, from what is kept; it
+    /// never runs `git`. Each root whose answer is absent or `ttlSeconds`
+    /// old gets one read on the queue.
     public func report(projects: [ProjectRef], from: DayKey, to: DayKey, now: Date = Date()) -> Report {
+        let served: [Served<RepositoryYield>] = lock.withLock {
+            projects.map { project in
+                Self.serve(&cache, key: Key(root: project.root, from: from.number, to: to.number), now: now) {
+                    $0.from == from.number
+                }
+            }
+        }
         var items: [ProjectYield] = []
         var totals = Totals()
-        for project in projects {
-            let key = Key(root: project.root, from: from.number, to: to.number)
-            let kept = lock.withLock { cache[key] }
-            let yield: RepositoryYield
-            if let kept, now.timeIntervalSince(kept.at) < Self.ttlSeconds {
-                yield = kept.yield
-            } else {
-                yield = RepositoryYield.read(root: project.root, from: from, to: to, zone: zone, git: git)
-                lock.withLock { cache[key] = (now, yield) }
+        for (project, answer) in zip(projects, served) {
+            if answer.claimed {
+                let key = Key(root: project.root, from: from.number, to: to.number)
+                startRead(now: now) {
+                    let value = RepositoryYield.read(root: key.root, from: from, to: to, zone: self.zone, git: self.git)
+                    self.lock.withLock { Self.keep(&self.cache, key: key, value: value, at: now) }
+                }
             }
-            items.append(ProjectYield(id: project.id, name: project.name, root: project.root, registered: project.registered, yield: yield))
+            let yield = answer.value ?? .none
+            items.append(ProjectYield(
+                id: project.id, name: project.name, root: project.root, registered: project.registered,
+                yield: yield, pending: answer.value == nil ? true : nil
+            ))
             if yield.checkout { totals.checkouts += 1 }
             if let prs = yield.mergedPullRequests, let lines = yield.mergedLines {
                 totals.counted += 1
@@ -453,14 +585,18 @@ public final class RepositoryYields: @unchecked Sendable {
             }
             totals.releases += yield.releases ?? 0
         }
-        return Report(from: from.description, to: to.description, projects: items, totals: totals)
+        let oldest = served.compactMap { $0.value == nil ? nil : $0.readAt }.min()
+        return Report(
+            from: from.description, to: to.description, projects: items, totals: totals,
+            pending: served.contains { $0.running }, unread: served.filter { $0.value == nil }.count,
+            readAt: oldest.map(Self.iso), ageSeconds: oldest.map { max(0, Int(now.timeIntervalSince($0))) }
+        )
     }
 
-    /// The day-by-day report for `projects` over the range: one `git log`
-    /// per root per range (`RepositoryYield.readDaily`), never one per day,
-    /// cached separately from `report`'s totals cache so a caller of one
-    /// route never pays for the other's read. Synchronous; the route calls
-    /// it on `queue`.
+    /// The day-by-day report for `projects` over the range, from what is
+    /// kept; it never runs `git`. The series has its own cache, so a
+    /// caller of one route never pays for the other's read: one `git log`
+    /// per root per range (`RepositoryYield.readDaily`), never one per day.
     public func dailyReport(projects: [ProjectRef], from: DayKey, to: DayKey, now: Date = Date()) -> DailyReport {
         var range: [DayKey] = []
         var cursor = from
@@ -468,23 +604,28 @@ public final class RepositoryYields: @unchecked Sendable {
             range.append(cursor)
             cursor = cursor.advanced(by: 1)
         }
-        var seriesByProject: [String: [RepositoryYield.DailyCounts]] = [:]
-        for project in projects {
-            let key = Key(root: project.root, from: from.number, to: to.number)
-            let kept = lock.withLock { dailyCache[key] }
-            let series: [RepositoryYield.DailyCounts]
-            if let kept, now.timeIntervalSince(kept.at) < Self.ttlSeconds {
-                series = kept.series
-            } else {
-                series = RepositoryYield.readDaily(root: project.root, from: from, to: to, zone: zone, git: git)
-                lock.withLock { dailyCache[key] = (now, series) }
+        let served: [Served<[RepositoryYield.DailyCounts]>] = lock.withLock {
+            projects.map { project in
+                Self.serve(&dailyCache, key: Key(root: project.root, from: from.number, to: to.number), now: now) {
+                    $0.from <= from.number && $0.to >= from.number
+                }
             }
-            seriesByProject[project.id] = series
+        }
+        for (project, answer) in zip(projects, served) where answer.claimed {
+            let key = Key(root: project.root, from: from.number, to: to.number)
+            startRead(now: now) {
+                let value = RepositoryYield.readDaily(root: key.root, from: from, to: to, zone: self.zone, git: self.git)
+                self.lock.withLock { Self.keep(&self.dailyCache, key: key, value: value, at: now) }
+            }
         }
         let days: [Day] = range.enumerated().map { index, day in
             var result = Day(day: day.description, projects: [])
-            for project in projects {
-                let counts = seriesByProject[project.id]?[index] ?? RepositoryYield.DailyCounts(day: day.description)
+            for (project, answer) in zip(projects, served) {
+                // A series read for an earlier range starts `offset` days
+                // before `from` and may end before `to`.
+                let at = index + (from.number - answer.key.from)
+                let counts = answer.value.flatMap { $0.indices.contains(at) ? $0[at] : nil }
+                    ?? RepositoryYield.DailyCounts(day: day.description)
                 result.projects.append(ProjectDay(
                     id: project.id, name: project.name, root: project.root, registered: project.registered,
                     mergedPullRequests: counts.mergedPullRequests, mergedLines: counts.mergedLines, releases: counts.releases
@@ -497,6 +638,151 @@ public final class RepositoryYields: @unchecked Sendable {
             }
             return result
         }
-        return DailyReport(from: from.description, to: to.description, days: days)
+        let oldest = served.compactMap { $0.value == nil ? nil : $0.readAt }.min()
+        return DailyReport(
+            from: from.description, to: to.description, days: days,
+            pending: served.contains { $0.running }, unread: served.filter { $0.value == nil }.count,
+            readAt: oldest.map(Self.iso), ageSeconds: oldest.map { max(0, Int(now.timeIntervalSince($0))) }
+        )
+    }
+
+    // MARK: - the cache
+
+    /// What `key` answers at `now`, and the claim of its read when one is
+    /// due. Caller holds `lock`. Without an answer for `key` itself, the
+    /// newest answer of the same root with an earlier `to` that `earlier`
+    /// accepts is served in its place.
+    private static func serve<Value>(
+        _ cache: inout [Key: Entry<Value>], key: Key, now: Date, earlier: (Key) -> Bool
+    ) -> Served<Value> {
+        var entry = cache[key] ?? Entry(askedAt: now)
+        entry.askedAt = now
+        var claimed = false
+        if !entry.running, entry.readAt.map({ now.timeIntervalSince($0) >= ttlSeconds }) ?? true {
+            entry.running = true
+            claimed = true
+        }
+        cache[key] = entry
+        if entry.value != nil {
+            return Served(value: entry.value, readAt: entry.readAt, key: key, running: entry.running, claimed: claimed)
+        }
+        let fallback = cache
+            .filter { $0.key.root == key.root && $0.key.to < key.to && $0.value.value != nil && earlier($0.key) }
+            .max { $0.key.to < $1.key.to }
+        return Served(
+            value: fallback?.value.value, readAt: fallback?.value.readAt, key: fallback?.key ?? key,
+            running: entry.running, claimed: claimed
+        )
+    }
+
+    /// Keep `value` as the answer of `key`, read at `at`, and end its
+    /// claim. Caller holds `lock`.
+    private static func keep<Value>(_ cache: inout [Key: Entry<Value>], key: Key, value: Value, at: Date) {
+        var entry = cache[key] ?? Entry(askedAt: at)
+        entry.value = value
+        entry.readAt = at
+        entry.running = false
+        cache[key] = entry
+    }
+
+    /// Queue the read a request claimed at `now`: `read` runs `git` and
+    /// keeps the answer. The file is written when no claimed read is left.
+    private func startRead(now: Date, read: @escaping @Sendable () -> Void) {
+        lock.withLock { running += 1 }
+        queue.async {
+            read()
+            let idle: Bool = self.lock.withLock {
+                self.running -= 1
+                return self.running == 0
+            }
+            if idle { self.save(now: now) }
+        }
+    }
+
+    // MARK: - the file
+
+    private static func date(_ milliseconds: Int64) -> Date { Date(timeIntervalSince1970: Double(milliseconds) / 1000) }
+    private static func milliseconds(_ date: Date) -> Int64 { Int64(date.timeIntervalSince1970 * 1000) }
+
+    private static func iso(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.string(from: date)
+    }
+
+    /// Drop the answers nobody asked for `keepSeconds`, then all but the
+    /// `maxEntries` most recently asked. A key with a read claimed stays.
+    private static func prune<Value>(_ cache: inout [Key: Entry<Value>], now: Date) {
+        cache = cache.filter { $0.value.running || now.timeIntervalSince($0.value.askedAt) < keepSeconds }
+        guard cache.count > maxEntries else { return }
+        let idle = cache.filter { !$0.value.running }.sorted {
+            ($0.value.askedAt, $0.key.to, $0.key.from, $0.key.root) > ($1.value.askedAt, $1.key.to, $1.key.from, $1.key.root)
+        }
+        for (key, _) in idle.dropFirst(max(0, maxEntries - (cache.count - idle.count))) { cache[key] = nil }
+    }
+
+    /// Prune, then replace the file. Runs on `queue`.
+    private func save(now: Date) {
+        guard let file else {
+            lock.withLock {
+                Self.prune(&cache, now: now)
+                Self.prune(&dailyCache, now: now)
+            }
+            return
+        }
+        let shape: FileShape = lock.withLock {
+            Self.prune(&cache, now: now)
+            Self.prune(&dailyCache, now: now)
+            let totals: [FileTotals] = cache.compactMap { key, entry in
+                guard let value = entry.value, let readAt = entry.readAt else { return nil }
+                return FileTotals(
+                    root: key.root, from: key.from, to: key.to,
+                    readAt: Self.milliseconds(readAt), askedAt: Self.milliseconds(entry.askedAt), yield: value
+                )
+            }
+            let daily: [FileDaily] = dailyCache.compactMap { key, entry in
+                guard let value = entry.value, let readAt = entry.readAt else { return nil }
+                return FileDaily(
+                    root: key.root, from: key.from, to: key.to,
+                    readAt: Self.milliseconds(readAt), askedAt: Self.milliseconds(entry.askedAt), days: value
+                )
+            }
+            return FileShape(
+                version: Self.formatVersion, zone: zone.identifier,
+                totals: totals.sorted { ($0.root, $0.from, $0.to) < ($1.root, $1.from, $1.to) },
+                daily: daily.sorted { ($0.root, $0.from, $0.to) < ($1.root, $1.from, $1.to) }
+            )
+        }
+        do {
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            try encoder.encode(shape).write(to: file, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+        } catch {
+            FileHandle.standardError.write(Data("kitterm: could not write \(file.path): \(error)\n".utf8))
+        }
+    }
+
+    /// The file's answers; nil when the file is absent, does not decode,
+    /// or names another format version or another zone.
+    private static func load(_ file: URL, zone: TimeZone) -> FileShape? {
+        guard let data = try? Data(contentsOf: file) else { return nil }
+        func ignore(_ why: String) -> FileShape? {
+            FileHandle.standardError.write(Data("kitterm: ignoring \(file.path): \(why)\n".utf8))
+            return nil
+        }
+        do {
+            let shape = try JSONDecoder().decode(FileShape.self, from: data)
+            guard shape.version == formatVersion else {
+                return ignore("format version \(shape.version), expected \(formatVersion)")
+            }
+            guard shape.zone == zone.identifier else {
+                return ignore("read in the zone \(shape.zone), the daemon counts in \(zone.identifier)")
+            }
+            return shape
+        } catch {
+            return ignore("\(error)")
+        }
     }
 }

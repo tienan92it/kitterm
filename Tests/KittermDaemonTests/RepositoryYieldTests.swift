@@ -167,7 +167,15 @@ final class RepositoryYieldTests: XCTestCase {
         ]
         let from = DayKey("2026-09-01")!, to = DayKey("2026-09-30")!
         let start = Date()
+        // The first answer does not wait for `git` (`fleet-first-paint`,
+        // capability 2): it says pending, and the read runs on the queue.
+        let waiting = yields.report(projects: projects, from: from, to: to, now: start)
+        XCTAssertTrue(waiting.pending)
+        XCTAssertEqual(waiting.unread, 2)
+        RepositoryYields.queue.sync {}
         let report = yields.report(projects: projects, from: from, to: to, now: start)
+        XCTAssertFalse(report.pending)
+        XCTAssertEqual(report.unread, 0)
         XCTAssertEqual(report.from, "2026-09-01")
         XCTAssertEqual(report.projects.map(\.id), ["counted", "plain"])
         XCTAssertEqual(report.projects[0].yield.mergedPullRequests, 1)
@@ -177,11 +185,14 @@ final class RepositoryYieldTests: XCTestCase {
         let first = calls
         XCTAssertGreaterThan(first, 0)
         _ = yields.report(projects: projects, from: from, to: to, now: start.addingTimeInterval(60))
+        RepositoryYields.queue.sync {}
         XCTAssertEqual(calls, first, "inside the ttl nothing runs")
         _ = yields.report(projects: projects, from: from, to: to.advanced(by: 1), now: start.addingTimeInterval(60))
+        RepositoryYields.queue.sync {}
         XCTAssertGreaterThan(calls, first, "another range is another read")
         let again = calls
         _ = yields.report(projects: projects, from: from, to: to, now: start.addingTimeInterval(RepositoryYields.ttlSeconds + 1))
+        RepositoryYields.queue.sync {}
         XCTAssertGreaterThan(calls, again, "past the ttl the root is read again")
     }
 
@@ -227,8 +238,15 @@ final class RepositoryYieldTests: XCTestCase {
 
         let channel = try server(policy: .loopbackOnly, yields: yields)
         let port = channel.localAddress!.port!
+        // The first answer says pending; the counts are in the next one,
+        // after the read on the queue ended.
+        let (firstStatus, waiting) = try await get(port, "/api/yield?from=2026-09-01&to=2026-09-30")
+        XCTAssertEqual(firstStatus, 200)
+        XCTAssertEqual(waiting["pending"] as? Bool, true)
+        RepositoryYields.queue.sync {}
         let (status, json) = try await get(port, "/api/yield?from=2026-09-01&to=2026-09-30")
         XCTAssertEqual(status, 200)
+        XCTAssertEqual(json["pending"] as? Bool, false)
         XCTAssertEqual(json["ok"] as? Bool, true)
         let projects = try XCTUnwrap(json["projects"] as? [[String: Any]])
         XCTAssertEqual(projects.map { $0["id"] as? String }, ["plain", "served"])

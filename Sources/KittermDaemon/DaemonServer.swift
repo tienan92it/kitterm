@@ -218,8 +218,10 @@ public final class DaemonServer: @unchecked Sendable {
         )
         self.usageRollup = usageRollup
         // What each repository's own history delivered, read with `git` on
-        // its own queue and kept five minutes per root and range.
-        let repositoryYields = RepositoryYields(zone: usageRollup.timeZone)
+        // its own queue, kept five minutes per root and range, and read
+        // back from `yield-cache.json` so the first request after a
+        // restart has figures.
+        let repositoryYields = RepositoryYields(zone: usageRollup.timeZone, file: DaemonPaths.yieldCacheFile)
         // Each project's `origin` remote, for the pull request links, read
         // with `git` on its own queue and kept five minutes per root.
         let remoteOrigins = RemoteOrigins()

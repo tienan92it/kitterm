@@ -142,6 +142,13 @@ public enum DaemonPaths: Sendable {
         stateDirectory.appendingPathComponent("usage-limits.json")
     }
 
+    /// The answers `git` gave for each root and range (`RepositoryYields`),
+    /// `0600`, kept so the first yield request after a restart is served
+    /// from them.
+    public static var yieldCacheFile: URL {
+        stateDirectory.appendingPathComponent("yield-cache.json")
+    }
+
     /// The daemon's VAPID key pair (`VAPIDKeys`), `0600`, in its own file
     /// because it is a daemon secret and `push.json` holds only what the
     /// browser handed the page. Generated once; every phone's subscription

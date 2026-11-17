@@ -1191,9 +1191,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// then the totals over the projects that had them. The bounds take
     /// the usage route's defaults and refusals. Full grade only, like the
     /// usage route it is read beside: what the spend bought is the spend's
-    /// own information class. The `git` runs happen on
-    /// `RepositoryYields.queue`, never on the loop, and are cached five
-    /// minutes per root and range.
+    /// own information class. The request never waits for `git`: it
+    /// answers what `RepositoryYields` keeps, with `pending`, `unread`,
+    /// `readAt` and `ageSeconds`, and the body is built in a task, never
+    /// on the loop.
     private func serveYield(grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext) {
         guard grade == .full else {
             writeJSON(
@@ -1228,11 +1229,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 byID[project.id] = .init(id: project.id, name: project.name, root: root, registered: project.registered)
             }
             let listed = byID.values.sorted { ($0.name.lowercased(), $0.id) < ($1.name.lowercased(), $1.id) }
-            return await withCheckedContinuation { continuation in
-                RepositoryYields.queue.async {
-                    continuation.resume(returning: Self.yieldBody(yields.report(projects: listed, from: from, to: to)))
-                }
-            }
+            // Still in the task, off the loop: the cache read and the
+            // encoding of the body, which no `git` read can hold.
+            return Self.yieldBody(yields.report(projects: listed, from: from, to: to))
         }
         promise.futureResult.whenComplete { result in
             let body = (try? result.get()) ?? #"{"ok":false,"error":"could not read the repositories"}"#
@@ -1265,10 +1264,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     /// the extra `git log` the day-by-day bucketing costs; keeping it
     /// separate also leaves `/api/yield`'s `Report` shape and its tests
     /// untouched. Same bounds, defaults and refusals as `/api/yield`;
-    /// full grade only. The `git` runs happen on `RepositoryYields.queue`,
-    /// never on the loop, one `git log` per project per range, and are
-    /// cached five minutes per root and range, in a cache of their own so
-    /// a caller of one route never pays for the other's read.
+    /// full grade only. The request never waits for `git`, as on
+    /// `/api/yield`: the reads run on `RepositoryYields.queue`, one `git
+    /// log` per project per range, kept in a cache of their own so a
+    /// caller of one route never pays for the other's read.
     private func serveYieldDaily(grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext) {
         guard grade == .full else {
             writeJSON(
@@ -1303,11 +1302,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 byID[project.id] = .init(id: project.id, name: project.name, root: root, registered: project.registered)
             }
             let listed = byID.values.sorted { ($0.name.lowercased(), $0.id) < ($1.name.lowercased(), $1.id) }
-            return await withCheckedContinuation { continuation in
-                RepositoryYields.queue.async {
-                    continuation.resume(returning: Self.yieldDailyBody(yields.dailyReport(projects: listed, from: from, to: to)))
-                }
-            }
+            // Still in the task, off the loop: the body of a wide range
+            // is hundreds of kilobytes to encode.
+            return Self.yieldDailyBody(yields.dailyReport(projects: listed, from: from, to: to))
         }
         promise.futureResult.whenComplete { result in
             let body = (try? result.get()) ?? #"{"ok":false,"error":"could not read the repositories"}"#

@@ -330,6 +330,11 @@ const USAGE_REFRESH_MS = 30_000;
  * (`GET /api/yield`), asked beside the rollup; null when the daemon has
  * no route or refused. */
 let yieldReport: YieldReport | null = null;
+/** The last yield answer said a read runs: the next poll asks the yield
+ * route alone again. The daemon holds the read, so the ask costs no `git`. */
+let yieldPending = false;
+/** The same for the lifetime read's `/api/yield/daily` half. */
+let lifetimeYieldPending = false;
 /** The rollup and the yield over the lifetime range behind the TOTALS and
  * UNIT COSTS charts (`value-lifetime`, capability 4): independent of
  * `usageChoice`, asked once at load and every `LIFETIME_REFRESH_MS`
@@ -403,10 +408,17 @@ function allRangeFrom(): string | null {
 function fetchUsage(now: number): void {
   const { from, to } = usageRange(usageChoice.span, now, allRangeFrom());
   const query = `from=${from}&to=${to}`;
-  if (query === usageAsked && now - usageAskedAt < USAGE_REFRESH_MS) return;
+  if (query === usageAsked && now - usageAskedAt < USAGE_REFRESH_MS) {
+    if (yieldPending) {
+      yieldPending = false;
+      void loadYield(query, usageSeq);
+    }
+    return;
+  }
   usageAsked = query;
   usageAskedAt = now;
   usageSeq += 1;
+  yieldPending = false;
   void loadUsage(query, usageSeq);
   void loadYield(query, usageSeq);
 }
@@ -431,12 +443,17 @@ async function loadUsage(query: string, seq: number): Promise<void> {
 
 /** The yield of one ask. A failed request keeps the last answer for the
  * same range, holds none for a new range, and ends the wait; the next
- * poll asks again. */
+ * poll asks again. An answer with roots still unread has no complete
+ * figures: the waiting line stays and the next poll asks again. An answer
+ * with figures paints at once, and the next poll asks again while its
+ * refresh runs. */
 async function loadYield(query: string, seq: number): Promise<void> {
   try {
     const res = await fetch(`/api/yield?${query}`, { headers: { accept: "application/json" } });
     const answer = res.ok ? ((await res.json()) as YieldReport) : null;
     if (seq !== usageSeq) return;
+    yieldPending = answer?.pending === true;
+    if (answer && (answer.unread ?? 0) > 0) return;
     yieldReport = answer;
   } catch {
     if (seq !== usageSeq) return;
@@ -507,24 +524,45 @@ function lifetimeRange(now: number): { from: string; to: string } {
  * before asking again, rather than retrying on the very next 2 s poll. */
 async function fetchLifetime(now: number): Promise<void> {
   if (!gradeKnown || watchOnly) return;
-  if (lifetimeAskedAt !== 0 && now - lifetimeAskedAt < LIFETIME_REFRESH_MS) return;
-  lifetimeAskedAt = now;
   const { from, to } = lifetimeRange(now);
   const query = `from=${from}&to=${to}`;
+  const headers = { accept: "application/json" };
+  if (lifetimeAskedAt !== 0 && now - lifetimeAskedAt < LIFETIME_REFRESH_MS) {
+    // The daily yield said a read runs: ask that half alone again.
+    if (!lifetimeYieldPending) return;
+    lifetimeYieldPending = false;
+    try {
+      const yielded = await fetch(`/api/yield/daily?${query}`, { headers });
+      if (yielded.ok) takeLifetimeYield((await yielded.json()) as YieldDaily);
+    } catch {
+      // Keep the last good answer, as below.
+    }
+    lifetimeAnswered = lifetimeYield !== null || !lifetimeYieldPending;
+    return;
+  }
+  lifetimeAskedAt = now;
   try {
-    const headers = { accept: "application/json" };
     const [res, yielded] = await Promise.all([
       fetch(`/api/usage/daily?${query}`, { headers }),
       fetch(`/api/yield/daily?${query}`, { headers }),
     ]);
     if (res.ok) lifetimeUsage = (await res.json()) as UsageDaily;
-    if (yielded.ok) lifetimeYield = (await yielded.json()) as YieldDaily;
+    if (yielded.ok) takeLifetimeYield((await yielded.json()) as YieldDaily);
   } catch {
     // Keep the last good answer; `lifetimeAskedAt` is already set, so the
     // next poll waits the full five minutes before asking again.
   } finally {
-    lifetimeAnswered = true;
+    // The waiting line stays while the daily yield has no figures yet.
+    lifetimeAnswered = lifetimeYield !== null || !lifetimeYieldPending;
   }
+}
+
+/** Take one `/api/yield/daily` answer: remember that a read runs, and keep
+ * the series only when every root has figures. */
+function takeLifetimeYield(answer: YieldDaily): void {
+  lifetimeYieldPending = answer.pending === true;
+  if ((answer.unread ?? 0) > 0) return;
+  lifetimeYield = answer;
 }
 
 /** Ask the cost route for every session that names a transcript and whose
