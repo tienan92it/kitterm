@@ -2072,33 +2072,31 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         }
     }
 
-    /// `GET /api/archives` — every archived session's metadata, newest first.
-    /// Read-only; a small local-file read like `/api/profiles`.
+    /// `GET /api/archives` — every archived session's metadata, newest first,
+    /// from the list `ArchiveIndex` keeps. The `ETag` covers the whole body;
+    /// `If-None-Match` answers 304. Read-only, any grade.
     private func serveArchiveList(head: HTTPRequestHead, context: ChannelHandlerContext) {
-        // Directory scan + a file read per archive: off the loop, like every
-        // other file I/O, then hop back with the encoded bytes.
         guard let projectFilter = projectFilter(head: head, context: context) else { return }
         let loop = context.eventLoop
         let bound = NIOLoopBound(context, eventLoop: loop)
-        let promise = loop.makePromise(of: Data.self)
-        let projects = self.projects
-        // Each record gets its `project` (label, then the archived cwd) on
-        // the archive queue, where the `.git` walk belongs with the file reads.
-        SessionArchive.list(
-            transform: { record in
-                let project = projects.project(forArchive: record)
-                if let projectFilter, project?.id != projectFilter { return nil }
-                var record = record
-                if let project { record["project"] = project.rowJSON }
-                return record
-            },
-            completion: { promise.succeed($0) }
-        )
-        promise.futureResult.whenSuccess { data in
-            self.writeJSON(
-                status: .ok, body: String(decoding: data, as: UTF8.self),
-                context: bound.value, version: head.version, keepAlive: head.isKeepAlive
-            )
+        let promise = loop.makePromise(of: ArchiveIndex.Body.self)
+        // The directory `stat`, a directory read when the list changed, the
+        // `project` of each record and the encoding all run on the archive
+        // queue; the loop gets the bytes and the tag.
+        SessionArchive.list(projects: self.projects, filter: projectFilter) { promise.succeed($0) }
+        promise.futureResult.whenSuccess { body in
+            var headers = HTTPHeaders()
+            headers.add(name: "ETag", value: body.etag)
+            headers.add(name: "Cache-Control", value: "no-cache")
+            if head.headers["if-none-match"].contains(body.etag) {
+                self.writeBytes(status: .notModified, headers: headers, data: Data(),
+                                context: bound.value, version: head.version, keepAlive: head.isKeepAlive)
+                return
+            }
+            headers.add(name: "Content-Type", value: "application/json")
+            headers.add(name: "X-Content-Type-Options", value: "nosniff")
+            self.writeBytes(status: .ok, headers: headers, data: body.data,
+                            context: bound.value, version: head.version, keepAlive: head.isKeepAlive)
         }
     }
 
@@ -2634,8 +2632,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         }
     }
 
-    /// `DELETE /api/archives/<uuid>` — remove an archive permanently.
-    /// Destructive, so `--agent-control` + full grade.
+    /// `DELETE /api/archives/<uuid>` — remove an archive permanently, and
+    /// append `archive.removed` to the event feed with the archive's id as
+    /// `session`. Destructive, so `--agent-control` + full grade.
     private func serveArchiveDelete(
         path: String, grade: TokenGrade, head: HTTPRequestHead, context: ChannelHandlerContext
     ) {
@@ -2665,6 +2664,9 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
         let promise = loop.makePromise(of: Bool.self)
         SessionArchive.delete(id) { promise.succeed($0) }
         promise.futureResult.whenSuccess { existed in
+            // The list changed with no session event: a page that holds the
+            // list asks again on this.
+            if existed { self.eventLog.append(type: "archive.removed", session: id, data: [:]) }
             self.writeJSON(
                 status: existed ? .ok : .notFound,
                 body: existed ? #"{"ok":true}"# : #"{"ok":false,"error":"no such archive"}"#,
