@@ -10,12 +10,18 @@ decision moves to `docs/adr/`.
 
 ## Toolchain
 
-- `RepaintNudgeTests.testTwoAttachesInOneWindowStillEndAtTheHeldSize` is
-  flaky: it failed once locally in `round-commands` round 3 and once in
-  `ci.yml` on PR #217 (`19390fe`), on changes that touch no file near
-  it, and passed on the next run of the same code. Rerun before you
-  treat it as a regression (2026-11-11,
-  `one-rule-one-place/rounds/001.md`).
+- A scratch daemon for `KittermBench` needs `kitterm-spawn-helper` beside
+  the binary. `swift build -c release --product kitterm` builds the one
+  product, and every session of that daemon then fails; the bench prints
+  "Socket is not connected". Build the product `kitterm-spawn-helper`
+  too (2026-11-17, `fleet-first-paint` round 2).
+- `RepaintNudgeTests` is flaky. `testTwoAttachesInOneWindowStillEndAtTheHeldSize`
+  failed once locally in `round-commands` round 3 and once in `ci.yml`
+  on PR #217 (`19390fe`); `testAttachToAProgramNudgesTheSizeAndRestoresIt`
+  failed once in `ci.yml` on PR #219 (`1f52152`). Each change touched no
+  file near the suite, and the next run of the same code passed. Run
+  the failed job again before you treat it as a regression (2026-11-17,
+  chore `model-pricing-rates`).
 - `Web/terminal/src/terminal-app.ts` imports xterm and touches the DOM, so
   no vitest file can import it; a rule it owns is not directly unit-testable.
   Extract the pure decision into its own module and test that instead:
