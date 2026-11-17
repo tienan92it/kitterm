@@ -8,7 +8,7 @@
 
 ## Queue
 
-3. `archives-cheap` (capability 3)
+3. `archives-cheap` (capability 3), round 3, PR #220.
 
 ## Failures
 
