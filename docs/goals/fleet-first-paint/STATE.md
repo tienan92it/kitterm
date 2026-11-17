@@ -8,7 +8,7 @@
 
 ## Queue
 
-1. `paint-first` (capability 1), round 1.
+1. `paint-first` (capability 1), round 1, PR #220.
 2. `yield-never-waits` (capability 2)
 3. `archives-cheap` (capability 3)
 
