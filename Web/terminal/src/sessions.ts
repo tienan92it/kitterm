@@ -253,10 +253,12 @@ let archives: ArchivedRow[] = [];
 /** The archive list is a slow section (`fleet-first-paint`, round 1): the
  * page asks for it after the fleet painted, not in every poll.
  * `archivesStale` says the list must be asked for: at load, after a
- * `session.archived` event or a pruned feed, when the reader opens the
- * fold, and after a failed request. `archivesAnswered` ends the waiting
- * line. */
+ * `session.archived` or `archive.removed` event or a pruned feed, when the
+ * reader opens the fold, and after a failed request. `archivesAnswered`
+ * ends the waiting line. `archivesTag` is the `ETag` of the list the page
+ * holds: the next ask sends it, and a 304 keeps the list. */
 let archivesStale = true;
+let archivesTag: string | null = null;
 let archivesAnswered = false;
 let archivesInFlight = false;
 /** One request at a time: a response slower than the poll interval must not
@@ -335,6 +337,13 @@ let yieldReport: YieldReport | null = null;
 let yieldPending = false;
 /** The same for the lifetime read's `/api/yield/daily` half. */
 let lifetimeYieldPending = false;
+/** When the page last asked the daily yield. While the body says pending
+ * and the charts already have figures, the page asks again every
+ * `LIFETIME_PENDING_MS`, not on each poll: the body for the whole record
+ * is hundreds of kilobytes and the figures on the page are good. With no
+ * figures the waiting line is on the page, and each poll asks. */
+let lifetimeYieldAskedAt = 0;
+const LIFETIME_PENDING_MS = 10_000;
 /** The rollup and the yield over the lifetime range behind the TOTALS and
  * UNIT COSTS charts (`value-lifetime`, capability 4): independent of
  * `usageChoice`, asked once at load and every `LIFETIME_REFRESH_MS`
@@ -494,8 +503,13 @@ async function fetchArchives(): Promise<void> {
   archivesInFlight = true;
   archivesStale = false;
   try {
-    const res = await fetch("/api/archives", { headers: { accept: "application/json" } });
+    const headers: Record<string, string> = { accept: "application/json" };
+    if (archivesTag) headers["if-none-match"] = archivesTag;
+    const res = await fetch("/api/archives", { headers });
+    // 304: the daemon's list is the one the page holds.
+    if (res.status === 304) return;
     archives = res.ok ? (((await res.json()) as { archives?: ArchivedRow[] }).archives ?? []) : [];
+    archivesTag = res.ok ? res.headers.get("etag") : null;
   } catch {
     archivesStale = true;
   } finally {
@@ -530,7 +544,9 @@ async function fetchLifetime(now: number): Promise<void> {
   if (lifetimeAskedAt !== 0 && now - lifetimeAskedAt < LIFETIME_REFRESH_MS) {
     // The daily yield said a read runs: ask that half alone again.
     if (!lifetimeYieldPending) return;
+    if (lifetimeYield !== null && now - lifetimeYieldAskedAt < LIFETIME_PENDING_MS) return;
     lifetimeYieldPending = false;
+    lifetimeYieldAskedAt = now;
     try {
       const yielded = await fetch(`/api/yield/daily?${query}`, { headers });
       if (yielded.ok) takeLifetimeYield((await yielded.json()) as YieldDaily);
@@ -541,6 +557,7 @@ async function fetchLifetime(now: number): Promise<void> {
     return;
   }
   lifetimeAskedAt = now;
+  lifetimeYieldAskedAt = now;
   try {
     const [res, yielded] = await Promise.all([
       fetch(`/api/usage/daily?${query}`, { headers }),
@@ -3036,7 +3053,14 @@ if (typeof addEventListener === "function") {
   });
 }
 
-void fetchProfiles().then(() => {
+// The first poll does not wait for the grade: the fleet paints after its
+// four answers and no other (`fleet-first-paint`, round 3). The requests
+// that need the grade wait for `gradeKnown`, and the poll after the
+// profiles answer makes them. A first poll still in flight makes them by
+// itself, because it reads `gradeKnown` after its paint.
+const grade = fetchProfiles();
+void poll();
+void grade.then(() => {
   void poll();
   void syncPush();
 });
@@ -3114,8 +3138,9 @@ async function watchEvents(): Promise<void> {
       if (typeof data.epoch === "string") eventEpoch = data.epoch;
       readStarted(data.events ?? [], data.epoch);
       readPullsChanged(data.events ?? []);
-      // An archive was written, or the page missed events: the list is stale.
-      if (data.pruned || (data.events ?? []).some((e) => e.type === "session.archived")) archivesStale = true;
+      // An archive was written or removed, or the page missed events: the
+      // list is stale.
+      if (data.pruned || (data.events ?? []).some((e) => e.type === "session.archived" || e.type === "archive.removed")) archivesStale = true;
       if (data.pruned || (data.events?.length ?? 0) > 0) void poll();
     } catch {
       // Network blip or daemon restart: back off, then resume the watch.
