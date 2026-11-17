@@ -277,6 +277,14 @@ let watchOnly = false;
  * will be. The event watcher can start a poll before that; a request a
  * watch token must not make (the pulls route) waits for it. */
 let gradeKnown = false;
+/** The grade for a control. The first paint comes before the profiles
+ * answer (`fleet-first-paint`, round 3), so until the grade is known the
+ * page paints what a watch client gets: no push switch and no link to open
+ * a shell. `gradeKnown` is in the repaint signature, so the controls of a
+ * full client appear when the profiles answer. */
+function controlsWatch(): boolean {
+  return !gradeKnown || watchOnly;
+}
 /** The folds the user opened, by key; a rebuild keeps them. */
 const foldsOpen = new Set<string>();
 /** The projects and goals whose triangle the reader clicked, by the tree
@@ -1075,6 +1083,7 @@ function render(): void {
     [...toggledRows],
     started,
     watchOnly,
+    gradeKnown,
     quota,
     panel,
     yieldShown(),
@@ -1141,7 +1150,7 @@ function paint(): void {
   if (built.sections.length === 0) {
     const empty = document.createElement("p");
     empty.className = "empty";
-    if (watchOnly) empty.textContent = "No live sessions to watch.";
+    if (controlsWatch()) empty.textContent = "No live sessions to watch.";
     else {
       // The first run: where a shell is opened, with the terminal page as
       // a link in the accent (round 20).
@@ -2190,7 +2199,7 @@ let pushWantsFocus = false;
 /** Show, hide, or leave the push line; rebuilt only when the toggle
  * changes, and the focus a keyboard user has on the switch survives. */
 function paintPush(): void {
-  const toggle = pushToggle({ ...pushFacts, watchOnly });
+  const toggle = pushToggle({ ...pushFacts, watchOnly: controlsWatch() });
   const signature = JSON.stringify(toggle);
   if (signature === pushPainted) return;
   pushPainted = signature;
