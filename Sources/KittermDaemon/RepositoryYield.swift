@@ -347,7 +347,9 @@ public struct RepositoryYield: Codable, Equatable, Sendable {
 /// `to` while the read of the new key runs: for the totals, the answer of
 /// the same `from`; for the day-by-day series, an answer that starts at
 /// or before `from`, cut to the range, with the days it does not hold
-/// absent. `readAt` and `ageSeconds` say how old that answer is.
+/// absent. `readAt` and `ageSeconds` say how old that answer is. The
+/// earlier `to` is at most `fallbackDays` before the asked `to`: after
+/// more days with no request the root counts in `unread`.
 ///
 /// ## The file
 ///
@@ -355,16 +357,29 @@ public struct RepositoryYield: Codable, Equatable, Sendable {
 /// request after a restart is served from them. The file is read once in
 /// `init` and written on `queue` when the last claimed read ends. At each
 /// write the cache drops every answer that no request asked for
-/// `keepSeconds`, then keeps the `maxEntries` most recently asked per
-/// route. A file that does not decode, or that names another
+/// `keepSeconds`, then keeps the most recently asked ranges per route.
+/// A range is kept with every root or dropped with every root, because
+/// one request asks every root of its range: the `wholeRanges` newest
+/// ranges always stay, and an older range stays while the route holds
+/// `maxEntries` answers or fewer. A file that does not decode, or that names another
 /// `formatVersion` or another zone (the day bounds depend on the zone),
 /// is ignored with one line on stderr and replaced by the next write.
 public final class RepositoryYields: @unchecked Sendable {
     public static let ttlSeconds: TimeInterval = 300
     /// An answer that no request asked for this long is dropped at a write.
     public static let keepSeconds: TimeInterval = 48 * 3600
-    /// The answers kept per route after a write, the most recently asked.
+    /// The answers kept per route after a write, the most recently asked
+    /// ranges first. The `wholeRanges` newest ranges can exceed it.
     public static let maxEntries = 64
+    /// The newest ranges of a route that a write keeps with every root,
+    /// whatever `maxEntries` says: one request can list more roots than
+    /// `maxEntries`, and a dropped answer of a range that a page asks is
+    /// read again at every request. The bound of a route is then the
+    /// larger of `maxEntries` and `wholeRanges` times the roots asked.
+    public static let wholeRanges = 4
+    /// The midnight roll serves an answer whose `to` is at most this many
+    /// days before the asked `to`.
+    public static let fallbackDays = 7
     public static let formatVersion = 1
     static let queue = DispatchQueue(label: "kitterm.yield", qos: .utility)
 
@@ -412,8 +427,9 @@ public final class RepositoryYields: @unchecked Sendable {
         public var totals: Totals
         /// A read of one of the listed roots runs for this range.
         public var pending = false
-        /// The listed roots with no answer kept; the figures are complete
-        /// when it is 0.
+        /// The listed roots with no answer kept. The figures are complete
+        /// when it is 0 and `pending` is false: while `pending` is true a
+        /// root's figures can be those of an earlier answer.
         public var unread = 0
         /// When the oldest answer served was read, ISO 8601; absent when
         /// no answer is kept.
@@ -651,7 +667,8 @@ public final class RepositoryYields: @unchecked Sendable {
     /// What `key` answers at `now`, and the claim of its read when one is
     /// due. Caller holds `lock`. Without an answer for `key` itself, the
     /// newest answer of the same root with an earlier `to` that `earlier`
-    /// accepts is served in its place.
+    /// accepts is served in its place, when that `to` is at most
+    /// `fallbackDays` before the asked one.
     private static func serve<Value>(
         _ cache: inout [Key: Entry<Value>], key: Key, now: Date, earlier: (Key) -> Bool
     ) -> Served<Value> {
@@ -667,7 +684,10 @@ public final class RepositoryYields: @unchecked Sendable {
             return Served(value: entry.value, readAt: entry.readAt, key: key, running: entry.running, claimed: claimed)
         }
         let fallback = cache
-            .filter { $0.key.root == key.root && $0.key.to < key.to && $0.value.value != nil && earlier($0.key) }
+            .filter {
+                $0.key.root == key.root && $0.key.to < key.to && key.to - $0.key.to <= fallbackDays
+                    && $0.value.value != nil && earlier($0.key)
+            }
             .max { $0.key.to < $1.key.to }
         return Served(
             value: fallback?.value.value, readAt: fallback?.value.readAt, key: fallback?.key ?? key,
@@ -710,15 +730,33 @@ public final class RepositoryYields: @unchecked Sendable {
         return formatter.string(from: date)
     }
 
-    /// Drop the answers nobody asked for `keepSeconds`, then all but the
-    /// `maxEntries` most recently asked. A key with a read claimed stays.
+    /// Drop the answers nobody asked for `keepSeconds`, then the least
+    /// recently asked ranges. A range is the `from` and the `to` of a key,
+    /// asked when its newest answer was asked; it stays or goes with every
+    /// root. The `wholeRanges` newest ranges stay; an older range stays
+    /// while the kept answers number `maxEntries` or fewer. A key with a
+    /// read claimed stays.
     private static func prune<Value>(_ cache: inout [Key: Entry<Value>], now: Date) {
         cache = cache.filter { $0.value.running || now.timeIntervalSince($0.value.askedAt) < keepSeconds }
         guard cache.count > maxEntries else { return }
-        let idle = cache.filter { !$0.value.running }.sorted {
-            ($0.value.askedAt, $0.key.to, $0.key.from, $0.key.root) > ($1.value.askedAt, $1.key.to, $1.key.from, $1.key.root)
+        // A range is a key with no root.
+        var asked: [Key: Date] = [:]
+        var sizes: [Key: Int] = [:]
+        for (key, entry) in cache {
+            let range = Key(root: "", from: key.from, to: key.to)
+            asked[range] = max(asked[range] ?? entry.askedAt, entry.askedAt)
+            sizes[range, default: 0] += 1
         }
-        for (key, _) in idle.dropFirst(max(0, maxEntries - (cache.count - idle.count))) { cache[key] = nil }
+        let newestFirst = asked.sorted { ($0.value, $0.key.to, $0.key.from) > ($1.value, $1.key.to, $1.key.from) }
+        var kept: Set<Key> = []
+        var total = 0
+        for (index, item) in newestFirst.enumerated() {
+            let size = sizes[item.key] ?? 0
+            guard index < wholeRanges || total + size <= maxEntries else { break }
+            kept.insert(item.key)
+            total += size
+        }
+        cache = cache.filter { $0.value.running || kept.contains(Key(root: "", from: $0.key.from, to: $0.key.to)) }
     }
 
     /// Prune, then replace the file. Runs on `queue`.

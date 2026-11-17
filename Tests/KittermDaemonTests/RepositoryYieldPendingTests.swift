@@ -299,7 +299,108 @@ final class RepositoryYieldPendingTests: XCTestCase {
         XCTAssertEqual(aged[0]["from"] as? Int, from.advanced(by: 1).number)
     }
 
+    // MARK: - more roots than the bound
+
+    private func manyProjects(_ count: Int) -> [RepositoryYields.ProjectRef] {
+        (0..<count).map { RepositoryYields.ProjectRef(id: "p\($0)", name: "p\($0)", root: "/work/p\($0)", registered: true) }
+    }
+
+    func testARequestOfMoreRootsThanTheBoundKeepsEveryAnswer() throws {
+        let file = scratch.appendingPathComponent("yield-cache.json")
+        let stub = StubGit(blocked: false)
+        let queue = DispatchQueue(label: "test.yield.many-roots")
+        let yields = yields(stub, queue: queue, file: file)
+        let many = manyProjects(RepositoryYields.maxEntries + 1)
+        let start = Date()
+
+        XCTAssertEqual(yields.report(projects: many, from: from, to: to, now: start).unread, many.count)
+        XCTAssertEqual(yields.dailyReport(projects: many, from: from, to: to, now: start).unread, many.count)
+        queue.sync {}
+        XCTAssertEqual(stub.reads, 2 * many.count)
+
+        let second = yields.report(projects: many, from: from, to: to, now: start.addingTimeInterval(10))
+        XCTAssertEqual(second.unread, 0, "the write dropped no answer of the request")
+        XCTAssertFalse(second.pending)
+        let daily = yields.dailyReport(projects: many, from: from, to: to, now: start.addingTimeInterval(10))
+        XCTAssertEqual(daily.unread, 0)
+        XCTAssertFalse(daily.pending)
+        queue.sync {}
+        XCTAssertEqual(stub.reads, 2 * many.count, "the second request started no read")
+
+        let shape = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+        XCTAssertEqual((shape["totals"] as? [Any])?.count, many.count)
+        XCTAssertEqual((shape["daily"] as? [Any])?.count, many.count)
+    }
+
+    func testWithMoreRootsThanTheBoundAnOlderRangeGoesWithEveryRoot() throws {
+        let file = scratch.appendingPathComponent("yield-cache.json")
+        let stub = StubGit(blocked: false)
+        let queue = DispatchQueue(label: "test.yield.many-ranges")
+        let yields = yields(stub, queue: queue, file: file)
+        let many = manyProjects(RepositoryYields.maxEntries + 1)
+        let start = Date()
+
+        for step in 0...RepositoryYields.wholeRanges {
+            _ = yields.report(projects: many, from: from, to: to.advanced(by: step), now: start.addingTimeInterval(Double(step)))
+            queue.sync {}
+        }
+        let shape = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+        let kept = try XCTUnwrap(shape["totals"] as? [[String: Any]])
+        XCTAssertEqual(kept.count, RepositoryYields.wholeRanges * many.count, "the file is bounded")
+        XCTAssertFalse(kept.contains { $0["to"] as? Int == to.number }, "the least recently asked range went with every root")
+
+        // Two ranges asked in turn, as two pages do: neither is read again.
+        let reads = stub.reads
+        let later = start.addingTimeInterval(60)
+        let last = to.advanced(by: RepositoryYields.wholeRanges)
+        XCTAssertEqual(yields.report(projects: many, from: from, to: last, now: later).unread, 0)
+        XCTAssertEqual(yields.report(projects: many, from: from, to: last.advanced(by: -1), now: later).unread, 0)
+        queue.sync {}
+        XCTAssertEqual(stub.reads, reads)
+    }
+
     // MARK: - the midnight roll
+
+    func testAnAnswerOfMoreThanSevenDaysBeforeIsNotServed() {
+        let stub = StubGit(blocked: false)
+        let queue = DispatchQueue(label: "test.yield.roll-limit")
+        let yields = yields(stub, queue: queue)
+        let start = Date()
+        _ = yields.report(projects: projects, from: from, to: to, now: start)
+        _ = yields.dailyReport(projects: projects, from: from, to: to, now: start)
+        queue.sync {}
+
+        stub.block()
+        let next = start.addingTimeInterval(60)
+        let limit = RepositoryYields.fallbackDays
+        XCTAssertEqual(limit, 7)
+
+        let near = yields.report(projects: projects, from: from, to: to.advanced(by: 1), now: next)
+        XCTAssertEqual(near.unread, 0, "an answer of one day before stands in")
+        XCTAssertEqual(near.totals.mergedLines, 40)
+        let edge = yields.report(projects: projects, from: from, to: to.advanced(by: limit), now: next)
+        XCTAssertEqual(edge.unread, 0, "an answer of seven days before stands in")
+        let far = yields.report(projects: projects, from: from, to: to.advanced(by: limit + 1), now: next)
+        XCTAssertTrue(far.pending)
+        XCTAssertEqual(far.unread, 1, "an answer of eight days before is another range's")
+        XCTAssertEqual(far.projects[0].pending, true)
+        XCTAssertNil(far.projects[0].yield.mergedPullRequests)
+        XCTAssertEqual(far.totals, .init())
+        XCTAssertNil(far.ageSeconds)
+
+        // The day-by-day series: the range still holds days of the old
+        // answer, and the same limit applies.
+        let nearDaily = yields.dailyReport(projects: projects, from: from, to: to.advanced(by: 1), now: next)
+        XCTAssertEqual(nearDaily.unread, 0)
+        XCTAssertEqual(nearDaily.days[1].mergedPullRequests, 1)
+        let farDaily = yields.dailyReport(projects: projects, from: from, to: to.advanced(by: limit + 1), now: next)
+        XCTAssertEqual(farDaily.unread, 1)
+        XCTAssertNil(farDaily.days[1].projects[0].mergedPullRequests)
+        XCTAssertNil(farDaily.ageSeconds)
+
+        stub.release()
+        queue.sync {}
+    }
 
     func testTheFirstAskOfADayIsServedFromTheAnswerOfTheDayBefore() {
         let stub = StubGit(blocked: false)

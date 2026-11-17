@@ -871,8 +871,9 @@ State lives in `~/.kitterm/`. The default port is 3418.
 │                             read, kept after Claude Code deletes the transcript (0600)
 ├── usage-limits.json         the quota windows the statusline posted, a time per window (0600)
 ├── yield-cache.json          what `git` answered for each root and range, behind the two
-│                             yield routes, so a restart keeps the figures (0600; at most
-│                             64 answers per route, none unasked for 48 hours)
+│                             yield routes, so a restart keeps the figures (0600; per route
+│                             the 4 newest ranges whole, older ones up to 64 answers,
+│                             none unasked for 48 hours)
 ├── vapid.json                the VAPID key pair every subscription is bound to (0600)
 ├── takeover/                 live-upgrade handoff, between execv and adoption
 ├── web-root                  the web bundle the running daemon pinned
