@@ -31,7 +31,7 @@ None.
 
 - `paint-first`, round 1, `399c53b`, PR #220. See `rounds/001.md`.
 - `yield-never-waits`, round 2, `f8302f4`, PR #220. See `rounds/002.md`.
-- `archives-cheap`, round 3, `deeab81`, PR #220. See `rounds/003.md`.
+- `archives-cheap`, round 3, `9409037`, PR #220. See `rounds/003.md`.
 
 ## Next action
 
