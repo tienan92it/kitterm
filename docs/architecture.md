@@ -428,7 +428,10 @@ project's and a workspace's cost in the tree (the rollup's buckets), and every f
 from a round record — a goal's spend in `WHERE` and in the tree (`goalCost`), a task's
 row, and the `LEAKS` round counts — which `roundsInRange` filters by the record's
 `- Started:` day. A record with no start day is in no range. A toggle change asks the two
-routes and repaints every one of them at once (`sessions-range-page.test.ts`). The page
+routes and repaints every one of them (`sessions-range-page.test.ts`). The two routes load
+apart (`fleet-first-paint` round 1): the rollup's figures repaint when the rollup answers,
+and the figures that read the yield wait for the yield of the same range, so no figure
+divides one range's spend by another range's counts. The page
 refuses what the research refuses: no quality
 rate (every round on record says `done`), no rework rate (two fix commits are noise),
 and no money value for the human's time (nothing here knows their rate, and the page

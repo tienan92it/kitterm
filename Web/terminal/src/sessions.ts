@@ -129,8 +129,10 @@ import { findThemeById } from "./themes";
 /**
  * The fleet view: the page the frames `Dashboard 1200` and `Dashboard
  * 390` of `design/dashboard.pen` draw (`agent-dashboard`, round 10). Polls
- * `/api/projects`, `/api/sessions`, `/api/approvals`, `/api/archives` and
- * `/api/usage/limits`, plus `/api/projects/<id>/knowledge` for each
+ * `/api/projects`, `/api/sessions`, `/api/approvals` and
+ * `/api/usage/limits`, paints, then fills the slower sections each by
+ * itself (`/api/archives`, the rollup, the yield, the bills, the lifetime
+ * read; `fleet-first-paint`), plus `/api/projects/<id>/knowledge` for each
  * registered project and `/api/usage/daily` and `/api/yield` for the
  * chosen range, and links each session back to `/?session=<id>`.
  *
@@ -248,6 +250,15 @@ let sessions: SessionRow[] = [];
 let projects: ProjectSummary[] = [];
 let approvals: Approval[] = [];
 let archives: ArchivedRow[] = [];
+/** The archive list is a slow section (`fleet-first-paint`, round 1): the
+ * page asks for it after the fleet painted, not in every poll.
+ * `archivesStale` says the list must be asked for: at load, after a
+ * `session.archived` event or a pruned feed, when the reader opens the
+ * fold, and after a failed request. `archivesAnswered` ends the waiting
+ * line. */
+let archivesStale = true;
+let archivesAnswered = false;
+let archivesInFlight = false;
 /** One request at a time: a response slower than the poll interval must not
  * overlap the next tick, or an older snapshot could repaint over a newer one. */
 let inFlight = false;
@@ -305,6 +316,15 @@ let usageChoice: UsageChoice = readUsageChoice(readStorage(USAGE_KEY));
  * rather than on every 2 s poll: a 90-day answer is tens of kilobytes. */
 let usageAsked = "";
 let usageAskedAt = 0;
+/** Counts the asks, so an answer for a range the reader left is dropped. */
+let usageSeq = 0;
+/** The query `usage` answers, and the query the yield last answered or
+ * failed for. The yield is slower than the rollup, so the parts that read
+ * it wait while the two differ (`yieldWaits`). */
+let usageFor = "";
+let yieldFor = "";
+/** The rollup answered or failed once, which ends the waiting line. */
+let usageAnswered = false;
 const USAGE_REFRESH_MS = 30_000;
 /** What the repositories' own history delivered over the same range
  * (`GET /api/yield`), asked beside the rollup; null when the daemon has
@@ -319,6 +339,8 @@ let yieldReport: YieldReport | null = null;
 let lifetimeUsage: UsageDaily | null = null;
 let lifetimeYield: YieldDaily | null = null;
 let lifetimeAskedAt = 0;
+/** The lifetime read answered or failed once, which ends the waiting line. */
+let lifetimeAnswered = false;
 const LIFETIME_REFRESH_MS = 5 * 60_000;
 /** The `WHERE` panel's grouping, kept across loads like the usage choice. */
 const WHERE_KEY = "kitterm.sessions.where";
@@ -333,6 +355,14 @@ let limits: UsageLimits | null = null;
  * asked again every `USAGE_REFRESH_MS`, and a 403 (watch) or a 404 keeps
  * null, which the column prints as the dash. */
 const bills = new Map<string, { at: number; bill: SessionBill | null }>();
+/** One batch of cost reads at a time: a slow one must not start a second. */
+let billsInFlight = false;
+
+/** The words of a section that waits for its answer. */
+const ARCHIVES_WAITING = "Archived …";
+const USAGE_WAITING = "Reading the usage…";
+const YIELD_WAITING = "Reading the repositories…";
+const LIFETIME_WAITING = "Reading the lifetime totals…";
 
 /** One key of `localStorage`, or null where storage is blocked or empty. */
 function readStorage(key: string): string | null {
@@ -353,7 +383,7 @@ function setUsageChoice(change: Partial<UsageChoice>): void {
   // A new span is a new range: ask the route now, then repaint.
   usageAsked = "";
   lastSignature = "";
-  void fetchUsage(Date.now()).then(render);
+  fetchUsage(Date.now());
 }
 
 /** The `all` range's own first day: the record's first spend day, from the
@@ -364,27 +394,96 @@ function allRangeFrom(): string | null {
   return lifetimeUsage?.ok ? baseDayOf(lifetimeUsage.days).firstSpendDay : null;
 }
 
-/** Ask the route for the chosen range when the range changed or the last
- * answer is `USAGE_REFRESH_MS` old. A 403 (watch), a 404 (old daemon) or a
- * 503 (no rollup) leaves `usage` null, so the panel and every heading's
- * number stay off the page rather than on it as zeros. */
-async function fetchUsage(now: number): Promise<void> {
+/** Ask the two routes for the chosen range when the range changed or the
+ * last answer is `USAGE_REFRESH_MS` old. The rollup and the yield load
+ * apart, and each repaints when it answers: the rollup answers in
+ * milliseconds and the yield can wait for `git`. A 403 (watch), a 404 (old
+ * daemon) or a 503 (no rollup) leaves `usage` null, so the panel and every
+ * heading's number stay off the page rather than on it as zeros. */
+function fetchUsage(now: number): void {
   const { from, to } = usageRange(usageChoice.span, now, allRangeFrom());
   const query = `from=${from}&to=${to}`;
   if (query === usageAsked && now - usageAskedAt < USAGE_REFRESH_MS) return;
   usageAsked = query;
   usageAskedAt = now;
+  usageSeq += 1;
+  void loadUsage(query, usageSeq);
+  void loadYield(query, usageSeq);
+}
+
+/** The rollup of one ask. A failed request keeps the last answer and the
+ * next poll asks again. The bills need the rollup, so they follow it. */
+async function loadUsage(query: string, seq: number): Promise<void> {
   try {
-    const headers = { accept: "application/json" };
-    const [res, yielded] = await Promise.all([
-      fetch(`/api/usage/daily?${query}`, { headers }),
-      fetch(`/api/yield?${query}`, { headers }),
-    ]);
-    usage = res.ok ? ((await res.json()) as UsageDaily) : null;
-    yieldReport = yielded.ok ? ((await yielded.json()) as YieldReport) : null;
+    const res = await fetch(`/api/usage/daily?${query}`, { headers: { accept: "application/json" } });
+    const answer = res.ok ? ((await res.json()) as UsageDaily) : null;
+    if (seq !== usageSeq) return;
+    usage = answer;
+    usageFor = query;
   } catch {
-    // A failed request keeps the last answer; the next poll asks again.
+    if (seq !== usageSeq) return;
     usageAsked = "";
+  }
+  usageAnswered = true;
+  render();
+  void fetchBills(Date.now()).then(render);
+}
+
+/** The yield of one ask. A failed request keeps the last answer for the
+ * same range, holds none for a new range, and ends the wait; the next
+ * poll asks again. */
+async function loadYield(query: string, seq: number): Promise<void> {
+  try {
+    const res = await fetch(`/api/yield?${query}`, { headers: { accept: "application/json" } });
+    const answer = res.ok ? ((await res.json()) as YieldReport) : null;
+    if (seq !== usageSeq) return;
+    yieldReport = answer;
+  } catch {
+    if (seq !== usageSeq) return;
+    if (yieldFor !== query) yieldReport = null;
+    usageAsked = "";
+  }
+  yieldFor = query;
+  render();
+}
+
+/** The rollup is on the page and the yield for its range is not. */
+function yieldWaits(): boolean {
+  return usage !== null && yieldFor !== usageFor;
+}
+
+/** The yield for the range the rollup answers; null while it waits, so no
+ * figure divides one range's spend by another range's counts. */
+function yieldShown(): YieldReport | null {
+  return yieldFor === usageFor ? yieldReport : null;
+}
+
+/** The page knows it is full grade and the rollup has not answered. A
+ * watch page never waits: its rollup is refused. */
+function usageWaits(): boolean {
+  return gradeKnown && !watchOnly && !usageAnswered;
+}
+
+/** The lifetime read has not answered; a watch page never asks it. */
+function lifetimeWaits(): boolean {
+  return gradeKnown && !watchOnly && !lifetimeAnswered;
+}
+
+/** Ask for the archive list when it is stale (`archivesStale`). A failed
+ * request keeps the last list and the next poll asks again. A daemon too
+ * old to have the route has none. */
+async function fetchArchives(): Promise<void> {
+  if (archivesInFlight || !archivesStale) return;
+  archivesInFlight = true;
+  archivesStale = false;
+  try {
+    const res = await fetch("/api/archives", { headers: { accept: "application/json" } });
+    archives = res.ok ? (((await res.json()) as { archives?: ArchivedRow[] }).archives ?? []) : [];
+  } catch {
+    archivesStale = true;
+  } finally {
+    archivesAnswered = true;
+    archivesInFlight = false;
   }
 }
 
@@ -423,6 +522,8 @@ async function fetchLifetime(now: number): Promise<void> {
   } catch {
     // Keep the last good answer; `lifetimeAskedAt` is already set, so the
     // next poll waits the full five minutes before asking again.
+  } finally {
+    lifetimeAnswered = true;
   }
 }
 
@@ -433,7 +534,8 @@ async function fetchLifetime(now: number): Promise<void> {
 async function fetchBills(now: number): Promise<void> {
   const live = new Set(sessions.map((s) => s.id));
   for (const id of bills.keys()) if (!live.has(id)) bills.delete(id);
-  if (!usage) return;
+  if (!usage || billsInFlight) return;
+  billsInFlight = true;
   const due = sessions.filter((s) => s.agentTranscript && (now - (bills.get(s.id)?.at ?? 0)) >= USAGE_REFRESH_MS);
   await Promise.all(
     due.map(async (s) => {
@@ -457,14 +559,24 @@ async function fetchBills(now: number): Promise<void> {
         }
         bills.set(s.id, { at: now, bill });
       } catch {
-        // Keep what the page shows; the next poll asks again.
+        // Keep what the page shows; the next poll asks again. A first
+        // read that failed ends the wait and prints the dash.
+        if (!bills.has(s.id)) bills.set(s.id, { at: 0, bill: null });
       }
     }),
   );
+  billsInFlight = false;
 }
 
-/** The bill kept for a session, for the tree's cost column. */
-const billOf = (id: string): SessionBill | null | undefined => bills.get(id)?.bill;
+/** The bill kept for a session, for the tree's cost column; the waiting
+ * bill for a session that names a transcript and whose first cost read
+ * has not answered. */
+const BILL_WAITS: SessionBill = { hasBill: false, waiting: true };
+const billOf = (id: string): SessionBill | null | undefined => {
+  const kept = bills.get(id);
+  if (kept) return kept.bill;
+  return usage && sessions.some((s) => s.id === id && s.agentTranscript) ? BILL_WAITS : undefined;
+};
 
 /** The days every figure on the page counts over: the range the rollup
  * answered for the toggles' span, or, before it answers or on a daemon
@@ -529,17 +641,18 @@ async function poll(): Promise<void> {
   inFlight = true;
   try {
     const headers = { accept: "application/json" };
-    const [sessionsRes, projectsRes, approvalsRes, archivesRes, limitsRes] = await Promise.all([
+    // The fleet paints after these four answers and no other
+    // (`fleet-first-paint`, round 1). Every slower section loads below.
+    const [sessionsRes, projectsRes, approvalsRes, limitsRes] = await Promise.all([
       fetch("/api/sessions", { headers }),
       fetch("/api/projects", { headers }),
       fetch("/api/approvals", { headers }),
-      fetch("/api/archives", { headers }),
       fetch("/api/usage/limits", { headers }),
     ]);
     if (!sessionsRes.ok) throw new Error(String(sessionsRes.status));
     const data = (await sessionsRes.json()) as { ok: boolean; sessions: SessionRow[] };
-    // A daemon too old to know projects, approvals, or archives is not an
-    // error; it has none. Watch clients can read all four: seeing what an
+    // A daemon too old to know projects or approvals is not an
+    // error; it has none. Watch clients can read all three: seeing what an
     // agent is about to do is observation. They get no buttons.
     projects = projectsRes.ok
       ? (((await projectsRes.json()) as { projects?: ProjectSummary[] }).projects ?? [])
@@ -547,16 +660,10 @@ async function poll(): Promise<void> {
     approvals = approvalsRes.ok
       ? (((await approvalsRes.json()) as { approvals?: Approval[] }).approvals ?? [])
       : [];
-    archives = archivesRes.ok
-      ? (((await archivesRes.json()) as { archives?: ArchivedRow[] }).archives ?? [])
-      : [];
     // The quota is the account's accounting: full grade only, so a watch
     // client's 403 leaves the panel off the page rather than on it empty.
     limits = limitsRes.ok ? ((await limitsRes.json()) as UsageLimits) : null;
     sessions = data.sessions ?? [];
-    await fetchUsage(Date.now());
-    await fetchBills(Date.now());
-    await fetchLifetime(Date.now());
     failedPolls = 0;
     render();
   } catch {
@@ -566,6 +673,14 @@ async function poll(): Promise<void> {
   } finally {
     inFlight = false;
   }
+  // The slow sections: each loads outside the fleet's wait, guards its own
+  // overlap, and repaints when its answer arrives. A section that fails
+  // costs only that section.
+  const now = Date.now();
+  void fetchArchives().then(render);
+  fetchUsage(now);
+  void fetchBills(now).then(render);
+  void fetchLifetime(now).then(render);
   // The summaries come after the fleet has painted, bounded by the poll
   // interval each and outside `inFlight`, so a package on a stalled disk
   // costs one section and never the sessions or the approvals.
@@ -893,6 +1008,7 @@ function render(): void {
     projects,
     approvals.map((a) => a.id),
     archives.map((a) => a.id),
+    [archivesAnswered, usageWaits(), yieldWaits(), lifetimeWaits()],
     [...knowledge].map(([id, entry]) => [id, entry.etag, entry.goals === null]),
     // `ageSeconds` moves every second; the ETag covers the rest.
     [...pulls].map(([id, entry]) => [id, entry.etag, entry.answer?.reason, entry.answer?.readAt]),
@@ -906,7 +1022,7 @@ function render(): void {
     watchOnly,
     quota,
     panel,
-    yieldReport,
+    yieldShown(),
     whereGrouping,
     lifetimeUsage,
     lifetimeYield,
@@ -945,15 +1061,18 @@ function paint(): void {
 
   paintBand(cells);
   paintRestart();
-  paintUsage(usageHead(usage, usageChoice), usagePanel(usage, usageChoice, now));
+  paintUsage(usageHead(usage, usageChoice), usagePanel(usage, usageChoice, now), usageWaits());
   paintQuota(quotaPanel(limits, now));
   const goals = knowledgeEntries();
   // Every figure follows the one range (round 13): the rollup and the
   // yield were asked for it, the tree reads it off the rollup, and the
   // round records are filtered to it here.
   const range = chosenRange(now);
-  paintValue(valuePanel(usage, yieldReport, usageChoice.span), lifetimeModel(now));
-  paintWhere(wherePanel(whereGrouping, { report: usage, yield: yieldReport, projects, goals, range }));
+  // The yield is slower than the rollup: until it answers for the range,
+  // VALUE prints one waiting line and WHERE prints it in its summary's place.
+  const yielded = yieldShown();
+  paintValue(valuePanel(usage, yielded, usageChoice.span), lifetimeModel(now), yieldWaits(), lifetimeWaits());
+  paintWhere(wherePanel(whereGrouping, { report: usage, yield: yielded, projects, goals, range }), yieldWaits());
   // No transcript at all (round 21): MODELS and LEAKS each print one
   // sentence in place of their rows. The pure panels keep their own
   // answers for an empty rollup; the choice is made here.
@@ -1097,6 +1216,14 @@ function noteLine(long: string, short: string = long, command?: string): HTMLEle
   return p;
 }
 
+/** The one grey line of a section that waits for its answer. */
+function waitingLine(text: string): HTMLElement {
+  const p = document.createElement("p");
+  p.className = "panel-note section-waiting";
+  p.textContent = text;
+  return p;
+}
+
 /** Show, hide, or leave one panel; rebuilt only when its model changes,
  * so a toggle a keyboard user sits on survives the polls. */
 function paintPanel(block: HTMLElement, painted: string, model: unknown, content: () => Node[]): string {
@@ -1120,9 +1247,10 @@ function paintPanel(block: HTMLElement, painted: string, model: unknown, content
  * to a screen reader. The rollup's age rides on the label's tooltip and
  * the long note on the note's.
  */
-function paintUsage(head: UsageHead | null, panel: UsagePanel | null): void {
-  const model = head && panel ? { head, panel } : null;
+function paintUsage(head: UsageHead | null, panel: UsagePanel | null, waiting: boolean): void {
+  const model = head && panel ? { head, panel } : waiting ? { waiting } : null;
   usagePainted = paintPanel(usageBlock, usagePainted, model, () => {
+    if (!head || !panel) return [panelLabel("USAGE"), waitingLine(USAGE_WAITING)];
     const row = document.createElement("div");
     row.className = "usage-head";
     const amount = span("usage-amount", head!.amount);
@@ -1652,9 +1780,10 @@ function lifetimeBlock(lifetime: LifetimeModel): HTMLElement {
  * UNIT COSTS (capability 4), null while the lifetime routes have not
  * answered yet or for a watch client, which asks neither. A tile with no
  * source prints a dash. */
-function paintValue(panel: ValuePanel | null, lifetime: LifetimeModel | null): void {
-  const model = panel ? { panel, lifetime } : null;
+function paintValue(panel: ValuePanel | null, lifetime: LifetimeModel | null, yieldWaiting: boolean, lifetimeWaiting: boolean): void {
+  const model = !panel ? null : yieldWaiting ? { yieldWaiting } : { panel, lifetime, lifetimeWaiting };
   valuePainted = paintPanel(valueBlock, valuePainted, model, () => {
+    if (yieldWaiting) return [panelLabel("VALUE"), waitingLine(YIELD_WAITING)];
     const tiles = document.createElement("div");
     tiles.className = "yield";
     for (const tile of panel!.tiles) {
@@ -1672,6 +1801,7 @@ function paintValue(panel: ValuePanel | null, lifetime: LifetimeModel | null): v
     body.className = "panel-body";
     body.append(tiles, noteLine(panel!.note, panel!.shortNote, panel!.command));
     if (lifetime !== null) body.append(lifetimeBlock(lifetime));
+    else if (lifetimeWaiting) body.append(waitingLine(LIFETIME_WAITING));
     return [panelLabel("VALUE"), body];
   });
 }
@@ -1720,8 +1850,8 @@ function splitRow(key: string, name: string, remainder: boolean, fill: number, c
  * its right, one row per group with four columns, the note. The selector
  * is a radio group that prints `[ ]`/`[x]` like the usage toggles; the
  * grouping is kept in storage. */
-function paintWhere(panel: WherePanel | null): void {
-  wherePainted = paintPanel(whereBlock, wherePainted, panel, () => {
+function paintWhere(panel: WherePanel | null, yieldWaiting: boolean): void {
+  wherePainted = paintPanel(whereBlock, wherePainted, panel ? { panel, yieldWaiting } : null, () => {
     const head = document.createElement("div");
     head.className = "panel-head";
     head.append(span("panel-by", "by"));
@@ -1745,6 +1875,7 @@ function paintWhere(panel: WherePanel | null): void {
     }
     head.append(group);
     if (panel!.summary !== null) head.append(span("panel-summary", panel!.summary));
+    else if (yieldWaiting) head.append(span("panel-summary section-waiting", YIELD_WAITING));
     const list = document.createElement("ul");
     list.className = "split";
     for (const row of panel!.rows) {
@@ -2588,7 +2719,7 @@ function lineElement(line: TreeLine<SessionRow>, rails: readonly Join[]): HTMLEl
 /** A closed group with a count: `▶ 9 done`, `▶ Archived (61)`, `▶ 3 idle
  * shells`. Its summary is a line at `depth`; `foldsOpen` keeps it open
  * across repaints. */
-function foldElement(key: string, label: string, depth: number, content: () => Node[], rails: readonly Join[] = []): HTMLElement {
+function foldElement(key: string, label: string, depth: number, content: () => Node[], rails: readonly Join[] = []): HTMLDetailsElement {
   const details = document.createElement("details");
   details.className = "fold";
   details.open = foldsOpen.has(key);
@@ -2621,7 +2752,29 @@ function foldElement(key: string, label: string, depth: number, content: () => N
  * push switch, on one line. */
 function paintFolds(idle: SessionRow[]): void {
   const nodes: Node[] = [];
-  if (archives.length > 0) nodes.push(foldElement("archived", `Archived (${archives.length})`, 0, () => [archivedList(archives)]));
+  if (!archivesAnswered) {
+    // The fold's own line with no triangle, so it wears the fold's grey
+    // and holds the fold's place.
+    const waiting = document.createElement("div");
+    waiting.className = "line line-fold section-waiting";
+    waiting.style.setProperty("--depth", "0");
+    const main = document.createElement("div");
+    main.className = "main";
+    main.append(span("line-name", ARCHIVES_WAITING));
+    waiting.append(main);
+    nodes.push(waiting);
+  }
+  else if (archives.length > 0) {
+    const fold = foldElement("archived", `Archived (${archives.length})`, 0, () => [archivedList(archives)]);
+    // The reader opens the fold: ask for the list again. The click and not
+    // the `toggle` event, which also fires when a repaint rebuilds an open fold.
+    fold.querySelector("summary")?.addEventListener("click", () => {
+      if (fold.open) return;
+      archivesStale = true;
+      void fetchArchives().then(render);
+    });
+    nodes.push(fold);
+  }
   if (idle.length > 0) {
     const now = Date.now();
     // An idle shell is where a bill sits: `claude` exited, and its
@@ -2923,6 +3076,8 @@ async function watchEvents(): Promise<void> {
       if (typeof data.epoch === "string") eventEpoch = data.epoch;
       readStarted(data.events ?? [], data.epoch);
       readPullsChanged(data.events ?? []);
+      // An archive was written, or the page missed events: the list is stale.
+      if (data.pruned || (data.events ?? []).some((e) => e.type === "session.archived")) archivesStale = true;
       if (data.pruned || (data.events?.length ?? 0) > 0) void poll();
     } catch {
       // Network blip or daemon restart: back off, then resume the watch.
