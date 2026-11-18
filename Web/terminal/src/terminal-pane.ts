@@ -24,7 +24,8 @@ import { splitLineSuffix } from "./editor-link";
 import { dragMayCarryFiles, insertionText, quoteForShell, readDrop, uploadDroppedFiles } from "./file-drop";
 import { FilePicker } from "./file-picker";
 import { OutputFlowControl } from "./flow-control";
-import { showPreview, type PreviewHandle, type PreviewMeta } from "./file-preview";
+import type { PreviewHandle, PreviewMeta } from "./file-preview";
+import { previewModule } from "./preview-loader";
 import { contentShiftPx, inputModeFor } from "./soft-keyboard";
 import { parseOsc52 } from "./osc52";
 import { PathLinks, type PathStat } from "./path-links";
@@ -892,6 +893,7 @@ export class TerminalPane {
           this.replayGuard.onParsed(bytes, generation);
         });
         this.host.paneOutput(this);
+        previewModule.afterFirstOutput();
         break;
       }
       case "logState":
@@ -1701,6 +1703,9 @@ export class TerminalPane {
    * come to disagree.
    */
   private async previewFile(path: string, line?: number): Promise<void> {
+    // The module is here already on a page that was idle once; a use before
+    // that starts the load now, beside the fetch.
+    const loading = previewModule.use();
     let response: Response;
     try {
       response = await fetch(this.fileContentUrl(path), {
@@ -1721,9 +1726,18 @@ export class TerminalPane {
       filename: path.slice(path.lastIndexOf("/") + 1) || path,
     };
     const body = await response.blob();
+    let module: Awaited<typeof loading>;
+    try {
+      module = await loading;
+    } catch {
+      // The chunk did not load: an old page after an upgrade, or the
+      // network. The terminal is not affected, and the next use asks again.
+      this.host.paneFlash("Could not load the preview");
+      return;
+    }
     if (this.disposed) return;
     this.preview?.close();
-    this.preview = showPreview(
+    this.preview = module.showPreview(
       this.containerEl,
       meta,
       body,

@@ -774,6 +774,19 @@ boundary. A watch client cannot subscribe, so a key would only let its page buil
 subscription the daemon then refuses, after asking the browser for a permission the
 page cannot take back.
 
+**The bundle on the wire** (chore `asset-delivery`): `vite build` ends with the
+`precompress` plugin of `vite.config.ts`, which writes a `.br` and a `.gz` beside
+each text asset (`src/precompress.ts` holds the list, the same as
+`StaticFileServer.isCompressible`); the daemon sends a sibling and never
+compresses (`docs/http-api.md`, "Static files"). The terminal page's entry does
+not import `file-preview.ts`, `markdown-view.ts`, `markdown.ts` or `highlight.ts`
+statically (`entry-split.test.ts`). `preview-loader.ts` asks for that chunk once,
+when the page is idle after the first terminal output, and keeps the module: a
+page that stays open across an upgrade then has the preview, though the new web
+root no longer holds the old chunk name. A use before the idle load starts the
+load at once; a load that fails shows `Could not load the preview` on the pane,
+and the next use asks again (`preview-loader.test.ts`).
+
 **The service worker** is `Web/terminal/public/sw.js`, copied into the bundle unbuilt
 and served at `/sw.js` from the web root, which is what gives it the scope `/` and
 control of `/sessions` and `/`. A worker served under a path controls only that path.
