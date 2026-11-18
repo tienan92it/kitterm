@@ -14,6 +14,7 @@
  */
 
 import type { SplitDir } from "./pane-layout";
+import { queryString } from "./query";
 
 /** A path token from the output, less the `:line` or `:line:col` a compiler
  * or a linter appends. */
@@ -125,4 +126,17 @@ export function editorLayoutPlan(): PresetSplit[] {
     { dir: "row", ratio: 0.38, command: editorCommand({ cwd: true }) },
     { dir: "column", ratio: 0.5, command: lazygitCommand() },
   ];
+}
+
+/** `/edit?path=<file>&session=<id>`: the page that edits the same file
+ * (`code-editor` round 4). */
+export function editPageUrl(path: string, session?: string): string {
+  return `/edit?${queryString({ path, session: session || undefined })}`;
+}
+
+/** The `/edit` page for a pane's folder (round 7, the ⌘⇧E chord): the cwd
+ * the daemon's `cwd` frames gave, or `.` before the first one, which the
+ * daemon resolves against the session's cwd, so the session rides along. */
+export function paneEditUrl(cwd: string | null, session: string | null): string {
+  return editPageUrl(cwd ?? ".", session ?? undefined);
 }

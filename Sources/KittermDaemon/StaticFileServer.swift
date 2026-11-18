@@ -53,6 +53,82 @@ public enum StaticFileServer: Sendable {
         return nil
     }
 
+    /// A content coding the build writes a sibling for (`vite.config.ts`,
+    /// the `precompress` plugin): `main-abc.js.br` beside `main-abc.js`.
+    public enum ContentCoding: String, Sendable, CaseIterable {
+        case br
+        case gzip
+
+        /// The extension the sibling adds to the name of the original.
+        public var fileExtension: String {
+            switch self {
+            case .br: return "br"
+            case .gzip: return "gz"
+            }
+        }
+    }
+
+    /// The codings the request's `Accept-Encoding` allows, in the order the
+    /// daemon prefers them: `br`, then `gzip`. A coding with `q=0` is
+    /// refused. `*` stands for each coding the header does not name.
+    public static func acceptedCodings(_ acceptEncoding: [String]) -> [ContentCoding] {
+        var weights: [String: Double] = [:]
+        for value in acceptEncoding {
+            for item in value.split(separator: ",") {
+                let parts = item.split(separator: ";").map { $0.trimmingCharacters(in: .whitespaces) }
+                guard let name = parts.first?.lowercased(), !name.isEmpty else { continue }
+                var weight = 1.0
+                for parameter in parts.dropFirst() {
+                    let pair = parameter.split(separator: "=", maxSplits: 1)
+                        .map { $0.trimmingCharacters(in: .whitespaces) }
+                    if pair.count == 2, pair[0].lowercased() == "q" {
+                        // A weight that does not parse refuses the coding.
+                        weight = Double(pair[1]) ?? 0
+                    }
+                }
+                weights[name] = weight
+            }
+        }
+        return ContentCoding.allCases.filter { (weights[$0.rawValue] ?? weights["*"] ?? 0) > 0 }
+    }
+
+    /// Whether the build writes `.br` and `.gz` siblings for this extension.
+    /// The list is the one in `vite.config.ts`; images and `.map` are not in it.
+    public static func isCompressible(_ ext: String) -> Bool {
+        switch ext.lowercased() {
+        case "js", "mjs", "css", "html", "svg", "json", "webmanifest": return true
+        default: return false
+        }
+    }
+
+    /// Whether the request path names a sibling itself. The daemon serves a
+    /// sibling only as the encoding of its original, never by its own name.
+    public static func isPrecompressedSibling(_ path: String) -> Bool {
+        let relative = normalizedRelativePath(path).lowercased()
+        return ContentCoding.allCases.contains { relative.hasSuffix("." + $0.fileExtension) }
+    }
+
+    /// Whether `file` is `<root>/assets/<stem>-<hash>.<ext>`: a name Vite
+    /// derives from the content, eight characters of `[A-Za-z0-9_-]` after
+    /// the last `-` of the stem. Such a name never gets other content, so
+    /// the answer can be `immutable`.
+    public static func isHashedAsset(_ file: URL, root: URL) -> Bool {
+        let assets = root.standardizedFileURL.appendingPathComponent("assets", isDirectory: true).path + "/"
+        guard file.standardizedFileURL.path.hasPrefix(assets) else { return false }
+        let name = file.lastPathComponent
+        guard let dot = name.firstIndex(of: "."), dot != name.startIndex else { return false }
+        let stem = name[..<dot].utf8
+        guard stem.count > 9 else { return false }
+        let tail = stem.suffix(9)
+        guard tail.first == UInt8(ascii: "-") else { return false }
+        return tail.dropFirst().allSatisfy { byte in
+            (byte >= UInt8(ascii: "a") && byte <= UInt8(ascii: "z"))
+                || (byte >= UInt8(ascii: "A") && byte <= UInt8(ascii: "Z"))
+                || (byte >= UInt8(ascii: "0") && byte <= UInt8(ascii: "9"))
+                || byte == UInt8(ascii: "_") || byte == UInt8(ascii: "-")
+        }
+    }
+
     private static func candidateRoots() -> [URL] {
         var roots: [URL] = []
         let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)

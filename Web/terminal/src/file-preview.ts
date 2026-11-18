@@ -18,8 +18,8 @@
  * terminal underneath.
  */
 
+import { editPageUrl } from "./editor-link";
 import { languageFor } from "./highlight";
-import { queryString } from "./query";
 import {
   basename,
   cannotRead,
@@ -44,6 +44,9 @@ import {
 } from "./markdown-view";
 
 export { formatBytes } from "./markdown-view";
+// The entry needs these two with no preview behind them; they live in
+// `editor-link.ts` and keep this address for the pages that import it.
+export { editPageUrl, paneEditUrl } from "./editor-link";
 
 /** What the daemon said about the file it sent. */
 export interface PreviewMeta {
@@ -72,19 +75,6 @@ export interface PreviewOptions {
   /** The session the `/edit` page reads the file through, so a relative
    * path resolves where the shell resolves it. */
   sessionId?: string;
-}
-
-/** `/edit?path=<file>&session=<id>`: the page that edits the same file
- * (`code-editor` round 4). */
-export function editPageUrl(path: string, session?: string): string {
-  return `/edit?${queryString({ path, session: session || undefined })}`;
-}
-
-/** The `/edit` page for a pane's folder (round 7, the ⌘⇧E chord): the cwd
- * the daemon's `cwd` frames gave, or `.` before the first one, which the
- * daemon resolves against the session's cwd, so the session rides along. */
-export function paneEditUrl(cwd: string | null, session: string | null): string {
-  return editPageUrl(cwd ?? ".", session ?? undefined);
 }
 
 /** `/md?path=<file>`: the page that shows the same file full width. */

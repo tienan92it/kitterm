@@ -1,5 +1,5 @@
 import { writeClipboard } from "./clipboard";
-import { editorCommand, editorLayoutPlan } from "./editor-link";
+import { editorCommand, editorLayoutPlan, paneEditUrl } from "./editor-link";
 import { ExtraKeysBar, isTouchPrimary } from "./extra-keys";
 import { KeyboardToggle } from "./keyboard-toggle";
 import {
@@ -20,7 +20,6 @@ import {
   type PaneSession,
 } from "./layout-store";
 import { NotificationCenter, type TerminalNotification } from "./notifications";
-import { paneEditUrl } from "./file-preview";
 import { isMacPlatform, type PaneCommand } from "./pane-keys";
 import {
   countPanes,

@@ -4168,26 +4168,38 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             )
             return
         }
-        guard let file = StaticFileServer.file(for: path, root: root),
-              let data = try? Data(contentsOf: file.url)
+        guard !StaticFileServer.isPrecompressedSibling(path),
+              let file = StaticFileServer.file(for: path, root: root)
         else {
-            writeJSON(
-                status: .notFound,
-                body: #"{"ok":false,"error":"not found"}"#,
-                context: context,
-                version: head.version,
-                keepAlive: false
-            )
+            notFoundStatic(head: head, context: context)
+            return
+        }
+
+        // One file read, as before: the sibling the build wrote, when the
+        // request accepts its coding, in place of the original. A bundle
+        // with no sibling (a dev checkout, an old build) answers the original.
+        let compressible = StaticFileServer.isCompressible(file.url.pathExtension)
+        var coding: StaticFileServer.ContentCoding?
+        var body: Data?
+        if compressible {
+            for candidate in StaticFileServer.acceptedCodings(head.headers["accept-encoding"]) {
+                let sibling = file.url.appendingPathExtension(candidate.fileExtension)
+                if let data = try? Data(contentsOf: sibling) {
+                    coding = candidate
+                    body = data
+                    break
+                }
+            }
+        }
+        guard let data = body ?? (try? Data(contentsOf: file.url)) else {
+            notFoundStatic(head: head, context: context)
             return
         }
 
         var headers = HTTPHeaders()
-        headers.add(name: "Content-Type", value: file.contentType)
-        headers.add(name: "Content-Length", value: "\(data.count)")
-        headers.add(name: "Cache-Control", value: path == "/" || path.hasSuffix(".html")
-            ? "no-cache"
-            : "public, max-age=3600")
-        headers.add(name: "Connection", value: head.isKeepAlive ? "keep-alive" : "close")
+        if compressible {
+            headers.add(name: "Vary", value: "Accept-Encoding")
+        }
         // The cookie carries exactly the token that was presented — a watch
         // token must never be upgraded to the control cookie.
         if let authCookie {
@@ -4196,17 +4208,39 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 value: AccessPolicy.setCookieHeaderValue(for: authCookie, secure: secureCookie)
             )
         }
-
-        let responseHead = HTTPResponseHead(version: head.version, status: .ok, headers: headers)
-        context.write(wrapOutboundOut(.head(responseHead)), promise: nil)
-        var buffer = context.channel.allocator.buffer(capacity: data.count)
-        buffer.writeBytes(data)
-        context.write(wrapOutboundOut(.body(.byteBuffer(buffer))), promise: nil)
-        context.writeAndFlush(wrapOutboundOut(.end(nil))).whenComplete { _ in
-            if !head.isKeepAlive {
-                context.close(promise: nil)
+        if StaticFileServer.isHashedAsset(file.url, root: root) {
+            // The name is a hash of the content: a year, and no revalidation.
+            headers.add(name: "Cache-Control", value: "public, max-age=31536000, immutable")
+        } else {
+            // A page, the worker, the manifest, an icon: the name stays and
+            // the content changes with a build, so the browser asks each
+            // time and a 304 costs no body. The tag covers the bytes sent,
+            // so each coding has its own tag.
+            let etag = "\"\(Self.fnv1a(data))\""
+            headers.add(name: "Cache-Control", value: "no-cache")
+            headers.add(name: "ETag", value: etag)
+            if Self.ifNoneMatch(head.headers, names: etag) {
+                writeBytes(status: .notModified, headers: headers, data: Data(),
+                           context: context, version: head.version, keepAlive: head.isKeepAlive)
+                return
             }
         }
+        headers.add(name: "Content-Type", value: file.contentType)
+        if let coding {
+            headers.add(name: "Content-Encoding", value: coding.rawValue)
+        }
+        writeBytes(status: .ok, headers: headers, data: data,
+                   context: context, version: head.version, keepAlive: head.isKeepAlive)
+    }
+
+    private func notFoundStatic(head: HTTPRequestHead, context: ChannelHandlerContext) {
+        writeJSON(
+            status: .notFound,
+            body: #"{"ok":false,"error":"not found"}"#,
+            context: context,
+            version: head.version,
+            keepAlive: false
+        )
     }
 
     private func uriPath(_ uri: String) -> String {
