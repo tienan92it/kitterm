@@ -1,0 +1,1 @@
+- 2026-11-18 · The crew limit counts building sessions: three that build, six with a `goal:` label in all; three duplicates in the skill became pointers to hold the 11,500 word ceiling (claude-sonnet-5-5) · PR #222 · Cost: $1.05 · 4012k in (97% cached) · 22k out · 0h 24m
