@@ -133,8 +133,8 @@ final class GoalsLayoutDocsTests: XCTestCase {
             """
         ),
         (
-            "a review session and a helper count toward the cap of three",
-            "A review session and a crew's helper count toward the cap of three."
+            "a documents-only session, a review session and a helper are not building sessions",
+            "A documents-only session, a review session and a crew's helper are not building sessions."
         ),
         (
             "the round record carries a `- Cost:` line under its header",

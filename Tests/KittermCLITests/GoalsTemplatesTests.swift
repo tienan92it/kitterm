@@ -57,6 +57,27 @@ final class GoalsTemplatesTests: XCTestCase {
         }
     }
 
+    /// The text before `split-crew-limit` counted every crew session toward
+    /// the cap of three. Rebuild it from the current template and check that
+    /// `loopState` reads it as `behind`, so `--refresh` rewrites it rather
+    /// than refusing it as edited by hand.
+    func testTheTemplateBeforeTheSplitReadsBehind() throws {
+        let start = try XCTUnwrap(GoalsTemplates.loop.range(of: "- At most one round per goal at a time.\n"))
+        let endMarker = try XCTUnwrap(GoalsTemplates.loop.range(of: "(`facts.md`).\n", range: start.upperBound..<GoalsTemplates.loop.endIndex))
+        var previous = GoalsTemplates.loop
+        previous.replaceSubrange(
+            start.lowerBound..<endMarker.upperBound,
+            with: """
+                - At most one round per goal at a time, and at most three crew sessions
+                  live across all projects. A review session and a crew's helper count
+                  toward the cap of three.
+
+                """)
+        let result = GoalsTemplates.loopState(of: Data(previous.utf8))
+        XCTAssertEqual(result.state, .behind)
+        XCTAssertEqual(result.hash, "a91c6753da227833b6e37ee69bc1fdbda5699d614dd344fa1e3e54427302551b")
+    }
+
     /// The goal's `STATE.md` opens with the heading and the status line the
     /// daemon's summary parser reads, with the slug as the placeholder
     /// `goal new` replaces.

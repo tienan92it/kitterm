@@ -20,6 +20,8 @@ final class StaleLoopPhrasesTests: XCTestCase {
         ("Hold one `wait_for_events`", "`kitterm foreman watch` in the background, and the turn yields"),
         ("One `wait_for_events` watches the whole daemon", "`kitterm foreman watch` in the background"),
         ("One `wait_for_events` call watches every session", "`kitterm foreman watch` in the background"),
+        // The cap counted every crew session before `split-crew-limit`.
+        ("count toward the cap of three", "building sessions: `LOOP.md`, \"Budget\""),
         // Model ids the skill's model table named before Claude Code 2.1.322.
         ("`claude-fable-5-1`", "`claude-fable-5-2`"),
         ("`claude-sonnet-5`", "`claude-sonnet-5-5`"),

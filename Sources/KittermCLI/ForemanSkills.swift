@@ -66,8 +66,7 @@ enum ForemanSkills {
           `LOOP.md`, "One foreman for every scope", names.
         - Never edit product code, and never answer a permission dialog for a crew
           agent (`LOOP.md`, "Roles"). Tell the human and link the pane.
-        - Keep no state of your own. Rebuild your view from each project's
-          `docs/goals/` and from the daemon on every scan.
+        - Keep no state of your own (`LOOP.md`, "One foreman for every scope").
         - Post every digest with `post_note` in one call, then print it in your
           pane. The event
           feed and the archive keep the note; the pane's raw output is not
@@ -92,13 +91,11 @@ enum ForemanSkills {
 
         `LOOP.md`, "Goal or chore", is the test of what is a goal, and gives a
         chore's one file, `docs/goals/chores/<ISO date>-<slug>.md`. Open a chore
-        with `kitterm round open <root> <slug> --task <slug> --chore`: it cuts
-        `chore/<slug>`, opens the draft pull request, and spawns the crew session
-        with `crew:<slug>`, `task:<slug>` and `pr:<N>`; start `claude` as step 2
-        of "One round" does. Close it with
-        `kitterm round close <root> <slug> --chore`, which writes the file with
-        the line `kitterm archive cost <id> --line` prints for the archived crew
-        session. Replace the file's marker, then run the close again with
+        with `kitterm round open <root> <slug> --task <slug> --chore`, and start
+        `claude` as step 2 of "One round" does. Close it with
+        `kitterm round close <root> <slug> --chore`, which writes the line that
+        `kitterm archive cost <id> --line` prints; `docs/control-plane.md` gives
+        both commands. Replace the file's marker, then run the close again with
         `--commit` once `gh pr checks <N>` is green on the head.
 
         ## Task list
@@ -219,8 +216,8 @@ enum ForemanSkills {
            The round's own session is the one with `crew:<slug>`; a `crew:helper`
            session beside it is a fixture the crew made. `LOOP.md`, "One foreman
            for every scope", says when a round is open.
-        5. Count the live sessions with a `goal:` label across all projects, for
-           the cap of three in `LOOP.md`, "Budget".
+        5. Count the building sessions and the live sessions with a `goal:` label
+           across all projects, against the caps in `LOOP.md`, "Budget".
 
         ## Schedule
 
@@ -363,10 +360,8 @@ enum ForemanSkills {
            `claude` exits, and archiving is what ends it.
 
         7. **Reflect.** Answer one question in the record: what cost time that a
-           rule or a check could prevent? Sort what you learned by the scopes of
-           `LOOP.md`: a repository fact goes to `docs/goals/facts.md` with its
-           source (`(<ISO date>, round <n>)`); a goal-local finding stays in the
-           record. Propose a change to `LOOP.md` in the record
+           rule or a check could prevent? Sort what you learned by the two scopes
+           that the opening of `LOOP.md` names. Propose a change to `LOOP.md` in the record
            when the answer is a procedure.
 
         8. **Write the record and commit.** Run one command in your shell:

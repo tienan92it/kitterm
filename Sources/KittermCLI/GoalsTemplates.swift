@@ -37,8 +37,10 @@ enum GoalsTemplates {
     /// `LOOP.md` that is still a template and refuses one a human edited.
     /// When `loop` changes, append the hash it had before the change;
     /// `GoalsTemplatesTests` pins that the current one is listed. Seeded
-    /// from `git log -- examples/goals/LOOP.md`: `one-rule-one-place`
-    /// round 3 (current, the correction: a failed round closes on a red
+    /// from `git log -- examples/goals/LOOP.md`: chore `split-crew-limit`
+    /// (current, "Budget" counts building sessions, not crew sessions;
+    /// a91c675, the cap of three crew sessions), `one-rule-one-place`
+    /// round 3 ( the correction: a failed round closes on a red
     /// check; 7f5357e, two corrections per round and `round close
     /// --decision`; a63788e, the round 1 correction: "The floor" reads `gh pr checks`
     /// before `kitterm round close`; 83ea45c, each rule has one home: the
@@ -55,6 +57,7 @@ enum GoalsTemplates {
     /// `human-file-edits` (#166), `loop-and-skill` round 2 (092652221ab1),
     /// round 1 (a5592bd), 7f30556 (#139), 41b6a76 (#113) and ac20d04 (#111).
     static let loopHistory: [String] = [
+        "99a5677255b5612fec2169e0cd93e933e3eb33048e86a64741fe33571dd88e9a",
         "a91c6753da227833b6e37ee69bc1fdbda5699d614dd344fa1e3e54427302551b",
         "7f5357e67a3e00c1242e68bf545a47130e19423dd60115a106c1d4b817af4bf9",
         "a63788e8fa76c0f120026f71ffa0cba817c0d92ac67f73e42d1e656c71ded55f",
@@ -479,9 +482,13 @@ enum GoalsTemplates {
           the other case: it spends the budget and it gets a record.
         - One crew session per round, plus review sessions when the round's
           capability touches `<a file where a regression costs the most>`.
-        - At most one round per goal at a time, and at most three crew sessions
-          live across all projects. A review session and a crew's helper count
-          toward the cap of three.
+        - At most one round per goal at a time.
+        - At most three building sessions live across the foreman's scope, and at
+          most six sessions with a `goal:` label. A building session runs the
+          floor's build or test commands. A documents-only session, a review session
+          and a crew's helper are not building sessions. The foreman decides when it
+          opens the round, and says so in the digest. Machine load restarted the
+          daemon on 2026-09-09 (`facts.md`).
         - Commit after every round. `kitterm round close --commit` commits the
           record and the state on the goal's branch before the foreman reports
           the digest; a new fact in `facts.md` goes in a commit of its own before
