@@ -382,9 +382,13 @@ chore's session carries `crew:<slug>`, `task:<slug>` and `pr:<N>`.
   the other case: it spends the budget and it gets a record.
 - One crew session per round, plus review sessions when the round's
   capability touches `<a file where a regression costs the most>`.
-- At most one round per goal at a time, and at most three crew sessions
-  live across all projects. A review session and a crew's helper count
-  toward the cap of three.
+- At most one round per goal at a time.
+- At most three building sessions live across the foreman's scope, and at
+  most six sessions with a `goal:` label. A building session runs the
+  floor's build or test commands. A documents-only session, a review session
+  and a crew's helper are not building sessions. The foreman decides when it
+  opens the round, and says so in the digest. Machine load restarted the
+  daemon on 2026-09-09 (`facts.md`).
 - Commit after every round. `kitterm round close --commit` commits the
   record and the state on the goal's branch before the foreman reports
   the digest; a new fact in `facts.md` goes in a commit of its own before
