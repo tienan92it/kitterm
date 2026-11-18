@@ -1,0 +1,1 @@
+- 2026-11-18 · Assets arrive compressed (`.br`, `.gz` siblings from the build), hashed files are `immutable`, pages have an `ETag`, and the preview loads when idle: the terminal page costs 136,003 bytes on the wire, was 700,373 (claude-fable-5-2) · PR #221 · Cost: $5.80 · 5821k in (97% cached) · 53k out · 0h 18m
