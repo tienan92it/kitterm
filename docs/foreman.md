@@ -94,7 +94,8 @@ it in the fleet view.
 `list_sessions` and `wait_for_events` report a session's state in the crew
 vocabulary:
 
-- `working` — a command is running.
+- `working` — a command is running, or the agent waits on its
+  background job (`agent.ownJobs`, `docs/http-api.md`).
 - `needs-input` — the agent sent a `Notification` hook; it wants you.
 - `needs-approval` — a tool call is blocked, waiting for you to allow or deny.
 - `completed` — the agent's turn finished (a `Stop` hook).
@@ -119,8 +120,7 @@ reads `claude` although the launcher execs a binary named after its version
 agent is still running from one whose agent has quit, which the typed state
 alone does not say: `completed` means the agent's turn finished, whether or
 not `claude` is still there to take the next message. The daemon reads the
-field from the kernel when you ask, so it is current at the moment of the
-call.
+field from the kernel at each call.
 
 ## The loop
 

@@ -717,6 +717,25 @@ nothing that was waiting exists to be told about twice. A live upgrade restores 
 session's last hook report, which gates the `agent.status` transition at its source, so
 an unchanged state is silent before it reaches the notifier.
 
+**A turn that waits on its own job.** An agent can end its turn while a background
+shell or a monitor of its own still runs. The `Stop` hook of Claude Code 2.1.330 names
+those jobs in `background_tasks`. `AgentStatus.runningJobs` counts the entries whose
+`status` is `running`, whatever their `type`. With a count above zero,
+`HTTPAPIHandler.handleHookEvent` records `working` with `ownJobs` in place of
+`completed`, and drops the idle `Notification` (`notification_type: "idle_prompt"`)
+while that report stands. Both decisions are at the source of the transition, so the
+feed, the notifier and `kitterm foreman watch` see nothing. The count is on the
+session's hook report and goes through a live upgrade (`TakeoverState`, an optional
+field). No hook says that the agent has exited, so `MergedSessionState.merge` reads
+this one report only while a program holds the terminal (`foregroundProgram`, read
+from the kernel when the row is built). The signal is the hook payload and not the
+screen: the daemon does not emulate a terminal (ADR 0001), and the status bar rule
+`waiting-on-own-job` stays in the CLI (`ScreenState.swift`) for `screen_state`. A
+payload without the fields gets the old rule. Two costs are accepted. A job that
+never ends, for example a dev server in the background, keeps the row `working` with
+the detail, and the row never reads `completed`. A question that the agent asks in
+its last message while a job runs reads `working`.
+
 **Rate limit.** At most 4 messages per session per 60 seconds. A message past the
 limit is dropped and logged, not queued: a human told four times in a minute that one
 session needs them is looking at it already, and a queue would deliver a state the
