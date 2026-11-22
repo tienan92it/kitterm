@@ -91,11 +91,15 @@ public struct TakeoverState: Codable, Equatable, Sendable {
         public var message: String?
         /// Epoch milliseconds.
         public var at: Int64
+        /// `AgentStatus.ownJobs`. Optional in the file, so a format 1 state
+        /// written before it still loads.
+        public var ownJobs: Int?
 
-        public init(report: String, message: String?, at: Int64) {
+        public init(report: String, message: String?, at: Int64, ownJobs: Int? = nil) {
             self.report = report
             self.message = message
             self.at = at
+            self.ownJobs = ownJobs
         }
     }
 
@@ -370,7 +374,8 @@ extension TakeoverState.AgentStatusRecord {
         self.init(
             report: status.report.rawValue,
             message: status.message,
-            at: Int64(status.at.timeIntervalSince1970 * 1000)
+            at: Int64(status.at.timeIntervalSince1970 * 1000),
+            ownJobs: status.ownJobs > 0 ? status.ownJobs : nil
         )
     }
 
@@ -379,7 +384,8 @@ extension TakeoverState.AgentStatusRecord {
         return AgentStatus(
             report: report,
             message: message,
-            at: Date(timeIntervalSince1970: Double(at) / 1000)
+            at: Date(timeIntervalSince1970: Double(at) / 1000),
+            ownJobs: ownJobs ?? 0
         )
     }
 }

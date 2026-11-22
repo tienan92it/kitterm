@@ -26,11 +26,41 @@ public struct AgentStatus: Sendable, Equatable {
     /// The `message` the hook carried, if any (the text a human reads).
     public let message: String?
     public let at: Date
+    /// How many background jobs of its own the agent waits on: the `running`
+    /// entries of the `Stop` payload's `background_tasks`. Above zero only on
+    /// a `working` report that a `Stop` recorded (`AgentStatus.runningJobs`).
+    public let ownJobs: Int
 
-    public init(report: AgentReport, message: String?, at: Date = Date()) {
+    public init(report: AgentReport, message: String?, at: Date = Date(), ownJobs: Int = 0) {
         self.report = report
         self.message = message
         self.at = at
+        self.ownJobs = ownJobs
+    }
+
+    /// The agent ended its turn with a job of its own still running, so the
+    /// turn is not finished: the job's end starts the next one.
+    public var waitsOnOwnJob: Bool { report == .working && ownJobs > 0 }
+
+    /// The count of running background jobs a `Stop` payload names.
+    ///
+    /// Claude Code 2.1.330 sends `background_tasks`, one object per job with
+    /// a `type` (`shell` and `monitor` are the two measured) and a `status`.
+    /// Only `status` is read: an entry counts when it is `running`, whatever
+    /// its type, so a new type of job is still a job. A payload with no such
+    /// field (an older Claude Code, or a later layout) counts zero, and the
+    /// `Stop` then reads `completed` as it always did.
+    public static func runningJobs(in event: [String: Any]?) -> Int {
+        guard let tasks = event?["background_tasks"] as? [Any] else { return 0 }
+        return tasks.count { ($0 as? [String: Any])?["status"] as? String == "running" }
+    }
+
+    /// Whether a `Notification` payload is Claude Code's idle notice
+    /// ("Claude is waiting for your input", about 60 s after a turn ends),
+    /// by its `notification_type`. A permission notice, a question, and a
+    /// payload with no type are not.
+    public static func isIdleNotice(_ event: [String: Any]?) -> Bool {
+        event?["notification_type"] as? String == "idle_prompt"
     }
 }
 

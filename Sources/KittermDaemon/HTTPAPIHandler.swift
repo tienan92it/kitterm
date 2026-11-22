@@ -825,7 +825,8 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             derived: derived,
             agent: agent,
             pendingApproval: pendingApproval,
-            exited: summary.exited
+            exited: summary.exited,
+            programHoldsTerminal: summary.foregroundProgram != nil
         )
         var item: [String: Any] = [
             "id": summary.id.uuidString,
@@ -871,6 +872,10 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                 "at": Int(agent.at.timeIntervalSince1970 * 1000),
             ]
             if let message = agent.message { status["message"] = message }
+            // The agent ended its turn with jobs of its own still running.
+            // Only while this report is what `mergedState` reads: a pane
+            // whose agent has exited prints no such detail.
+            if merged == .working, agent.waitsOnOwnJob { status["ownJobs"] = agent.ownJobs }
             item["agent"] = status
         }
         // The Claude Code session that ran here, from its hooks: the id and
@@ -3761,14 +3766,25 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
                         emitAgentStatus(sessionID, session: session, report: .working, message: nil)
                     }
                 case "Notification":
+                    // The idle notice of an agent that waits on its own job
+                    // is not a request for the human: the job's end starts
+                    // the next turn. Dropped, so the report stays `working`.
+                    if AgentStatus.isIdleNotice(event), session.agentStatus?.waitsOnOwnJob == true {
+                        break
+                    }
                     let message = (event?["message"] as? String)
                         .map { String($0.prefix(KittermConstants.maxSessionNoteLength)) }
                     if session.recordAgentStatus(.needsInput, message: message) {
                         emitAgentStatus(sessionID, session: session, report: .needsInput, message: message)
                     }
                 case "Stop":
-                    if session.recordAgentStatus(.completed, message: nil) {
-                        emitAgentStatus(sessionID, session: session, report: .completed, message: nil)
+                    // A turn that ends with a job of its own still running
+                    // is not finished: recorded as `working` with the count,
+                    // which is no transition after a `working`.
+                    let ownJobs = AgentStatus.runningJobs(in: event)
+                    let report: AgentReport = ownJobs > 0 ? .working : .completed
+                    if session.recordAgentStatus(report, message: nil, ownJobs: ownJobs) {
+                        emitAgentStatus(sessionID, session: session, report: report, message: nil)
                     }
                 default:
                     break

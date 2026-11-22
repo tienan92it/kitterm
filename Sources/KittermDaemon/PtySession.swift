@@ -1746,11 +1746,14 @@ public final class PtySession: @unchecked Sendable {
     /// takeover stays silent. It ends with the session: a shell that exits
     /// is reaped with its report, and a fresh session's first report is
     /// always a transition.
+    ///
+    /// `ownJobs` is the count of running background jobs a `Stop` named; it
+    /// rides on the `working` report and is no transition by itself.
     @discardableResult
-    public func recordAgentStatus(_ report: AgentReport, message: String?) -> Bool {
+    public func recordAgentStatus(_ report: AgentReport, message: String?, ownJobs: Int = 0) -> Bool {
         stateLock.withLock {
             let previous = agentStatusStorage
-            agentStatusStorage = AgentStatus(report: report, message: message, at: Date())
+            agentStatusStorage = AgentStatus(report: report, message: message, at: Date(), ownJobs: ownJobs)
             return previous?.report != report || previous?.message != message
         }
     }

@@ -103,15 +103,22 @@ public enum MergedSessionState: String, Sendable {
     /// after a stale notification produces newer marks, which then win — a
     /// later exit code outranks an older `completed`. No hooks at all means
     /// marks alone, exactly as before.
+    ///
+    /// A `working` report that waits on the agent's own job
+    /// (`AgentStatus.waitsOnOwnJob`) has no hook to end it when the agent
+    /// itself is gone, so it counts only while a program holds the terminal:
+    /// `programHoldsTerminal` false drops that one report and the marks
+    /// decide. A caller that just received a hook passes the default.
     public static func merge(
         derived: DerivedSessionState,
         agent: AgentStatus?,
         pendingApproval: Bool,
-        exited: Bool
+        exited: Bool,
+        programHoldsTerminal: Bool = true
     ) -> MergedSessionState {
         if exited { return .exited }
         if pendingApproval { return .needsApproval }
-        if let agent, derived.lastMarkAt.map({ agent.at >= $0 }) ?? true {
+        if let agent, agentReportWins(derived: derived, agent: agent, programHoldsTerminal: programHoldsTerminal) {
             switch agent.report {
             case .needsInput: return .needsInput
             case .working: return .working
@@ -122,5 +129,15 @@ public enum MergedSessionState: String, Sendable {
         if let exit = derived.lastExit, exit != 0 { return .failed }
         if derived.state == .idle { return .idle }
         return .unknown
+    }
+
+    /// Whether the hook report, not the marks, is the evidence the merge
+    /// reads: the report is the newer of the two, and a report that waits on
+    /// the agent's own job still has a program at the terminal.
+    static func agentReportWins(
+        derived: DerivedSessionState, agent: AgentStatus, programHoldsTerminal: Bool
+    ) -> Bool {
+        if agent.waitsOnOwnJob && !programHoldsTerminal { return false }
+        return derived.lastMarkAt.map { agent.at >= $0 } ?? true
     }
 }
