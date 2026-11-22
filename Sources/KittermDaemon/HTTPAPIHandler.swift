@@ -821,12 +821,13 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
     ) -> [String: Any] {
         let agent = summary.agentStatus
         let derived = DerivedSessionState.derive(from: summary.marks)
+        let programHoldsTerminal = summary.foregroundProgram != nil
         let merged = MergedSessionState.merge(
             derived: derived,
             agent: agent,
             pendingApproval: pendingApproval,
             exited: summary.exited,
-            programHoldsTerminal: summary.foregroundProgram != nil
+            programHoldsTerminal: programHoldsTerminal
         )
         var item: [String: Any] = [
             "id": summary.id.uuidString,
@@ -873,9 +874,13 @@ final class HTTPAPIHandler: ChannelInboundHandler, RemovableChannelHandler, @unc
             ]
             if let message = agent.message { status["message"] = message }
             // The agent ended its turn with jobs of its own still running.
-            // Only while this report is what `mergedState` reads: a pane
-            // whose agent has exited prints no such detail.
-            if merged == .working, agent.waitsOnOwnJob { status["ownJobs"] = agent.ownJobs }
+            // Only while this report is what `mergedState` was read from.
+            // `working` alone does not say that: the marks give `working`
+            // too, for a command the human runs after the agent has exited.
+            let fromReport = MergedSessionState.agentReportWins(
+                derived: derived, agent: agent, programHoldsTerminal: programHoldsTerminal
+            )
+            if merged == .working, fromReport, agent.waitsOnOwnJob { status["ownJobs"] = agent.ownJobs }
             item["agent"] = status
         }
         // The Claude Code session that ran here, from its hooks: the id and

@@ -367,6 +367,65 @@ final class HookOwnJobRouteTests: XCTestCase {
         XCTAssertNil(ownJobs(row))
     }
 
+    /// Until the session's marks say a command is running (a preExec mark).
+    private func waitForRunningMark() async throws {
+        let deadline = SuspendingClock.now + .seconds(10)
+        while SuspendingClock.now < deadline {
+            if DerivedSessionState.derive(from: session.marksSnapshot()).state == .running { return }
+            try await Task.sleep(for: .milliseconds(50), clock: .suspending)
+        }
+        XCTFail("the preExec mark never arrived")
+    }
+
+    /// The typed line that sends a preExec mark (OSC 133;C), as a shell with
+    /// integration does before each command, then runs `command`.
+    private static func marked(_ command: String) -> Data {
+        Data(#"printf '\033]133;C\007'; \#(command)"#.utf8 + [0x0A])
+    }
+
+    /// The human exits the agent and runs a long command in the same pane.
+    /// The command's mark is newer than the report, so the marks give
+    /// `working`, and the row must print the command, not the wait: the
+    /// count shows only when the report is what the state was read from.
+    func testACommandNewerThanTheReportIsWorkingWithNoJobCount() async throws {
+        let id = try await registerAgentPane()
+        try await hook(id, Self.preToolUse)
+        try await hook(id, Self.stopWithAShell)
+        let before = try await sessionRow(id)
+        XCTAssertEqual(ownJobs(before), 1)
+
+        let agent = try XCTUnwrap(session.foregroundLeader?.group)
+        XCTAssertEqual(kill(agent, SIGKILL), 0)
+        try session.write(Self.marked("sleep 500"))
+        try await waitForRunningMark()
+        try await waitForForeground("sleep", in: session)
+
+        let row = try await sessionRow(id)
+        XCTAssertEqual(row["state"] as? String, "running")
+        XCTAssertEqual(row["mergedState"] as? String, "working")
+        XCTAssertNil(ownJobs(row), "the marks made this row working, not the report")
+    }
+
+    /// The second path to the same row: no program holds the terminal, so
+    /// the report is dropped, and marks older than the report say running.
+    func testRunningMarksWithNoProgramAtTheTerminalCarryNoJobCount() async throws {
+        let session = try PtySession.spawn(cwd: NSTemporaryDirectory(), labels: SessionLabels.parse("run:x"))
+        self.session = session
+        try await session.makeReader(group: group, eventLoop: group.next()).get()
+        try session.write(Self.marked("true"))
+        try await waitForRunningMark()
+        let registered = await registry.register(session)
+        let id = try XCTUnwrap(registered)
+        XCTAssertNil(session.foregroundProgram)
+
+        try await hook(id, Self.preToolUse)
+        try await hook(id, Self.stopWithAShell)
+
+        let row = try await sessionRow(id)
+        XCTAssertEqual(row["mergedState"] as? String, "working")
+        XCTAssertNil(ownJobs(row), "the marks made this row working, not the report")
+    }
+
     /// The same rule at the merge, with marks: a shell whose `claude` has
     /// ended reads `idle` or `failed` from the marks whatever their age, and
     /// a plain `working` report is not touched by the terminal's reader.
