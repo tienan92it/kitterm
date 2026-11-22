@@ -1,0 +1,1 @@
+- 2026-11-22 · A session whose turn ends with a running job of its own stays `working`: the `Stop` payload's `background_tasks` sets a job count, the idle notice is dropped while it stands, and the fleet row prints "waiting on its own job"; one correction from the review (claude-fable-5-2) · PR #223 · Cost: $7.47 · 11950k in (98% cached) · 51k out · 0h 31m

@@ -10,6 +10,11 @@ decision moves to `docs/adr/`.
 
 ## Toolchain
 
+- GitHub can cancel the `macos` job of the release workflow before a
+  runner takes it ("The job was not acquired by Runner of type hosted
+  even after multiple attempts"), and `publish` is then skipped. The tag
+  is not at fault: `gh run rerun <id> --failed` succeeded on the third
+  attempt for `v0.53.0` (2026-11-18, release of PR #222).
 - A scratch daemon for `KittermBench` needs `kitterm-spawn-helper` beside
   the binary. `swift build -c release --product kitterm` builds the one
   product, and every session of that daemon then fails; the bench prints
@@ -250,6 +255,14 @@ decision moves to `docs/adr/`.
 
 ## Crew pane
 
+- On Claude Code 2.1.330 the `Stop` hook payload carries
+  `background_tasks`, one entry per running job (`type` `shell` or
+  `monitor`, `status` `running`), and an empty list on the `Stop` after
+  the job ends. The idle `Notification` carries `notification_type:
+  "idle_prompt"` and came 60 s after `Stop`. The idle notice can also
+  arrive after a new turn has started: a crew that got a `FOREMAN:`
+  message inside those 60 s read `needs-input` while its spinner ran
+  (2026-11-22, chore `own-job-status`, PR #223).
 - A crew started with the crew settings file needs a `kitterm` on its
   `PATH` that has `round guard`. The hook is `kitterm round guard ||
   exit 2`, so an older build, or none, refuses every Bash call of the
