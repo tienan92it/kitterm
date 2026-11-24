@@ -717,6 +717,27 @@ nothing that was waiting exists to be told about twice. A live upgrade restores 
 session's last hook report, which gates the `agent.status` transition at its source, so
 an unchanged state is silent before it reaches the notifier.
 
+**A turn that ends with its own job running.** An agent can end its turn while a
+background shell or a monitor of its own still runs. The `Stop` hook of Claude Code
+2.1.330 names those jobs in `background_tasks`. `AgentStatus.runningJobs` counts the
+entries whose `status` is `running`, whatever their `type`.
+`HTTPAPIHandler.handleHookEvent` records `completed` with that count in `ownJobs`, and
+the `agent.status` event of that `Stop` carries `ownJobs` when the count is above zero.
+`MergedSessionState.merge` does not read the count, so the state is the same with and
+without a job. The one change is at the source of the transition: the idle
+`Notification` (`notification_type: "idle_prompt"`) is dropped while the standing
+report is a `completed` with `ownJobs` above zero, so the feed and the notifier see no
+`needs-input`. No time limit applies. Because that notice no longer stands between two
+`Stop`s, `PtySession.recordAgentStatus` counts a change of a count above zero as a
+transition, so the `Stop` after the job ends still reaches the feed. The row carries `agent.ownJobs` only while
+`mergedState` is `completed`, which only that hook report gives. The count goes through
+a live upgrade (`TakeoverState`, an optional field). The signal is the hook payload and
+not the screen: the daemon does not emulate a terminal (ADR 0001), and the status bar
+rule `waiting-on-own-job` stays in the CLI (`ScreenState.swift`) for `screen_state`. A
+payload without the fields acts as before. The limit of the rule: a question in the
+last message of such a turn gets no `needs-input` from the idle notice; the row reads
+`completed` with the count, and the `completed` event still wakes a watcher.
+
 **Rate limit.** At most 4 messages per session per 60 seconds. A message past the
 limit is dropped and logged, not queued: a human told four times in a minute that one
 session needs them is looking at it already, and a queue would deliver a state the

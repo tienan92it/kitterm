@@ -52,8 +52,10 @@ export type ModelRow = {
   lastOutputAt?: number;
   /** Free-text status note set by a program or a person (`post_note`). */
   note?: string;
-  /** The session's latest Claude Code hook report; the row reads the message. */
-  agent?: { message?: string };
+  /** The session's latest Claude Code hook report; the row reads the
+   * message, and `ownJobs`: how many background jobs of its own the agent
+   * left running, present only on a `completed` row whose turn ended with one. */
+  agent?: { message?: string; ownJobs?: number };
   /** The model id the session's transcript last answered with, as Claude
    * Code wrote it; absent until the session has an assistant turn. */
   agentModel?: string;
@@ -916,11 +918,22 @@ export function spanLabel(ms: number): string {
   return `${Math.floor(hours / 24)}d`;
 }
 
+/** The detail of a completed row whose agent ended its turn with background
+ * jobs of its own still running (`agent.ownJobs` from the daemon). The row
+ * keeps the word of its state and does not need a person. Null for every
+ * other row. */
+export function ownJobDetail(row: ModelRow): string | null {
+  const jobs = row.agent?.ownJobs ?? 0;
+  if (stateOf(row) !== "completed" || jobs < 1) return null;
+  return jobs === 1 ? "1 job running" : `${jobs} jobs running`;
+}
+
 /**
  * The one line a session row prints, read at `now`.
  *
- * `what` is the agent's message, else the note a program or a person set,
- * else the last command, else nothing. `since` measures from the last
+ * `what` is the count of the agent's own running jobs, else the agent's
+ * message, else the note a program or a person set, else the last command,
+ * else nothing. `since` measures from the last
  * output, because that is when the row's state began: the prompt that
  * waits, the command that failed, the shell that went quiet; a working row
  * reads `now` while it is alive and grows when it stalls. `place` shows
@@ -935,7 +948,7 @@ export function rowLine(row: ModelRow, now: number, base: string | undefined = r
     name: rowName(row),
     state: stateTag(row),
     place: row.name ? whereOf(row, base) : null,
-    what: row.agent?.message ?? row.note ?? command,
+    what: ownJobDetail(row) ?? row.agent?.message ?? row.note ?? command,
     since: typeof row.lastOutputAt === "number" ? spanLabel(now - row.lastOutputAt) : null,
   };
 }

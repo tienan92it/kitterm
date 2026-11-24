@@ -112,7 +112,12 @@ This file holds the section `AGENTS.md` carried until 2026-11-10 (goal `lean-con
   `approval.pending`, a `command.failed`, or a `session.exited`/`removed`,
   printing it; a non-matching event advances the cursor silently. With
   `--quiet-working`, an `agent.status` whose status is `working` does not
-  match, because no rule of the foreman acts on it. It also
+  match, because no rule of the foreman acts on it. A crew that ends its
+  turn with a background job of its own still running sends `completed`
+  as any ended turn does, and the printed line adds `ownJobs=N`
+  (`docs/http-api.md`, `POST /api/hooks`). The watch exits on that event
+  as on every `completed`; the count is information and changes no rule.
+  The idle notice after such a turn sends no `needs-input`. It also
   exits on a heartbeat (no match within `--heartbeat`, default 1200s) or on
   a daemon epoch change or a pruned cursor, printing that marker instead,
   and always prints the `next`/`epoch` cursor to resume from with no gap.

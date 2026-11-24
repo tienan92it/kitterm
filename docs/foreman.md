@@ -97,7 +97,8 @@ vocabulary:
 - `working` — a command is running.
 - `needs-input` — the agent sent a `Notification` hook; it wants you.
 - `needs-approval` — a tool call is blocked, waiting for you to allow or deny.
-- `completed` — the agent's turn finished (a `Stop` hook).
+- `completed` — the agent's turn finished (a `Stop` hook);
+  `agent.ownJobs` counts its running background jobs.
 - `failed` — the last command exited non-zero.
 - `idle` — at a prompt, nothing running.
 - `exited` — the shell is gone; the records still read.
@@ -119,8 +120,7 @@ reads `claude` although the launcher execs a binary named after its version
 agent is still running from one whose agent has quit, which the typed state
 alone does not say: `completed` means the agent's turn finished, whether or
 not `claude` is still there to take the next message. The daemon reads the
-field from the kernel when you ask, so it is current at the moment of the
-call.
+field from the kernel at each call.
 
 ## The loop
 
