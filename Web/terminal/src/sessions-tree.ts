@@ -63,6 +63,7 @@ import {
   NO_PROJECT_NAME,
   nextLine,
   orphanApprovals,
+  ownJobDetail,
   projectUsage,
   pullRequestHref,
   recordPath,
@@ -351,7 +352,8 @@ export function tree<R extends ModelRow>(input: TreeInput<R>): Tree<R> {
       depth,
       name: rowName(row),
       title: title === "" ? null : title,
-      detail: null,
+      // The one detail a session prints: the count of its own running jobs.
+      detail: ownJobDetail(row),
       state: { family: markFamily(state), tag: stateTag(row) },
       facts: sessionFactColumns(range ? sessionCost(billOf?.(row.id), range) : undefined, rowModel(row), row.agentModel, sessionSince(row, line.since, now), sessionCostTitle(billOf?.(row.id), now)),
       row,

@@ -1748,13 +1748,18 @@ public final class PtySession: @unchecked Sendable {
     /// always a transition.
     ///
     /// `ownJobs` is the count of running background jobs a `Stop` named; it
-    /// rides on the `completed` report and is no transition by itself.
+    /// rides on the `completed` report. A count above zero that changes is
+    /// a transition: the idle notice is dropped while that count stands
+    /// (`HTTPAPIHandler.handleHookEvent`), so without this the `Stop` of the
+    /// turn that reports the job's result would be a `completed` after a
+    /// `completed`, and the feed would not hear it.
     @discardableResult
     public func recordAgentStatus(_ report: AgentReport, message: String?, ownJobs: Int = 0) -> Bool {
         stateLock.withLock {
             let previous = agentStatusStorage
             agentStatusStorage = AgentStatus(report: report, message: message, at: Date(), ownJobs: ownJobs)
-            return previous?.report != report || previous?.message != message
+            let countChanged = (previous?.ownJobs ?? 0) > 0 && previous?.ownJobs != ownJobs
+            return previous?.report != report || previous?.message != message || countChanged
         }
     }
 

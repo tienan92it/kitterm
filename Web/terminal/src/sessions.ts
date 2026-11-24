@@ -171,7 +171,7 @@ import { findThemeById } from "./themes";
 
 type SessionState = "running" | "idle" | "unknown";
 
-type AgentStatus = { status: "needs-input" | "completed"; message?: string; at: number };
+type AgentStatus = { status: "needs-input" | "completed"; message?: string; at: number; ownJobs?: number };
 
 type SessionRow = ModelRow & {
   state: SessionState;
@@ -1063,7 +1063,7 @@ function render(): void {
   // the sorted order of ids is in it, so a row that moved still repaints.
   const rendered = sessions.map(({ lastOutputAt: _t, agent, ...rest }) => ({
     ...rest,
-    agent: agent ? { status: agent.status, message: agent.message } : undefined,
+    agent: agent ? { status: agent.status, message: agent.message, ownJobs: agent.ownJobs } : undefined,
   }));
   const now = Date.now();
   // The span a line prints moves once a minute at most, so it is in; so

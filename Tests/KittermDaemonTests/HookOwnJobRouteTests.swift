@@ -341,7 +341,41 @@ final class HookOwnJobRouteTests: XCTestCase {
         try await hook(id, Self.idleNotice)
         row = try await sessionRow(id)
         XCTAssertEqual(row["mergedState"] as? String, "needs-input")
-        XCTAssertEqual(statusEvents(id).map { $0["status"] }, ["working", "completed", "needs-input"])
+        // The second `completed` is the `Stop` that named no job any more.
+        XCTAssertEqual(
+            statusEvents(id).map { $0["status"] }, ["working", "completed", "completed", "needs-input"]
+        )
+    }
+
+    /// The job ends and the agent answers with text only, so no `PreToolUse`
+    /// comes before its `Stop` with an empty list. On main the idle notice
+    /// stood between the two `Stop`s and the second one reached the feed.
+    /// The notice is dropped now, so the change of the count is the
+    /// transition: the feed gets `completed` again and a watcher wakes.
+    func testTheStopAfterTheJobEndsReachesTheFeedWithNoToolCallBetween() async throws {
+        let id = try await registerPane()
+        try await hook(id, Self.preToolUse)
+        try await hook(id, Self.stop([("shell", "running"), ("monitor", "running")]))
+        try await hook(id, Self.idleNotice)
+
+        // One of the two jobs ends: the count changes, the feed says so.
+        try await hook(id, Self.stopWithAShell)
+        try await hook(id, Self.stopWithNoJob)
+        let row = try await sessionRow(id)
+        XCTAssertEqual(row["mergedState"] as? String, "completed")
+        XCTAssertNil(ownJobs(row))
+        XCTAssertEqual(statusEvents(id), [
+            ["status": "working"],
+            ["status": "completed", "ownJobs": "2"],
+            ["status": "completed", "ownJobs": "1"],
+            ["status": "completed"],
+        ])
+
+        // With no job on either side the second `Stop` is silent, as on main.
+        try await hook(id, Self.stopWithNoJob)
+        XCTAssertEqual(statusEvents(id).count, 4)
+        let sent = try await pushes()
+        XCTAssertEqual(sent, 0)
     }
 
     /// A new turn replaces the report, so the idle notice of the earlier
