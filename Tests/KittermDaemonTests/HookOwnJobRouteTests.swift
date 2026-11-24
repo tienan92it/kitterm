@@ -12,14 +12,16 @@ import XCTest
 @testable import KittermDaemon
 
 /// An agent that ends its turn with a background job of its own still running
-/// is not finished and does not want the human: the row stays `working`, the
-/// feed hears no transition, and no push goes out, until the job ends.
+/// reads `completed`, exactly as a turn with no job does. The report and its
+/// feed event carry the count of those jobs (`ownJobs`), and the one change
+/// of behaviour is that the idle notice which follows such a turn is dropped:
+/// no `needs-input`, no feed event, no push.
 ///
 /// The payloads are the shapes Claude Code 2.1.330 sent on 2026-11-22: `Stop`
 /// carries `background_tasks`, and the idle notice carries
 /// `notification_type: "idle_prompt"`. Two task types were measured, `shell`
 /// (a Bash call with `run_in_background`) and `monitor`. Driven over a real
-/// loop with a real session whose terminal a program holds, as an agent's is.
+/// loop with a real session.
 final class HookOwnJobRouteTests: XCTestCase {
     private final class RecordingTransport: PushTransport, @unchecked Sendable {
         private let lock = NIOLock()
@@ -113,16 +115,12 @@ final class HookOwnJobRouteTests: XCTestCase {
         if let stateDir { try? FileManager.default.removeItem(at: stateDir) }
     }
 
-    /// A session whose terminal a program holds, the way `claude` holds an
-    /// agent's pane: `sleep` stands in for the agent.
-    private func registerAgentPane() async throws -> UUID {
+    private func registerPane() async throws -> UUID {
         let session = try PtySession.spawn(cwd: NSTemporaryDirectory(), labels: SessionLabels.parse("run:x"))
         self.session = session
         // Input reaches the shell only through the reader channel the spawn
         // service would have made.
         try await session.makeReader(group: group, eventLoop: group.next()).get()
-        try session.write(Data("sleep 600\n".utf8))
-        try await waitForForeground("sleep", in: session)
         let id = await registry.register(session)
         return try XCTUnwrap(id)
     }
@@ -174,35 +172,52 @@ final class HookOwnJobRouteTests: XCTestCase {
         (row["agent"] as? [String: Any])?["ownJobs"] as? Int
     }
 
-    // MARK: - the fault
+    // MARK: - the rule
 
-    /// Proof 1: `Stop` with a job, then the idle notice a minute later. The
-    /// row stays `working` with the count, the feed holds the one `working`
-    /// the tool call made, and the phone hears nothing.
-    func testStopThenIdleNoticeWithAJobStaysWorkingWithNoEventAndNoPush() async throws {
-        let id = try await registerAgentPane()
+    /// `Stop` with a job gives `completed` with the count, on the row and on
+    /// the one feed event. The idle notice a minute later is dropped: the
+    /// state stays `completed`, the feed gains no event, the phone hears
+    /// nothing.
+    func testStopWithAJobIsCompletedWithTheCountAndTheIdleNoticeIsDropped() async throws {
+        let id = try await registerPane()
 
         try await hook(id, Self.preToolUse)
         try await hook(id, Self.stopWithAShell)
         var row = try await sessionRow(id)
-        XCTAssertEqual(row["mergedState"] as? String, "working")
+        XCTAssertEqual(row["mergedState"] as? String, "completed")
         XCTAssertEqual(ownJobs(row), 1)
+        XCTAssertEqual(statusEvents(id), [["status": "working"], ["status": "completed", "ownJobs": "1"]])
 
         try await hook(id, Self.idleNotice)
         row = try await sessionRow(id)
-        XCTAssertEqual(row["mergedState"] as? String, "working")
+        XCTAssertEqual(row["mergedState"] as? String, "completed")
         XCTAssertEqual(ownJobs(row), 1)
         XCTAssertNil((row["agent"] as? [String: Any])?["message"], "the idle notice is not recorded")
 
-        XCTAssertEqual(statusEvents(id), [["status": "working"]])
+        XCTAssertEqual(statusEvents(id), [["status": "working"], ["status": "completed", "ownJobs": "1"]])
         let sent = try await pushes()
         XCTAssertEqual(sent, 0)
     }
 
-    /// Proof 2: the same two hooks with no job read as they always did:
-    /// `completed`, then `needs-input` with one push.
+    /// The idle notice is dropped each time it comes while that report
+    /// stands. No time limit ends the rule.
+    func testEveryIdleNoticeIsDroppedWhileTheReportStands() async throws {
+        let id = try await registerPane()
+        try await hook(id, Self.preToolUse)
+        try await hook(id, Self.stopWithAShell)
+
+        for _ in 0..<3 { try await hook(id, Self.idleNotice) }
+        let row = try await sessionRow(id)
+        XCTAssertEqual(row["mergedState"] as? String, "completed")
+        XCTAssertEqual(statusEvents(id).count, 2)
+        let sent = try await pushes()
+        XCTAssertEqual(sent, 0)
+    }
+
+    /// `Stop` with an empty list, then the idle notice: `completed`, then
+    /// `needs-input` with one push, as on main.
     func testStopThenIdleNoticeWithNoJobGivesCompletedThenNeedsInput() async throws {
-        let id = try await registerAgentPane()
+        let id = try await registerPane()
 
         try await hook(id, Self.preToolUse)
         try await hook(id, Self.stopWithNoJob)
@@ -223,10 +238,28 @@ final class HookOwnJobRouteTests: XCTestCase {
         XCTAssertEqual(sent, 1)
     }
 
-    /// Proof 3: a tool call held for a human during a job is `needs-approval`,
-    /// and the phone hears it.
-    func testAPermissionRequestDuringAJobGivesNeedsApproval() async throws {
-        let id = try await registerAgentPane()
+    /// A `Stop` payload without `background_tasks` (an older Claude Code)
+    /// acts as on main: `completed` with no count, and the idle notice then
+    /// gives `needs-input`.
+    func testAStopWithoutTheFieldActsAsOnMain() async throws {
+        let id = try await registerPane()
+        try await hook(id, Self.preToolUse)
+        try await hook(id, #"{"hook_event_name":"Stop"}"#)
+        var row = try await sessionRow(id)
+        XCTAssertEqual(row["mergedState"] as? String, "completed")
+        XCTAssertNil(ownJobs(row))
+
+        try await hook(id, Self.idleNotice)
+        row = try await sessionRow(id)
+        XCTAssertEqual(row["mergedState"] as? String, "needs-input")
+        XCTAssertEqual(statusEvents(id).map { $0["status"] }, ["working", "completed", "needs-input"])
+        XCTAssertNil(statusEvents(id)[1]["ownJobs"])
+    }
+
+    /// A tool call held for a human after a turn that left a job running is
+    /// `needs-approval`, and the phone hears it.
+    func testAPermissionRequestAfterAStopWithAJobGivesNeedsApproval() async throws {
+        let id = try await registerPane()
         try await hook(id, Self.preToolUse)
         try await hook(id, Self.stopWithAShell)
 
@@ -255,7 +288,7 @@ final class HookOwnJobRouteTests: XCTestCase {
 
         let row = try await sessionRow(id)
         XCTAssertEqual(row["mergedState"] as? String, "needs-approval")
-        XCTAssertNil(ownJobs(row), "the detail belongs to a working row")
+        XCTAssertNil(ownJobs(row), "the count belongs to a completed row")
         let sent = try await pushes()
         XCTAssertEqual(sent, 1)
 
@@ -264,10 +297,10 @@ final class HookOwnJobRouteTests: XCTestCase {
         XCTAssertEqual(status, 200)
     }
 
-    /// A permission notice and a question are not the idle notice: during a
-    /// job each still gives `needs-input`.
-    func testANoticeThatIsNotTheIdleNoticeStillGivesNeedsInputDuringAJob() async throws {
-        let id = try await registerAgentPane()
+    /// A permission notice and a question are not the idle notice: after a
+    /// `Stop` with a job each still gives `needs-input`, an event and a push.
+    func testANoticeThatIsNotTheIdleNoticeStillGivesNeedsInput() async throws {
+        let id = try await registerPane()
         try await hook(id, Self.preToolUse)
         try await hook(id, Self.stopWithAShell)
 
@@ -277,8 +310,14 @@ final class HookOwnJobRouteTests: XCTestCase {
         )
         var row = try await sessionRow(id)
         XCTAssertEqual(row["mergedState"] as? String, "needs-input")
+        XCTAssertNil(ownJobs(row), "the count belongs to a completed row")
+        XCTAssertEqual(statusEvents(id).last, [
+            "status": "needs-input", "message": "Claude needs your permission to use Bash",
+        ])
+        let sent = try await pushes()
+        XCTAssertEqual(sent, 1)
 
-        // A layout with no `notification_type` falls back to the old rule.
+        // A layout with no `notification_type` is not the idle notice.
         try await hook(id, Self.stopWithAShell)
         try await hook(id, #"{"hook_event_name":"Notification","message":"Which branch do you want?"}"#)
         row = try await sessionRow(id)
@@ -286,11 +325,10 @@ final class HookOwnJobRouteTests: XCTestCase {
         XCTAssertEqual((row["agent"] as? [String: Any])?["message"] as? String, "Which branch do you want?")
     }
 
-    /// Proof 4: the job's end wakes the agent, and its next `Stop` names no
-    /// job. The state leaves `working` for `completed`, and the idle notice
-    /// then counts again.
-    func testWhenTheJobEndsTheStateLeavesWorking() async throws {
-        let id = try await registerAgentPane()
+    /// The job's end wakes the agent, and its next `Stop` names no job. The
+    /// count leaves the row, and the idle notice then counts again.
+    func testWhenTheJobEndsTheIdleNoticeCountsAgain() async throws {
+        let id = try await registerPane()
         try await hook(id, Self.preToolUse)
         try await hook(id, Self.stopWithAShell)
         try await hook(id, Self.idleNotice)
@@ -306,24 +344,37 @@ final class HookOwnJobRouteTests: XCTestCase {
         XCTAssertEqual(statusEvents(id).map { $0["status"] }, ["working", "completed", "needs-input"])
     }
 
+    /// A new turn replaces the report, so the idle notice of the earlier
+    /// turn is read as on main.
+    func testAfterANewTurnStartsTheIdleNoticeIsNotDropped() async throws {
+        let id = try await registerPane()
+        try await hook(id, Self.preToolUse)
+        try await hook(id, Self.stopWithAShell)
+        try await hook(id, Self.preToolUse)
+
+        try await hook(id, Self.idleNotice)
+        let row = try await sessionRow(id)
+        XCTAssertEqual(row["mergedState"] as? String, "needs-input")
+    }
+
     // MARK: - what counts as a job
 
     /// Only `status` is read. `shell` and `monitor` are the measured types;
-    /// a type nobody has seen is still a job, so a new kind of background
-    /// task does not bring the fault back. A task that is not `running` is
-    /// not waited on.
+    /// a type nobody has seen is still a job. A task that is not `running`
+    /// is not counted. The state is `completed` each time.
     func testOnlyRunningTasksCountAndAnUnknownTypeIsAJob() async throws {
-        let id = try await registerAgentPane()
+        let id = try await registerPane()
         try await hook(id, Self.preToolUse)
 
         try await hook(id, Self.stop([("shell", "running"), ("monitor", "running"), ("shell", "completed")]))
         var row = try await sessionRow(id)
-        XCTAssertEqual(row["mergedState"] as? String, "working")
+        XCTAssertEqual(row["mergedState"] as? String, "completed")
         XCTAssertEqual(ownJobs(row), 2)
+        XCTAssertEqual(statusEvents(id).last, ["status": "completed", "ownJobs": "2"])
 
         try await hook(id, Self.stop([("a-type-of-next-year", "running")]))
         row = try await sessionRow(id)
-        XCTAssertEqual(row["mergedState"] as? String, "working")
+        XCTAssertEqual(row["mergedState"] as? String, "completed")
         XCTAssertEqual(ownJobs(row), 1)
 
         try await hook(id, Self.stop([("shell", "completed"), ("monitor", "failed"), ("shell", "killed")]))
@@ -341,64 +392,54 @@ final class HookOwnJobRouteTests: XCTestCase {
         XCTAssertEqual(AgentStatus.runningJobs(in: ["background_tasks": [["type": "shell", "status": 1]]]), 0)
     }
 
-    // MARK: - the agent is gone
-
-    /// The count must not outlive the agent. No hook says that `claude` has
-    /// exited, so the row asks the terminal: once the shell reads it again,
-    /// the report no longer counts and the marks decide, as they did before.
-    func testTheJobCountDoesNotOutliveTheProgramAtTheTerminal() async throws {
-        let id = try await registerAgentPane()
-        try await hook(id, Self.preToolUse)
-        try await hook(id, Self.stopWithAShell)
-        var row = try await sessionRow(id)
-        XCTAssertEqual(row["mergedState"] as? String, "working")
-
-        // The stand-in agent ends, as `claude` does on `/exit`.
-        let agent = try XCTUnwrap(session.foregroundLeader?.group)
-        XCTAssertEqual(kill(agent, SIGKILL), 0)
-        let deadline = SuspendingClock.now + .seconds(10)
-        while session.foregroundProgram != nil, SuspendingClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(50), clock: .suspending)
+    /// The merged state is what main computes: the count on a report never
+    /// changes what the merge returns.
+    func testTheCountNeverChangesTheMergedState() {
+        let now = Date()
+        func merged(_ agent: AgentStatus, _ derived: DerivedSessionState) -> MergedSessionState {
+            MergedSessionState.merge(derived: derived, agent: agent, pendingApproval: false, exited: false)
         }
-        XCTAssertNil(session.foregroundProgram, "the stand-in agent never left the terminal")
-
-        row = try await sessionRow(id)
-        XCTAssertNotEqual(row["mergedState"] as? String, "working")
-        XCTAssertNil(ownJobs(row))
+        let older = DerivedSessionState(
+            state: .running, lastCommand: "claude", lastExit: nil, lastMarkAt: now.addingTimeInterval(-60)
+        )
+        let newer = DerivedSessionState(
+            state: .idle, lastCommand: "claude", lastExit: 1, lastMarkAt: now.addingTimeInterval(60)
+        )
+        for derived in [older, newer] {
+            XCTAssertEqual(
+                merged(AgentStatus(report: .completed, message: nil, at: now, ownJobs: 2), derived),
+                merged(AgentStatus(report: .completed, message: nil, at: now), derived)
+            )
+        }
+        XCTAssertEqual(merged(AgentStatus(report: .completed, message: nil, at: now, ownJobs: 2), older), .completed)
     }
 
-    /// Until the session's marks say a command is running (a preExec mark).
-    private func waitForRunningMark() async throws {
+    // MARK: - the count is on the row only while the report is the evidence
+
+    /// Until the session's marks derive `state` (from a mark the shell sent).
+    private func waitForMarks(_ state: SessionState) async throws {
         let deadline = SuspendingClock.now + .seconds(10)
         while SuspendingClock.now < deadline {
-            if DerivedSessionState.derive(from: session.marksSnapshot()).state == .running { return }
+            if DerivedSessionState.derive(from: session.marksSnapshot()).state == state { return }
             try await Task.sleep(for: .milliseconds(50), clock: .suspending)
         }
-        XCTFail("the preExec mark never arrived")
-    }
-
-    /// The typed line that sends a preExec mark (OSC 133;C), as a shell with
-    /// integration does before each command, then runs `command`.
-    private static func marked(_ command: String) -> Data {
-        Data(#"printf '\033]133;C\007'; \#(command)"#.utf8 + [0x0A])
+        XCTFail("the marks never derived \(state)")
     }
 
     /// The human exits the agent and runs a long command in the same pane.
     /// The command's mark is newer than the report, so the marks give
-    /// `working`, and the row must print the command, not the wait: the
-    /// count shows only when the report is what the state was read from.
+    /// `working`, and the row carries no count.
     func testACommandNewerThanTheReportIsWorkingWithNoJobCount() async throws {
-        let id = try await registerAgentPane()
+        let id = try await registerPane()
         try await hook(id, Self.preToolUse)
         try await hook(id, Self.stopWithAShell)
         let before = try await sessionRow(id)
         XCTAssertEqual(ownJobs(before), 1)
 
-        let agent = try XCTUnwrap(session.foregroundLeader?.group)
-        XCTAssertEqual(kill(agent, SIGKILL), 0)
-        try session.write(Self.marked("sleep 500"))
-        try await waitForRunningMark()
-        try await waitForForeground("sleep", in: session)
+        // A preExec mark (OSC 133;C), as a shell with integration sends
+        // before each command.
+        try session.write(Data(#"printf '\033]133;C\007'; sleep 500"#.utf8 + [0x0A]))
+        try await waitForMarks(.running)
 
         let row = try await sessionRow(id)
         XCTAssertEqual(row["state"] as? String, "running")
@@ -406,51 +447,20 @@ final class HookOwnJobRouteTests: XCTestCase {
         XCTAssertNil(ownJobs(row), "the marks made this row working, not the report")
     }
 
-    /// The second path to the same row: no program holds the terminal, so
-    /// the report is dropped, and marks older than the report say running.
-    func testRunningMarksWithNoProgramAtTheTerminalCarryNoJobCount() async throws {
-        let session = try PtySession.spawn(cwd: NSTemporaryDirectory(), labels: SessionLabels.parse("run:x"))
-        self.session = session
-        try await session.makeReader(group: group, eventLoop: group.next()).get()
-        try session.write(Self.marked("true"))
-        try await waitForRunningMark()
-        let registered = await registry.register(session)
-        let id = try XCTUnwrap(registered)
-        XCTAssertNil(session.foregroundProgram)
-
+    /// The same guard for a command that ended after the report: the marks
+    /// give `failed`, and the row carries no count.
+    func testACommandThatEndedAfterTheReportCarriesNoJobCount() async throws {
+        let id = try await registerPane()
         try await hook(id, Self.preToolUse)
         try await hook(id, Self.stopWithAShell)
 
+        // A preExec mark, then a commandEnd mark with exit 1 (OSC 133;D;1).
+        try session.write(Data(#"printf '\033]133;C\007'; printf '\033]133;D;1\007'"#.utf8 + [0x0A]))
+        try await waitForMarks(.idle)
+
         let row = try await sessionRow(id)
-        XCTAssertEqual(row["mergedState"] as? String, "working")
-        XCTAssertNil(ownJobs(row), "the marks made this row working, not the report")
-    }
-
-    /// The same rule at the merge, with marks: a shell whose `claude` has
-    /// ended reads `idle` or `failed` from the marks whatever their age, and
-    /// a plain `working` report is not touched by the terminal's reader.
-    func testTheMergeDropsAWaitingReportOnceNoProgramHoldsTheTerminal() {
-        let now = Date()
-        let waiting = AgentStatus(report: .working, message: nil, at: now, ownJobs: 1)
-        let idle = DerivedSessionState(
-            state: .idle, lastCommand: "claude", lastExit: 0, lastMarkAt: now.addingTimeInterval(-60)
-        )
-        func merged(_ agent: AgentStatus, _ derived: DerivedSessionState, holds: Bool) -> MergedSessionState {
-            MergedSessionState.merge(
-                derived: derived, agent: agent, pendingApproval: false, exited: false, programHoldsTerminal: holds
-            )
-        }
-        XCTAssertEqual(merged(waiting, idle, holds: true), .working)
-        XCTAssertEqual(merged(waiting, idle, holds: false), .idle)
-        let failed = DerivedSessionState(
-            state: .idle, lastCommand: "claude", lastExit: 1, lastMarkAt: now.addingTimeInterval(-60)
-        )
-        XCTAssertEqual(merged(waiting, failed, holds: false), .failed)
-
-        let plain = AgentStatus(report: .working, message: nil, at: now)
-        XCTAssertEqual(merged(plain, idle, holds: false), .working, "only the waiting report asks the terminal")
-        let done = AgentStatus(report: .completed, message: nil, at: now)
-        XCTAssertEqual(merged(done, idle, holds: false), .completed)
+        XCTAssertEqual(row["mergedState"] as? String, "failed")
+        XCTAssertNil(ownJobs(row), "the marks made this row failed, not the report")
     }
 
     // MARK: - takeover
@@ -458,18 +468,21 @@ final class HookOwnJobRouteTests: XCTestCase {
     /// A live upgrade carries the count, and a state file written before the
     /// field still loads.
     func testTheJobCountSurvivesATakeoverRecord() throws {
-        let status = AgentStatus(report: .working, message: nil, at: Date(timeIntervalSince1970: 1_795_000_000), ownJobs: 2)
+        let status = AgentStatus(
+            report: .completed, message: nil, at: Date(timeIntervalSince1970: 1_795_000_000), ownJobs: 2
+        )
         let record = TakeoverState.AgentStatusRecord(status)
         let decoded = try JSONDecoder().decode(
             TakeoverState.AgentStatusRecord.self, from: JSONEncoder().encode(record)
         )
         XCTAssertEqual(decoded.status, status)
+        XCTAssertEqual(decoded.status?.endedWithOwnJob, true)
 
         let old = try JSONDecoder().decode(
             TakeoverState.AgentStatusRecord.self,
-            from: Data(#"{"report":"working","at":1795000000000}"#.utf8)
+            from: Data(#"{"report":"completed","at":1795000000000}"#.utf8)
         )
         XCTAssertEqual(old.status?.ownJobs, 0)
-        XCTAssertEqual(old.status?.waitsOnOwnJob, false)
+        XCTAssertEqual(old.status?.endedWithOwnJob, false)
     }
 }

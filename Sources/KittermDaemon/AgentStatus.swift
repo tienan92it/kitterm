@@ -26,9 +26,11 @@ public struct AgentStatus: Sendable, Equatable {
     /// The `message` the hook carried, if any (the text a human reads).
     public let message: String?
     public let at: Date
-    /// How many background jobs of its own the agent waits on: the `running`
-    /// entries of the `Stop` payload's `background_tasks`. Above zero only on
-    /// a `working` report that a `Stop` recorded (`AgentStatus.runningJobs`).
+    /// How many background jobs of its own the agent left running when its
+    /// turn ended: the `running` entries of the `Stop` payload's
+    /// `background_tasks`. Above zero only on a `completed` report that a
+    /// `Stop` recorded (`AgentStatus.runningJobs`). The count is a detail of
+    /// the report and never changes the state.
     public let ownJobs: Int
 
     public init(report: AgentReport, message: String?, at: Date = Date(), ownJobs: Int = 0) {
@@ -38,9 +40,9 @@ public struct AgentStatus: Sendable, Equatable {
         self.ownJobs = ownJobs
     }
 
-    /// The agent ended its turn with a job of its own still running, so the
-    /// turn is not finished: the job's end starts the next one.
-    public var waitsOnOwnJob: Bool { report == .working && ownJobs > 0 }
+    /// The agent ended its turn with a job of its own still running. The
+    /// idle notice that follows such a turn is not a request for the human.
+    public var endedWithOwnJob: Bool { report == .completed && ownJobs > 0 }
 
     /// The count of running background jobs a `Stop` payload names.
     ///
@@ -48,8 +50,7 @@ public struct AgentStatus: Sendable, Equatable {
     /// a `type` (`shell` and `monitor` are the two measured) and a `status`.
     /// Only `status` is read: an entry counts when it is `running`, whatever
     /// its type, so a new type of job is still a job. A payload with no such
-    /// field (an older Claude Code, or a later layout) counts zero, and the
-    /// `Stop` then reads `completed` as it always did.
+    /// field (an older Claude Code, or a later layout) counts zero.
     public static func runningJobs(in event: [String: Any]?) -> Int {
         guard let tasks = event?["background_tasks"] as? [Any] else { return 0 }
         return tasks.count { ($0 as? [String: Any])?["status"] as? String == "running" }

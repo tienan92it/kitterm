@@ -94,11 +94,11 @@ it in the fleet view.
 `list_sessions` and `wait_for_events` report a session's state in the crew
 vocabulary:
 
-- `working` — a command is running, or the agent waits on its
-  background job (`agent.ownJobs`, `docs/http-api.md`).
+- `working` — a command is running.
 - `needs-input` — the agent sent a `Notification` hook; it wants you.
 - `needs-approval` — a tool call is blocked, waiting for you to allow or deny.
-- `completed` — the agent's turn finished (a `Stop` hook).
+- `completed` — the agent's turn finished (a `Stop` hook);
+  `agent.ownJobs` counts its running background jobs.
 - `failed` — the last command exited non-zero.
 - `idle` — at a prompt, nothing running.
 - `exited` — the shell is gone; the records still read.

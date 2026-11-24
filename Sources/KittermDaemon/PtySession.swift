@@ -1748,7 +1748,7 @@ public final class PtySession: @unchecked Sendable {
     /// always a transition.
     ///
     /// `ownJobs` is the count of running background jobs a `Stop` named; it
-    /// rides on the `working` report and is no transition by itself.
+    /// rides on the `completed` report and is no transition by itself.
     @discardableResult
     public func recordAgentStatus(_ report: AgentReport, message: String?, ownJobs: Int = 0) -> Bool {
         stateLock.withLock {

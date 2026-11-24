@@ -228,6 +228,28 @@ final class ForemanWatchTests: XCTestCase {
         XCTAssertFalse(lines[0].contains("message=old"))
     }
 
+    // MARK: - A Stop that left a job running says so on its line
+
+    /// The `agent.status` event of a `Stop` with running background jobs
+    /// carries `ownJobs`. The watch exits on it as on any `completed`, and
+    /// the line prints the count.
+    func testACompletedStatusWithOwnJobsPrintsTheCount() throws {
+        let feed = ScriptedFeed(pages: [
+            .init(
+                epoch: "e",
+                events: [event(seq: 4, type: "agent.status", session: sessionA, data: ["status": "completed", "ownJobs": "2"])],
+                next: 5
+            ),
+        ])
+        let lines = try run(["--session", sessionA, "--since", "4", "--epoch", "e", "--quiet-working"], feed: feed)
+        XCTAssertEqual(feed.calls.count, 1)
+        XCTAssertEqual(lines.count, 1)
+        XCTAssertTrue(
+            lines[0].hasPrefix("event agent.status session=\(sessionA) seq=4 ownJobs=2 status=completed  "),
+            lines[0]
+        )
+    }
+
     // MARK: - Usage
 
     func testNoSessionIsAUsageError() {
